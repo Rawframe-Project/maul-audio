@@ -22,6 +22,9 @@
 #include <time.h>
 
 #define BLACKHOLE_UID "BlackHole2ch_UID"
+// The macOS runners' own virtual device, at 44.1 kHz where BlackHole
+// runs at 48 kHz.
+#define NULL_DEVICE_UID "NullAudioDevice_UID"
 // The exit code CTest reads as skipped.
 #define SKIP 77
 
@@ -161,7 +164,7 @@ static void ListDevices(const maudContext* context, maudDirection direction)
     }
 }
 
-static maudDeviceId FindBlackHole(const maudContext* context, maudDirection direction)
+static maudDeviceId FindByKey(const maudContext* context, maudDirection direction, const char* uid)
 {
     maudDeviceId ids[32];
     uint32_t count = 0;
@@ -171,7 +174,7 @@ static maudDeviceId FindBlackHole(const maudContext* context, maudDirection dire
         char key[128] = {0};
         size_t length = 0;
         if (maudGetDeviceKey(context, ids[i], key, sizeof(key) - 1, &length) == maud_success &&
-            strcmp(key, BLACKHOLE_UID) == 0)
+            strcmp(key, uid) == 0)
         {
             return ids[i];
         }
@@ -183,8 +186,8 @@ static void TestDevices(maudContext* context)
 {
     ListDevices(context, maud_directionOutput);
     ListDevices(context, maud_directionInput);
-    maudDeviceId output = FindBlackHole(context, maud_directionOutput);
-    maudDeviceId input = FindBlackHole(context, maud_directionInput);
+    maudDeviceId output = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    maudDeviceId input = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
     CHECK(output.index1 != 0 && input.index1 != 0, "BlackHole both ways, keyed by its UID");
     maudDeviceInfo info = {0};
     char name[128] = {0};
@@ -209,8 +212,8 @@ static void TestDevices(maudContext* context)
 static void TestOutputStream(maudContext* context)
 {
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, FindBlackHole(context, maud_directionOutput), &info) ==
-              maud_success,
+    CHECK(maudGetDeviceInfo(context, FindByKey(context, maud_directionOutput, BLACKHOLE_UID),
+                            &info) == maud_success,
           "BlackHole");
     double nominal = (double)info.nativeSampleRate;
     Blocks blocks = {0};
@@ -262,6 +265,67 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no capture yet");
 }
 
+// Waits up to three seconds for the system's default output to reach
+// the library: the default, the stream's move and, when the rate
+// differs, its new rate.
+static bool WaitForMove(maudContext* context, maudStreamId stream, maudDeviceId device,
+                        bool rateChanges)
+{
+    bool defaulted = false;
+    bool moved = false;
+    bool reformatted = !rateChanges;
+    for (int tries = 0; tries < 300 && !(defaulted && moved && reformatted); ++tries)
+    {
+        maudNotification record;
+        while (maudNextNotification(context, &record) == maud_success)
+        {
+            bool here = record.deviceId.index1 == device.index1 &&
+                        record.deviceId.generation == device.generation;
+            defaulted = defaulted || (record.kind == maud_notifyDefaultChanged && here &&
+                                      record.direction == maud_directionOutput);
+            moved = moved || (record.kind == maud_notifyStreamMoved && here &&
+                              record.streamId.index1 == stream.index1);
+            reformatted = reformatted || (record.kind == maud_notifyStreamFormatChanged &&
+                                          record.streamId.index1 == stream.index1);
+        }
+        Sleep(10);
+    }
+    if (!(defaulted && moved && reformatted))
+    {
+        fprintf(stderr, "default %d, moved %d, new rate %d\n", defaulted, moved, reformatted);
+    }
+    return defaulted && moved && reformatted;
+}
+
+// A stream on the default follows the system's default output to a
+// device at another rate, and back.
+static void TestDefaultMoves(maudContext* context)
+{
+    maudDeviceId blackhole = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    maudDeviceId other = FindByKey(context, maud_directionOutput, NULL_DEVICE_UID);
+    maudDeviceInfo info = {0};
+    CHECK(other.index1 != 0 && maudGetDeviceInfo(context, other, &info) == maud_success,
+          "the runner's null device");
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 10), "it plays");
+    CHECK(MakeDefaultOutput(NULL_DEVICE_UID), "the null device made the default");
+    CHECK(WaitForMove(context, stream, other, true), "the stream follows the default");
+    maudStreamFormat format;
+    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+              format.sampleRate == info.nativeSampleRate,
+          "at the new device's rate");
+    CHECK(WaitForBlocks(context, &blocks, atomic_load(&blocks.count) + 20), "it plays there");
+    CHECK(Near(MeasureRate(context, stream), (double)info.nativeSampleRate), "at that rate");
+    CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole the default again");
+    CHECK(WaitForMove(context, stream, blackhole, true), "and back");
+    CHECK(WaitForBlocks(context, &blocks, atomic_load(&blocks.count) + 20), "it plays again");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods throughout");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
@@ -280,6 +344,7 @@ int main(void)
     CHECK(maudGetContextBackend(context) == maud_backendCoreAudio, "CoreAudio chosen");
     TestDevices(context);
     TestOutputStream(context);
+    TestDefaultMoves(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;
 }
