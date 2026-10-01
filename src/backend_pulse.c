@@ -12,68 +12,24 @@
 #include "context.h"
 #include "device.h"
 #include "layout.h"
-#include "pulse_api.h"
+#include "pulse_core.h"
+#include "pulse_stream.h"
 
 #include <string.h>
 #include <time.h>
 
-// How long creation waits for the server.
-#define DEADLINE_NS 2000000000ll
-// How long after a lost or refused connection the next one is tried.
-#define RETRY_NS 500000000ll
-// How many loop iterations one pump takes at most.
-#define PUMP_ITERATIONS 64
-// Bytes of a default device's name.
-#define NAME_BYTES 256
-
-typedef struct maudPulse maudPulse;
-
-// One sink or source, by PulseAudio's index, which is per direction.
-typedef struct PulseNode
-{
-    maudDeviceId device;
-    uint32_t index;
-    maudDirection direction;
-    bool used;
-} PulseNode;
-
-// The connection to the server and what its first queries owe.
-typedef struct PulseServer
-{
-    pa_context* context;
-    // Queries of the first listing still unanswered.
-    int pending;
-    bool ready;
-    // The server went away; the context is dropped after the iteration
-    // that reported it, and a new one is tried from nextAttempt on.
-    bool lost;
-    int64_t nextAttempt;
-    char defaultNames[2][NAME_BYTES];
-} PulseServer;
-
-struct maudPulse
-{
-    maudPulseApi api;
-    maudContext* context;
-    pa_mainloop* loop;
-    PulseServer server;
-    PulseNode* nodes;
-    uint32_t nodeCapacity;
-    size_t bytes;
-};
-
-static int64_t Now(void)
+int64_t maudPulseNow(void)
 {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     return (int64_t)now.tv_sec * 1000000000ll + now.tv_nsec;
 }
 
-static PulseNode* FindNode(maudPulse* pulse, maudDirection direction, uint32_t index)
+static maudPulseNode* FindNode(maudPulse* pulse, maudDirection direction, uint32_t index)
 {
     for (uint32_t i = 0; i < pulse->nodeCapacity; ++i)
     {
-        PulseNode* node = &pulse->nodes[i];
+        maudPulseNode* node = &pulse->nodes[i];
         if (node->used && node->direction == direction && node->index == index)
         {
             return node;
@@ -88,7 +44,7 @@ static void ResolveDefaults(maudPulse* pulse)
 {
     for (uint32_t i = 0; i < pulse->nodeCapacity; ++i)
     {
-        const PulseNode* node = &pulse->nodes[i];
+        const maudPulseNode* node = &pulse->nodes[i];
         const maudDeviceSlot* slot =
             node->used ? maudFindDevice(pulse->context, node->device) : nullptr;
         const char* wanted = slot != nullptr ? pulse->server.defaultNames[node->direction] : "";
@@ -129,7 +85,7 @@ static void ApplyNode(maudPulse* pulse, maudDirection direction, uint32_t index,
         .minSampleRate = spec->rate,
         .maxSampleRate = spec->rate,
     };
-    PulseNode* node = FindNode(pulse, direction, index);
+    maudPulseNode* node = FindNode(pulse, direction, index);
     maudDeviceSlot* slot = node != nullptr ? maudFindDevice(pulse->context, node->device) : nullptr;
     if (slot != nullptr)
     {
@@ -158,19 +114,20 @@ static void ApplyNode(maudPulse* pulse, maudDirection direction, uint32_t index,
     maudDeviceId device;
     if (maudAddDevice(pulse->context, &deviceSpec, &device) == maud_success)
     {
-        *node = (PulseNode){.device = device, .index = index, .direction = direction, .used = true};
+        *node =
+            (maudPulseNode){.device = device, .index = index, .direction = direction, .used = true};
         ResolveDefaults(pulse);
     }
 }
 
-static void RemoveNode(maudPulse* pulse, PulseNode* node)
+static void RemoveNode(maudPulse* pulse, maudPulseNode* node)
 {
     maudDeviceSlot* slot = maudFindDevice(pulse->context, node->device);
     if (slot != nullptr)
     {
         maudRemoveDevice(pulse->context, slot);
     }
-    *node = (PulseNode){0};
+    *node = (maudPulseNode){0};
 }
 
 static void ApplySink(maudPulse* pulse, const pa_sink_info* info)
@@ -196,7 +153,7 @@ static void ApplyServer(maudPulse* pulse, const pa_server_info* info)
     {
         char* target = pulse->server.defaultNames[direction];
         size_t length = names[direction] != nullptr ? strlen(names[direction]) : 0;
-        length = length < NAME_BYTES - 1 ? length : NAME_BYTES - 1;
+        length = length < MAUD_PULSE_NAME_BYTES - 1 ? length : MAUD_PULSE_NAME_BYTES - 1;
         if (length != 0)
         {
             memcpy(target, names[direction], length);
@@ -301,7 +258,7 @@ static void OnSubscription(pa_context* context, pa_subscription_event_type_t eve
     }
     else if (type == PA_SUBSCRIPTION_EVENT_REMOVE)
     {
-        PulseNode* node = FindNode(pulse, direction, index);
+        maudPulseNode* node = FindNode(pulse, direction, index);
         if (node != nullptr)
         {
             RemoveNode(pulse, node);
@@ -353,7 +310,7 @@ static void OnState(pa_context* context, void* user)
 // False when the connection fails at once.
 static bool Connect(maudPulse* pulse)
 {
-    PulseServer* server = &pulse->server;
+    maudPulseServer* server = &pulse->server;
     server->ready = false;
     server->lost = false;
     server->pending = 0;
@@ -370,7 +327,7 @@ static bool Connect(maudPulse* pulse)
 
 static void DropContext(maudPulse* pulse)
 {
-    PulseServer* server = &pulse->server;
+    maudPulseServer* server = &pulse->server;
     if (server->context != nullptr)
     {
         pulse->api.contextSetStateCallback(server->context, nullptr, nullptr);
@@ -395,17 +352,17 @@ static void LoseConnection(maudPulse* pulse)
         }
     }
     DropContext(pulse);
-    pulse->server.nextAttempt = Now() + RETRY_NS;
+    pulse->server.nextAttempt = maudPulseNow() + MAUD_PULSE_RETRY_NS;
 }
 
 // Runs the loop on the calling thread until the first listing is
 // answered, the connection fails, or the deadline passes.
 static bool WaitForListing(maudPulse* pulse, int64_t deadline)
 {
-    PulseServer* server = &pulse->server;
+    maudPulseServer* server = &pulse->server;
     while (!(server->ready && server->pending == 0) && !server->lost)
     {
-        int64_t remaining = deadline - Now();
+        int64_t remaining = deadline - maudPulseNow();
         if (remaining <= 0)
         {
             return false;
@@ -435,7 +392,9 @@ static void Release(maudContext* context, maudPulse* pulse)
 static maudResult OpenContext(maudContext* context)
 {
     uint32_t capacity = context->def.limits.devices;
-    size_t bytes = sizeof(maudPulse) + (size_t)capacity * sizeof(PulseNode);
+    uint32_t streams = context->def.limits.streams;
+    size_t bytes = sizeof(maudPulse) + (size_t)capacity * sizeof(maudPulseNode) +
+                   (size_t)streams * sizeof(maudPulseStream);
     maudPulse* pulse = maudContextAllocate(context, bytes, alignof(maudPulse));
     if (pulse == nullptr)
     {
@@ -443,11 +402,13 @@ static maudResult OpenContext(maudContext* context)
     }
     *pulse = (maudPulse){
         .context = context,
-        .nodes = (PulseNode*)(pulse + 1),
+        .nodes = (maudPulseNode*)(pulse + 1),
         .nodeCapacity = capacity,
         .bytes = bytes,
     };
-    memset(pulse->nodes, 0, (size_t)capacity * sizeof(PulseNode));
+    memset(pulse->nodes, 0, (size_t)capacity * sizeof(maudPulseNode));
+    pulse->streams = (maudPulseStream*)(pulse->nodes + capacity);
+    memset(pulse->streams, 0, (size_t)streams * sizeof(maudPulseStream));
     context->native = pulse;
     if (!maudLoadPulse(&pulse->api))
     {
@@ -455,7 +416,8 @@ static maudResult OpenContext(maudContext* context)
         return maud_errorUnsupported;
     }
     pulse->loop = pulse->api.mainloopNew();
-    if (pulse->loop == nullptr || !Connect(pulse) || !WaitForListing(pulse, Now() + DEADLINE_NS))
+    if (pulse->loop == nullptr || !Connect(pulse) ||
+        !WaitForListing(pulse, maudPulseNow() + MAUD_PULSE_DEADLINE_NS))
     {
         Release(context, pulse);
         return maud_errorUnsupported;
@@ -470,7 +432,7 @@ static void CloseContext(maudContext* context)
 
 static void Reconnect(maudPulse* pulse)
 {
-    if (Now() < pulse->server.nextAttempt)
+    if (maudPulseNow() < pulse->server.nextAttempt)
     {
         return;
     }
@@ -478,19 +440,19 @@ static void Reconnect(maudPulse* pulse)
     {
         DropContext(pulse);
         pulse->server.lost = true;
-        pulse->server.nextAttempt = Now() + RETRY_NS;
+        pulse->server.nextAttempt = maudPulseNow() + MAUD_PULSE_RETRY_NS;
     }
 }
 
 static void Pump(maudContext* context)
 {
     maudPulse* pulse = context->native;
-    PulseServer* server = &pulse->server;
+    maudPulseServer* server = &pulse->server;
     if (server->context == nullptr)
     {
         Reconnect(pulse);
     }
-    for (int i = 0; i < PUMP_ITERATIONS && !server->lost; ++i)
+    for (int i = 0; i < MAUD_PULSE_PUMP_ITERATIONS && !server->lost; ++i)
     {
         if (pulse->api.mainloopIterate(pulse->loop, 0, nullptr) <= 0)
         {
@@ -501,16 +463,32 @@ static void Pump(maudContext* context)
     {
         LoseConnection(pulse);
     }
+    if (server->ready && server->pending == 0)
+    {
+        maudPulseResumeStreams(context);
+    }
 }
 
+// PulseAudio converts each stream to its sink's rate, so a native
+// stream takes the device's rate; with no device yet, the fallback.
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
     (void)context;
-    (void)def;
-    (void)device;
-    (void)formatOut;
-    return maud_errorUnsupported;
+    uint32_t native = device != nullptr ? device->nativeSampleRate : MAUD_PULSE_FALLBACK_RATE;
+    if (def->mode == maud_modePull ||
+        (def->ratePolicy == maud_rateRequired && def->sampleRate != native))
+    {
+        return maud_errorUnsupported;
+    }
+    uint32_t rate = def->ratePolicy == maud_rateNative ? native : def->sampleRate;
+    *formatOut = (maudStreamFormat){
+        .sampleRate = rate,
+        .periodFrames = def->periodFrames != 0 ? def->periodFrames : rate / 100,
+        .layout = def->layout,
+        .ratePolicy = def->ratePolicy,
+    };
+    return maud_success;
 }
 
 static const maudBackend s_pulse = {
@@ -519,10 +497,10 @@ static const maudBackend s_pulse = {
     .closeContext = CloseContext,
     .pump = Pump,
     .openStream = OpenStream,
-    .attachStream = nullptr,
-    .detachStream = nullptr,
-    .setStreamActive = nullptr,
-    .retargetStream = nullptr,
+    .attachStream = maudPulseAttachStream,
+    .detachStream = maudPulseDetachStream,
+    .setStreamActive = maudPulseSetStreamActive,
+    .retargetStream = maudPulseRetargetStream,
     .rendersOnCaller = false,
 };
 

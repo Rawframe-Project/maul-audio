@@ -1,0 +1,6 @@
+# libpulse recycles packets through a process-wide lock-free free list
+# (pulsecore/packet.c: PA_STATIC_FLIST_DECLARE(packets, ...)); its atomics
+# are in libpulsecommon, which is not instrumented, so ThreadSanitizer
+# sees a packet one context freed and another reused as a race. Only
+# calls made from inside that library are suppressed.
+called_from_lib:libpulsecommon

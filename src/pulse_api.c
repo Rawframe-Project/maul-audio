@@ -43,6 +43,20 @@ static const ApiEntry s_entries[] = {
     ENTRY(contextGetSinkInfoByIndex, "pa_context_get_sink_info_by_index"),
     ENTRY(contextGetSourceInfoByIndex, "pa_context_get_source_info_by_index"),
     ENTRY(operationUnref, "pa_operation_unref"),
+    ENTRY(streamNew, "pa_stream_new"),
+    ENTRY(streamUnref, "pa_stream_unref"),
+    ENTRY(streamConnectPlayback, "pa_stream_connect_playback"),
+    ENTRY(streamConnectRecord, "pa_stream_connect_record"),
+    ENTRY(streamDisconnect, "pa_stream_disconnect"),
+    ENTRY(streamGetState, "pa_stream_get_state"),
+    ENTRY(streamSetWriteCallback, "pa_stream_set_write_callback"),
+    ENTRY(streamSetReadCallback, "pa_stream_set_read_callback"),
+    ENTRY(streamBeginWrite, "pa_stream_begin_write"),
+    ENTRY(streamWrite, "pa_stream_write"),
+    ENTRY(streamPeek, "pa_stream_peek"),
+    ENTRY(streamDrop, "pa_stream_drop"),
+    ENTRY(streamCancelWrite, "pa_stream_cancel_write"),
+    ENTRY(streamCork, "pa_stream_cork"),
 };
 
 // The table holds the library handle and then only function pointers.

@@ -12,7 +12,10 @@
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
+#include "maul-audio/stream.h"
 
+#include <dirent.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -114,6 +117,111 @@ static bool WaitForDefaults(maudContext* context, maudDeviceId device)
     return false;
 }
 
+typedef struct Blocks
+{
+    _Atomic(uint32_t) count;
+    _Atomic(uint32_t) wrongSize;
+    _Atomic(uint32_t) withInput;
+    uint32_t periodFrames;
+} Blocks;
+
+static void CountBlocks(const maudStreamBlock* block, void* user)
+{
+    Blocks* blocks = user;
+    if (block->frameCount != blocks->periodFrames)
+    {
+        atomic_fetch_add(&blocks->wrongSize, 1);
+    }
+    if (block->input != nullptr)
+    {
+        atomic_fetch_add(&blocks->withInput, 1);
+    }
+    atomic_fetch_add(&blocks->count, 1);
+}
+
+static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
+{
+    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    return atomic_load(&blocks->count) >= count;
+}
+
+// The library's PulseAudio stream threads, by their name in /proc.
+static int ThreadCount(void)
+{
+    int count = 0;
+    DIR* tasks = opendir("/proc/self/task");
+    if (tasks == nullptr)
+    {
+        return -1;
+    }
+    for (struct dirent* entry = readdir(tasks); entry != nullptr; entry = readdir(tasks))
+    {
+        char path[300];
+        char name[32] = {0};
+        snprintf(path, sizeof(path), "/proc/self/task/%s/comm", entry->d_name);
+        FILE* comm = entry->d_name[0] != '.' ? fopen(path, "r") : nullptr;
+        if (comm != nullptr)
+        {
+            count +=
+                fgets(name, sizeof(name), comm) != nullptr && strncmp(name, "maud-pulse", 10) == 0;
+            fclose(comm);
+        }
+    }
+    closedir(tasks);
+    return count;
+}
+
+// Frames the stream moves per second of wall time, over 1.5 seconds.
+static double MeasureRate(maudContext* context, maudStreamId stream)
+{
+    struct timespec start;
+    struct timespec end;
+    uint64_t first = 0;
+    uint64_t last = 0;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
+    for (int i = 0; i < 150; ++i)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double seconds =
+        (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) * 1e-9;
+    return (double)(last - first) / seconds;
+}
+
+static bool Near(double rate, double expected, double tolerance)
+{
+    return rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+}
+
+static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
+                               Blocks* blocks)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = direction;
+    def.device = device;
+    def.periodFrames = 256;
+    def.callback = CountBlocks;
+    def.user = blocks;
+    blocks->periodFrames = 256;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create");
+    return stream;
+}
+
 static bool Run(const char* command)
 {
     return system(command) == 0;
@@ -169,6 +277,97 @@ static void TestHotplug(maudContext* context)
     CHECK(FindByKey(context, maud_directionOutput, "maud-pulse-hotplug").index1 == 0, "gone");
 }
 
+static void TestOutputStream(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
+    CHECK(ThreadCount() == 0, "no stream thread before start");
+    Sleep(100);
+    CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(ThreadCount() == 1, "one thread while it runs");
+    CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
+    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at the sink's rate");
+    CHECK(maudStopStream(context, stream) == maud_success, "stop");
+    CHECK(ThreadCount() == 0, "joined when it stops");
+    uint32_t stopped = atomic_load(&blocks.count);
+    Sleep(100);
+    CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
+    CHECK(maudStartStream(context, stream) == maud_success, "start again");
+    CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
+    CHECK(ThreadCount() == 0, "and joined");
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    def.ratePolicy = maud_rateRequired;
+    def.sampleRate = 44100;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "a required rate the sink does not run at");
+    def.sampleRate = 48000;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "and one it does");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.mode = maud_modePull;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
+}
+
+static void TestInputStream(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionInput, none, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start capture");
+    CHECK(WaitForBlocks(context, &blocks, 20), "captured blocks arrive");
+    CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
+// A stream opened on a device stays on it and is lost with it.
+static void TestPinnedStream(maudContext* context)
+{
+    CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-pinned "
+              "sink_properties=device.description=Pinned > /dev/null"),
+          "load a sink");
+    maudDeviceId pinned = {0, 0};
+    for (int tries = 0; tries < 500 && pinned.index1 == 0; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        pinned = FindByKey(context, maud_directionOutput, "maud-pulse-pinned");
+        Sleep(10);
+    }
+    Blocks blocks = {0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, pinned, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    char command[160];
+    snprintf(command, sizeof(command),
+             "pactl list sink-inputs | grep -q \"Sink: $(pactl list short sinks | "
+             "awk '$2==\"maud-pulse-pinned\"{print $1}')\"");
+    CHECK(Run(command), "on the device it was opened on");
+    CHECK(Run("pactl unload-module module-null-sink"), "unplug it");
+    maudNotification record;
+    bool lost = false;
+    for (int tries = 0; tries < 500 && !lost; ++tries)
+    {
+        while (!lost && maudNextNotification(context, &record) == maud_success)
+        {
+            lost = record.kind == maud_notifyStreamSuspended &&
+                   record.reason == maud_suspendDeviceLost;
+        }
+        Sleep(10);
+    }
+    CHECK(lost, "the stream is lost with it");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestRestart(maudContext* context)
 {
     const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
@@ -178,6 +377,11 @@ static void TestRestart(maudContext* context)
         return;
     }
     maudDeviceId sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
+    Blocks blocks = {0};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
     CHECK(Run(stop), "the server stops");
     maudNotification record;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, sink, &record), "its devices go");
@@ -195,6 +399,9 @@ static void TestRestart(maudContext* context)
     }
     sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
     CHECK(sink.index1 != 0 && SameDevice(current, sink), "the sink and its default come back");
+    uint32_t resumed = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, resumed + 20), "the stream plays on the new server");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
 // With no PipeWire daemon to answer, native falls back to PulseAudio.
@@ -220,6 +427,9 @@ int main(void)
     }
     TestDevices(context);
     TestHotplug(context);
+    TestOutputStream(context);
+    TestInputStream(context);
+    TestPinnedStream(context);
     TestRestart(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestNativeFallback();

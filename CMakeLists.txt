@@ -88,12 +88,14 @@ endif()
 if(MAUL_AUDIO_PULSE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(MAUL_AUDIO_PA REQUIRED libpulse)
-    target_sources(maul-audio PRIVATE src/backend_pulse.c src/pulse_api.c)
+    target_sources(maul-audio PRIVATE src/backend_pulse.c src/pulse_api.c src/pulse_stream.c)
     target_include_directories(maul-audio SYSTEM PRIVATE ${MAUL_AUDIO_PA_INCLUDE_DIRS})
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_PULSE=1)
-    set_source_files_properties(src/backend_pulse.c src/pulse_api.c
+    set_source_files_properties(src/backend_pulse.c src/pulse_api.c src/pulse_stream.c
         PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
-    target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
+    # Each running PulseAudio stream has a library thread (A17).
+    find_package(Threads REQUIRED)
+    target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
 if(MAUL_AUDIO_BUILD_TESTS)
@@ -123,6 +125,10 @@ if(MAUL_AUDIO_BUILD_TESTS)
         target_compile_definitions(test_pulse PRIVATE _GNU_SOURCE)
         # The test server is the PipeWire daemon's pulse service.
         set_tests_properties(pulse PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+        if(MAUL_AUDIO_TSAN)
+            set_tests_properties(pulse PROPERTIES ENVIRONMENT
+                "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-pulse.supp")
+        endif()
     endif()
     # The audio-thread trap exists only where invariants are checked.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)

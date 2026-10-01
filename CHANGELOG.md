@@ -67,3 +67,8 @@ format.
 - PulseAudio devices (sinks and sources, monitors excluded), the
   server's defaults, hotplug, and reconnection to a restarted server;
   libpulse is loaded at run time.
+- Streams on PulseAudio: each running stream has one library thread,
+  named maud-pulse, started with the stream and joined when it stops;
+  callbacks in whole periods; native rates at the sink's rate; streams
+  opened on a device stay on it; streams resume after the server
+  restarts.
