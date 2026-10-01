@@ -48,6 +48,10 @@ typedef struct maudCoreAudioStream
     // render brings, as allocated.
     AudioBufferList* captured;
     size_t capturedBytes;
+    // The channels the unit captures when fewer than the stream's: the
+    // voice-processing unit captures one, spread to every channel. 0 for
+    // the stream's own.
+    uint32_t unitChannels;
     // A voiced duplex stream's halves share the input half's
     // voice-processing unit and point at each other; the output half has
     // no unit of its own.

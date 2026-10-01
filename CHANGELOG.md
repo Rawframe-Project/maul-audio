@@ -153,7 +153,10 @@ format.
   plays out of what it hears, on one clock; it reports echo
   cancellation and noise suppression (the unit has no switch for one
   without the other) and gain control as the unit reads it. An input
-  alone runs on the HAL unit and reports no processing.
+  alone runs on the HAL unit and reports no processing. The unit
+  captures one channel whatever it is asked for; it is asked for one
+  and the channel is spread to the stream's, and a capture render's
+  unwritten frames are silence.
 - A first-party voice activity detector (`maul-audio/voice.h`,
   `maudVoiceDetector`), standing apart from contexts and streams: six
   band levels against noise floors learned over 1.5 s, four

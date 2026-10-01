@@ -66,6 +66,20 @@ static OSStatus Render(void* user, AudioUnitRenderActionFlags* flags, const Audi
     return noErr;
 }
 
+// Spreads frames of `from` channels over `to`, in place, back to front
+// so that nothing is overwritten before it is read; each channel past the
+// unit's takes its last one.
+static void Spread(float* data, UInt32 frames, UInt32 from, UInt32 to)
+{
+    for (UInt32 i = frames; i-- > 0;)
+    {
+        for (UInt32 c = to; c-- > 0;)
+        {
+            data[(size_t)i * to + c] = data[(size_t)i * from + (c < from ? c : from - 1)];
+        }
+    }
+}
+
 // Takes an input buffer on the IO thread and pushes it to the stream
 // while it runs. The buffer's host time is the first frame's at the
 // device; the device's own latency came before it.
@@ -81,19 +95,35 @@ static OSStatus Capture(void* user, AudioUnitRenderActionFlags* flags, const Aud
     {
         return kAudioUnitErr_TooManyFramesToProcess;
     }
-    // A render leaves the size at what it brought; the next asks for room.
+    // A render leaves the size at what it brought; the next asks for room,
+    // over silence, so what the unit leaves unwritten is never old bytes.
+    UInt32 channels = core->period.channelCount;
+    UInt32 captured = entry->unitChannels != 0 ? entry->unitChannels : channels;
+    UInt32 frameBytes = captured * (UInt32)sizeof(float);
+    float* data = list->mBuffers[0].mData;
     list->mBuffers[0].mDataByteSize = capacity;
+    memset(data, 0, (size_t)frames * frameBytes);
     OSStatus status = AudioUnitRender(entry->unit, flags, time, bus, frames, list);
     if (status != noErr)
     {
         return status;
+    }
+    // A short render's frames past its size are silence too.
+    UInt32 written = list->mBuffers[0].mDataByteSize / frameBytes;
+    if (written < frames)
+    {
+        memset(data + (size_t)written * captured, 0, (size_t)(frames - written) * frameBytes);
+    }
+    if (captured < channels)
+    {
+        Spread(data, frames, captured, channels);
     }
     bool running = atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning;
     atomic_store_explicit(&core->renderingThread, maudCurrentThread(), memory_order_release);
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
     if (running)
     {
-        maudPushPeriod(&core->period, list->mBuffers[0].mData, frames);
+        maudPushPeriod(&core->period, data, frames);
     }
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
     int64_t latency = entry->deviceLatency;
@@ -200,9 +230,8 @@ static void AskBufferFrames(AudioObjectID object, uint32_t period)
 
 // The client side's format: 32-bit float interleaved frames at the
 // stream's rate.
-static AudioStreamBasicDescription FormatOf(const maudStreamCore* core)
+static AudioStreamBasicDescription FormatWith(const maudStreamCore* core, UInt32 channels)
 {
-    UInt32 channels = core->period.channelCount;
     return (AudioStreamBasicDescription){
         .mSampleRate = core->format.sampleRate,
         .mFormatID = kAudioFormatLinearPCM,
@@ -213,6 +242,11 @@ static AudioStreamBasicDescription FormatOf(const maudStreamCore* core)
         .mChannelsPerFrame = channels,
         .mBitsPerChannel = 32,
     };
+}
+
+static AudioStreamBasicDescription FormatOf(const maudStreamCore* core)
+{
+    return FormatWith(core, core->period.channelCount);
 }
 
 // Sets the unit's device, client format, callback and slice size.
@@ -370,7 +404,9 @@ static bool ConfigureVoice(maudCoreAudioStream* input, maudCoreAudioStream* outp
 {
     AudioUnit unit = input->unit;
     AudioStreamBasicDescription outputFormat = FormatOf(output->core);
-    AudioStreamBasicDescription inputFormat = FormatOf(input->core);
+    // The unit captures one channel whatever it is asked for, so it is
+    // asked for one; Capture spreads it.
+    AudioStreamBasicDescription inputFormat = FormatWith(input->core, 1);
     AURenderCallbackStruct render = {.inputProc = Render, .inputProcRefCon = output};
     AURenderCallbackStruct capture = {.inputProc = Capture, .inputProcRefCon = input};
     UInt32 on = 1;
@@ -437,6 +473,8 @@ static maudResult ConnectVoice(maudContext* context, maudCoreAudioStream* input,
     {
         return maud_errorCapacity;
     }
+    input->unitChannels = 1;
+    input->captured->mBuffers[0].mNumberChannels = 1;
     if (!ConfigureVoice(input, output, heard, played))
     {
         return maud_errorPlatform;

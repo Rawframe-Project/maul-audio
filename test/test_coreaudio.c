@@ -600,6 +600,10 @@ typedef struct Tone
     uint64_t span;
     double energy;
     uint64_t summed;
+    // Input samples that are not finite or pass full scale, and frames
+    // whose two channels differ.
+    uint64_t wild;
+    uint64_t uneven;
 } Tone;
 
 static void PlayTone(const maudStreamBlock* block, void* user)
@@ -612,6 +616,11 @@ static void PlayTone(const maudStreamBlock* block, void* user)
         tone->phase = fmod(tone->phase + step, 2.0 * 3.141592653589793);
         block->output[2 * i] = value;
         block->output[2 * i + 1] = value;
+        float left = block->input[2 * i];
+        float right = block->input[2 * i + 1];
+        tone->wild +=
+            !isfinite(left) || fabsf(left) > 1.0f || !isfinite(right) || fabsf(right) > 1.0f;
+        tone->uneven += left != right;
         if (tone->heard >= tone->from && tone->heard < tone->from + tone->span)
         {
             double sample = (double)block->input[2 * i];
@@ -643,6 +652,8 @@ static double HeardLevel(maudContext* context, maudVoiceProcessing voice,
     Sleep(3500);
     CHECK(maudGetStreamStatus(context, stream, statusOut) == maud_success, "its status");
     CHECK(Destroy(context, stream), "destroy it");
+    CHECK(tone.wild == 0, "every input sample is a sample");
+    CHECK(tone.uneven == 0, "and both channels carry the same, as played or spread");
     if (tone.summed == 0)
     {
         fprintf(stderr, "no input heard in the window (%u blocks)\n", atomic_load(&tone.count));
