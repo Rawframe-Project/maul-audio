@@ -108,13 +108,15 @@ static void UnplugSink(Helper* helper)
     pw_thread_loop_unlock(helper->loop);
 }
 
-static void ConfigureDefaultSink(Helper* helper, const char* nodeName)
+// Writes a default metadata key naming a node: the configured default,
+// which the session manager turns into the effective one, or the
+// effective default itself.
+static void SetDefaultKey(Helper* helper, const char* key, const char* nodeName)
 {
     char value[128];
     snprintf(value, sizeof(value), "{ \"name\": \"%s\" }", nodeName);
     pw_thread_loop_lock(helper->loop);
-    pw_metadata_set_property(helper->metadata, PW_ID_CORE, "default.configured.audio.sink",
-                             "Spa:String:JSON", value);
+    pw_metadata_set_property(helper->metadata, PW_ID_CORE, key, "Spa:String:JSON", value);
     pw_thread_loop_unlock(helper->loop);
 }
 
@@ -177,6 +179,32 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, const char*
     return false;
 }
 
+// Drains notifications for up to three seconds until device is the
+// default output for both roles.
+static bool WaitForDefault(maudContext* context, maudDeviceId device)
+{
+    for (int tries = 0; tries < 300; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        maudDeviceId general = {0, 0};
+        maudDeviceId communications = {0, 0};
+        if (maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general) ==
+                maud_success &&
+            maudGetDefaultDevice(context, maud_directionOutput, maud_roleCommunications,
+                                 &communications) == maud_success &&
+            general.index1 == device.index1 && general.generation == device.generation &&
+            communications.index1 == device.index1)
+        {
+            return true;
+        }
+        Sleep(10);
+    }
+    return false;
+}
+
 static bool FindByKey(const maudContext* context, maudDirection direction, const char* key,
                       maudDeviceId* deviceOut)
 {
@@ -219,8 +247,20 @@ static void TestTheDaemonsDevices(maudContext* context)
     CHECK(fallback.index1 == source.index1, "the test source is the default");
 }
 
+// Points both default keys at the test sink, whatever an earlier run
+// left in the daemon, and waits until the context agrees.
+static void ResetDefaults(maudContext* context, Helper* helper)
+{
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
+    SetDefaultKey(helper, "default.audio.sink", "maud-test-sink");
+    maudDeviceId sink = {0, 0};
+    CHECK(FindByKey(context, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
+    CHECK(WaitForDefault(context, sink), "the test sink is the default");
+}
+
 static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
 {
+    ResetDefaults(context, helper);
     maudDeviceId plugged = {0, 0};
     PlugSink(helper);
     CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
@@ -235,20 +275,28 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
         Sleep(10);
     }
     CHECK(info.nativeSampleRate == 44100, "its rate");
-    ConfigureDefaultSink(helper, "maud-test-hotplug");
+    // The effective default, as the session manager writes it. A direct
+    // write stays until the session manager's own choice changes.
+    SetDefaultKey(helper, "default.audio.sink", "maud-test-hotplug");
     maudDeviceId changed = plugged;
-    CHECK(WaitFor(context, maud_notifyDefaultChanged, nullptr, &changed), "default moved");
-    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success && info.defaultGeneral,
-          "it is the default");
-    ConfigureDefaultSink(helper, "maud-test-sink");
+    CHECK(WaitFor(context, maud_notifyDefaultChanged, nullptr, &changed), "effective default");
     maudDeviceId sink = {0, 0};
     CHECK(FindByKey(context, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
-    changed = sink;
-    CHECK(WaitFor(context, maud_notifyDefaultChanged, nullptr, &changed), "default back");
+    SetDefaultKey(helper, "default.audio.sink", "maud-test-sink");
+    CHECK(WaitForDefault(context, sink), "effective default back");
+    // The configured default, as a user's choice writes it; the session
+    // manager makes it the effective one.
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
+    CHECK(WaitForDefault(context, plugged), "configured to the plugged sink");
+    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success && info.defaultGeneral,
+          "it reports itself the default");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
+    CHECK(WaitForDefault(context, sink), "configured back to the test sink");
     UnplugSink(helper);
     maudDeviceId removed = plugged;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
     CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_errorStale, "its id is stale");
+    ResetDefaults(context, helper);
 }
 
 int main(void)
