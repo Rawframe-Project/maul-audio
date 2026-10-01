@@ -651,6 +651,57 @@ static double HeardLevel(maudContext* context, maudVoiceProcessing voice,
     return sqrt(tone.energy / (double)tone.summed);
 }
 
+// A voiced duplex stream on two devices, BlackHole's output and another
+// input at its rate: the unit pairs them on its one clock, where the
+// same stream unvoiced would slip.
+static void TestVoiceApart(maudContext* context)
+{
+    maudDeviceId output = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    maudDeviceId blackhole = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
+    maudDeviceId inputs[32];
+    uint32_t count = 0;
+    CHECK(maudGetDevices(context, maud_directionInput, inputs, 32, &count) == maud_success,
+          "the inputs");
+    maudDeviceId other = {0, 0};
+    for (uint32_t i = 0; i < count && i < 32; ++i)
+    {
+        maudDeviceInfo info = {0};
+        if (inputs[i].index1 != blackhole.index1 &&
+            maudGetDeviceInfo(context, inputs[i], &info) == maud_success &&
+            info.nativeSampleRate == 48000)
+        {
+            other = inputs[i];
+        }
+    }
+    if (other.index1 == 0)
+    {
+        fprintf(stderr, "no second input at 48 kHz; the two-device voice unit is not checked\n");
+        return;
+    }
+    Tone tone = {.from = 0, .span = 0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionDuplex;
+    def.device = output;
+    def.inputDevice = other;
+    def.voice = maud_voiceEchoCancellation;
+    def.periodFrames = 256;
+    def.callback = PlayTone;
+    def.user = &tone;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a voiced duplex apart");
+    CHECK(maudStartStream(context, stream) == maud_success, "start it");
+    for (int tries = 0; tries < 300 && atomic_load(&tone.count) < 40; ++tries)
+    {
+        Sleep(10);
+    }
+    CHECK(atomic_load(&tone.count) >= 40, "its blocks arrive");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.drift == maud_driftNone && status.voiceReported,
+          "on the unit's one clock, two devices");
+    CHECK(Destroy(context, stream), "destroy it");
+}
+
 // Voice processing on CoreAudio: a voiced duplex stream runs on the
 // voice-processing unit, which takes the tone it plays out of what it
 // hears through BlackHole's loopback; unvoiced, the tone comes back
@@ -673,6 +724,7 @@ static void TestVoice(maudContext* context)
                   (maud_voiceEchoCancellation | maud_voiceNoiseSuppression),
           "the voiced one reports echo cancellation and noise suppression");
     CHECK(voiced.drift == maud_driftNone, "on the unit's one clock");
+    TestVoiceApart(context);
     Blocks heard = {0};
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionInput;
