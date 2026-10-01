@@ -183,8 +183,10 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
     if (result != maud_success)
     {
         Disconnect(entry);
+        return result;
     }
-    return result;
+    entry->device = slot->core.binding.current;
+    return maud_success;
 }
 
 static void Start(maudCoreAudioStream* entry)
@@ -241,8 +243,13 @@ void maudCoreAudioSetStreamActive(maudContext* context, maudStreamSlot* slot, bo
         Stop(entry);
         return;
     }
-    if (entry->unit == nullptr)
+    // A stream that lost its device resumes on a new HAL object, even
+    // when the device came back under the same UID.
+    maudDeviceId current = slot->core.binding.current;
+    if (entry->unit == nullptr || entry->device.index1 != current.index1 ||
+        entry->device.generation != current.generation)
     {
+        Disconnect(entry);
         maudResult result = Open(context, slot);
         (void)result;
     }

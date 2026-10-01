@@ -38,6 +38,8 @@ typedef struct maudCoreAudioEndpoint
 typedef struct maudCoreAudioStream
 {
     maudStreamCore* core;
+    // The device the unit is open on.
+    maudDeviceId device;
     AudioComponentInstance unit;
     bool playing;
 } maudCoreAudioStream;

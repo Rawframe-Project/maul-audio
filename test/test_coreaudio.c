@@ -25,6 +25,8 @@
 // The macOS runners' own virtual device, at 44.1 kHz where BlackHole
 // runs at 48 kHz.
 #define NULL_DEVICE_UID "NullAudioDevice_UID"
+// The aggregate device the test makes and destroys, over BlackHole.
+#define AGGREGATE_UID "maud-test-aggregate"
 // The exit code CTest reads as skipped.
 #define SKIP 77
 
@@ -326,6 +328,107 @@ static void TestDefaultMoves(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// Makes a private aggregate device over BlackHole, seen by this process
+// only; returns its object, or kAudioObjectUnknown.
+static AudioObjectID MakeAggregate(void)
+{
+    CFMutableDictionaryRef sub = CFDictionaryCreateMutable(
+        kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(sub, CFSTR(kAudioSubDeviceUIDKey), CFSTR(BLACKHOLE_UID));
+    const void* subs[1] = {sub};
+    CFArrayRef list = CFArrayCreate(kCFAllocatorDefault, subs, 1, &kCFTypeArrayCallBacks);
+    int one = 1;
+    CFNumberRef isPrivate = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &one);
+    CFMutableDictionaryRef description = CFDictionaryCreateMutable(
+        kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceUIDKey), CFSTR(AGGREGATE_UID));
+    CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceNameKey),
+                         CFSTR("Maud test aggregate"));
+    CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceSubDeviceListKey), list);
+    CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceIsPrivateKey), isPrivate);
+    AudioObjectID aggregate = kAudioObjectUnknown;
+    OSStatus status = AudioHardwareCreateAggregateDevice(description, &aggregate);
+    CFRelease(description);
+    CFRelease(isPrivate);
+    CFRelease(list);
+    CFRelease(sub);
+    if (status != noErr)
+    {
+        fprintf(stderr, "AudioHardwareCreateAggregateDevice: %d\n", (int)status);
+    }
+    return status == noErr ? aggregate : kAudioObjectUnknown;
+}
+
+// Drains notifications for up to three seconds until one of kind about
+// device (by key, when added) or stream arrives; returns its device id.
+static maudDeviceId WaitFor(maudContext* context, maudNotificationKind kind, maudStreamId stream)
+{
+    for (int tries = 0; tries < 300; ++tries)
+    {
+        maudNotification record;
+        while (maudNextNotification(context, &record) == maud_success)
+        {
+            bool aggregate = false;
+            char key[128] = {0};
+            size_t length = 0;
+            if (record.kind == maud_notifyDeviceAdded)
+            {
+                aggregate = maudGetDeviceKey(context, record.deviceId, key, sizeof(key) - 1,
+                                             &length) == maud_success &&
+                            strcmp(key, AGGREGATE_UID) == 0 &&
+                            record.direction == maud_directionOutput;
+            }
+            bool streamMatches = record.streamId.index1 == stream.index1 && stream.index1 != 0;
+            if (record.kind == kind &&
+                (aggregate || streamMatches || kind == maud_notifyDeviceRemoved))
+            {
+                return record.deviceId.index1 != 0 ? record.deviceId : (maudDeviceId){1, 0};
+            }
+        }
+        Sleep(10);
+    }
+    fprintf(stderr, "no notification of kind %u\n", (unsigned)kind);
+    return (maudDeviceId){0, 0};
+}
+
+static maudSuspendReason Suspension(const maudContext* context, maudStreamId stream)
+{
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    return status.suspension;
+}
+
+// A stream bound to a device that goes away is suspended and silent,
+// and runs again when the device comes back under the same UID.
+static void TestHotplug(maudContext* context)
+{
+    AudioObjectID aggregate = MakeAggregate();
+    CHECK(aggregate != kAudioObjectUnknown, "an aggregate device made");
+    maudStreamId none = {0, 0};
+    maudDeviceId device = WaitFor(context, maud_notifyDeviceAdded, none);
+    CHECK(device.index1 != 0, "it appears, keyed by its UID");
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.device = device;
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start on it");
+    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed");
+    CHECK(WaitFor(context, maud_notifyStreamSuspended, stream).index1 != 0, "the stream suspends");
+    CHECK(Suspension(context, stream) == maud_suspendDeviceLost, "for the lost device");
+    uint32_t lost = atomic_load(&blocks.count);
+    Sleep(200);
+    CHECK(atomic_load(&blocks.count) == lost, "silent while lost");
+    aggregate = MakeAggregate();
+    CHECK(aggregate != kAudioObjectUnknown, "the device made again");
+    CHECK(WaitFor(context, maud_notifyStreamResumed, stream).index1 != 0, "the stream resumes");
+    CHECK(Suspension(context, stream) == maud_suspendNone, "and runs");
+    CHECK(WaitForBlocks(context, &blocks, lost + 20), "it plays on the new device");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed again");
+    CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
+}
+
 int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
@@ -345,6 +448,7 @@ int main(void)
     TestDevices(context);
     TestOutputStream(context);
     TestDefaultMoves(context);
+    TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;
 }
