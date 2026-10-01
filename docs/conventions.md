@@ -274,8 +274,10 @@ tests with a counting allocator (hot paths); review.
 
 - A library starts no thread unless a platform leaves no other way to
   meet a requirement. Such a thread is declared in the library profile
-  with its purpose and bound, started by the root's create, joined by
-  its destroy, and never runs application code (record 0017).
+  with its purpose and bound, started by the root or an object it owns
+  only while needed, joined by that object's stop or destroy and never
+  later than the root's destroy, and never runs application code
+  (record 0017).
 - On a thread the platform owns (an audio callback, a platform
   callback), a library only publishes into bounded queues or reads what
   was already published: no allocation, lock or wait, and no
