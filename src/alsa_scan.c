@@ -10,6 +10,19 @@
 #include <stdio.h>
 #include <string.h>
 
+maudDeviceForm maudAlsaFormOfPcm(const char* name)
+{
+    static const char* const digital[] = {"HDMI", "DisplayPort", "IEC958", "S/PDIF", "SPDIF"};
+    for (size_t i = 0; name != nullptr && i < sizeof(digital) / sizeof(digital[0]); ++i)
+    {
+        if (strstr(name, digital[i]) != nullptr)
+        {
+            return maud_formDigital;
+        }
+    }
+    return maud_formUnknown;
+}
+
 // Lists one card device's endpoint in one direction, if the card has it.
 static bool ScanEndpoint(const maudAlsaApi* api, snd_ctl_t* ctl, const char* cardId,
                          const char* cardName, int device, maudDirection direction,
@@ -27,6 +40,7 @@ static bool ScanEndpoint(const maudAlsaApi* api, snd_ctl_t* ctl, const char* car
         return false;
     }
     endpoint->direction = direction;
+    endpoint->form = maudAlsaFormOfPcm(api->pcmInfoGetName(info));
     int keyLength =
         snprintf(endpoint->key, sizeof(endpoint->key), "hw:CARD=%s,DEV=%d", cardId, device);
     snprintf(endpoint->name, sizeof(endpoint->name), "%s, %s", cardName, api->pcmInfoGetName(info));
@@ -80,7 +94,7 @@ uint32_t maudAlsaScan(const maudAlsaApi* api, maudAlsaEndpoint* endpoints, maudD
     {
         size_t nameLength = strlen(endpoints[i].name);
         specs[i] = (maudDeviceSpec){
-            .info = {.direction = endpoints[i].direction},
+            .info = {.direction = endpoints[i].direction, .form = endpoints[i].form},
             .name = endpoints[i].name,
             .nameLength = nameLength < nameLimit ? nameLength : nameLimit,
             .key = endpoints[i].key,

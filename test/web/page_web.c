@@ -423,7 +423,9 @@ static void Step_(void* user)
         }
         break;
     case stepWaitForBlocks:
-        if (s_blocks >= 20 && ProbeReady() == 1)
+        // The capture clock's first reading waits for the capture to run:
+        // posted chunks may start well after playback on a slow machine.
+        if (s_blocks >= 20 && ProbeReady() == 1 && (s_denied || s_captured > 0))
         {
             ProbeCount(1);
             CHECK(maudGetStreamClock(s_context, s_capture, &s_captureClock) == maud_success,

@@ -61,6 +61,19 @@ static bool HasKey(const maudContext* context, maudDirection direction, const ch
     return false;
 }
 
+// A PCM's name says digital for HDMI and S/PDIF, nothing for others.
+static void TestPcmForms(void)
+{
+    CHECK(maudAlsaFormOfPcm("HDMI 0") == maud_formDigital &&
+              maudAlsaFormOfPcm("ALC1220 IEC958") == maud_formDigital &&
+              maudAlsaFormOfPcm("USB S/PDIF out") == maud_formDigital &&
+              maudAlsaFormOfPcm("DisplayPort 1") == maud_formDigital,
+          "HDMI, IEC958, S/PDIF and DisplayPort are digital");
+    CHECK(maudAlsaFormOfPcm("ALC1220 Analog") == maud_formUnknown &&
+              maudAlsaFormOfPcm(nullptr) == maud_formUnknown,
+          "an analog PCM, or none, is unknown");
+}
+
 static void TestSync(maudContext* context)
 {
     uint32_t outputs = CountDevices(context, maud_directionOutput);
@@ -100,6 +113,19 @@ static void TestSync(maudContext* context)
               info.nativeLayout == maud_layoutStereo,
           "the device takes it in place");
     CHECK(Drain(context, maud_notifyDeviceAdded) == 0, "without being added again");
+    fake[0].info.form = maud_formDigital;
+    CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success, "its form changes");
+    maudNotification record = {0};
+    CHECK(maudNextNotification(context, &record) == maud_success &&
+              record.kind == maud_notifyRouteChanged && record.form == maud_formDigital &&
+              record.deviceId.index1 == ids[1].index1,
+          "a route change, naming the device and its form");
+    CHECK(maudGetDeviceInfo(context, ids[1], &info) == maud_success &&
+              info.form == maud_formDigital,
+          "which its info reports");
+    CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success &&
+              Drain(context, maud_notifyRouteChanged) == 0,
+          "and the same form again is none");
     CHECK(maudSyncDevices(context, fake, 1, "default") == maud_success, "its input goes");
     CHECK(!HasKey(context, maud_directionInput, "hw:CARD=Fake,DEV=0") &&
               HasKey(context, maud_directionOutput, "hw:CARD=Fake,DEV=0"),
@@ -189,6 +215,7 @@ int main(void)
     }
     char directory[] = "/tmp/maud-snd-XXXXXX";
     CHECK(mkdtemp(directory) != nullptr, "a test directory");
+    TestPcmForms();
     TestSync(context);
     TestWatch(directory);
     TestDrainRescans(context, directory);

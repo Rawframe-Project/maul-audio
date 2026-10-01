@@ -186,4 +186,5 @@ format.
   factor and CoreAudio's data source and transport; a change on the
   same device, as headphones in its jack, posts
   `maud_notifyRouteChanged` with the new form. The offline backend
-  scripts it with `maudSetOfflineDeviceForm`.
+  scripts it with `maudSetOfflineDeviceForm`. ALSA hardware PCMs named for HDMI,
+  DisplayPort, IEC958 or S/PDIF are digital.
