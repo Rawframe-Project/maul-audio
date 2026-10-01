@@ -6,7 +6,11 @@
 // its input scope and converting them to the device's format. The
 // unit's render callback, on the HAL's IO thread, moves each buffer
 // through the stream's fixed-period adapter. Channels go to the
-// device's channels in order.
+// device's channels in order. A duplex stream that asks for voice
+// processing runs both halves on one Voice-Processing I/O unit instead:
+// bus 0 plays the output half on its device, bus 1 captures the input
+// half from its device, and the unit takes what it plays out of what it
+// hears.
 
 #include "coreaudio_stream.h"
 
@@ -15,6 +19,7 @@
 #include "coreaudio_core.h"
 #include "period.h"
 #include "thread.h"
+#include "voice.h"
 
 #include <string.h>
 
@@ -193,12 +198,12 @@ static void AskBufferFrames(AudioObjectID object, uint32_t period)
     (void)status;
 }
 
-// Sets the unit's device, client format, callback and slice size.
-static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
+// The client side's format: 32-bit float interleaved frames at the
+// stream's rate.
+static AudioStreamBasicDescription FormatOf(const maudStreamCore* core)
 {
-    const maudStreamCore* core = entry->core;
     UInt32 channels = core->period.channelCount;
-    AudioStreamBasicDescription format = {
+    return (AudioStreamBasicDescription){
         .mSampleRate = core->format.sampleRate,
         .mFormatID = kAudioFormatLinearPCM,
         .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
@@ -208,6 +213,13 @@ static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
         .mChannelsPerFrame = channels,
         .mBitsPerChannel = 32,
     };
+}
+
+// Sets the unit's device, client format, callback and slice size.
+static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
+{
+    const maudStreamCore* core = entry->core;
+    AudioStreamBasicDescription format = FormatOf(core);
     UInt32 slice = MAX_SLICE_FRAMES;
     AudioUnit unit = entry->unit;
     if (core->def.direction == maud_directionInput)
@@ -260,8 +272,33 @@ static void Disconnect(maudContext* context, maudCoreAudioStream* entry)
         maudContextRelease(context, entry->captured, entry->capturedBytes,
                            alignof(AudioBufferList));
     }
+    if (entry->voicePartner != nullptr)
+    {
+        entry->voicePartner->voicePartner = nullptr;
+    }
     maudStreamCore* core = entry->core;
     *entry = (maudCoreAudioStream){.core = core};
+}
+
+// One buffer of interleaved frames for an input, after the list's
+// header.
+static bool AllocateCaptured(maudContext* context, maudCoreAudioStream* entry)
+{
+    uint32_t channels = entry->core->period.channelCount;
+    size_t data = (size_t)MAX_SLICE_FRAMES * channels * sizeof(float);
+    entry->capturedBytes = sizeof(AudioBufferList) + data;
+    entry->captured = maudContextAllocate(context, entry->capturedBytes, alignof(AudioBufferList));
+    if (entry->captured == nullptr)
+    {
+        return false;
+    }
+    entry->captured->mNumberBuffers = 1;
+    entry->captured->mBuffers[0] = (AudioBuffer){
+        .mNumberChannels = channels,
+        .mDataByteSize = (UInt32)data,
+        .mData = entry->captured + 1,
+    };
+    return true;
 }
 
 // Makes and initializes the stream's unit on its device.
@@ -281,24 +318,9 @@ static maudResult Connect(maudContext* context, maudCoreAudioStream* entry)
         return maud_errorPlatform;
     }
     bool input = entry->core->def.direction == maud_directionInput;
-    if (input)
+    if (input && !AllocateCaptured(context, entry))
     {
-        // One buffer of interleaved frames, after the list's header.
-        uint32_t channels = entry->core->period.channelCount;
-        size_t data = (size_t)MAX_SLICE_FRAMES * channels * sizeof(float);
-        entry->capturedBytes = sizeof(AudioBufferList) + data;
-        entry->captured =
-            maudContextAllocate(context, entry->capturedBytes, alignof(AudioBufferList));
-        if (entry->captured == nullptr)
-        {
-            return maud_errorCapacity;
-        }
-        entry->captured->mNumberBuffers = 1;
-        entry->captured->mBuffers[0] = (AudioBuffer){
-            .mNumberChannels = channels,
-            .mDataByteSize = (UInt32)data,
-            .mData = entry->captured + 1,
-        };
+        return maud_errorCapacity;
     }
     if (!Configure(entry, object))
     {
@@ -307,7 +329,147 @@ static maudResult Connect(maudContext* context, maudCoreAudioStream* entry)
     AskBufferFrames(object, entry->core->format.periodFrames);
     entry->deviceLatency = DeviceLatency(object, input ? kAudioObjectPropertyScopeInput
                                                        : kAudioObjectPropertyScopeOutput);
-    return AudioUnitInitialize(entry->unit) == noErr ? maud_success : maud_errorPlatform;
+    if (AudioUnitInitialize(entry->unit) != noErr)
+    {
+        return maud_errorPlatform;
+    }
+    // The HAL unit processes nothing.
+    if (input)
+    {
+        maudReportVoice(entry->core, maud_voiceNone);
+    }
+    return maud_success;
+}
+
+// Whether a stream is a half of a duplex stream that asks for voice
+// processing, which runs on one voice-processing unit.
+static bool Voiced(const maudStreamCore* core)
+{
+    return core->duplexGroup != 0 && core->def.voice != maud_voiceNone;
+}
+
+// The other half of a duplex stream: the slot of the same group.
+static maudStreamSlot* PartnerOf(maudContext* context, const maudStreamCore* core)
+{
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        if (slot->live && &slot->core != core && slot->core.duplexGroup == core->duplexGroup)
+        {
+            return slot;
+        }
+    }
+    return nullptr;
+}
+
+// Sets the voice-processing unit's devices, client formats, callbacks,
+// processing and slice size: bus 0 plays the output half, bus 1
+// captures the input half.
+static bool ConfigureVoice(maudCoreAudioStream* input, maudCoreAudioStream* output,
+                           AudioObjectID heard, AudioObjectID played)
+{
+    AudioUnit unit = input->unit;
+    AudioStreamBasicDescription outputFormat = FormatOf(output->core);
+    AudioStreamBasicDescription inputFormat = FormatOf(input->core);
+    AURenderCallbackStruct render = {.inputProc = Render, .inputProcRefCon = output};
+    AURenderCallbackStruct capture = {.inputProc = Capture, .inputProcRefCon = input};
+    UInt32 on = 1;
+    UInt32 bypass = 0;
+    UInt32 gain = (input->core->def.voice & maud_voiceGainControl) != 0 ? 1u : 0u;
+    UInt32 slice = MAX_SLICE_FRAMES;
+    return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1,
+                                &on, sizeof(on)) == noErr &&
+           AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                kAudioUnitScope_Global, 0, &played, sizeof(played)) == noErr &&
+           AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                kAudioUnitScope_Global, 1, &heard, sizeof(heard)) == noErr &&
+           AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0,
+                                &outputFormat, sizeof(outputFormat)) == noErr &&
+           AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
+                                &inputFormat, sizeof(inputFormat)) == noErr &&
+           AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input,
+                                0, &render, sizeof(render)) == noErr &&
+           AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback,
+                                kAudioUnitScope_Global, 1, &capture, sizeof(capture)) == noErr &&
+           AudioUnitSetProperty(unit, kAUVoiceIOProperty_BypassVoiceProcessing,
+                                kAudioUnitScope_Global, 0, &bypass, sizeof(bypass)) == noErr &&
+           AudioUnitSetProperty(unit, kAUVoiceIOProperty_VoiceProcessingEnableAGC,
+                                kAudioUnitScope_Global, 0, &gain, sizeof(gain)) == noErr &&
+           AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice,
+                                kAudioUnitScope_Global, 0, &slice, sizeof(slice)) == noErr;
+}
+
+// Reports the unit's processing: echo cancellation and noise
+// suppression while it is not bypassed, and gain control as it reads.
+static void ReportUnitVoice(maudCoreAudioStream* input)
+{
+    UInt32 gain = 0;
+    UInt32 size = sizeof(gain);
+    OSStatus status = AudioUnitGetProperty(input->unit, kAUVoiceIOProperty_VoiceProcessingEnableAGC,
+                                           kAudioUnitScope_Global, 0, &gain, &size);
+    maudVoiceProcessing active = maud_voiceEchoCancellation | maud_voiceNoiseSuppression;
+    active |= status == noErr && gain != 0 ? maud_voiceGainControl : maud_voiceNone;
+    maudReportVoice(input->core, active);
+}
+
+// Makes and initializes the voice-processing unit of a voiced duplex
+// stream from its input half, for both halves.
+static maudResult ConnectVoice(maudContext* context, maudCoreAudioStream* input,
+                               maudCoreAudioStream* output)
+{
+    AudioObjectID heard = ObjectOf(context, input->core);
+    AudioObjectID played = ObjectOf(context, output->core);
+    AudioComponentDescription description = {
+        .componentType = kAudioUnitType_Output,
+        .componentSubType = kAudioUnitSubType_VoiceProcessingIO,
+        .componentManufacturer = kAudioUnitManufacturer_Apple,
+    };
+    AudioComponent component = AudioComponentFindNext(nullptr, &description);
+    if (heard == kAudioObjectUnknown || played == kAudioObjectUnknown || component == nullptr ||
+        AudioComponentInstanceNew(component, &input->unit) != noErr)
+    {
+        input->unit = nullptr;
+        return maud_errorPlatform;
+    }
+    input->voicePartner = output;
+    output->voicePartner = input;
+    if (!AllocateCaptured(context, input))
+    {
+        return maud_errorCapacity;
+    }
+    if (!ConfigureVoice(input, output, heard, played))
+    {
+        return maud_errorPlatform;
+    }
+    AskBufferFrames(played, output->core->format.periodFrames);
+    AskBufferFrames(heard, input->core->format.periodFrames);
+    output->deviceLatency = DeviceLatency(played, kAudioObjectPropertyScopeOutput);
+    input->deviceLatency = DeviceLatency(heard, kAudioObjectPropertyScopeInput);
+    if (AudioUnitInitialize(input->unit) != noErr)
+    {
+        return maud_errorPlatform;
+    }
+    ReportUnitVoice(input);
+    return maud_success;
+}
+
+// A voiced half: the output half waits for the input half, which builds
+// the unit once both have devices.
+static maudResult OpenVoiced(maudContext* context, maudStreamSlot* slot)
+{
+    maudStreamSlot* partner = PartnerOf(context, &slot->core);
+    if (slot->core.def.direction == maud_directionOutput || partner == nullptr ||
+        slot->core.binding.current.index1 == 0 || partner->core.binding.current.index1 == 0)
+    {
+        return maud_success;
+    }
+    maudCoreAudioStream* entry = EntryOf(context, slot);
+    maudResult result = ConnectVoice(context, entry, EntryOf(context, partner));
+    if (result != maud_success)
+    {
+        Disconnect(context, entry);
+    }
+    return result;
 }
 
 // Connects the stream's unit if it has a device; a stream without one
@@ -316,6 +478,13 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
 {
     maudCoreAudioStream* entry = EntryOf(context, slot);
     *entry = (maudCoreAudioStream){.core = &slot->core};
+    maudResetVoice(&slot->core);
+    if (Voiced(&slot->core))
+    {
+        return OpenVoiced(context, slot);
+    }
+    // Only a duplex stream gives the voice-processing unit what it plays;
+    // an input alone runs on the HAL unit, which processes nothing.
     if (slot->core.binding.current.index1 == 0)
     {
         return maud_success;
@@ -358,13 +527,35 @@ maudResult maudCoreAudioAttachStream(maudContext* context, maudStreamSlot* slot)
     return Open(context, slot);
 }
 
+// The half that holds a voiced duplex stream's unit: the input half.
+static maudStreamSlot* UnitHolder(maudContext* context, maudStreamSlot* slot)
+{
+    if (!Voiced(&slot->core) || slot->core.def.direction == maud_directionInput)
+    {
+        return slot;
+    }
+    return PartnerOf(context, &slot->core);
+}
+
 void maudCoreAudioDetachStream(maudContext* context, maudStreamSlot* slot)
 {
-    Disconnect(context, EntryOf(context, slot));
+    maudCoreAudioStream* entry = EntryOf(context, slot);
+    // The unit plays the output half's frames: it goes before they do.
+    if (entry->unit == nullptr && entry->voicePartner != nullptr)
+    {
+        Disconnect(context, entry->voicePartner);
+    }
+    Disconnect(context, entry);
 }
 
 void maudCoreAudioRetargetStream(maudContext* context, maudStreamSlot* slot)
 {
+    // A voiced half moves by rebuilding the unit both halves share.
+    slot = UnitHolder(context, slot);
+    if (slot == nullptr)
+    {
+        return;
+    }
     maudCoreAudioDetachStream(context, slot);
     // A failure leaves the stream without a unit; the drain tries again
     // while it runs.
@@ -376,6 +567,12 @@ void maudCoreAudioRetargetStream(maudContext* context, maudStreamSlot* slot)
 
 void maudCoreAudioSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active)
 {
+    // A voiced duplex stream's unit starts and stops with its input
+    // half; the output half renders silence whenever it is not running.
+    if (Voiced(&slot->core) && slot->core.def.direction == maud_directionOutput)
+    {
+        return;
+    }
     maudCoreAudioStream* entry = EntryOf(context, slot);
     if (!active)
     {
@@ -395,7 +592,9 @@ void maudCoreAudioResumeStreams(maudContext* context)
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
-        if (slot->live && Running(slot) && slot->core.binding.current.index1 != 0 &&
+        // A voiced output half never has a unit of its own.
+        bool ownsUnit = !(Voiced(&slot->core) && slot->core.def.direction == maud_directionOutput);
+        if (slot->live && ownsUnit && Running(slot) && slot->core.binding.current.index1 != 0 &&
             EntryOf(context, slot)->unit == nullptr)
         {
             maudCoreAudioRetargetStream(context, slot);

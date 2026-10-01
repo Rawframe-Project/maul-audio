@@ -48,6 +48,10 @@ typedef struct maudCoreAudioStream
     // render brings, as allocated.
     AudioBufferList* captured;
     size_t capturedBytes;
+    // A voiced duplex stream's halves share the input half's
+    // voice-processing unit and point at each other; the output half has
+    // no unit of its own.
+    struct maudCoreAudioStream* voicePartner;
 } maudCoreAudioStream;
 
 typedef struct maudCoreAudio

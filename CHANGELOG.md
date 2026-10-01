@@ -148,3 +148,9 @@ format.
   that asks for none asks for the raw signal; on Windows 11 the
   effects manager turns the asked-for parts on and the others off where
   the stream may choose, and reports what is on.
+- Voice processing on CoreAudio: a duplex stream that asks for it runs
+  both halves on one Voice-Processing I/O unit, which takes what it
+  plays out of what it hears, on one clock; it reports echo
+  cancellation and noise suppression (the unit has no switch for one
+  without the other) and gain control as the unit reads it. An input
+  alone runs on the HAL unit and reports no processing.

@@ -15,6 +15,7 @@
 #include "maul-audio/stream.h"
 
 #include <CoreAudio/CoreAudio.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -587,6 +588,104 @@ static void TestDuplex(maudContext* context)
     TestDuplexApart(context, def.device, def.inputDevice);
 }
 
+// A duplex stream's callback on the IO thread: plays a 440 Hz tone at
+// 0.25 and sums the square of what it hears from frame `from` on, for
+// `span` frames.
+typedef struct Tone
+{
+    atomic_uint count;
+    double phase;
+    uint64_t heard;
+    uint64_t from;
+    uint64_t span;
+    double energy;
+    uint64_t summed;
+} Tone;
+
+static void PlayTone(const maudStreamBlock* block, void* user)
+{
+    Tone* tone = user;
+    double step = 2.0 * 3.141592653589793 * 440.0 / (double)block->sampleRate;
+    for (uint32_t i = 0; i < block->frameCount; ++i)
+    {
+        float value = (float)(0.25 * sin(tone->phase));
+        tone->phase = fmod(tone->phase + step, 2.0 * 3.141592653589793);
+        block->output[2 * i] = value;
+        block->output[2 * i + 1] = value;
+        if (tone->heard >= tone->from && tone->heard < tone->from + tone->span)
+        {
+            double sample = (double)block->input[2 * i];
+            tone->energy += sample * sample;
+            tone->summed++;
+        }
+        tone->heard++;
+    }
+    atomic_fetch_add(&tone->count, 1);
+}
+
+// Runs a duplex stream on BlackHole for 3.5 s and returns the level of
+// what it heard in the last second (the root mean square), or -1.
+static double HeardLevel(maudContext* context, maudVoiceProcessing voice,
+                         maudStreamStatus* statusOut)
+{
+    Tone tone = {.from = 2 * 48000, .span = 48000};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionDuplex;
+    def.device = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    def.inputDevice = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
+    def.voice = voice;
+    def.periodFrames = 256;
+    def.callback = PlayTone;
+    def.user = &tone;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create a duplex");
+    CHECK(maudStartStream(context, stream) == maud_success, "start it");
+    Sleep(3500);
+    CHECK(maudGetStreamStatus(context, stream, statusOut) == maud_success, "its status");
+    CHECK(Destroy(context, stream), "destroy it");
+    if (tone.summed == 0)
+    {
+        fprintf(stderr, "no input heard in the window (%u blocks)\n", atomic_load(&tone.count));
+        return -1.0;
+    }
+    return sqrt(tone.energy / (double)tone.summed);
+}
+
+// Voice processing on CoreAudio: a voiced duplex stream runs on the
+// voice-processing unit, which takes the tone it plays out of what it
+// hears through BlackHole's loopback; unvoiced, the tone comes back
+// whole. An input alone gets no processing and says so.
+static void TestVoice(maudContext* context)
+{
+    maudStreamStatus plain = {0};
+    maudStreamStatus voiced = {0};
+    double open = HeardLevel(context, maud_voiceNone, &plain);
+    double processed = HeardLevel(
+        context, maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl,
+        &voiced);
+    fprintf(stderr, "heard %.4f unvoiced, %.4f voiced\n", open, processed);
+    CHECK(open > 0.1, "unvoiced, the tone comes back");
+    CHECK(processed >= 0.0 && processed < 0.5 * open, "voiced, the unit takes most of it out");
+    CHECK(plain.voiceReported && plain.voiceActive == maud_voiceNone,
+          "the unvoiced input reports none");
+    CHECK(voiced.voiceReported &&
+              (voiced.voiceActive & (maud_voiceEchoCancellation | maud_voiceNoiseSuppression)) ==
+                  (maud_voiceEchoCancellation | maud_voiceNoiseSuppression),
+          "the voiced one reports echo cancellation and noise suppression");
+    CHECK(voiced.drift == maud_driftNone, "on the unit's one clock");
+    Blocks heard = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionInput;
+    def.device = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
+    def.voice = maud_voiceEchoCancellation;
+    maudStreamId stream = OpenStream(context, &def, &heard);
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
+              status.voiceActive == maud_voiceNone,
+          "an input alone reports no processing");
+    CHECK(Destroy(context, stream), "destroy the input");
+}
+
 int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
@@ -607,6 +706,7 @@ int main(void)
     TestOutputStream(context);
     TestCapture(context);
     TestDuplex(context);
+    TestVoice(context);
     TestDefaultMoves(context);
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

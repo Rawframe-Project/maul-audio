@@ -362,10 +362,16 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
 }
 
 // A HAL device has one clock: the halves of a duplex stream share it
-// when both are on one device, which their keys, the device's UID, say.
+// when both are on one device, which their keys, the device's UID, say,
+// or when they share a voice-processing unit, which runs both.
 static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
                         const maudStreamSlot* input)
 {
+    const maudCoreAudio* coreaudio = context->native;
+    if (coreaudio->streams[output - context->streams.slots].voicePartner != nullptr)
+    {
+        return true;
+    }
     const maudDeviceSlot* played = maudFindDevice(context, output->core.binding.current);
     const maudDeviceSlot* captured = maudFindDevice(context, input->core.binding.current);
     return played != nullptr && captured != nullptr && played->key.length == captured->key.length &&
