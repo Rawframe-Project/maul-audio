@@ -27,6 +27,11 @@ void maudRefreshNativeRates(maudContext* context);
 // resumes them.
 void maudHoldStreams(maudContext* context, bool held);
 
+// Records whether a stream waits for the platform to grant access to its
+// device: waiting suspends a running stream with maud_suspendPermission,
+// the grant resumes it.
+void maudAwaitPermission(maudContext* context, maudStreamSlot* slot, bool waiting);
+
 // Suspends every stream opened on a device that disappeared.
 void maudLoseDevice(maudContext* context, maudDeviceId device);
 

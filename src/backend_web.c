@@ -19,16 +19,12 @@
 #include "follow.h"
 #include "period.h"
 #include "thread.h"
+#include "web_capture.h"
+#include "web_core.h"
 
 #include <emscripten/em_js.h>
 #include <emscripten/emscripten.h>
 #include <string.h>
-
-// The most frames a stream keeps ahead of the speaker: its ring's
-// capacity, a power of two, and the frames one render may ask for.
-#define MAUD_WEB_CAPACITY 4096u
-// The render quantum of Web Audio, and the step of every render.
-#define MAUD_WEB_QUANTUM 128u
 
 // clang-format off
 
@@ -229,21 +225,6 @@ EM_JS(void, maudWebCloseNode, (int node), {
 
 // clang-format on
 
-// A stream's node and the chunk the main thread renders into.
-typedef struct maudWebStream
-{
-    int node;
-    float* chunk;
-    size_t chunkBytes;
-} maudWebStream;
-
-typedef struct maudWeb
-{
-    int handle;
-    maudWebStream* streams;
-    size_t bytes;
-} maudWeb;
-
 // Renders frames of a stream, a multiple of the quantum and at most the
 // capacity, on the main thread and returns them; the JavaScript side
 // calls it to top the stream up, with the seconds until they are heard.
@@ -291,6 +272,7 @@ static maudResult OpenContext(maudContext* context)
         return maud_errorUnsupported;
     }
     maudWebAddProcessor(web->handle);
+    maudWebAddCaptureProcessor(web->handle);
     uint32_t rate = (uint32_t)maudWebRate(web->handle);
     maudDeviceSpec spec = {
         .info =
@@ -308,6 +290,11 @@ static maudResult OpenContext(maudContext* context)
     };
     maudDeviceId device;
     maudResult result = maudAddDevice(context, &spec, &device);
+    // The microphone, mono until the host asks for more; the browser
+    // mixes the track to the stream's channels.
+    spec.info.direction = maud_directionInput;
+    spec.info.nativeLayout = maud_layoutMono;
+    result = result == maud_success ? maudAddDevice(context, &spec, &device) : result;
     context->held = maudWebHeld(web->handle) != 0;
     if (result != maud_success)
     {
@@ -339,15 +326,15 @@ static void ResumeContext(maudContext* context)
     maudWebResume(web->handle);
 }
 
-// Web Audio runs every node at the AudioContext's rate: a native stream
-// takes it, and a required or converted rate must be it. Capture comes
-// later.
+// Web Audio runs every node at the AudioContext's rate, capture
+// included (the browser resamples the microphone): a native stream takes
+// it, and a required or converted rate must be it.
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
     (void)device;
     uint32_t rate = (uint32_t)maudWebRate(((const maudWeb*)context->native)->handle);
-    if (def->mode == maud_modePull || def->direction != maud_directionOutput ||
+    if (def->mode == maud_modePull ||
         (def->ratePolicy != maud_rateNative && def->sampleRate != rate))
     {
         return maud_errorUnsupported;
@@ -378,6 +365,11 @@ static maudResult AttachStream(maudContext* context, maudStreamSlot* slot)
     {
         return maud_errorCapacity;
     }
+    if (slot->core.def.direction == maud_directionInput)
+    {
+        entry->node = maudWebOpenCapture(context, slot, web->handle, entry->chunk);
+        return maud_success;
+    }
     entry->node = maudWebOpenNode(web->handle, context, (int)(slot - context->streams.slots),
                                   (int)channels, (int)MAUD_WEB_CAPACITY, (int)MAUD_WEB_QUANTUM);
     return maud_success;
@@ -386,15 +378,23 @@ static maudResult AttachStream(maudContext* context, maudStreamSlot* slot)
 static void DetachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudWebStream* entry = EntryOf(context, slot);
-    maudWebCloseNode(entry->node);
+    if (slot->core.def.direction == maud_directionInput)
+    {
+        maudWebCloseCapture(entry->node);
+    }
+    else
+    {
+        maudWebCloseNode(entry->node);
+    }
     maudContextRelease(context, entry->chunk, entry->chunkBytes, alignof(float));
     *entry = (maudWebStream){0};
 }
 
-// A stopped stream renders silence; what it had buffered is dropped.
+// A stopped output renders silence; what it had buffered is dropped. A
+// stopped input drops what it captures (maudWebCapture).
 static void SetStreamActive(maudContext* context, maudStreamSlot* slot, bool active)
 {
-    if (!active)
+    if (!active && slot->core.def.direction == maud_directionOutput)
     {
         maudWebDropNode(EntryOf(context, slot)->node);
     }

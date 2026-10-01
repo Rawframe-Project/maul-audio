@@ -37,6 +37,9 @@ server.listen(0, "127.0.0.1", async () => {
     headless: true,
     args: [
       "--no-sandbox",
+      // A fake microphone, granted without asking.
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
       "--disable-backgrounding-occluded-windows",

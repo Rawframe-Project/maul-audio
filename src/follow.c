@@ -86,13 +86,36 @@ static void ApplyDeviceRate(maudContext* context, maudStreamSlot* slot)
     }
 }
 
+// Holds a stream on its device with reason: unlike Suspend, it keeps
+// the device, since the stream is not without one.
+static void Wait(maudContext* context, maudStreamSlot* slot, maudSuspendReason reason)
+{
+    maudStreamCore* core = &slot->core;
+    if (core->binding.suspension == reason)
+    {
+        return;
+    }
+    core->binding.suspension = reason;
+    Publish(context, slot);
+    maudPostNotification(context, &(maudNotification){
+                                      .kind = maud_notifyStreamSuspended,
+                                      .reason = reason,
+                                      .streamId = maudStreamIdOf(context, slot),
+                                  });
+}
+
 // Ends a stream's suspension: it runs again, or, while the platform
-// holds the context, waits for the policy instead.
+// holds the context or has not granted access, waits for that instead.
 static void Resume(maudContext* context, maudStreamSlot* slot)
 {
     if (context->held)
     {
-        Suspend(context, slot, maud_suspendPolicy);
+        Wait(context, slot, maud_suspendPolicy);
+        return;
+    }
+    if (slot->core.binding.awaitingPermission)
+    {
+        Wait(context, slot, maud_suspendPermission);
         return;
     }
     slot->core.binding.suspension = maud_suspendNone;
@@ -213,11 +236,25 @@ void maudHoldStreams(maudContext* context, bool held)
         maudSuspendReason reason = slot->core.binding.suspension;
         if (slot->live && held && reason == maud_suspendNone)
         {
-            Suspend(context, slot, maud_suspendPolicy);
+            Wait(context, slot, maud_suspendPolicy);
         }
         else if (slot->live && !held && reason == maud_suspendPolicy)
         {
             Resume(context, slot);
         }
+    }
+}
+
+void maudAwaitPermission(maudContext* context, maudStreamSlot* slot, bool waiting)
+{
+    maudStreamBinding* binding = &slot->core.binding;
+    binding->awaitingPermission = waiting;
+    if (waiting && binding->suspension == maud_suspendNone)
+    {
+        Wait(context, slot, maud_suspendPermission);
+    }
+    else if (!waiting && binding->suspension == maud_suspendPermission)
+    {
+        Resume(context, slot);
     }
 }

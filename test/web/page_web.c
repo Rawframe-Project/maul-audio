@@ -15,6 +15,7 @@
 #include "../test_harness.h"
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
+#include "maul-audio/layout.h"
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
@@ -54,6 +55,11 @@ static int s_shortsAtRestart;
 static int s_targetBeforeStall;
 static maudStreamClock s_clock;
 static bool s_clockSound;
+// The capture stream on the browser's (fake) microphone.
+static maudStreamId s_capture;
+static uint32_t s_captured;
+static float s_loudest;
+static maudStreamClock s_captureClock;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
 {
@@ -68,23 +74,39 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     s_blocks++;
 }
 
+// Counts captured blocks and keeps the loudest sample.
+static void CaptureBlocks(const maudStreamBlock* block, void* user)
+{
+    (void)user;
+    uint32_t samples = block->frameCount * maudGetLayoutChannelCount(block->layout);
+    for (uint32_t i = 0; block->input != nullptr && i < samples; ++i)
+    {
+        float sample = block->input[i] < 0.0f ? -block->input[i] : block->input[i];
+        s_loudest = sample > s_loudest ? sample : s_loudest;
+    }
+    s_captured++;
+}
+
 // clang-format off
 
-// 1 when the stream's node reads a SharedArrayBuffer ring, which it
-// must exactly on a cross-origin isolated page; -1 when it does not.
+// 1 when the playback and the capture node each use a SharedArrayBuffer
+// ring, which they must exactly on a cross-origin isolated page; -1
+// when they do not. Playback records have a fill target.
 EM_JS(int, RingMatchesPage, (void), {
     const nodes = globalThis.maudWeb.nodes.filter(function (record) { return record !== null; });
     const isolated = globalThis.crossOriginIsolated === true;
-    return nodes.length === 1 && (nodes[0].ring !== null) === isolated ? 1 : -1;
+    const playback = nodes.filter(function (record) { return record.target !== undefined; });
+    const matches = nodes.every(function (record) { return (record.ring !== null) === isolated; });
+    return nodes.length === 2 && playback.length === 1 && matches ? 1 : -1;
 });
 
 // The stream's quanta played short so far, and its fill target.
 EM_JS(int, Shorts, (void), {
-    return globalThis.maudWeb.nodes.filter(function (record) { return record !== null; })[0].shortSeen;
+    return globalThis.maudWeb.nodes.filter(function (record) { return record !== null && record.target !== undefined; })[0].shortSeen;
 });
 
 EM_JS(int, Target, (void), {
-    return globalThis.maudWeb.nodes.filter(function (record) { return record !== null; })[0].target;
+    return globalThis.maudWeb.nodes.filter(function (record) { return record !== null && record.target !== undefined; })[0].target;
 });
 
 // Connects a probe worklet behind the stream's node. While counting, it
@@ -119,7 +141,7 @@ EM_JS(void, AttachProbe, (int ramp), {
     ].join("\n");
     const web = globalThis.maudWeb;
     const context = web.contexts.filter(function (entry) { return entry !== null; })[0].context;
-    const record = web.nodes.filter(function (entry) { return entry !== null; })[0];
+    const record = web.nodes.filter(function (entry) { return entry !== null && entry.target !== undefined; })[0];
     const probe = {node: null, breaks: -1};
     web.probe = probe;
     context.audioWorklet.addModule(URL.createObjectURL(new Blob([source], {type: "text/javascript"}))).then(function () {
@@ -174,6 +196,7 @@ static uint64_t Position(void)
 
 static void Finish(void)
 {
+    CHECK(maudDestroyStream(s_context, s_capture) == maud_success, "destroy the capture");
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy while running");
     CHECK(maudDestroyContext(s_context) == maud_success, "destroy");
     printf("MAUD_TEST_RESULT %s\n", s_failures == 0 ? "pass" : "fail");
@@ -217,6 +240,17 @@ static void Measure(double now)
     }
     CHECK(s_wrongSize == 0, "in whole stereo periods");
     CHECK(s_clockSound, "its clock maps frames to host time");
+    maudStreamClock capture = {0};
+    CHECK(maudGetStreamClock(s_context, s_capture, &capture) == maud_success, "capture clock");
+    CHECK(ClockIsSound(&s_captureClock, &capture, false, true, (double)format.sampleRate,
+                       maudGetHostNanoseconds()),
+          "the capture clock maps frames to host time");
+    if (!(s_captured > 100 && s_loudest > 0.1f))
+    {
+        printf("captured %u blocks, loudest %f\n", s_captured, (double)s_loudest);
+    }
+    CHECK(s_captured > 100, "the microphone's blocks arrive");
+    CHECK(s_loudest > 0.1f, "with the fake device's sound");
     ProbeCount(0);
     s_step = stepBreaks;
 }
@@ -287,6 +321,8 @@ static void Step_(void* user)
         if (s_blocks >= 20 && ProbeReady() == 1)
         {
             ProbeCount(1);
+            CHECK(maudGetStreamClock(s_context, s_capture, &s_captureClock) == maud_success,
+                  "capture clock");
             s_shortsAtMeasure = Shorts();
             s_since = now;
             s_position = Position();
@@ -334,10 +370,9 @@ static void TestRefusals(void)
     def.sampleRate = 22050;
     CHECK(maudCreateStream(s_context, &def, &stream) == maud_errorUnsupported,
           "a rate the context does not run at");
-    def = maudDefaultStreamDef();
-    def.callback = CountBlocks;
     def.direction = maud_directionInput;
-    CHECK(maudCreateStream(s_context, &def, &stream) == maud_errorUnsupported, "no capture yet");
+    CHECK(maudCreateStream(s_context, &def, &stream) == maud_errorUnsupported,
+          "nor a capture at another rate");
     def = maudDefaultStreamDef();
     def.callback = CountBlocks;
     def.mode = maud_modePull;
@@ -362,6 +397,15 @@ int main(void)
     streamDef.callback = CountBlocks;
     CHECK(maudCreateStream(s_context, &streamDef, &s_stream) == maud_success, "create");
     CHECK(maudStartStream(s_context, s_stream) == maud_success, "start");
+    maudStreamDef captureDef = maudDefaultStreamDef();
+    captureDef.direction = maud_directionInput;
+    captureDef.callback = CaptureBlocks;
+    CHECK(maudCreateStream(s_context, &captureDef, &s_capture) == maud_success, "create a capture");
+    CHECK(maudStartStream(s_context, s_capture) == maud_success, "start it");
+    maudStreamStatus captureStatus;
+    CHECK(maudGetStreamStatus(s_context, s_capture, &captureStatus) == maud_success &&
+              captureStatus.suspension == maud_suspendPolicy,
+          "the capture waits for the policy too");
     maudStreamStatus status;
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendPolicy,

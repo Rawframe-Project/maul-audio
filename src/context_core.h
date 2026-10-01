@@ -36,6 +36,8 @@ typedef struct maudStreamBinding
     maudDeviceId current;
     bool started;
     maudSuspendReason suspension;
+    // The platform has not granted access yet; the stream cannot run.
+    bool awaitingPermission;
 } maudStreamBinding;
 
 // A stream: what it was asked for, what it runs at, where it stands, and

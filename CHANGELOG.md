@@ -114,6 +114,11 @@ format.
 - Capture on CoreAudio: an AUHAL input unit at the device's rate (its
   input side cannot convert the rate, so a converted input at another
   rate is refused).
+- Capture on the web: getUserMedia with the browser's voice processing
+  off, into a capture worklet, through a SharedArrayBuffer ring on
+  isolated pages and posted chunks elsewhere; until the browser grants
+  the microphone the stream waits, suspended with the new reason
+  `maud_suspendPermission`.
 - The stream clock (`maudGetStreamClock`, `maudGetHostNanoseconds`): a
   frame, the host time at which it is heard or was captured, and the
   latency, stamped at each callback from the platform's report: on

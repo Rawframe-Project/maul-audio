@@ -125,6 +125,9 @@ extern "C"
         // The platform holds audio until the user acts: on the web, until
         // a user gesture's handler calls maudResumeContext.
         maud_suspendPolicy = 3,
+        // The platform has not granted access to its device: on the web,
+        // until the user allows the microphone. A refusal leaves it here.
+        maud_suspendPermission = 4,
     };
 
     // Where a stream stands.

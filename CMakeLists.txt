@@ -115,7 +115,7 @@ endif()
 # Web Audio, in Emscripten builds: the backend's JavaScript is in its
 # source, through EM_JS.
 if(EMSCRIPTEN)
-    target_sources(maul-audio PRIVATE src/backend_web.c)
+    target_sources(maul-audio PRIVATE src/backend_web.c src/web_capture.c)
 endif()
 
 # Likewise ALSA's headers only.
