@@ -581,8 +581,16 @@ int main(void)
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
     maudResult result = maudCreateContext(&def, &context);
-    if (result == maud_errorUnsupported && getenv("MAUD_REQUIRE_PIPEWIRE") == nullptr)
+    // Without a PipeWire daemon the native context picks the next
+    // backend, or none: the test then has nothing to test.
+    bool pipewire =
+        result == maud_success && maudGetContextBackend(context) == maud_backendPipewire;
+    if (!pipewire && getenv("MAUD_REQUIRE_PIPEWIRE") == nullptr)
     {
+        if (result == maud_success)
+        {
+            CHECK(maudDestroyContext(context) == maud_success, "destroy the other backend");
+        }
         return SKIP;
     }
     CHECK(result == maud_success, "a native context on the daemon");

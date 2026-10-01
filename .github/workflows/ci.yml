@@ -37,7 +37,10 @@ jobs:
         run: |
           cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          # Only the sources this build compiles; the Windows and web
+          # backends are compiled, with warnings as errors, by their cells.
           for f in src/*.c; do
+            grep -q "\"file\": \"$PWD/$f\"" build/compile_commands.json || continue
             clang-tidy-20 -p build --quiet --warnings-as-errors='*' "$f" || exit 1
           done
 

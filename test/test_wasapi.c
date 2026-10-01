@@ -6,6 +6,10 @@
 // none), and its streams. Without an audio endpoint the test is
 // skipped, unless MAUD_REQUIRE_WASAPI is set.
 
+// getenv reads the test's switches; the C runtime's warning that it is
+// unsafe is about its result's lifetime, which the test does not keep.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "context.h"
 #include "device.h"
 #include "test_harness.h"
