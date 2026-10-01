@@ -123,6 +123,17 @@ static void TestWatch(const char* directory)
     snprintf(path, sizeof(path), "%s/pcmC9D0p", directory);
     CHECK(maudAlsaTakeChanges(watch) && unlink(path) == 0, "a PCM node");
     CHECK(maudAlsaTakeChanges(watch), "and its removal");
+    // More events than one read takes: all of them are taken at once.
+    for (int i = 0; i < 200; ++i)
+    {
+        char name[64];
+        snprintf(name, sizeof(name), "pcmC9D%dp-with-a-long-name-to-fill-the-buffer", i);
+        Touch(directory, name);
+        snprintf(path, sizeof(path), "%s/%s", directory, name);
+        unlink(path);
+    }
+    CHECK(maudAlsaTakeChanges(watch), "a burst of events");
+    CHECK(!maudAlsaTakeChanges(watch), "taken in full");
     maudAlsaCloseWatch(watch);
 }
 
@@ -131,6 +142,8 @@ static void TestWatch(const char* directory)
 static void TestDrainRescans(maudContext* context, const char* directory)
 {
     maudAlsa* alsa = context->native;
+    struct stat snd;
+    CHECK(alsa->watch >= 0 || stat("/dev/snd", &snd) != 0, "a machine with /dev/snd is watched");
     uint32_t real = maudAlsaScan(&alsa->api, alsa->endpoints, context->def.limits.devices);
     maudAlsaCloseWatch(alsa->watch);
     alsa->watch = maudAlsaOpenWatch(directory);
