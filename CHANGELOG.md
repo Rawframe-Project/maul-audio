@@ -111,6 +111,9 @@ format.
   thread; a stream on the default follows it to its new device;
   devices that come and go are added and removed, and a stream opened
   on one that goes is suspended as lost.
+- Capture on CoreAudio: an AUHAL input unit at the device's rate (its
+  input side cannot convert the rate, so a converted input at another
+  rate is refused).
 - The stream clock (`maudGetStreamClock`, `maudGetHostNanoseconds`): a
   frame, the host time at which it is heard or was captured, and the
   latency, stamped at each callback from the platform's report: on

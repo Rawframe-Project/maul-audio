@@ -61,6 +61,46 @@ static OSStatus Render(void* user, AudioUnitRenderActionFlags* flags, const Audi
     return noErr;
 }
 
+// Takes an input buffer on the IO thread and pushes it to the stream
+// while it runs. The buffer's host time is the first frame's at the
+// device; the device's own latency came before it.
+static OSStatus Capture(void* user, AudioUnitRenderActionFlags* flags, const AudioTimeStamp* time,
+                        UInt32 bus, UInt32 frames, AudioBufferList* unused)
+{
+    (void)unused;
+    maudCoreAudioStream* entry = user;
+    maudStreamCore* core = entry->core;
+    AudioBufferList* list = entry->captured;
+    UInt32 capacity = MAX_SLICE_FRAMES * core->period.channelCount * (UInt32)sizeof(float);
+    if (frames > MAX_SLICE_FRAMES)
+    {
+        return kAudioUnitErr_TooManyFramesToProcess;
+    }
+    // A render leaves the size at what it brought; the next asks for room.
+    list->mBuffers[0].mDataByteSize = capacity;
+    OSStatus status = AudioUnitRender(entry->unit, flags, time, bus, frames, list);
+    if (status != noErr)
+    {
+        return status;
+    }
+    bool running = atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning;
+    atomic_store_explicit(&core->renderingThread, maudCurrentThread(), memory_order_release);
+    core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
+    if (running)
+    {
+        maudPushPeriod(&core->period, list->mBuffers[0].mData, frames);
+    }
+    atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
+    int64_t latency = entry->deviceLatency;
+    if ((time->mFlags & kAudioTimeStampHostTimeValid) != 0)
+    {
+        latency += maudNowNanoseconds() - (int64_t)AudioConvertHostTimeToNanos(time->mHostTime);
+    }
+    maudStampInputClock(core, latency);
+    atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
+    return noErr;
+}
+
 // The HAL object of the device whose UID is the stream's device key, or
 // kAudioObjectUnknown.
 static AudioObjectID ObjectOf(maudContext* context, const maudStreamCore* core)
@@ -87,26 +127,25 @@ static AudioObjectID ObjectOf(maudContext* context, const maudStreamCore* core)
     return status == noErr ? object : kAudioObjectUnknown;
 }
 
-// Reads a UInt32 property of object in the output scope; 0 when missing.
-static UInt32 ReadOutputUInt32(AudioObjectID object, AudioObjectPropertySelector selector)
+// Reads a UInt32 property of object in scope; 0 when missing.
+static UInt32 ReadUInt32(AudioObjectID object, AudioObjectPropertySelector selector,
+                         AudioObjectPropertyScope scope)
 {
-    AudioObjectPropertyAddress address =
-        maudCoreAudioAddress(selector, kAudioObjectPropertyScopeOutput);
+    AudioObjectPropertyAddress address = maudCoreAudioAddress(selector, scope);
     UInt32 value = 0;
     UInt32 size = sizeof(value);
     return AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, &value) == noErr ? value
                                                                                             : 0;
 }
 
-// What the device adds after a buffer's host time, in nanoseconds at its
-// nominal rate: its latency and safety offset, and its first output
-// stream's latency, as cubeb counts it.
-static int64_t DeviceLatency(AudioObjectID object)
+// What the device adds on one side of a buffer's host time, in
+// nanoseconds at its nominal rate: its latency and safety offset in
+// scope, and its first stream's latency there, as cubeb counts it.
+static int64_t DeviceLatency(AudioObjectID object, AudioObjectPropertyScope scope)
 {
-    uint64_t frames = (uint64_t)ReadOutputUInt32(object, kAudioDevicePropertyLatency) +
-                      ReadOutputUInt32(object, kAudioDevicePropertySafetyOffset);
-    AudioObjectPropertyAddress address =
-        maudCoreAudioAddress(kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput);
+    uint64_t frames = (uint64_t)ReadUInt32(object, kAudioDevicePropertyLatency, scope) +
+                      ReadUInt32(object, kAudioDevicePropertySafetyOffset, scope);
+    AudioObjectPropertyAddress address = maudCoreAudioAddress(kAudioDevicePropertyStreams, scope);
     AudioStreamID streams[1] = {0};
     UInt32 size = sizeof(streams);
     if (AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, streams) == noErr &&
@@ -169,9 +208,29 @@ static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
         .mChannelsPerFrame = channels,
         .mBitsPerChannel = 32,
     };
-    AURenderCallbackStruct callback = {.inputProc = Render, .inputProcRefCon = entry};
     UInt32 slice = MAX_SLICE_FRAMES;
     AudioUnit unit = entry->unit;
+    if (core->def.direction == maud_directionInput)
+    {
+        // Input on bus 1 only; the frames come out of its output scope.
+        UInt32 on = 1;
+        UInt32 off = 0;
+        AURenderCallbackStruct callback = {.inputProc = Capture, .inputProcRefCon = entry};
+        return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input,
+                                    1, &on, sizeof(on)) == noErr &&
+               AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output,
+                                    0, &off, sizeof(off)) == noErr &&
+               AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                    kAudioUnitScope_Global, 0, &object, sizeof(object)) == noErr &&
+               AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output,
+                                    1, &format, sizeof(format)) == noErr &&
+               AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback,
+                                    kAudioUnitScope_Global, 0, &callback,
+                                    sizeof(callback)) == noErr &&
+               AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice,
+                                    kAudioUnitScope_Global, 0, &slice, sizeof(slice)) == noErr;
+    }
+    AURenderCallbackStruct callback = {.inputProc = Render, .inputProcRefCon = entry};
     return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
                                 kAudioUnitScope_Global, 0, &object, sizeof(object)) == noErr &&
            AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0,
@@ -182,7 +241,7 @@ static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
                                 kAudioUnitScope_Global, 0, &slice, sizeof(slice)) == noErr;
 }
 
-static void Disconnect(maudCoreAudioStream* entry)
+static void Disconnect(maudContext* context, maudCoreAudioStream* entry)
 {
     if (entry->unit != nullptr)
     {
@@ -195,6 +254,11 @@ static void Disconnect(maudCoreAudioStream* entry)
         OSStatus disposed = AudioComponentInstanceDispose(entry->unit);
         (void)uninitialized;
         (void)disposed;
+    }
+    if (entry->captured != nullptr)
+    {
+        maudContextRelease(context, entry->captured, entry->capturedBytes,
+                           alignof(AudioBufferList));
     }
     maudStreamCore* core = entry->core;
     *entry = (maudCoreAudioStream){.core = core};
@@ -216,12 +280,33 @@ static maudResult Connect(maudContext* context, maudCoreAudioStream* entry)
         entry->unit = nullptr;
         return maud_errorPlatform;
     }
+    bool input = entry->core->def.direction == maud_directionInput;
+    if (input)
+    {
+        // One buffer of interleaved frames, after the list's header.
+        uint32_t channels = entry->core->period.channelCount;
+        size_t data = (size_t)MAX_SLICE_FRAMES * channels * sizeof(float);
+        entry->capturedBytes = sizeof(AudioBufferList) + data;
+        entry->captured =
+            maudContextAllocate(context, entry->capturedBytes, alignof(AudioBufferList));
+        if (entry->captured == nullptr)
+        {
+            return maud_errorCapacity;
+        }
+        entry->captured->mNumberBuffers = 1;
+        entry->captured->mBuffers[0] = (AudioBuffer){
+            .mNumberChannels = channels,
+            .mDataByteSize = (UInt32)data,
+            .mData = entry->captured + 1,
+        };
+    }
     if (!Configure(entry, object))
     {
         return maud_errorPlatform;
     }
     AskBufferFrames(object, entry->core->format.periodFrames);
-    entry->deviceLatency = DeviceLatency(object);
+    entry->deviceLatency = DeviceLatency(object, input ? kAudioObjectPropertyScopeInput
+                                                       : kAudioObjectPropertyScopeOutput);
     return AudioUnitInitialize(entry->unit) == noErr ? maud_success : maud_errorPlatform;
 }
 
@@ -238,7 +323,7 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
     maudResult result = Connect(context, entry);
     if (result != maud_success)
     {
-        Disconnect(entry);
+        Disconnect(context, entry);
     }
     return result;
 }
@@ -275,7 +360,7 @@ maudResult maudCoreAudioAttachStream(maudContext* context, maudStreamSlot* slot)
 
 void maudCoreAudioDetachStream(maudContext* context, maudStreamSlot* slot)
 {
-    Disconnect(EntryOf(context, slot));
+    Disconnect(context, EntryOf(context, slot));
 }
 
 void maudCoreAudioRetargetStream(maudContext* context, maudStreamSlot* slot)

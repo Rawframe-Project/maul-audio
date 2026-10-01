@@ -37,6 +37,10 @@ typedef struct Blocks
     atomic_uint wrongSize;
     atomic_uint onControl;
     uint32_t periodFrames;
+    // Output: the level each sample plays at. Input: the loudest sample
+    // captured, in thousandths.
+    float level;
+    atomic_uint loudest;
 } Blocks;
 
 static pthread_t s_control;
@@ -85,6 +89,20 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (block->frameCount != blocks->periodFrames)
     {
         atomic_fetch_add(&blocks->wrongSize, 1);
+    }
+    uint32_t samples = block->frameCount * 2;
+    for (uint32_t i = 0; block->output != nullptr && i < samples; ++i)
+    {
+        block->output[i] = blocks->level;
+    }
+    for (uint32_t i = 0; block->input != nullptr && i < samples; ++i)
+    {
+        float sample = block->input[i] < 0.0f ? -block->input[i] : block->input[i];
+        unsigned level = (unsigned)(sample * 1000.0f);
+        if (level > atomic_load(&blocks->loudest))
+        {
+            atomic_store(&blocks->loudest, level);
+        }
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -265,9 +283,6 @@ static void TestOutputStream(maudContext* context)
     def.callback = CountBlocks;
     def.mode = maud_modePull;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
-    def.mode = maud_modeCallback;
-    def.direction = maud_directionInput;
-    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no capture yet");
 }
 
 // Waits up to three seconds for the system's default output to reach
@@ -437,6 +452,51 @@ static void TestHotplug(maudContext* context)
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
 }
 
+// BlackHole's input hears its output: a stream captures what another
+// plays into it, at the device's rate, with a sound clock. A converted
+// input at another rate is refused.
+static void TestCapture(maudContext* context)
+{
+    maudDeviceId output = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    maudDeviceId input = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDeviceInfo(context, input, &info) == maud_success, "BlackHole's input");
+    Blocks played = {.level = 0.25f};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.device = output;
+    maudStreamId player = OpenStream(context, &def, &played);
+    Blocks heard = {0};
+    def = maudDefaultStreamDef();
+    def.direction = maud_directionInput;
+    def.device = input;
+    maudStreamId recorder = OpenStream(context, &def, &heard);
+    maudStreamFormat format;
+    CHECK(maudGetStreamFormat(context, recorder, &format) == maud_success &&
+              format.sampleRate == info.nativeSampleRate,
+          "capture at the device's rate");
+    CHECK(maudStartStream(context, player) == maud_success, "play");
+    CHECK(maudStartStream(context, recorder) == maud_success, "capture");
+    CHECK(WaitForBlocks(context, &heard, 40), "captured blocks arrive");
+    CHECK(atomic_load(&heard.wrongSize) == 0, "in whole periods");
+    CHECK(atomic_load(&heard.onControl) == 0, "on the IO thread");
+    CHECK(Near(MeasureRate(context, recorder), (double)info.nativeSampleRate), "at its rate");
+    unsigned loudest = atomic_load(&heard.loudest);
+    if (loudest < 200)
+    {
+        fprintf(stderr, "loudest captured sample %u thousandths\n", loudest);
+    }
+    CHECK(loudest >= 200, "it hears what plays into BlackHole");
+    CHECK(StreamClockIsSound(context, recorder, false, true, Sleep),
+          "its clock maps frames to host time");
+    CHECK(maudDestroyStream(context, recorder) == maud_success, "destroy the capture");
+    CHECK(maudDestroyStream(context, player) == maud_success, "destroy the player");
+    def.ratePolicy = maud_ratePlatformConverted;
+    def.sampleRate = info.nativeSampleRate == 44100 ? 48000 : 44100;
+    def.callback = CountBlocks;
+    CHECK(maudCreateStream(context, &def, &recorder) == maud_errorUnsupported,
+          "no converted capture at another rate");
+}
+
 int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
@@ -455,6 +515,7 @@ int main(void)
     CHECK(maudGetContextBackend(context) == maud_backendCoreAudio, "CoreAudio chosen");
     TestDevices(context);
     TestOutputStream(context);
+    TestCapture(context);
     TestDefaultMoves(context);
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

@@ -334,16 +334,19 @@ static void Pump(maudContext* context)
     maudCoreAudioResumeStreams(context);
 }
 
-// AUHAL plays at the device's nominal rate: a native stream takes it, a
-// required rate must be it, and a platform-converted stream may differ.
-// With no device yet, the rate is taken as 48 kHz. Capture comes later.
+// AUHAL runs at the device's nominal rate: a native stream takes it, a
+// required rate must be it, and a platform-converted output may differ;
+// its input side cannot convert the rate (TN2091), so a converted input
+// is refused. With no device yet, the rate is taken as 48 kHz.
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
     (void)context;
     uint32_t nominal =
         device != nullptr && device->nativeSampleRate != 0 ? device->nativeSampleRate : 48000;
-    if (def->mode == maud_modePull || def->direction != maud_directionOutput ||
+    bool input = def->direction == maud_directionInput;
+    if (def->mode == maud_modePull ||
+        (input && def->ratePolicy == maud_ratePlatformConverted && def->sampleRate != nominal) ||
         (def->ratePolicy == maud_rateRequired && def->sampleRate != nominal))
     {
         return maud_errorUnsupported;
