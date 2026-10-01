@@ -304,3 +304,17 @@ maudDeviceId maudFindDeviceByKey(const maudContext* context, maudDirection direc
     }
     return (maudDeviceId){0, 0};
 }
+
+size_t maudCutUtf8(const char* text, size_t limit)
+{
+    size_t length = strlen(text);
+    if (length <= limit)
+    {
+        return length;
+    }
+    while (limit > 0 && ((unsigned char)text[limit] & 0xC0u) == 0x80u)
+    {
+        limit--;
+    }
+    return limit;
+}

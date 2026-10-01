@@ -25,22 +25,6 @@ static const PROPERTYKEY s_friendlyName = {
 static const PROPERTYKEY s_deviceFormat = {
     {0xF19F064D, 0x082C, 0x4E27, {0xBC, 0x73, 0x68, 0x82, 0xA1, 0xBB, 0x8E, 0x4C}}, 0};
 
-// The length of text cut to at most limit bytes without splitting a
-// UTF-8 sequence.
-static size_t CutUtf8(const char* text, size_t limit)
-{
-    size_t length = strlen(text);
-    if (length <= limit)
-    {
-        return length;
-    }
-    while (limit > 0 && ((unsigned char)text[limit] & 0xC0u) == 0x80u)
-    {
-        limit--;
-    }
-    return limit;
-}
-
 // Converts wide to UTF-8 in out; false when it does not fit.
 static bool ToUtf8(const wchar_t* wide, char* out, int capacity)
 {
@@ -100,7 +84,7 @@ static bool Describe(const maudContext* context, IMMDevice* device, maudDirectio
     ReadFormat(store, &spec->info);
     IPropertyStore_Release(store);
     spec->name = endpoint->name;
-    spec->nameLength = CutUtf8(endpoint->name, context->def.limits.deviceTextBytes);
+    spec->nameLength = maudCutUtf8(endpoint->name, context->def.limits.deviceTextBytes);
     spec->key = endpoint->key;
     spec->keyLength = strlen(endpoint->key);
     return true;

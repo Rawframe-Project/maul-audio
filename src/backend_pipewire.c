@@ -33,22 +33,6 @@ static uint32_t PropertyNumber(const struct spa_dict* props, const char* key)
     return text != nullptr && spa_atou32(text, &value, 10) ? value : 0;
 }
 
-// The length of text cut to at most limit bytes without splitting a
-// UTF-8 sequence.
-static size_t CutUtf8(const char* text, size_t limit)
-{
-    size_t length = strlen(text);
-    if (length <= limit)
-    {
-        return length;
-    }
-    while (limit > 0 && ((unsigned char)text[limit] & 0xC0u) == 0x80u)
-    {
-        limit--;
-    }
-    return limit;
-}
-
 static maudPipewireNode* FindNode(maudPipewire* pipewire, uint32_t globalId)
 {
     for (uint32_t i = 0; i < pipewire->nodeCapacity; ++i)
@@ -163,7 +147,7 @@ static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection dir
                  .minSampleRate = rate,
                  .maxSampleRate = rate},
         .name = name,
-        .nameLength = CutUtf8(name, pipewire->context->def.limits.deviceTextBytes),
+        .nameLength = maudCutUtf8(name, pipewire->context->def.limits.deviceTextBytes),
         .key = key,
         .keyLength = strlen(key),
     };

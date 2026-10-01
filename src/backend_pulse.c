@@ -57,22 +57,6 @@ static void ResolveDefaults(maudPulse* pulse)
     }
 }
 
-// The length of text cut to at most limit bytes without splitting a
-// UTF-8 sequence.
-static size_t CutUtf8(const char* text, size_t limit)
-{
-    size_t length = strlen(text);
-    if (length <= limit)
-    {
-        return length;
-    }
-    while (limit > 0 && ((unsigned char)text[limit] & 0xC0u) == 0x80u)
-    {
-        limit--;
-    }
-    return limit;
-}
-
 // Adds a sink or source as a device, or updates the format of one
 // already known.
 static void ApplyNode(maudPulse* pulse, maudDirection direction, uint32_t index, const char* name,
@@ -107,7 +91,7 @@ static void ApplyNode(maudPulse* pulse, maudDirection direction, uint32_t index,
     maudDeviceSpec deviceSpec = {
         .info = info,
         .name = shown,
-        .nameLength = CutUtf8(shown, pulse->context->def.limits.deviceTextBytes),
+        .nameLength = maudCutUtf8(shown, pulse->context->def.limits.deviceTextBytes),
         .key = name,
         .keyLength = strlen(name),
     };

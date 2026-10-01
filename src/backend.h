@@ -66,6 +66,9 @@ const maudBackend* maudGetAlsaBackend(void);
 // The WASAPI backend, in builds with MAUL_AUDIO_WASAPI.
 const maudBackend* maudGetWasapiBackend(void);
 
+// The CoreAudio backend, in builds with MAUL_AUDIO_COREAUDIO.
+const maudBackend* maudGetCoreAudioBackend(void);
+
 // The web backend, in Emscripten builds.
 const maudBackend* maudGetWebBackend(void);
 

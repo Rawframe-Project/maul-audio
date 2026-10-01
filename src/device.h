@@ -43,6 +43,11 @@ maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, ui
 maudDeviceId maudFindDeviceByKey(const maudContext* context, maudDirection direction,
                                  const char* key, size_t length);
 
+// The length of text cut to at most limit bytes without splitting a
+// UTF-8 sequence: a device name as a backend reports it, cut to the
+// context's text limit.
+size_t maudCutUtf8(const char* text, size_t limit);
+
 // Makes a live device the default of its direction for role.
 void maudSetDefaultDevice(maudContext* context, maudDeviceRole role, maudDeviceId device);
 

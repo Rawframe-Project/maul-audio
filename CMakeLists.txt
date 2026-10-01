@@ -34,6 +34,7 @@ option(MAUL_AUDIO_PULSE "Build the PulseAudio backend, loaded at run time"
 option(MAUL_AUDIO_ALSA "Build the ALSA backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 option(MAUL_AUDIO_WASAPI "Build the WASAPI backend" ${WIN32})
+option(MAUL_AUDIO_COREAUDIO "Build the CoreAudio backend" ${APPLE})
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -96,6 +97,14 @@ if(MAUL_AUDIO_WASAPI)
     target_link_libraries(maul-audio PRIVATE ole32 avrt)
 endif()
 
+# CoreAudio, on macOS, through the system's frameworks.
+if(MAUL_AUDIO_COREAUDIO)
+    target_sources(maul-audio PRIVATE src/backend_coreaudio.c src/coreaudio_stream.c)
+    target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_COREAUDIO=1)
+    target_link_libraries(maul-audio PRIVATE "-framework CoreAudio" "-framework AudioToolbox"
+        "-framework CoreFoundation")
+endif()
+
 # Web Audio, in Emscripten builds: the backend's JavaScript is in its
 # source, through EM_JS.
 if(EMSCRIPTEN)
@@ -143,6 +152,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(context)
     maul_add_test(stream)
     maul_add_test(device)
+    maul_add_test(utf8 WHITEBOX)
     if(MAUL_AUDIO_PIPEWIRE)
         # The test's own client links libpipewire; the library does not.
         pkg_check_modules(MAUL_AUDIO_PW_LINK REQUIRED libpipewire-0.3)
@@ -193,6 +203,12 @@ if(MAUL_AUDIO_BUILD_TESTS)
         target_compile_definitions(test_wasapi PRIVATE _WIN32_WINNT=0x0A00)
         target_link_libraries(test_wasapi PRIVATE ole32)
         set_tests_properties(wasapi PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
+    if(MAUL_AUDIO_COREAUDIO)
+        maul_add_test(coreaudio THREADS)
+        target_link_libraries(test_coreaudio PRIVATE "-framework CoreAudio"
+            "-framework CoreFoundation")
+        set_tests_properties(coreaudio PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     # Speaker masks are plain integers, tested on every platform.
     if(NOT MAUL_AUDIO_BUILD_SHARED)

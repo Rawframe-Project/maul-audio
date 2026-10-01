@@ -62,6 +62,10 @@ static const maudBackend* BackendOfKind(maudBackendKind kind)
     case maud_backendWasapi:
         return maudGetWasapiBackend();
 #endif
+#if defined(MAUD_HAVE_COREAUDIO)
+    case maud_backendCoreAudio:
+        return maudGetCoreAudioBackend();
+#endif
 #if defined(__EMSCRIPTEN__)
     case maud_backendWeb:
         return maudGetWebBackend();
@@ -74,6 +78,8 @@ static const maudBackend* BackendOfKind(maudBackendKind kind)
 // What maud_backendNative tries, in order.
 #if defined(_WIN32)
 static const maudBackendKind s_nativeOrder[] = {maud_backendWasapi};
+#elif defined(__APPLE__)
+static const maudBackendKind s_nativeOrder[] = {maud_backendCoreAudio};
 #elif defined(__EMSCRIPTEN__)
 static const maudBackendKind s_nativeOrder[] = {maud_backendWeb};
 #else
