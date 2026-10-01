@@ -140,7 +140,10 @@ extern "C"
 
     enum
     {
-        // One direction, or both on one clock: nothing drifts.
+        // One direction, or both on one clock: nothing drifts. The ring
+        // stays, absorbing the order of the halves' callbacks; the
+        // platform absorbs any difference between the devices (PipeWire's
+        // graph, the web's AudioContext, one CoreAudio device).
         maud_driftNone = 0,
         // Two clocks: the input waits in a ring held near two periods.
         // When it runs short the missing frames are silence; past four

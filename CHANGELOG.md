@@ -131,3 +131,7 @@ format.
   output and an input of any backend joined by a ring; the input
   follows the output's clock by slipping, declared and counted in the
   stream's status (`maudDriftPolicy`, `slippedFrames`).
+- Duplex on one clock where the platform has one, reported as
+  `maud_driftNone`: PipeWire schedules both halves under one driver
+  (one `node.group`), the web renders both in one AudioContext, and
+  CoreAudio runs them on one clock when both are on one device.

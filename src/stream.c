@@ -87,7 +87,7 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def,
         return result;
     }
     maudStreamSlot* slot = nullptr;
-    maudResult result = maudOpenStream(context, def, &slot);
+    maudResult result = maudOpenStream(context, def, 0, &slot);
     if (result == maud_errorInvalid)
     {
         maudCountMisuse(context);
@@ -161,6 +161,14 @@ maudResult maudStopStream(maudContext* context, maudStreamId stream)
     return SetStarted(context, stream, false);
 }
 
+// Whether a duplex stream's halves run on one clock, as the backend
+// says for their current devices.
+static bool SharesClock(const maudContext* context, const maudDuplex* duplex)
+{
+    return context->backend->sharesClock != nullptr &&
+           context->backend->sharesClock(context, duplex->output, duplex->input);
+}
+
 maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
                                maudStreamStatus* statusOut)
 {
@@ -179,7 +187,8 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
         .started = binding->started,
         .suspension = binding->suspension,
         .device = binding->current,
-        .drift = duplex != nullptr ? maud_driftSlip : maud_driftNone,
+        .drift =
+            duplex == nullptr || SharesClock(context, duplex) ? maud_driftNone : maud_driftSlip,
         .slippedFrames =
             duplex != nullptr ? atomic_load_explicit(&duplex->slipped, memory_order_relaxed) : 0,
     };

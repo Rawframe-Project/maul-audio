@@ -48,6 +48,9 @@ typedef struct maudStreamCore
     maudStreamFormat format;
     maudStreamBinding binding;
     maudPeriod period;
+    // The duplex pair the stream is a half of, numbered within its
+    // context from 1, or 0; set before the backend attaches it.
+    uint32_t duplexGroup;
     // Bytes of period samples, as allocated.
     size_t sampleBytes;
     // Running when started and not suspended.
@@ -109,6 +112,8 @@ typedef struct maudStreamTable
 {
     maudStreamSlot* slots;
     uint32_t capacity;
+    // The duplex pairs numbered so far.
+    uint32_t duplexGroups;
 } maudStreamTable;
 
 // A device's name or key: bytes in the context's text storage.

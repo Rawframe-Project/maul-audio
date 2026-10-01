@@ -184,6 +184,12 @@ static struct pw_properties* StreamProperties(const maudContext* context,
                             device->key.bytes);
         api->propertiesSetf(props, PW_KEY_NODE_DONT_RECONNECT, "true");
     }
+    // A duplex stream's halves share a driver, so one clock runs both.
+    if (core->duplexGroup != 0)
+    {
+        api->propertiesSetf(props, PW_KEY_NODE_GROUP, "maud-duplex-%p-%u", (const void*)context,
+                            core->duplexGroup);
+    }
     return props;
 }
 

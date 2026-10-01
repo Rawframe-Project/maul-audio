@@ -121,22 +121,23 @@ static maudDuplex* AllocateJoint(maudContext* context, const maudStreamDef* def,
 // Opens the input half at the output's rate and period: required, or
 // converted by the platform where the device runs at another rate.
 static maudResult OpenInput(maudContext* context, const maudStreamDef* def,
-                            const maudStreamFormat* output, maudDuplex* duplex,
+                            const maudStreamSlot* output, maudDuplex* duplex,
                             maudStreamSlot** slotOut)
 {
     maudStreamDef input = *def;
     input.direction = maud_directionInput;
     input.device = def->inputDevice;
     input.ratePolicy = maud_rateRequired;
-    input.sampleRate = output->sampleRate;
-    input.periodFrames = output->periodFrames;
+    input.sampleRate = output->core.format.sampleRate;
+    input.periodFrames = output->core.format.periodFrames;
     input.callback = Capture;
     input.user = duplex;
-    maudResult result = maudOpenStream(context, &input, slotOut);
+    uint32_t group = output->core.duplexGroup;
+    maudResult result = maudOpenStream(context, &input, group, slotOut);
     if (result == maud_errorUnsupported)
     {
         input.ratePolicy = maud_ratePlatformConverted;
-        result = maudOpenStream(context, &input, slotOut);
+        result = maudOpenStream(context, &input, group, slotOut);
     }
     return result;
 }
@@ -151,16 +152,19 @@ maudResult maudCreateDuplex(maudContext* context, const maudStreamDef* def,
     output.direction = maud_directionOutput;
     output.callback = Play;
     output.user = nullptr;
+    // The pair's number lets the backend put both halves on one clock.
+    uint32_t group = ++context->streams.duplexGroups;
+    group = group != 0 ? group : ++context->streams.duplexGroups;
     maudStreamSlot* played = nullptr;
-    maudResult result = maudOpenStream(context, &output, &played);
+    maudResult result = maudOpenStream(context, &output, group, &played);
     if (result != maud_success)
     {
         return result;
     }
     maudDuplex* duplex = AllocateJoint(context, def, played->core.format.periodFrames);
     maudStreamSlot* captured = nullptr;
-    result = duplex == nullptr ? maud_errorCapacity
-                               : OpenInput(context, def, &played->core.format, duplex, &captured);
+    result =
+        duplex == nullptr ? maud_errorCapacity : OpenInput(context, def, played, duplex, &captured);
     if (result != maud_success)
     {
         if (duplex != nullptr)

@@ -672,6 +672,16 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
     return maud_success;
 }
 
+// The halves of a duplex stream share a node group (StreamProperties).
+static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
+                        const maudStreamSlot* input)
+{
+    (void)context;
+    (void)output;
+    (void)input;
+    return true;
+}
+
 static const maudBackend s_pipewire = {
     .kind = maud_backendPipewire,
     .openContext = OpenContext,
@@ -682,6 +692,7 @@ static const maudBackend s_pipewire = {
     .detachStream = maudPipewireDetachStream,
     .setStreamActive = maudPipewireSetStreamActive,
     .retargetStream = maudPipewireRetargetStream,
+    .sharesClock = SharesClock,
     .rendersOnCaller = false,
 };
 

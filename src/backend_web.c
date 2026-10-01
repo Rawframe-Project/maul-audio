@@ -400,6 +400,16 @@ static void SetStreamActive(maudContext* context, maudStreamSlot* slot, bool act
     }
 }
 
+// One AudioContext renders both halves of a duplex stream.
+static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
+                        const maudStreamSlot* input)
+{
+    (void)context;
+    (void)output;
+    (void)input;
+    return true;
+}
+
 static const maudBackend s_web = {
     .kind = maud_backendWeb,
     .openContext = OpenContext,
@@ -410,6 +420,7 @@ static const maudBackend s_web = {
     .detachStream = DetachStream,
     .setStreamActive = SetStreamActive,
     .retargetStream = nullptr,
+    .sharesClock = SharesClock,
     .resumeContext = ResumeContext,
     .rendersOnCaller = false,
 };

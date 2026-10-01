@@ -43,6 +43,10 @@ struct maudBackend
     // Whether the platform binds a stream to one device, so that every
     // move must reopen it; otherwise the platform moves it itself.
     bool reopensOnMove;
+    // Whether a duplex stream's halves, on their current devices, run on
+    // one clock. May be NULL: never.
+    bool (*sharesClock)(const maudContext* context, const maudStreamSlot* output,
+                        const maudStreamSlot* input);
     // Asks the platform to let a context held by a policy run. May be
     // NULL.
     void (*resumeContext)(maudContext* context);

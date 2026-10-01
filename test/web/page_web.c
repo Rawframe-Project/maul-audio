@@ -206,6 +206,16 @@ static void Finish(void)
 {
     CHECK(maudDestroyStream(s_context, s_capture) == maud_success, "destroy the capture");
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy while running");
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionDuplex;
+    def.callback = CountBlocks;
+    maudStreamId duplex = {0, 0};
+    maudStreamStatus status = {0};
+    CHECK(maudCreateStream(s_context, &def, &duplex) == maud_success, "a duplex stream");
+    CHECK(maudGetStreamStatus(s_context, duplex, &status) == maud_success &&
+              status.drift == maud_driftNone,
+          "one AudioContext, one clock");
+    CHECK(maudDestroyStream(s_context, duplex) == maud_success, "destroy the duplex");
     CHECK(maudDestroyContext(s_context) == maud_success, "destroy");
     printf("MAUD_TEST_RESULT %s\n", s_failures == 0 ? "pass" : "fail");
     s_step = stepDone;

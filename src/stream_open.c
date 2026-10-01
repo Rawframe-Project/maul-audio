@@ -46,7 +46,7 @@ static maudResult FindStartingDevice(const maudContext* context, const maudStrea
 // Opens the stream's format through the backend and allocates its
 // period. The slot is untouched on failure.
 static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
-                           const maudDeviceInfo* device, maudStreamSlot* slot)
+                           const maudDeviceInfo* device, uint32_t duplexGroup, maudStreamSlot* slot)
 {
     maudStreamFormat format;
     maudResult result = context->backend->openStream(context, def, device, &format);
@@ -74,6 +74,7 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     core->def = *def;
     core->format = format;
     core->sampleBytes = bytes;
+    core->duplexGroup = duplexGroup;
     maudInitPeriod(&core->period, def, &format, samples);
     atomic_store_explicit(&core->blockRate, format.sampleRate, memory_order_relaxed);
     atomic_store_explicit(&core->position, 0, memory_order_relaxed);
@@ -82,7 +83,8 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     return maud_success;
 }
 
-maudResult maudOpenStream(maudContext* context, const maudStreamDef* def, maudStreamSlot** slotOut)
+maudResult maudOpenStream(maudContext* context, const maudStreamDef* def, uint32_t duplexGroup,
+                          maudStreamSlot** slotOut)
 {
     const maudDeviceInfo* device = nullptr;
     maudResult result = FindStartingDevice(context, def, &device);
@@ -95,7 +97,7 @@ maudResult maudOpenStream(maudContext* context, const maudStreamDef* def, maudSt
     {
         return maud_errorCapacity;
     }
-    result = OpenCore(context, def, device, slot);
+    result = OpenCore(context, def, device, duplexGroup, slot);
     if (result != maud_success)
     {
         return result;

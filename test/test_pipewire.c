@@ -529,9 +529,54 @@ static void TestInputStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy capture");
 }
 
-// A duplex stream on the default sink and source: both buffers in each
-// callback at the graph's rate. The graph drives both nodes, so once
-// the input has arrived nothing should slip for long.
+// The drivers pw-top lists the library's nodes under, from its last
+// report: the count of nodes found and of distinct drivers among them.
+// The library's nodes are the followers that are not the test devices;
+// pw-top names them after the program.
+static void DriversOfOurNodes(uint32_t* nodesOut, uint32_t* driversOut)
+{
+    *nodesOut = 0;
+    *driversOut = 0;
+    if (system("pw-top -b -n 3 > pw-top.txt 2> /dev/null") != 0)
+    {
+        return;
+    }
+    FILE* file = fopen("pw-top.txt", "r");
+    if (file == nullptr)
+    {
+        return;
+    }
+    char line[512];
+    long driver = -1;
+    long seen[2] = {-1, -1};
+    uint32_t nodes = 0;
+    while (fgets(line, sizeof line, file) != nullptr)
+    {
+        if (strncmp(line, "S   ID", 6) == 0)
+        {
+            nodes = 0;
+            seen[0] = seen[1] = -1;
+            continue;
+        }
+        long id = strtol(line + 1, nullptr, 10);
+        if (strstr(line, " + ") == nullptr)
+        {
+            driver = id;
+        }
+        else if (strstr(line, "+ maud-test-") == nullptr && nodes < 2)
+        {
+            seen[nodes++] = driver;
+        }
+    }
+    fclose(file);
+    remove("pw-top.txt");
+    *nodesOut = nodes;
+    *driversOut = nodes == 0 ? 0 : (nodes == 2 && seen[0] != seen[1] ? 2u : 1u);
+}
+
+// A duplex stream on the default sink and source, which are two drivers
+// here: both buffers in each callback at the graph's rate, its halves
+// grouped under one driver, so the status declares one clock.
 static void TestDuplexStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -541,9 +586,12 @@ static void TestDuplexStream(maudContext* context)
     CHECK(atomic_load(&blocks.wrongSize) == 0, "every duplex block is one period");
     CHECK(Near(MeasureRate(context, stream), 48000.0), "at the graph's rate");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
-              status.drift == maud_driftSlip,
-          "the slip declared");
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    CHECK(status.drift == maud_driftNone, "no drift on one graph");
+    uint32_t nodes = 0;
+    uint32_t drivers = 0;
+    DriversOfOurNodes(&nodes, &drivers);
+    CHECK(nodes == 2 && drivers == 1, "both halves follow one driver");
     uint64_t before = status.slippedFrames;
     Sleep(2000);
     CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");

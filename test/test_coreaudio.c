@@ -508,6 +508,57 @@ static void TestCapture(maudContext* context)
           "no converted capture at another rate");
 }
 
+// A duplex stream on BlackHole, whose output loops into its input: one
+// device, one clock, and what the callback plays it hears back. On
+// BlackHole's output and another device's input, two clocks: the slip.
+static void TestDuplex(maudContext* context)
+{
+    Blocks both = {.level = 0.25f};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionDuplex;
+    def.device = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    def.inputDevice = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
+    maudStreamId stream = OpenStream(context, &def, &both);
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.drift == maud_driftNone,
+          "one device, one clock");
+    CHECK(maudStartStream(context, stream) == maud_success, "start the duplex");
+    CHECK(WaitForBlocks(context, &both, 80), "duplex blocks arrive");
+    CHECK(atomic_load(&both.wrongSize) == 0, "in whole periods");
+    unsigned loudest = atomic_load(&both.loudest);
+    if (loudest < 200)
+    {
+        fprintf(stderr, "loudest duplex input %u thousandths\n", loudest);
+    }
+    CHECK(loudest >= 200, "it hears what it plays");
+    CHECK(Destroy(context, stream), "destroy the duplex");
+    maudDeviceId inputs[32];
+    uint32_t count = 0;
+    CHECK(maudGetDevices(context, maud_directionInput, inputs, 32, &count) == maud_success,
+          "the inputs");
+    maudDeviceId other = {0, 0};
+    for (uint32_t i = 0; i < count && i < 32; ++i)
+    {
+        if (inputs[i].index1 != def.inputDevice.index1)
+        {
+            other = inputs[i];
+        }
+    }
+    if (other.index1 == 0)
+    {
+        fprintf(stderr, "no second input device; the two-clock duplex is not checked\n");
+        return;
+    }
+    def.inputDevice = other;
+    Blocks apart = {.level = 0.0f};
+    stream = OpenStream(context, &def, &apart);
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.drift == maud_driftSlip,
+          "two devices slip");
+    CHECK(Destroy(context, stream), "destroy it");
+}
+
 int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
@@ -527,6 +578,7 @@ int main(void)
     TestDevices(context);
     TestOutputStream(context);
     TestCapture(context);
+    TestDuplex(context);
     TestDefaultMoves(context);
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
