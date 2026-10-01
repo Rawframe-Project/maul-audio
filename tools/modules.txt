@@ -3,10 +3,12 @@
 allocator:
 alsa_api:
 alsa_chmap:
-alsa_core: alsa_api alsa_chmap context_core worker
+alsa_core: alsa_api alsa_chmap alsa_scan context_core worker
+alsa_scan: alsa_api context context_core device
 alsa_stream: alsa_chmap alsa_core context context_core period thread worker
+alsa_watch:
 backend: context_core
-backend_alsa: alsa_core alsa_stream backend context device
+backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
 backend_offline: backend context_core device
 backend_pipewire: backend context context_core device follow layout pipewire_api pipewire_core pipewire_stream
 backend_pulse: backend context context_core device layout pulse_api pulse_core pulse_stream

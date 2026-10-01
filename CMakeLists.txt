@@ -90,12 +90,12 @@ endif()
 if(MAUL_AUDIO_ALSA)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(MAUL_AUDIO_ASOUND REQUIRED alsa)
-    target_sources(maul-audio PRIVATE src/alsa_api.c src/alsa_chmap.c src/alsa_stream.c
-        src/backend_alsa.c)
+    target_sources(maul-audio PRIVATE src/alsa_api.c src/alsa_chmap.c src/alsa_scan.c
+        src/alsa_stream.c src/alsa_watch.c src/backend_alsa.c)
     target_include_directories(maul-audio SYSTEM PRIVATE ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_ALSA=1)
-    set_source_files_properties(src/alsa_api.c src/alsa_chmap.c src/alsa_stream.c
-        src/backend_alsa.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+    set_source_files_properties(src/alsa_api.c src/alsa_chmap.c src/alsa_scan.c src/alsa_stream.c
+        src/alsa_watch.c src/backend_alsa.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
     target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
@@ -155,6 +155,11 @@ if(MAUL_AUDIO_BUILD_TESTS)
             target_include_directories(test_alsa_chmap SYSTEM PRIVATE
                 ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
             target_compile_definitions(test_alsa_chmap PRIVATE _GNU_SOURCE)
+            maul_add_test(alsa_hotplug WHITEBOX)
+            target_include_directories(test_alsa_hotplug SYSTEM PRIVATE
+                ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
+            target_compile_definitions(test_alsa_hotplug PRIVATE _GNU_SOURCE)
+            set_tests_properties(alsa_hotplug PROPERTIES SKIP_RETURN_CODE 77)
         endif()
     endif()
     if(MAUL_AUDIO_PULSE)

@@ -3,15 +3,17 @@
 //
 // The ALSA backend's devices. ALSA has no server and no thread: the
 // devices are the default PCM and each hardware endpoint the control
-// interface lists, found at creation without opening any of them.
+// interface lists, found without opening any of them, at creation and
+// again whenever the drain finds /dev/snd changed.
 
 #include "alsa_core.h"
+#include "alsa_scan.h"
 #include "alsa_stream.h"
+#include "alsa_watch.h"
 #include "backend.h"
 #include "context.h"
 #include "device.h"
 
-#include <stdio.h>
 #include <string.h>
 
 // alsa-lib's messages go nowhere: the library prints nothing.
@@ -55,78 +57,20 @@ static maudResult AddDefaults(maudContext* context)
     return maud_success;
 }
 
-// Adds the endpoint of one card's PCM device in one direction, if the
-// card has it.
-static maudResult AddEndpoint(maudContext* context, snd_ctl_t* ctl, const char* cardId,
-                              const char* cardName, int device, maudDirection direction)
-{
-    const maudAlsaApi* api = &((maudAlsa*)context->native)->api;
-    alignas(max_align_t) unsigned char infoBytes[MAUD_ALSA_STRUCT_BYTES];
-    snd_pcm_info_t* info = (snd_pcm_info_t*)infoBytes;
-    memset(infoBytes, 0, sizeof(infoBytes));
-    api->pcmInfoSetDevice(info, (unsigned int)device);
-    api->pcmInfoSetSubdevice(info, 0);
-    api->pcmInfoSetStream(info, direction == maud_directionOutput ? SND_PCM_STREAM_PLAYBACK
-                                                                  : SND_PCM_STREAM_CAPTURE);
-    if (api->ctlPcmInfo(ctl, info) < 0)
-    {
-        return maud_success;
-    }
-    char name[2 * MAUD_ALSA_NAME_BYTES];
-    char key[MAUD_ALSA_NAME_BYTES];
-    int nameLength = snprintf(name, sizeof(name), "%s, %s", cardName, api->pcmInfoGetName(info));
-    int keyLength = snprintf(key, sizeof(key), "hw:CARD=%s,DEV=%d", cardId, device);
-    if (keyLength <= 0 || (size_t)keyLength >= sizeof(key))
-    {
-        return maud_success;
-    }
-    size_t limit = context->def.limits.deviceTextBytes;
-    maudDeviceSpec spec = {
-        .info = {.direction = direction},
-        .name = name,
-        .nameLength = (size_t)nameLength < sizeof(name) ? (size_t)nameLength : sizeof(name) - 1,
-        .key = key,
-        .keyLength = (size_t)keyLength,
-    };
-    spec.nameLength = spec.nameLength < limit ? spec.nameLength : limit;
-    maudDeviceId id;
-    return maudAddDevice(context, &spec, &id);
-}
+// The directory whose card nodes the context watches.
+#define DEVICE_DIRECTORY "/dev/snd"
 
-// Adds every PCM endpoint of one card.
-static maudResult AddCard(maudContext* context, int card)
+// Lists the endpoints again and brings the device table in line.
+static maudResult Rescan(maudContext* context)
 {
-    const maudAlsaApi* api = &((maudAlsa*)context->native)->api;
-    char ctlName[32];
-    snprintf(ctlName, sizeof(ctlName), "hw:%d", card);
-    snd_ctl_t* ctl = nullptr;
-    if (api->ctlOpen(&ctl, ctlName, SND_CTL_NONBLOCK) < 0)
-    {
-        return maud_success;
-    }
-    alignas(max_align_t) unsigned char cardBytes[MAUD_ALSA_STRUCT_BYTES];
-    snd_ctl_card_info_t* cardInfo = (snd_ctl_card_info_t*)cardBytes;
-    memset(cardBytes, 0, sizeof(cardBytes));
-    maudResult result = maud_success;
-    if (api->ctlCardInfo(ctl, cardInfo) == 0)
-    {
-        const char* id = api->ctlCardInfoGetId(cardInfo);
-        const char* name = api->ctlCardInfoGetName(cardInfo);
-        int device = -1;
-        while (result == maud_success && api->ctlPcmNextDevice(ctl, &device) == 0 && device >= 0)
-        {
-            result = AddEndpoint(context, ctl, id, name, device, maud_directionOutput);
-            result = result == maud_success
-                         ? AddEndpoint(context, ctl, id, name, device, maud_directionInput)
-                         : result;
-        }
-    }
-    api->ctlClose(ctl);
-    return result;
+    maudAlsa* alsa = context->native;
+    uint32_t count = maudAlsaScan(&alsa->api, alsa->endpoints, context->def.limits.devices);
+    return maudAlsaSyncDevices(context, alsa->endpoints, count);
 }
 
 static void Release(maudContext* context, maudAlsa* alsa)
 {
+    maudAlsaCloseWatch(alsa->watch);
     maudUnloadAlsa(&alsa->api);
     maudContextRelease(context, alsa, alsa->bytes, alignof(maudAlsa));
     context->native = nullptr;
@@ -144,14 +88,22 @@ static bool StructsFit(const maudAlsaApi* api)
 static maudResult OpenContext(maudContext* context)
 {
     uint32_t streams = context->def.limits.streams;
-    size_t bytes = sizeof(maudAlsa) + (size_t)streams * sizeof(maudAlsaStream);
+    uint32_t devices = context->def.limits.devices;
+    size_t bytes = sizeof(maudAlsa) + (size_t)streams * sizeof(maudAlsaStream) +
+                   (size_t)devices * sizeof(maudAlsaEndpoint);
     maudAlsa* alsa = maudContextAllocate(context, bytes, alignof(maudAlsa));
     if (alsa == nullptr)
     {
         return maud_errorCapacity;
     }
-    *alsa = (maudAlsa){.context = context, .streams = (maudAlsaStream*)(alsa + 1), .bytes = bytes};
+    *alsa = (maudAlsa){
+        .context = context,
+        .streams = (maudAlsaStream*)(alsa + 1),
+        .watch = -1,
+        .bytes = bytes,
+    };
     memset(alsa->streams, 0, (size_t)streams * sizeof(maudAlsaStream));
+    alsa->endpoints = (maudAlsaEndpoint*)(alsa->streams + streams);
     context->native = alsa;
     if (!maudLoadAlsa(&alsa->api) || !StructsFit(&alsa->api))
     {
@@ -160,12 +112,9 @@ static maudResult OpenContext(maudContext* context)
     }
     snd_local_error_handler_t previous = maudAlsaQuiet(&alsa->api);
     maudResult result = AddDefaults(context);
-    int card = -1;
-    while (result == maud_success && alsa->api.cardNext(&card) == 0 && card >= 0)
-    {
-        result = AddCard(context, card);
-    }
+    result = result == maud_success ? Rescan(context) : result;
     alsa->api.libErrorSetLocal(previous);
+    alsa->watch = maudAlsaOpenWatch(DEVICE_DIRECTORY);
     if (result != maud_success)
     {
         Release(context, alsa);
@@ -176,6 +125,19 @@ static maudResult OpenContext(maudContext* context)
 static void CloseContext(maudContext* context)
 {
     Release(context, context->native);
+}
+
+// Rescans when a card's node came, went or became readable.
+static void Pump(maudContext* context)
+{
+    maudAlsa* alsa = context->native;
+    if (maudAlsaTakeChanges(alsa->watch))
+    {
+        snd_local_error_handler_t previous = maudAlsaQuiet(&alsa->api);
+        maudResult result = Rescan(context);
+        (void)result;
+        alsa->api.libErrorSetLocal(previous);
+    }
 }
 
 // ALSA's rates are known only once a PCM is open: a native stream asks
@@ -203,7 +165,7 @@ static const maudBackend s_alsa = {
     .kind = maud_backendAlsa,
     .openContext = OpenContext,
     .closeContext = CloseContext,
-    .pump = nullptr,
+    .pump = Pump,
     .openStream = OpenStream,
     .attachStream = maudAlsaAttachStream,
     .detachStream = maudAlsaDetachStream,

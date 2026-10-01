@@ -17,6 +17,7 @@
 #include <dirent.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -211,9 +212,16 @@ static double MeasureRate(maudContext* context, maudStreamId stream)
     return (double)(last - first) / seconds;
 }
 
+// Whether rate is within tolerance of expected; the measurement is
+// printed when it is not.
 static bool Near(double rate, double expected, double tolerance)
 {
-    return rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+    bool near = rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+    if (!near)
+    {
+        fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
+    }
+    return near;
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,

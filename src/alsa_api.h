@@ -11,6 +11,10 @@
 #include <alsa/asoundlib.h>
 #include <stdbool.h>
 
+// Bytes set aside for each ALSA info or parameter structure, checked
+// against its size when the library is loaded.
+#define MAUD_ALSA_STRUCT_BYTES 1024
+
 typedef struct maudAlsaApi
 {
     void* library;

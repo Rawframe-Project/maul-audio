@@ -80,3 +80,7 @@ format.
   library's own calls. Native tries ALSA after PulseAudio.
 - Devices may report a rate of 0 and maud_layoutNone where the
   platform cannot tell without opening them.
+- ALSA hotplug: the context watches /dev/snd and, on the notification
+  drain, rescans the cards when one's nodes come, go or become
+  readable, posting added and removed devices. A stream whose card
+  went away stops polling its PCM.

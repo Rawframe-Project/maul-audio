@@ -8,6 +8,7 @@
 
 #include "alsa_api.h"
 #include "alsa_chmap.h"
+#include "alsa_scan.h"
 #include "context_core.h"
 #include "worker.h"
 
@@ -19,9 +20,6 @@
 #define MAUD_ALSA_PREFERRED_RATE 48000u
 // Bytes of a PCM name: "plughw:CARD=<id>,DEV=<n>".
 #define MAUD_ALSA_NAME_BYTES 64
-// Bytes set aside for each ALSA info or parameter structure, checked
-// against its size when the library is loaded.
-#define MAUD_ALSA_STRUCT_BYTES 1024
 
 // A stream's PCM, run by its thread while the stream runs and by the
 // control thread otherwise, never both at once.
@@ -52,6 +50,10 @@ typedef struct maudAlsa
     maudAlsaApi api;
     maudContext* context;
     maudAlsaStream* streams;
+    // Room for a scan of as many endpoints as the context has devices.
+    maudAlsaEndpoint* endpoints;
+    // The watch on the card nodes, or -1.
+    int watch;
     size_t bytes;
 } maudAlsa;
 

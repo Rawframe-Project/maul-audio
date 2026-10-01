@@ -14,6 +14,7 @@
 #include "maul-audio/stream.h"
 
 #include <dirent.h>
+#include <ftw.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,17 +31,19 @@ static void Sleep(int milliseconds)
     nanosleep(&pause, nullptr);
 }
 
+// The test's HOME, removed when it ends.
+static char s_home[] = "/tmp/maud-alsa-XXXXXX";
+
 // Makes HOME a fresh directory whose .asoundrc makes the default PCM a
 // plug over the pulse plugin, fixed at 44.1 kHz.
 static bool UseTestHome(void)
 {
-    static char home[] = "/tmp/maud-alsa-XXXXXX";
-    if (mkdtemp(home) == nullptr)
+    if (mkdtemp(s_home) == nullptr)
     {
         return false;
     }
     char path[64];
-    snprintf(path, sizeof(path), "%s/.asoundrc", home);
+    snprintf(path, sizeof(path), "%s/.asoundrc", s_home);
     FILE* file = fopen(path, "w");
     if (file == nullptr)
     {
@@ -50,7 +53,21 @@ static bool UseTestHome(void)
           "ctl.!default { type pulse }\n",
           file);
     fclose(file);
-    return setenv("HOME", home, 1) == 0;
+    return setenv("HOME", s_home, 1) == 0;
+}
+
+static int RemoveEntry(const char* path, const struct stat* status, int flag, struct FTW* walk)
+{
+    (void)status;
+    (void)flag;
+    (void)walk;
+    return remove(path);
+}
+
+// Removes the test's HOME and what libpulse wrote into it.
+static void RemoveTestHome(void)
+{
+    nftw(s_home, RemoveEntry, 8, FTW_DEPTH | FTW_PHYS);
 }
 
 typedef struct Blocks
@@ -133,9 +150,16 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
     return (double)(last - first) / seconds;
 }
 
+// Whether rate is within tolerance of expected; the measurement is
+// printed when it is not.
 static bool Near(double rate, double expected, double tolerance)
 {
-    return rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+    bool near = rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+    if (!near)
+    {
+        fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
+    }
+    return near;
 }
 
 static bool KeyIs(const maudContext* context, maudDeviceId device, const char* key)
@@ -318,6 +342,7 @@ int main(void)
     {
         return 1;
     }
+    atexit(RemoveTestHome);
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendAlsa;
     maudContext* context = nullptr;

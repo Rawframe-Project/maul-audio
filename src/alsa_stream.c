@@ -133,8 +133,9 @@ static snd_pcm_sframes_t ReadIn(maudAlsaStream* entry, snd_pcm_sframes_t avail)
 }
 
 // Moves what the PCM can take or has, recovering from an xrun; a
-// recovered capture is started again.
-static void Transfer(maudAlsaStream* entry)
+// recovered capture is started again. False when the PCM failed past
+// recovery, as when its card went away.
+static bool Transfer(maudAlsaStream* entry)
 {
     const maudAlsaApi* api = entry->api;
     bool output = entry->core->def.direction == maud_directionOutput;
@@ -143,14 +144,23 @@ static void Transfer(maudAlsaStream* entry)
     {
         result = output ? WriteOut(entry, result) : ReadIn(entry, result);
     }
-    if (result < 0 && result != -EAGAIN && api->pcmRecover(entry->pcm, (int)result, 1) == 0 &&
-        !output)
+    if (result >= 0 || result == -EAGAIN)
+    {
+        return true;
+    }
+    if (api->pcmRecover(entry->pcm, (int)result, 1) < 0)
+    {
+        return false;
+    }
+    if (!output)
     {
         api->pcmStart(entry->pcm);
     }
+    return true;
 }
 
-// The stream's thread: polls until the eventfd is written.
+// The stream's thread: polls until the eventfd is written, or the PCM
+// fails past recovery.
 static void RunStream(void* user)
 {
     maudAlsaStream* entry = user;
@@ -176,9 +186,10 @@ static void RunStream(void* user)
         }
         unsigned short events = 0;
         api->pollDescriptorsRevents(entry->pcm, entry->fds + 1, entry->fdCount - 1, &events);
-        if ((events & (POLLIN | POLLOUT | POLLERR)) != 0)
+        // A PCM failed past recovery stays silent until the stream stops.
+        if ((events & (POLLIN | POLLOUT | POLLERR | POLLHUP | POLLNVAL)) != 0 && !Transfer(entry))
         {
-            Transfer(entry);
+            return;
         }
     }
 }
