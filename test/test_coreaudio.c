@@ -191,9 +191,9 @@ static void TestDevices(maudContext* context)
     size_t length = 0;
     CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
               info.nativeLayout == maud_layoutStereo && info.nativeSampleRate >= 8000 &&
-              info.minSampleRate <= info.nativeSampleRate &&
-              info.maxSampleRate >= info.nativeSampleRate,
-          "stereo, with its nominal rate within its ranges");
+              info.minSampleRate < info.nativeSampleRate &&
+              info.maxSampleRate > info.nativeSampleRate,
+          "stereo, its nominal rate inside the wider range it runs at");
     CHECK(maudGetDeviceName(context, output, name, sizeof(name) - 1, &length) == maud_success &&
               strstr(name, "BlackHole") != nullptr,
           "its name");
@@ -229,8 +229,13 @@ static void TestOutputStream(maudContext* context)
     CHECK(Near(MeasureRate(context, stream), nominal), "at its rate");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
+    uint64_t before = 0;
+    uint64_t after = 0;
+    CHECK(maudGetStreamPosition(context, stream, &before) == maud_success, "position");
     Sleep(100);
+    CHECK(maudGetStreamPosition(context, stream, &after) == maud_success, "position");
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
+    CHECK(after == before, "the device stops with the stream");
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
