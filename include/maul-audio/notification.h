@@ -37,6 +37,9 @@ extern "C"
         // droppedCount records did not fit in the queue and were lost.
         // Query the devices and stream statuses again.
         maud_notifyOverflow = 8,
+        // deviceId, of direction, now leads to form: its route changed,
+        // as when headphones are plugged into the jack its port serves.
+        maud_notifyRouteChanged = 9,
     };
 
     // One change. Fields a kind does not name are zero.
@@ -50,6 +53,7 @@ extern "C"
         maudStreamId streamId;
         uint32_t sampleRate;
         uint32_t droppedCount;
+        maudDeviceForm form;
     } maudNotification;
 
     /// Takes the oldest notification from the context's queue. On native

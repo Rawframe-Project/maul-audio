@@ -11,6 +11,7 @@
 #include "context.h"
 #include "device.h"
 #include "follow.h"
+#include "form.h"
 #include "layout.h"
 #include "pipewire_core.h"
 #include "pipewire_stream.h"
@@ -117,57 +118,95 @@ static void OnNodeParam(void* data, int seq, uint32_t id, uint32_t index, uint32
     }
 }
 
-static const struct pw_node_events s_nodeEvents = {
-    .version = PW_VERSION_NODE_EVENTS,
-    .param = OnNodeParam,
-};
-
-// Adds a sink or source node as a device and subscribes to its formats.
-static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection direction,
-                    const struct spa_dict* props)
+// Adds a node's device once its info brings its full properties, its
+// form factor among them, and subscribes to its formats.
+static void AddDeviceOf(maudPipewireNode* node, const struct spa_dict* props)
 {
-    maudPipewireNode* node = nullptr;
-    for (uint32_t i = 0; i < pipewire->nodeCapacity && node == nullptr; ++i)
-    {
-        node = pipewire->nodes[i].used ? nullptr : &pipewire->nodes[i];
-    }
+    maudPipewire* pipewire = node->owner;
     const char* key = spa_dict_lookup(props, PW_KEY_NODE_NAME);
     const char* name = spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION);
-    if (node == nullptr || key == nullptr)
+    if (key == nullptr)
     {
         return;
     }
     name = name != nullptr ? name : key;
     uint32_t rate = pipewire->clock.graphRate;
     maudDeviceSpec spec = {
-        .info = {.direction = direction,
+        .info = {.direction = node->direction,
                  .nativeLayout =
                      maudLayoutWithChannels(PropertyNumber(props, PW_KEY_AUDIO_CHANNELS)),
                  .nativeSampleRate = rate,
                  .minSampleRate = rate,
-                 .maxSampleRate = rate},
+                 .maxSampleRate = rate,
+                 .form = maudFormOfName(spa_dict_lookup(props, PW_KEY_DEVICE_FORM_FACTOR),
+                                        node->direction)},
         .name = name,
         .nameLength = maudCutUtf8(name, pipewire->context->def.limits.deviceTextBytes),
         .key = key,
         .keyLength = strlen(key),
     };
-    maudDeviceId device;
-    if (maudAddDevice(pipewire->context, &spec, &device) != maud_success)
+    if (maudAddDevice(pipewire->context, &spec, &node->device) != maud_success)
+    {
+        node->device = (maudDeviceId){0, 0};
+        return;
+    }
+    uint32_t ids[] = {SPA_PARAM_EnumFormat};
+    pw_node_subscribe_params((struct pw_node*)node->proxy, ids, 1);
+    ResolveDefaults(pipewire);
+}
+
+// The node's properties, which its registry global does not carry in
+// full: the first add its device; a later form factor is a route change.
+static void OnNodeInfo(void* data, const struct pw_node_info* info)
+{
+    maudPipewireNode* node = data;
+    if (info->props == nullptr || (info->change_mask & PW_NODE_CHANGE_MASK_PROPS) == 0)
     {
         return;
     }
-    *node =
-        (maudPipewireNode){.owner = pipewire, .device = device, .globalId = globalId, .used = true};
+    if (node->device.index1 == 0)
+    {
+        AddDeviceOf(node, info->props);
+        return;
+    }
+    maudDeviceSlot* slot = maudFindDevice(node->owner->context, node->device);
+    if (slot != nullptr)
+    {
+        maudSetDeviceForm(node->owner->context, slot,
+                          maudFormOfName(spa_dict_lookup(info->props, PW_KEY_DEVICE_FORM_FACTOR),
+                                         node->direction));
+    }
+}
+
+static const struct pw_node_events s_nodeEvents = {
+    .version = PW_VERSION_NODE_EVENTS,
+    .info = OnNodeInfo,
+    .param = OnNodeParam,
+};
+
+// Binds a sink or source node; its device is added when its info
+// arrives.
+static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection direction)
+{
+    maudPipewireNode* node = nullptr;
+    for (uint32_t i = 0; i < pipewire->nodeCapacity && node == nullptr; ++i)
+    {
+        node = pipewire->nodes[i].used ? nullptr : &pipewire->nodes[i];
+    }
+    if (node == nullptr)
+    {
+        return;
+    }
+    *node = (maudPipewireNode){
+        .owner = pipewire, .globalId = globalId, .direction = direction, .used = true};
     node->proxy = pw_registry_bind(pipewire->connection.registry, globalId, PW_TYPE_INTERFACE_Node,
                                    PW_VERSION_NODE, 0);
-    if (node->proxy != nullptr)
+    if (node->proxy == nullptr)
     {
-        struct pw_node* proxy = (struct pw_node*)node->proxy;
-        pw_node_add_listener(proxy, &node->listener, &s_nodeEvents, node);
-        uint32_t ids[] = {SPA_PARAM_EnumFormat};
-        pw_node_subscribe_params(proxy, ids, 1);
+        *node = (maudPipewireNode){0};
+        return;
     }
-    ResolveDefaults(pipewire);
+    pw_node_add_listener((struct pw_node*)node->proxy, &node->listener, &s_nodeEvents, node);
 }
 
 static void RemoveNode(maudPipewire* pipewire, maudPipewireNode* node)
@@ -349,11 +388,11 @@ static void OnGlobal(void* data, uint32_t id, uint32_t permissions, const char* 
         const char* mediaClass = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
         if (spa_streq(mediaClass, "Audio/Sink"))
         {
-            AddNode(pipewire, id, maud_directionOutput, props);
+            AddNode(pipewire, id, maud_directionOutput);
         }
         else if (mediaClass != nullptr && spa_strstartswith(mediaClass, "Audio/Source"))
         {
-            AddNode(pipewire, id, maud_directionInput, props);
+            AddNode(pipewire, id, maud_directionInput);
         }
     }
     else if (spa_streq(type, PW_TYPE_INTERFACE_Metadata))

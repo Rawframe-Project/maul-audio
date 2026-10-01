@@ -9,10 +9,10 @@ alsa_stream: alsa_chmap alsa_core clock context context_core period thread worke
 alsa_watch:
 backend: context_core
 backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
-backend_coreaudio: backend context coreaudio_core coreaudio_stream device layout
+backend_coreaudio: backend context coreaudio_core coreaudio_form coreaudio_stream device layout
 backend_offline: backend context_core device
-backend_pipewire: backend context context_core device follow layout pipewire_api pipewire_core pipewire_stream
-backend_pulse: backend context context_core device layout pulse_api pulse_core pulse_stream
+backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_core pipewire_stream
+backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
 backend_wasapi: backend context device layout wasapi_core wasapi_stream
 backend_web: backend clock context device follow period thread web_capture web_core
 base:
@@ -21,10 +21,12 @@ clock: context_core
 context: allocator backend context_core invariant thread
 context_core: period
 coreaudio_core: context_core device
+coreaudio_form: coreaudio_core
 coreaudio_stream: clock context context_core coreaudio_core period thread voice xrun
 device: context context_core follow notify
 duplex: context context_core stream_open
 follow: backend context context_core notify
+form:
 gain_control: allocator vad_core voice_dsp
 invariant:
 layout:

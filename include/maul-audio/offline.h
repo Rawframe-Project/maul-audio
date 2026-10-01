@@ -24,6 +24,8 @@ extern "C"
         maudChannelLayout layout;
         // Its native rate.
         uint32_t sampleRate;
+        // What it leads to.
+        maudDeviceForm form;
         // Its display name and key, UTF-8, with their lengths in bytes.
         const char* name;
         size_t nameLength;
@@ -32,7 +34,7 @@ extern "C"
     } maudOfflineDeviceDef;
 
     /// Returns the default offline device def: an output, stereo, at
-    /// 48,000, with an empty name and key.
+    /// 48,000, of unknown form, with an empty name and key.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -88,6 +90,22 @@ extern "C"
     MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDefaultDevice(maudContext* context,
                                                                    maudDeviceRole role,
                                                                    maudDeviceId device);
+
+    /// Changes what a device leads to, as plugging headphones into its jack
+    /// does: a change posts maud_notifyRouteChanged.
+    ///
+    /// @param context  An offline context.
+    /// @param device   The device.
+    /// @param form     Its new form.
+    /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
+    ///         NULL context or an unknown form; `maud_errorUnsupported` on a
+    ///         context that is not offline; `maud_errorState` on a thread
+    ///         rendering one of the context's streams.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceForm(maudContext* context,
+                                                                maudDeviceId device,
+                                                                maudDeviceForm form);
 
 #ifdef __cplusplus
 }

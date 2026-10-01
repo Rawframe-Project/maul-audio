@@ -77,6 +77,62 @@ static bool SystemDefault(IMMDeviceEnumerator* enumerator, EDataFlow flow, ERole
     return ok;
 }
 
+// The endpoint form factor of the device whose endpoint ID is key, as
+// the test reads it itself; UnknownFormFactor when it cannot.
+static UINT FormFactorOf(IMMDeviceEnumerator* enumerator, const char* key)
+{
+    static const PROPERTYKEY formFactor = {
+        {0x1DA5D803, 0xD492, 0x4EDD, {0x8C, 0x23, 0xE0, 0xC0, 0xFF, 0xEE, 0x7F, 0x0E}}, 0};
+    wchar_t id[128];
+    IMMDevice* device = nullptr;
+    IPropertyStore* store = nullptr;
+    UINT form = UnknownFormFactor;
+    if (MultiByteToWideChar(CP_UTF8, 0, key, -1, id, 128) > 0 &&
+        SUCCEEDED(IMMDeviceEnumerator_GetDevice(enumerator, id, &device)) &&
+        SUCCEEDED(IMMDevice_OpenPropertyStore(device, STGM_READ, &store)))
+    {
+        PROPVARIANT value;
+        PropVariantInit(&value);
+        if (SUCCEEDED(IPropertyStore_GetValue(store, &formFactor, &value)) && value.vt == VT_UI4)
+        {
+            form = value.ulVal;
+        }
+        PropVariantClear(&value);
+        IPropertyStore_Release(store);
+    }
+    if (device != nullptr)
+    {
+        IMMDevice_Release(device);
+    }
+    return form;
+}
+
+// Whether a device's form is what its endpoint's form factor says.
+static bool FormMatches(maudDeviceForm form, UINT formFactor)
+{
+    switch (formFactor)
+    {
+    case Speakers:
+        return form == maud_formSpeakers;
+    case LineLevel:
+        return form == maud_formLine;
+    case Headphones:
+        return form == maud_formHeadphones;
+    case Microphone:
+        return form == maud_formMicrophone;
+    case Headset:
+        return form == maud_formHeadset;
+    case Handset:
+        return form == maud_formHandset;
+    case UnknownDigitalPassthrough:
+    case SPDIF:
+    case DigitalAudioDisplayDevice:
+        return form == maud_formDigital;
+    default:
+        return form == maud_formUnknown;
+    }
+}
+
 static bool DefaultIs(const maudContext* context, maudDirection direction, maudDeviceRole role,
                       const char* key)
 {
@@ -257,6 +313,15 @@ static void TestDevices(maudContext* context)
                       info.minSampleRate == info.nativeSampleRate &&
                       info.maxSampleRate == info.nativeSampleRate,
                   "each with the engine's format, read without activating it");
+            char endpoint[128];
+            size_t length = 0;
+            CHECK(maudGetDeviceKey(context, ids[i], endpoint, sizeof(endpoint) - 1, &length) ==
+                      maud_success,
+                  "its key");
+            endpoint[length < sizeof(endpoint) - 1 ? length : sizeof(endpoint) - 1] = '\0';
+            UINT formFactor = FormFactorOf(enumerator, endpoint);
+            printf("endpoint %s: form factor %u, form %u\n", endpoint, formFactor, info.form);
+            CHECK(FormMatches(info.form, formFactor), "and the form its form factor names");
         }
     }
     IMMDeviceEnumerator_Release(enumerator);

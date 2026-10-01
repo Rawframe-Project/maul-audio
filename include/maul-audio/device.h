@@ -51,6 +51,28 @@ extern "C"
         maud_roleCommunications = 1,
     };
 
+    // What a device's active port leads to, as the platform reports it.
+    // Connections that say nothing of the far end, such as USB and
+    // Bluetooth, are unknown.
+    typedef uint8_t maudDeviceForm;
+
+    enum
+    {
+        maud_formUnknown = 0,
+        // Loudspeakers: built-in, external, a car's or a television's.
+        maud_formSpeakers = 1,
+        maud_formHeadphones = 2,
+        // Headphones with a microphone, or that microphone.
+        maud_formHeadset = 3,
+        // A telephone's earpiece, or its microphone.
+        maud_formHandset = 4,
+        maud_formMicrophone = 5,
+        // An analog line connector.
+        maud_formLine = 6,
+        // A digital connector: HDMI, DisplayPort, S/PDIF.
+        maud_formDigital = 7,
+    };
+
     // What a device is and runs at.
     typedef struct maudDeviceInfo
     {
@@ -67,6 +89,9 @@ extern "C"
         // The rates the device can run at without conversion.
         uint32_t minSampleRate;
         uint32_t maxSampleRate;
+        // What its active port leads to; maud_notifyRouteChanged reports a
+        // change.
+        maudDeviceForm form;
     } maudDeviceInfo;
 
     /// Lists the devices of one direction, in a stable order.

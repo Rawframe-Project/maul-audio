@@ -21,6 +21,7 @@ maudOfflineDeviceDef maudDefaultOfflineDeviceDef(void)
         .direction = maud_directionOutput,
         .layout = maud_layoutStereo,
         .sampleRate = 48000,
+        .form = maud_formUnknown,
         .name = nullptr,
         .nameLength = 0,
         .key = nullptr,
@@ -50,8 +51,9 @@ static maudResult CheckOffline(maudContext* context)
 static bool DefValid(const maudOfflineDeviceDef* def)
 {
     return def->cookie == OFFLINE_DEVICE_DEF_COOKIE && def->direction <= maud_directionInput &&
-           maudGetLayoutChannelCount(def->layout) != 0 && def->sampleRate >= OFFLINE_MIN_RATE &&
-           def->sampleRate <= OFFLINE_MAX_RATE && (def->name != nullptr || def->nameLength == 0) &&
+           def->form <= maud_formDigital && maudGetLayoutChannelCount(def->layout) != 0 &&
+           def->sampleRate >= OFFLINE_MIN_RATE && def->sampleRate <= OFFLINE_MAX_RATE &&
+           (def->name != nullptr || def->nameLength == 0) &&
            (def->key != nullptr || def->keyLength == 0);
 }
 
@@ -77,7 +79,8 @@ maudResult maudAddOfflineDevice(maudContext* context, const maudOfflineDeviceDef
                  .nativeLayout = def->layout,
                  .nativeSampleRate = def->sampleRate,
                  .minSampleRate = OFFLINE_MIN_RATE,
-                 .maxSampleRate = OFFLINE_MAX_RATE},
+                 .maxSampleRate = OFFLINE_MAX_RATE,
+                 .form = def->form},
         .name = def->name,
         .nameLength = def->nameLength,
         .key = def->key,
@@ -120,5 +123,26 @@ maudResult maudSetOfflineDefaultDevice(maudContext* context, maudDeviceRole role
         return maud_errorStale;
     }
     maudSetDefaultDevice(context, role, device);
+    return maud_success;
+}
+
+maudResult maudSetOfflineDeviceForm(maudContext* context, maudDeviceId device, maudDeviceForm form)
+{
+    maudResult result = CheckOffline(context);
+    if (result != maud_success)
+    {
+        return result;
+    }
+    if (form > maud_formDigital)
+    {
+        maudCountMisuse(context);
+        return maud_errorInvalid;
+    }
+    maudDeviceSlot* slot = maudFindDevice(context, device);
+    if (slot == nullptr)
+    {
+        return maud_errorStale;
+    }
+    maudSetDeviceForm(context, slot, form);
     return maud_success;
 }

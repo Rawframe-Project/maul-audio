@@ -17,6 +17,9 @@ static const GUID s_iidNotificationClient = {
 // PKEY_AudioEngine_DeviceFormat's format identifier.
 static const GUID s_deviceFormat = {
     0xF19F064D, 0x082C, 0x4E27, {0xBC, 0x73, 0x68, 0x82, 0xA1, 0xBB, 0x8E, 0x4C}};
+// PKEY_AudioEndpoint_FormFactor's, whose property identifier is 0.
+static const GUID s_endpoint = {
+    0x1DA5D803, 0xD492, 0x4EDD, {0x8C, 0x23, 0xE0, 0xC0, 0xFF, 0xEE, 0x7F, 0x0E}};
 
 static maudWasapiNotifier* NotifierOf(IMMNotificationClient* client)
 {
@@ -91,7 +94,9 @@ static HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(IMMNotificationClient* c
                                                         const PROPERTYKEY key)
 {
     (void)id;
-    if (memcmp(&key.fmtid, &s_deviceFormat, sizeof(GUID)) == 0)
+    // A new device format, or a new form factor: a route change.
+    if (memcmp(&key.fmtid, &s_deviceFormat, sizeof(GUID)) == 0 ||
+        (memcmp(&key.fmtid, &s_endpoint, sizeof(GUID)) == 0 && key.pid == 0))
     {
         Raise(client);
     }

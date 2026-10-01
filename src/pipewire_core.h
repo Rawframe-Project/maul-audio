@@ -30,8 +30,10 @@ typedef struct maudPipewireNode
     maudPipewire* owner;
     struct pw_proxy* proxy;
     struct spa_hook listener;
+    // The null id until the node's info arrives and adds the device.
     maudDeviceId device;
     uint32_t globalId;
+    maudDirection direction;
     bool used;
 } maudPipewireNode;
 

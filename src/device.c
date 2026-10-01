@@ -240,8 +240,24 @@ static const maudDeviceSpec* SpecOf(const maudDeviceSlot* slot, const maudDevice
 }
 
 // Takes a scanned device's format; true when its native rate changed.
-static bool Update(maudDeviceSlot* slot, const maudDeviceInfo* info)
+void maudSetDeviceForm(maudContext* context, maudDeviceSlot* slot, maudDeviceForm form)
 {
+    if (slot->info.form == form)
+    {
+        return;
+    }
+    slot->info.form = form;
+    maudPostNotification(context, &(maudNotification){
+                                      .kind = maud_notifyRouteChanged,
+                                      .direction = slot->info.direction,
+                                      .deviceId = IdOf(context, slot),
+                                      .form = form,
+                                  });
+}
+
+static bool Update(maudContext* context, maudDeviceSlot* slot, const maudDeviceInfo* info)
+{
+    maudSetDeviceForm(context, slot, info->form);
     bool rateChanged = slot->info.nativeSampleRate != info->nativeSampleRate;
     slot->info.nativeLayout = info->nativeLayout;
     slot->info.nativeSampleRate = info->nativeSampleRate;
@@ -261,7 +277,7 @@ maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, ui
         const maudDeviceSpec* spec = slot->live ? SpecOf(slot, specs, count) : nullptr;
         if (spec != nullptr)
         {
-            rateChanged = Update(slot, &spec->info) || rateChanged;
+            rateChanged = Update(context, slot, &spec->info) || rateChanged;
         }
         else if (slot->live && (kept == nullptr || !KeyIs(slot, kept, keptLength)))
         {

@@ -10,6 +10,7 @@
 #include "backend.h"
 #include "context.h"
 #include "coreaudio_core.h"
+#include "coreaudio_form.h"
 #include "coreaudio_stream.h"
 #include "device.h"
 #include "layout.h"
@@ -148,6 +149,7 @@ static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object, maudDirecti
         .keyLength = strlen(endpoint->key),
     };
     ReadRates(coreaudio, object, &spec->info);
+    spec->info.form = maudCoreAudioFormOf(object, direction);
     return true;
 }
 
@@ -208,6 +210,7 @@ static maudResult Rescan(maudCoreAudio* coreaudio)
 {
     uint32_t count = Scan(coreaudio);
     maudResult result = maudSyncDevices(coreaudio->context, coreaudio->specs, count, nullptr);
+    maudCoreAudioWatchSources(coreaudio, count);
     ReadDefault(coreaudio, maud_directionOutput);
     ReadDefault(coreaudio, maud_directionInput);
     return result;
@@ -241,6 +244,7 @@ static void StopListening(maudCoreAudio* coreaudio)
     {
         return;
     }
+    maudCoreAudioUnwatchSources(coreaudio);
     for (size_t i = 0; i < WATCHED_COUNT; ++i)
     {
         AudioObjectPropertyAddress address =
@@ -274,7 +278,8 @@ static maudCoreAudio* Allocate(maudContext* context)
     uint32_t streams = context->def.limits.streams;
     uint32_t objects = 2 * devices + 16;
     size_t bytes = sizeof(maudCoreAudio) + (size_t)objects * sizeof(AudioObjectID) +
-                   (size_t)devices * (sizeof(maudCoreAudioEndpoint) + sizeof(maudDeviceSpec)) +
+                   (size_t)devices * (sizeof(maudCoreAudioEndpoint) + sizeof(maudDeviceSpec) +
+                                      sizeof(maudCoreAudioWatch)) +
                    (size_t)streams * sizeof(maudCoreAudioStream) + MAUD_COREAUDIO_SCRATCH_BYTES +
                    alignof(max_align_t);
     maudCoreAudio* coreaudio = maudContextAllocate(context, bytes, alignof(maudCoreAudio));
@@ -282,11 +287,13 @@ static maudCoreAudio* Allocate(maudContext* context)
     {
         return nullptr;
     }
-    *coreaudio = (maudCoreAudio){.context = context, .objectCapacity = objects, .bytes = bytes};
+    *coreaudio = (maudCoreAudio){
+        .context = context, .objectCapacity = objects, .watchCapacity = devices, .bytes = bytes};
     coreaudio->streams = (maudCoreAudioStream*)(coreaudio + 1);
     coreaudio->specs = (maudDeviceSpec*)(coreaudio->streams + streams);
     coreaudio->endpoints = (maudCoreAudioEndpoint*)(coreaudio->specs + devices);
-    coreaudio->objects = (AudioObjectID*)(coreaudio->endpoints + devices);
+    coreaudio->watched = (maudCoreAudioWatch*)(coreaudio->endpoints + devices);
+    coreaudio->objects = (AudioObjectID*)(coreaudio->watched + devices);
     uintptr_t scratch = (uintptr_t)(coreaudio->objects + objects);
     scratch = (scratch + alignof(max_align_t) - 1) & ~(uintptr_t)(alignof(max_align_t) - 1);
     coreaudio->scratch = (unsigned char*)scratch;

@@ -24,6 +24,8 @@ static const PROPERTYKEY s_friendlyName = {
     {0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}}, 14};
 static const PROPERTYKEY s_deviceFormat = {
     {0xF19F064D, 0x082C, 0x4E27, {0xBC, 0x73, 0x68, 0x82, 0xA1, 0xBB, 0x8E, 0x4C}}, 0};
+static const PROPERTYKEY s_formFactor = {
+    {0x1DA5D803, 0xD492, 0x4EDD, {0x8C, 0x23, 0xE0, 0xC0, 0xFF, 0xEE, 0x7F, 0x0E}}, 0};
 
 // Converts wide to UTF-8 in out; false when it does not fit.
 static bool ToUtf8(const wchar_t* wide, char* out, int capacity)
@@ -60,6 +62,34 @@ static void ReadFormat(IPropertyStore* store, maudDeviceInfo* info)
     PropVariantClear(&value);
 }
 
+// The form an endpoint's EndpointFormFactor names; unknown for a
+// network device, an unknown form or a store without one.
+static maudDeviceForm ReadForm(IPropertyStore* store)
+{
+    static const maudDeviceForm forms[] = {
+        [Speakers] = maud_formSpeakers,
+        [LineLevel] = maud_formLine,
+        [Headphones] = maud_formHeadphones,
+        [Microphone] = maud_formMicrophone,
+        [Headset] = maud_formHeadset,
+        [Handset] = maud_formHandset,
+        [UnknownDigitalPassthrough] = maud_formDigital,
+        [SPDIF] = maud_formDigital,
+        [DigitalAudioDisplayDevice] = maud_formDigital,
+        [UnknownFormFactor] = maud_formUnknown,
+    };
+    PROPVARIANT value;
+    PropVariantInit(&value);
+    maudDeviceForm form = maud_formUnknown;
+    if (SUCCEEDED(IPropertyStore_GetValue(store, &s_formFactor, &value)) && value.vt == VT_UI4 &&
+        value.ulVal < sizeof(forms) / sizeof(forms[0]))
+    {
+        form = forms[value.ulVal];
+    }
+    PropVariantClear(&value);
+    return form;
+}
+
 // Describes one endpoint into endpoint and spec; false when it cannot.
 static bool Describe(const maudContext* context, IMMDevice* device, maudDirection direction,
                      maudWasapiEndpoint* endpoint, maudDeviceSpec* spec)
@@ -82,6 +112,7 @@ static bool Describe(const maudContext* context, IMMDevice* device, maudDirectio
         memcpy(endpoint->name, endpoint->key, sizeof(endpoint->key));
     }
     ReadFormat(store, &spec->info);
+    spec->info.form = ReadForm(store);
     IPropertyStore_Release(store);
     spec->name = endpoint->name;
     spec->nameLength = maudCutUtf8(endpoint->name, context->def.limits.deviceTextBytes);

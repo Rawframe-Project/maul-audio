@@ -179,3 +179,11 @@ format.
   runs or only waits to, with the new reason `maud_suspendHost`, and
   resumes them after; a lost device keeps its reason, and the web's
   AudioContext suspends with the host.
+- Device forms and route changes: `maudDeviceInfo.form` says what a
+  device's active port leads to (speakers, headphones, headset,
+  handset, microphone, line, digital, or unknown), read from PipeWire's
+  and PulseAudio's form factor and port type, WASAPI's endpoint form
+  factor and CoreAudio's data source and transport; a change on the
+  same device, as headphones in its jack, posts
+  `maud_notifyRouteChanged` with the new form. The offline backend
+  scripts it with `maudSetOfflineDeviceForm`.

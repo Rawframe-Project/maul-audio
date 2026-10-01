@@ -77,6 +77,8 @@ struct maudPulse
     uint32_t nodeCapacity;
     maudPulseStream* streams;
     size_t bytes;
+    // Whether libpulse's port structures have their type: 14.0 or later.
+    bool portTypes;
 };
 
 // The monotonic clock in nanoseconds.

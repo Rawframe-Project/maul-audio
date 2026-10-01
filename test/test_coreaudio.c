@@ -196,10 +196,11 @@ static void ListDevices(const maudContext* context, maudDirection direction)
                       maud_success &&
                   maudGetDeviceInfo(context, ids[i], &info) == maud_success,
               "describe");
-        printf("%s: %s [%s] %u Hz (%u to %u), layout %u\n",
+        printf("%s: %s [%s] %u Hz (%u to %u), layout %u, form %u\n",
                direction == maud_directionOutput ? "output" : "input", name, key,
                info.nativeSampleRate, info.minSampleRate, info.maxSampleRate,
-               (unsigned)info.nativeLayout);
+               (unsigned)info.nativeLayout, (unsigned)info.form);
+        CHECK(info.form <= maud_formDigital, "a known form");
     }
 }
 
@@ -236,6 +237,7 @@ static void TestDevices(maudContext* context)
               info.minSampleRate < info.nativeSampleRate &&
               info.maxSampleRate > info.nativeSampleRate,
           "stereo, its nominal rate inside the wider range it runs at");
+    CHECK(info.form == maud_formUnknown, "a virtual device leads nowhere known");
     CHECK(maudGetDeviceName(context, output, name, sizeof(name) - 1, &length) == maud_success &&
               strstr(name, "BlackHole") != nullptr,
           "its name");

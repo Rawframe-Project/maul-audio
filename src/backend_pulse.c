@@ -11,10 +11,12 @@
 #include "backend.h"
 #include "context.h"
 #include "device.h"
+#include "form.h"
 #include "layout.h"
 #include "pulse_core.h"
 #include "pulse_stream.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -59,15 +61,70 @@ static void ResolveDefaults(maudPulse* pulse)
 
 // Adds a sink or source as a device, or updates the format of one
 // already known.
-static void ApplyNode(maudPulse* pulse, maudDirection direction, uint32_t index, const char* name,
-                      const char* description, const pa_sample_spec* spec)
+// What a sink or source said of itself.
+typedef struct Node
 {
+    maudDirection direction;
+    uint32_t index;
+    const char* name;
+    const char* description;
+    const pa_sample_spec* spec;
+    maudDeviceForm form;
+} Node;
+
+// The form of a port type, as pa_device_port_type_t numbers them.
+static maudDeviceForm FormOfPort(uint32_t type, maudDirection direction)
+{
+    static const char* const names[] = {
+        [PA_DEVICE_PORT_TYPE_SPEAKER] = "speaker",
+        [PA_DEVICE_PORT_TYPE_HEADPHONES] = "headphones",
+        [PA_DEVICE_PORT_TYPE_LINE] = "line",
+        [PA_DEVICE_PORT_TYPE_MIC] = "mic",
+        [PA_DEVICE_PORT_TYPE_HEADSET] = "headset",
+        [PA_DEVICE_PORT_TYPE_HANDSET] = "handset",
+        [PA_DEVICE_PORT_TYPE_EARPIECE] = "earpiece",
+        [PA_DEVICE_PORT_TYPE_SPDIF] = "spdif",
+        [PA_DEVICE_PORT_TYPE_HDMI] = "hdmi",
+        [PA_DEVICE_PORT_TYPE_TV] = "tv",
+        [PA_DEVICE_PORT_TYPE_PORTABLE] = "portable",
+        [PA_DEVICE_PORT_TYPE_HANDSFREE] = "handsfree",
+        [PA_DEVICE_PORT_TYPE_CAR] = "car",
+        [PA_DEVICE_PORT_TYPE_HIFI] = "hifi",
+        [PA_DEVICE_PORT_TYPE_PHONE] = "phone",
+        [PA_DEVICE_PORT_TYPE_ANALOG] = "analog",
+    };
+    return type < sizeof(names) / sizeof(names[0]) ? maudFormOfName(names[type], direction)
+                                                   : maud_formUnknown;
+}
+
+// The form a sink or source leads to: its active port's type where
+// libpulse has it, else its form factor property.
+static maudDeviceForm FormOf(const maudPulse* pulse, maudDirection direction, uint32_t portType,
+                             bool hasPort, const pa_proplist* props)
+{
+    maudDeviceForm form =
+        pulse->portTypes && hasPort ? FormOfPort(portType, direction) : maud_formUnknown;
+    if (form == maud_formUnknown && props != nullptr)
+    {
+        form =
+            maudFormOfName(pulse->api.proplistGets(props, PA_PROP_DEVICE_FORM_FACTOR), direction);
+    }
+    return form;
+}
+
+static void ApplyNode(maudPulse* pulse, const Node* reported)
+{
+    maudDirection direction = reported->direction;
+    uint32_t index = reported->index;
+    const char* name = reported->name;
+    const char* description = reported->description;
     maudDeviceInfo info = {
         .direction = direction,
-        .nativeLayout = maudLayoutWithChannels(spec->channels),
-        .nativeSampleRate = spec->rate,
-        .minSampleRate = spec->rate,
-        .maxSampleRate = spec->rate,
+        .nativeLayout = maudLayoutWithChannels(reported->spec->channels),
+        .nativeSampleRate = reported->spec->rate,
+        .minSampleRate = reported->spec->rate,
+        .maxSampleRate = reported->spec->rate,
+        .form = reported->form,
     };
     maudPulseNode* node = FindNode(pulse, direction, index);
     maudDeviceSlot* slot = node != nullptr ? maudFindDevice(pulse->context, node->device) : nullptr;
@@ -77,6 +134,7 @@ static void ApplyNode(maudPulse* pulse, maudDirection direction, uint32_t index,
         slot->info.nativeSampleRate = info.nativeSampleRate;
         slot->info.minSampleRate = info.minSampleRate;
         slot->info.maxSampleRate = info.maxSampleRate;
+        maudSetDeviceForm(pulse->context, slot, info.form);
         return;
     }
     for (uint32_t i = 0; i < pulse->nodeCapacity && node == nullptr; ++i)
@@ -116,8 +174,17 @@ static void RemoveNode(maudPulse* pulse, maudPulseNode* node)
 
 static void ApplySink(maudPulse* pulse, const pa_sink_info* info)
 {
-    ApplyNode(pulse, maud_directionOutput, info->index, info->name, info->description,
-              &info->sample_spec);
+    const pa_sink_port_info* port = info->active_port;
+    ApplyNode(pulse, &(Node){
+                         .direction = maud_directionOutput,
+                         .index = info->index,
+                         .name = info->name,
+                         .description = info->description,
+                         .spec = &info->sample_spec,
+                         .form = FormOf(pulse, maud_directionOutput,
+                                        port != nullptr && pulse->portTypes ? port->type : 0,
+                                        port != nullptr, info->proplist),
+                     });
 }
 
 // A sink's monitor is a source too, but not a capture device.
@@ -125,8 +192,17 @@ static void ApplySource(maudPulse* pulse, const pa_source_info* info)
 {
     if (info->monitor_of_sink == PA_INVALID_INDEX)
     {
-        ApplyNode(pulse, maud_directionInput, info->index, info->name, info->description,
-                  &info->sample_spec);
+        const pa_source_port_info* port = info->active_port;
+        ApplyNode(pulse, &(Node){
+                             .direction = maud_directionInput,
+                             .index = info->index,
+                             .name = info->name,
+                             .description = info->description,
+                             .spec = &info->sample_spec,
+                             .form = FormOf(pulse, maud_directionInput,
+                                            port != nullptr && pulse->portTypes ? port->type : 0,
+                                            port != nullptr, info->proplist),
+                         });
     }
 }
 
@@ -399,6 +475,9 @@ static maudResult OpenContext(maudContext* context)
         Release(context, pulse);
         return maud_errorUnsupported;
     }
+    // A port's type is a field libpulse 14.0 added to its structures.
+    const char* version = pulse->api.getLibraryVersion();
+    pulse->portTypes = version != nullptr && strtol(version, nullptr, 10) >= 14;
     pulse->loop = pulse->api.mainloopNew();
     if (pulse->loop == nullptr || !Connect(pulse) ||
         !WaitForListing(pulse, maudPulseNow() + MAUD_PULSE_DEADLINE_NS))

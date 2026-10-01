@@ -329,13 +329,18 @@ static void TestDevices(const maudContext* context)
 static void TestHotplug(maudContext* context)
 {
     CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-hotplug "
-              "sink_properties=device.description=Hotplug > /dev/null"),
+              "sink_properties='device.description=Hotplug device.form_factor=headphone' "
+              "> /dev/null"),
           "load a sink");
     maudNotification record;
     maudDeviceId any = {0, 0};
     CHECK(WaitFor(context, maud_notifyDeviceAdded, any, &record), "it is added");
     maudDeviceId plugged = FindByKey(context, maud_directionOutput, "maud-pulse-hotplug");
     CHECK(SameDevice(record.deviceId, plugged), "by its name");
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success &&
+              info.form == maud_formHeadphones,
+          "its form factor read as headphones");
     CHECK(Run("pactl set-default-sink maud-pulse-hotplug"), "make it the default");
     CHECK(WaitFor(context, maud_notifyDefaultChanged, plugged, &record), "the default follows");
     CHECK(WaitForDefaults(context, plugged), "for both roles");

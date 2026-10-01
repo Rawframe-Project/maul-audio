@@ -70,6 +70,8 @@ typedef struct maudPulseApi
     int (*streamCancelWrite)(pa_stream* stream);
     pa_operation* (*streamCork)(pa_stream* stream, int cork, pa_stream_success_cb_t callback,
                                 void* user);
+    const char* (*proplistGets)(const pa_proplist* list, const char* key);
+    const char* (*getLibraryVersion)(void);
 } maudPulseApi;
 
 // Opens libpulse and fills the table. False, with the table zeroed,

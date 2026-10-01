@@ -60,6 +60,8 @@ static const ApiEntry s_entries[] = {
     ENTRY(streamGetLatency, "pa_stream_get_latency"),
     ENTRY(streamCancelWrite, "pa_stream_cancel_write"),
     ENTRY(streamCork, "pa_stream_cork"),
+    ENTRY(proplistGets, "pa_proplist_gets"),
+    ENTRY(getLibraryVersion, "pa_get_library_version"),
 };
 
 // The table holds the library handle and then only function pointers.

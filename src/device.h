@@ -33,8 +33,8 @@ void maudRemoveDevice(maudContext* context, maudDeviceSlot* slot);
 // live device not among them is removed, except one whose key is kept
 // (NULL for none); every spec not yet a device is added; a device whose
 // layout or rates changed takes the new ones, and native streams their
-// rate. Devices match by direction and key. maud_errorCapacity when the
-// table is full.
+// rate; one whose form changed reports its new route. Devices match by
+// direction and key. maud_errorCapacity when the table is full.
 maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, uint32_t count,
                            const char* kept);
 
@@ -47,6 +47,9 @@ maudDeviceId maudFindDeviceByKey(const maudContext* context, maudDirection direc
 // UTF-8 sequence: a device name as a backend reports it, cut to the
 // context's text limit.
 size_t maudCutUtf8(const char* text, size_t limit);
+
+// Sets a live device's form; a change posts maud_notifyRouteChanged.
+void maudSetDeviceForm(maudContext* context, maudDeviceSlot* slot, maudDeviceForm form);
 
 // Makes a live device the default of its direction for role.
 void maudSetDefaultDevice(maudContext* context, maudDeviceRole role, maudDeviceId device);

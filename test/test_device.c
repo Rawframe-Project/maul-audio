@@ -338,6 +338,55 @@ static void TestRefusals(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// A device's form is what the platform says its port leads to: added
+// with one, it reports it; a change, as headphones in its jack, is one
+// route record, and setting the same form again is none. Streams on it
+// keep running.
+static void TestRouteChanges(void)
+{
+    maudContext* context = Offline(16);
+    maudOfflineDeviceDef def = maudDefaultOfflineDeviceDef();
+    CHECK(def.form == maud_formUnknown, "unknown by default");
+    def.form = maud_formSpeakers;
+    def.key = "laptop";
+    def.keyLength = 6;
+    maudDeviceId device = {0, 0};
+    CHECK(maudAddOfflineDevice(context, &def, &device) == maud_success, "add");
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDeviceInfo(context, device, &info) == maud_success &&
+              info.form == maud_formSpeakers,
+          "it reports its form");
+    Blocks blocks = {0};
+    maudStreamId stream = OpenOutput(context, device, maud_roleGeneral, &blocks);
+    while (maudNextNotification(context, &(maudNotification){0}) == maud_success)
+    {
+    }
+    CHECK(maudSetOfflineDeviceForm(context, device, maud_formHeadphones) == maud_success,
+          "plug headphones");
+    maudNotification record = Expect(context, maud_notifyRouteChanged, "a route record");
+    CHECK(Same(record.deviceId, device) && record.direction == maud_directionOutput &&
+              record.form == maud_formHeadphones,
+          "naming the device and its new form");
+    CHECK(maudGetDeviceInfo(context, device, &info) == maud_success &&
+              info.form == maud_formHeadphones,
+          "which its info reports");
+    CHECK(maudSetOfflineDeviceForm(context, device, maud_formHeadphones) == maud_success,
+          "the same again");
+    ExpectDrained(context, "is no change");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+              Same(status.device, device) && status.suspension == maud_suspendNone,
+          "the stream stays on it");
+    CHECK(maudSetOfflineDeviceForm(context, device, maud_formDigital + 1) == maud_errorInvalid,
+          "an unknown form");
+    def.form = maud_formDigital + 1;
+    CHECK(maudAddOfflineDevice(context, &def, &device) == maud_errorInvalid,
+          "an unknown form in a def");
+    CHECK(maudSetOfflineDeviceForm(context, (maudDeviceId){3, 7}, maud_formLine) == maud_errorStale,
+          "a stale device");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 int main(void)
 {
     TestStartingDevices();
@@ -347,5 +396,6 @@ int main(void)
     TestFollowersWaitForADevice();
     TestOverflowRecordCountsDropped();
     TestRefusals();
+    TestRouteChanges();
     return s_failures == 0 ? 0 : 1;
 }

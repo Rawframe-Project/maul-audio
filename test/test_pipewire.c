@@ -111,15 +111,16 @@ static bool StartHelper(Helper* helper)
     return ready;
 }
 
-// Plugs in a null sink named maud-test-hotplug at 44.1 kHz; it lives as
-// long as the helper's node proxy.
+// Plugs in a null sink named maud-test-hotplug at 44.1 kHz, which says
+// it is headphones; it lives as long as the helper's node proxy.
 static void PlugSink(Helper* helper)
 {
     pw_thread_loop_lock(helper->loop);
-    struct pw_properties* props = pw_properties_new(
-        "factory.name", "support.null-audio-sink", "node.name", "maud-test-hotplug",
-        "node.description", "Maud hotplug sink", "media.class", "Audio/Sink", "audio.rate", "44100",
-        "audio.channels", "2", "audio.position", "[FL FR]", nullptr);
+    struct pw_properties* props =
+        pw_properties_new("factory.name", "support.null-audio-sink", "node.name",
+                          "maud-test-hotplug", "node.description", "Maud hotplug sink",
+                          "media.class", "Audio/Sink", "audio.rate", "44100", "audio.channels", "2",
+                          "audio.position", "[FL FR]", "device.form-factor", "headphone", nullptr);
     helper->node = pw_core_create_object(helper->core, "adapter", PW_TYPE_INTERFACE_Node,
                                          PW_VERSION_NODE, &props->dict, 0);
     pw_properties_free(props);
@@ -307,6 +308,7 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     CHECK(info.nativeSampleRate == 48000 && info.minSampleRate == 48000 &&
               info.maxSampleRate == 48000,
           "a 44.1 kHz node runs at the graph's rate");
+    CHECK(info.form == maud_formHeadphones, "its form factor read as headphones");
     // The effective default, as the session manager writes it. A direct
     // write stays until the session manager's own choice changes.
     SetDefaultKey(helper, "default.audio.sink", "maud-test-hotplug");

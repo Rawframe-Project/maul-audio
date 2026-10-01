@@ -67,6 +67,7 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/stream.c
     src/stream_open.c
     src/lifecycle.c
+    src/form.c
     src/duplex.c
     src/voice.c
     src/voice_dsp.c
@@ -119,7 +120,8 @@ endif()
 
 # CoreAudio, on macOS, through the system's frameworks.
 if(MAUL_AUDIO_COREAUDIO)
-    target_sources(maul-audio PRIVATE src/backend_coreaudio.c src/coreaudio_stream.c)
+    target_sources(maul-audio PRIVATE src/backend_coreaudio.c src/coreaudio_form.c
+        src/coreaudio_stream.c)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_COREAUDIO=1)
     target_link_libraries(maul-audio PRIVATE "-framework CoreAudio" "-framework AudioToolbox"
         "-framework CoreFoundation")
