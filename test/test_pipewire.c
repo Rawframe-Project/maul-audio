@@ -510,6 +510,10 @@ static void TestOutputStream(maudContext* context)
           "a rate the device does not run at");
     def.sampleRate = 48000;
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "the device's own rate");
+    maudStreamClock clock = {.hostNanoseconds = 1};
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+              clock.hostNanoseconds == 0 && clock.position == 0,
+          "a new stream has no stamp, even in a slot used before");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
