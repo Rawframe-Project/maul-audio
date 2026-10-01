@@ -108,4 +108,6 @@ format.
   rates and the ranges they run at, both roles' defaults, and changes
   heard on a private dispatch queue; output streams through an AUHAL
   unit at the device's rate or converted, the callback on the HAL's IO
-  thread; a stream on the default follows it to its new device.
+  thread; a stream on the default follows it to its new device;
+  devices that come and go are added and removed, and a stream opened
+  on one that goes is suspended as lost.
