@@ -150,6 +150,17 @@ static bool Near(double rate, double expected)
     return within;
 }
 
+// Destroys a stream, naming the result when it fails.
+static bool Destroy(maudContext* context, maudStreamId stream)
+{
+    maudResult result = maudDestroyStream(context, stream);
+    if (result != maud_success)
+    {
+        fprintf(stderr, "maudDestroyStream: %s\n", maudResultName(result));
+    }
+    return result == maud_success;
+}
+
 static maudStreamId OpenStream(maudContext* context, maudStreamDef* def, Blocks* blocks)
 {
     def->periodFrames = 256;
@@ -264,7 +275,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(after == before, "the device stops with the stream");
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
-    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
+    CHECK(Destroy(context, stream), "destroy while running");
     double other = info.nativeSampleRate == 44100 ? 48000.0 : 44100.0;
     def = maudDefaultStreamDef();
     def.ratePolicy = maud_rateRequired;
@@ -278,7 +289,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start converted");
     CHECK(WaitForBlocks(context, &converted, 10), "it runs");
     CHECK(Near(MeasureRate(context, stream), other), "at its own rate");
-    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(Destroy(context, stream), "destroy");
     def = maudDefaultStreamDef();
     def.callback = CountBlocks;
     def.mode = maud_modePull;
@@ -343,7 +354,7 @@ static void TestDefaultMoves(maudContext* context)
     CHECK(WaitForMove(context, stream, blackhole, true), "and back");
     CHECK(WaitForBlocks(context, &blocks, atomic_load(&blocks.count) + 20), "it plays again");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods throughout");
-    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(Destroy(context, stream), "destroy");
 }
 
 // Makes a private aggregate device over BlackHole, seen by this process
@@ -447,7 +458,7 @@ static void TestHotplug(maudContext* context)
     Sleep(200);
     CHECK(Suspension(context, stream) == maud_suspendDeviceLost, "the stream stays lost");
     CHECK(atomic_load(&blocks.count) == lost, "and silent");
-    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(Destroy(context, stream), "destroy");
     CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed again");
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
 }
@@ -488,8 +499,8 @@ static void TestCapture(maudContext* context)
     CHECK(loudest >= 200, "it hears what plays into BlackHole");
     CHECK(StreamClockIsSound(context, recorder, false, true, Sleep),
           "its clock maps frames to host time");
-    CHECK(maudDestroyStream(context, recorder) == maud_success, "destroy the capture");
-    CHECK(maudDestroyStream(context, player) == maud_success, "destroy the player");
+    CHECK(Destroy(context, recorder), "destroy the capture");
+    CHECK(Destroy(context, player), "destroy the player");
     def.ratePolicy = maud_ratePlatformConverted;
     def.sampleRate = info.nativeSampleRate == 44100 ? 48000 : 44100;
     def.callback = CountBlocks;
