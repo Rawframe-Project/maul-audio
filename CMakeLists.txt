@@ -127,7 +127,7 @@ if(MAUL_AUDIO_PULSE)
     target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
-# Each running PulseAudio or ALSA stream has a library thread (A17, A18).
+# Each running PulseAudio or ALSA stream has a library thread.
 if(MAUL_AUDIO_PULSE OR MAUL_AUDIO_ALSA)
     target_sources(maul-audio PRIVATE src/worker.c)
     set_source_files_properties(src/worker.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
