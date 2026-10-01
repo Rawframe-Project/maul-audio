@@ -31,6 +31,8 @@ option(MAUL_AUDIO_PIPEWIRE "Build the PipeWire backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 option(MAUL_AUDIO_PULSE "Build the PulseAudio backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
+option(MAUL_AUDIO_ALSA "Build the ALSA backend, loaded at run time"
+    ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -84,6 +86,19 @@ if(MAUL_AUDIO_PIPEWIRE)
     target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
+# Likewise ALSA's headers only.
+if(MAUL_AUDIO_ALSA)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MAUL_AUDIO_ASOUND REQUIRED alsa)
+    target_sources(maul-audio PRIVATE src/alsa_api.c src/alsa_chmap.c src/alsa_stream.c
+        src/backend_alsa.c)
+    target_include_directories(maul-audio SYSTEM PRIVATE ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
+    target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_ALSA=1)
+    set_source_files_properties(src/alsa_api.c src/alsa_chmap.c src/alsa_stream.c
+        src/backend_alsa.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+    target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
 # Likewise libpulse's headers only.
 if(MAUL_AUDIO_PULSE)
     find_package(PkgConfig REQUIRED)
@@ -93,9 +108,15 @@ if(MAUL_AUDIO_PULSE)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_PULSE=1)
     set_source_files_properties(src/backend_pulse.c src/pulse_api.c src/pulse_stream.c
         PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
-    # Each running PulseAudio stream has a library thread (A17).
+    target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+# Each running PulseAudio or ALSA stream has a library thread (A17, A18).
+if(MAUL_AUDIO_PULSE OR MAUL_AUDIO_ALSA)
+    target_sources(maul-audio PRIVATE src/worker.c)
+    set_source_files_properties(src/worker.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
     find_package(Threads REQUIRED)
-    target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
+    target_link_libraries(maul-audio PRIVATE Threads::Threads)
 endif()
 
 if(MAUL_AUDIO_BUILD_TESTS)
@@ -119,6 +140,22 @@ if(MAUL_AUDIO_BUILD_TESTS)
         # Both use the one test daemon, and the second one restarts it.
         set_tests_properties(pipewire pipewire_restart PROPERTIES SKIP_RETURN_CODE 77
             RESOURCE_LOCK pipewire-daemon)
+    endif()
+    if(MAUL_AUDIO_ALSA)
+        maul_add_test(alsa THREADS)
+        target_compile_definitions(test_alsa PRIVATE _GNU_SOURCE)
+        # Its streams play through the test daemon's pulse service.
+        set_tests_properties(alsa PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+        if(MAUL_AUDIO_TSAN)
+            set_tests_properties(alsa PROPERTIES ENVIRONMENT
+                "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-alsa.supp")
+        endif()
+        if(NOT MAUL_AUDIO_BUILD_SHARED)
+            maul_add_test(alsa_chmap WHITEBOX)
+            target_include_directories(test_alsa_chmap SYSTEM PRIVATE
+                ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
+            target_compile_definitions(test_alsa_chmap PRIVATE _GNU_SOURCE)
+        endif()
     endif()
     if(MAUL_AUDIO_PULSE)
         maul_add_test(pulse)

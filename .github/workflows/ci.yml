@@ -21,7 +21,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q clang-20 clang-tidy-20 ninja-build libpipewire-0.3-dev libpulse-dev
+          sudo apt-get install -y -q clang-20 clang-tidy-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
           pip install clang-format==22.1.5 >/dev/null
       - name: clang-format
         run: |
@@ -63,7 +63,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q gcc-14 g++-14 clang-20 ninja-build libpipewire-0.3-dev libpulse-dev
+          sudo apt-get install -y -q gcc-14 g++-14 clang-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
       - name: Configure
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON \

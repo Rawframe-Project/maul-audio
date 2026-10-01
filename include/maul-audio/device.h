@@ -55,6 +55,10 @@ extern "C"
         // Whether the device is the default for each role.
         bool defaultGeneral;
         bool defaultCommunications;
+        // The layout and rates are maud_layoutNone and 0 where the platform
+        // cannot tell them without opening the device, as on ALSA, whose
+        // devices are not opened to be listed; a stream that opens one
+        // learns its rate.
         maudChannelLayout nativeLayout;
         uint32_t nativeSampleRate;
         // The rates the device can run at without conversion.

@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// A stream's library thread on POSIX systems: started with a name, at
+// real-time priority where the system grants it, and joined by its
+// owner. Backends whose platform runs no audio thread use it.
+
+#ifndef MAUL_AUDIO_SRC_WORKER_H
+#define MAUL_AUDIO_SRC_WORKER_H
+
+#include <pthread.h>
+#include <stdbool.h>
+
+typedef struct maudWorker
+{
+    pthread_t thread;
+    void (*run)(void* user);
+    void* user;
+    bool running;
+} maudWorker;
+
+// Starts run(user) on a new thread named name (at most 15 bytes); the
+// name is set before this returns. False when no thread could start.
+bool maudStartWorker(maudWorker* worker, void (*run)(void* user), void* user, const char* name);
+
+// Waits for the worker's run to return. Nothing when it is not running.
+void maudJoinWorker(maudWorker* worker);
+
+#endif // MAUL_AUDIO_SRC_WORKER_H

@@ -9,8 +9,8 @@
 
 #include "context_core.h"
 #include "pulse_api.h"
+#include "worker.h"
 
-#include <pthread.h>
 #include <stdatomic.h>
 
 // How long creation waits for the server, and a stream for its
@@ -60,7 +60,7 @@ typedef struct maudPulseStream
     pa_mainloop* loop;
     pa_context* context;
     pa_stream* stream;
-    pthread_t thread;
+    maudWorker worker;
     // Asks the thread to return; set by the control thread.
     atomic_bool quit;
     bool threadRunning;

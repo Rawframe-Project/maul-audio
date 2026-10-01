@@ -54,13 +54,18 @@ static const maudBackend* BackendOfKind(maudBackendKind kind)
     case maud_backendPulse:
         return maudGetPulseBackend();
 #endif
+#if defined(MAUD_HAVE_ALSA)
+    case maud_backendAlsa:
+        return maudGetAlsaBackend();
+#endif
     default:
         return nullptr;
     }
 }
 
 // What maud_backendNative tries, in order.
-static const maudBackendKind s_nativeOrder[] = {maud_backendPipewire, maud_backendPulse};
+static const maudBackendKind s_nativeOrder[] = {maud_backendPipewire, maud_backendPulse,
+                                                maud_backendAlsa};
 
 static void InitStreams(maudStreamTable* streams)
 {

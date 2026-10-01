@@ -1,0 +1,9 @@
+# The ALSA test reaches its server through alsa-lib's pulse plugin,
+# which runs libpulse's threaded main loop on a thread of its own
+# (pa_thread_new). libpulse and libpulsecommon are not instrumented,
+# so ThreadSanitizer misreads their locking (a pthread_cond_wait it
+# sees as an unlock of an unlocked mutex) and their free lists. Only
+# calls made from inside those libraries are suppressed; the library's
+# own code is not.
+called_from_lib:libpulse.so
+called_from_lib:libpulsecommon

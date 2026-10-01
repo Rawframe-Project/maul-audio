@@ -72,3 +72,11 @@ format.
   callbacks in whole periods; native rates at the sink's rate; streams
   opened on a device stay on it; streams resume after the server
   restarts.
+- ALSA, for systems with neither PipeWire nor PulseAudio: the default
+  PCM and each hardware endpoint as devices, found without opening
+  any; streams that take the hardware's rate nearest 48 kHz, reorder
+  channels to the PCM's map, and run on one library thread, named
+  maud-alsa, while they run. alsa-lib's messages are silenced for the
+  library's own calls. Native tries ALSA after PulseAudio.
+- Devices may report a rate of 0 and maud_layoutNone where the
+  platform cannot tell without opening them.

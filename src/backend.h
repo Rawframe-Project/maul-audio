@@ -54,4 +54,7 @@ const maudBackend* maudGetPipewireBackend(void);
 // The PulseAudio backend, in builds with MAUL_AUDIO_PULSE.
 const maudBackend* maudGetPulseBackend(void);
 
+// The ALSA backend, in builds with MAUL_AUDIO_ALSA.
+const maudBackend* maudGetAlsaBackend(void);
+
 #endif // MAUL_AUDIO_SRC_BACKEND_H

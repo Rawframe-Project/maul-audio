@@ -14,7 +14,6 @@
 #include "pulse_core.h"
 #include "thread.h"
 
-#include <sched.h>
 #include <string.h>
 
 // Loop iterations that send a cork after the thread has stopped.
@@ -270,13 +269,10 @@ static void Cork(maudPulseStream* entry, bool cork)
     }
 }
 
-// The stream's thread: real-time priority where the system grants it,
-// then the loop until asked to return.
-static void* RunStream(void* user)
+// The stream's thread: the loop until asked to return.
+static void RunStream(void* user)
 {
     maudPulseStream* entry = user;
-    struct sched_param param = {.sched_priority = sched_get_priority_min(SCHED_FIFO)};
-    (void)pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
     while (!atomic_load(&entry->quit))
     {
         if (entry->api->mainloopIterate(entry->loop, 1, nullptr) < 0)
@@ -284,21 +280,18 @@ static void* RunStream(void* user)
             break;
         }
     }
-    return nullptr;
 }
 
 static void StartThread(maudPulseStream* entry)
 {
     Cork(entry, false);
     atomic_store(&entry->quit, false);
+    // Set before the thread starts, which reads it.
     entry->threadRunning = true;
-    if (pthread_create(&entry->thread, nullptr, RunStream, entry) != 0)
+    if (!maudStartWorker(&entry->worker, RunStream, entry, "maud-pulse"))
     {
         entry->threadRunning = false;
-        return;
     }
-    // Named before the start returns, for debuggers and tests.
-    (void)pthread_setname_np(entry->thread, "maud-pulse");
 }
 
 // Joins the thread, then corks the stream and sends the cork.
@@ -310,7 +303,7 @@ static void StopThread(maudPulseStream* entry)
     }
     atomic_store(&entry->quit, true);
     entry->api->mainloopWakeup(entry->loop);
-    pthread_join(entry->thread, nullptr);
+    maudJoinWorker(&entry->worker);
     entry->threadRunning = false;
     Cork(entry, true);
     for (int i = 0; i < FLUSH_ITERATIONS; ++i)
