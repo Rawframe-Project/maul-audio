@@ -391,6 +391,7 @@ static const maudBackend s_coreaudio = {
     .closeContext = CloseContext,
     .pump = Pump,
     .openStream = OpenStream,
+    .exclusive = true,
     .attachStream = maudCoreAudioAttachStream,
     .detachStream = maudCoreAudioDetachStream,
     .setStreamActive = maudCoreAudioSetStreamActive,

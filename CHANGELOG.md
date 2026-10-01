@@ -210,3 +210,7 @@ format.
   rates). ALSA opens its hardware PCMs exclusively.
   `maudStreamStatus.exclusive` reports whether a stream keeps others
   off its device, which an ALSA hardware PCM does even opened shared.
+- CoreAudio exclusive streams: an exclusive stream takes its device in
+  hog mode while it lives and gives it back when it goes; a device held
+  by another process, or by another stream, is refused with
+  `maud_errorPlatform`.

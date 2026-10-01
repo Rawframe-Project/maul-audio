@@ -17,6 +17,7 @@
 #include "clock.h"
 #include "context.h"
 #include "coreaudio_core.h"
+#include "coreaudio_hog.h"
 #include "period.h"
 #include "thread.h"
 #include "voice.h"
@@ -307,6 +308,10 @@ static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
 
 static void Disconnect(maudContext* context, maudCoreAudioStream* entry)
 {
+    if (entry->hogged != kAudioObjectUnknown)
+    {
+        maudCoreAudioGiveDevice(entry->hogged);
+    }
     if (entry->unit != nullptr)
     {
         if (entry->playing)
@@ -362,6 +367,16 @@ static maudResult Connect(maudContext* context, maudCoreAudioStream* entry)
         .componentSubType = kAudioUnitSubType_HALOutput,
         .componentManufacturer = kAudioUnitManufacturer_Apple,
     };
+    // An exclusive stream holds its device before it does any IO on it.
+    if (entry->core->def.share == maud_shareExclusive && object != kAudioObjectUnknown)
+    {
+        maudResult taken = maudCoreAudioTakeDevice(object);
+        if (taken != maud_success)
+        {
+            return taken;
+        }
+        entry->hogged = object;
+    }
     AudioComponent component = AudioComponentFindNext(nullptr, &description);
     if (object == kAudioObjectUnknown || component == nullptr ||
         AudioComponentInstanceNew(component, &entry->unit) != noErr)

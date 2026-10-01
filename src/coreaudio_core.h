@@ -66,6 +66,9 @@ typedef struct maudCoreAudioStream
     // voice-processing unit and point at each other; the output half has
     // no unit of its own.
     struct maudCoreAudioStream* voicePartner;
+    // The device an exclusive stream holds in hog mode, or
+    // kAudioObjectUnknown.
+    AudioObjectID hogged;
 } maudCoreAudioStream;
 
 typedef struct maudCoreAudio

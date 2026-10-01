@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define BLACKHOLE_UID "BlackHole2ch_UID"
 // The macOS runners' own virtual device, at 44.1 kHz where BlackHole
@@ -61,9 +62,8 @@ static double Now(void)
     return (double)now.tv_sec + (double)now.tv_nsec / 1e9;
 }
 
-// Makes the device whose UID is uid the system's default output; false
-// when it is not there.
-static bool MakeDefaultOutput(const char* uid)
+// The device whose UID is uid, or kAudioObjectUnknown.
+static AudioObjectID DeviceOfUid(const char* uid)
 {
     CFStringRef text = CFStringCreateWithCString(kCFAllocatorDefault, uid, kCFStringEncodingUTF8);
     AudioObjectPropertyAddress address = {kAudioHardwarePropertyTranslateUIDToDevice,
@@ -73,11 +73,20 @@ static bool MakeDefaultOutput(const char* uid)
     OSStatus found = AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, sizeof(text),
                                                 (const void*)&text, &size, &device);
     CFRelease(text);
-    if (found != noErr || device == kAudioObjectUnknown)
+    return found == noErr ? device : kAudioObjectUnknown;
+}
+
+// Makes the device whose UID is uid the system's default output; false
+// when it is not there.
+static bool MakeDefaultOutput(const char* uid)
+{
+    AudioObjectID device = DeviceOfUid(uid);
+    if (device == kAudioObjectUnknown)
     {
         return false;
     }
-    address.mSelector = kAudioHardwarePropertyDefaultOutputDevice;
+    AudioObjectPropertyAddress address = {kAudioHardwarePropertyDefaultOutputDevice,
+                                          kAudioObjectPropertyScopeGlobal, 0};
     return AudioObjectSetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr,
                                       sizeof(device), &device) == noErr;
 }
@@ -623,6 +632,56 @@ static void TestXruns(maudContext* context)
     }
 }
 
+// The process holding a device in hog mode, or -1.
+static pid_t HogOwner(AudioObjectID device)
+{
+    AudioObjectPropertyAddress address = {kAudioDevicePropertyHogMode,
+                                          kAudioObjectPropertyScopeGlobal, 0};
+    pid_t owner = -2;
+    UInt32 size = sizeof(owner);
+    OSStatus status = AudioObjectGetPropertyData(device, &address, 0, nullptr, &size, &owner);
+    return status == noErr ? owner : -2;
+}
+
+// An exclusive stream holds BlackHole in hog mode while it lives and
+// plays through it; a second exclusive stream on it, even of this
+// process, is refused as busy; a converted rate is refused outright.
+static void TestExclusive(maudContext* context)
+{
+    AudioObjectID blackhole = DeviceOfUid(BLACKHOLE_UID);
+    CHECK(HogOwner(blackhole) == -1, "BlackHole starts free");
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.device = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    def.share = maud_shareExclusive;
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.exclusive,
+          "an exclusive stream says so");
+    CHECK(HogOwner(blackhole) == getpid(), "and holds the device in hog mode");
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 20),
+          "it plays");
+    Blocks other = {0};
+    maudStreamDef second = maudDefaultStreamDef();
+    second.direction = maud_directionInput;
+    second.device = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
+    second.share = maud_shareExclusive;
+    second.callback = CountBlocks;
+    second.user = &other;
+    maudStreamId refused = {0, 0};
+    CHECK(maudCreateStream(context, &second, &refused) == maud_errorPlatform,
+          "a second exclusive stream on the held device is busy");
+    CHECK(HogOwner(blackhole) == getpid(), "which stays held");
+    CHECK(Destroy(context, stream), "destroy");
+    CHECK(HogOwner(blackhole) == -1, "the device is given back");
+    second.ratePolicy = maud_ratePlatformConverted;
+    second.direction = maud_directionOutput;
+    second.device = def.device;
+    second.sampleRate = 44100;
+    CHECK(maudCreateStream(context, &second, &refused) == maud_errorUnsupported,
+          "an exclusive stream does not convert");
+}
+
 // A duplex stream's callback on the IO thread: plays a 440 Hz tone at
 // 0.25 and sums the square of what it hears from frame `from` on, for
 // `span` frames.
@@ -806,6 +865,7 @@ int main(void)
     TestDuplex(context);
     TestVoice(context);
     TestXruns(context);
+    TestExclusive(context);
     TestDefaultMoves(context);
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
