@@ -220,6 +220,12 @@ static maudResult ConnectStream(maudContext* context, maudStreamSlot* slot, bool
         maudPipewireDetachStream(context, slot);
         return maud_errorPlatform;
     }
+    // A stream that runs already, as after a new rate or a new core,
+    // starts active; a new one waits for its start.
+    if (atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning)
+    {
+        pipewire->api.streamSetActive(entry->stream, true);
+    }
     return maud_success;
 }
 
@@ -259,11 +265,9 @@ void maudPipewireRetargetStream(maudContext* context, maudStreamSlot* slot)
         return;
     }
     maudPipewireDetachStream(context, slot);
-    if (ConnectStream(context, slot, false) == maud_success &&
-        atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning)
-    {
-        maudPipewireSetStreamActive(context, slot, true);
-    }
+    // A failure leaves the entry unused; the next drain tries again.
+    maudResult result = ConnectStream(context, slot, false);
+    (void)result;
 }
 
 void maudPipewireDropStreams(maudContext* context)
@@ -282,11 +286,14 @@ void maudPipewireReconnectStreams(maudContext* context)
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
-        if (slot->live && slot->core.binding.requested.index1 == 0 &&
-            !EntryOf(context, slot)->used && ConnectStream(context, slot, false) == maud_success &&
-            atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning)
+        const maudStreamBinding* binding = &slot->core.binding;
+        bool wanted = binding->requested.index1 == 0 || binding->suspension == maud_suspendNone;
+        if (slot->live && wanted && !EntryOf(context, slot)->used)
         {
-            maudPipewireSetStreamActive(context, slot, true);
+            // A failure leaves the entry unused, so the next drain tries
+            // again.
+            maudResult result = ConnectStream(context, slot, false);
+            (void)result;
         }
     }
 }

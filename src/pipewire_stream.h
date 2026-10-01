@@ -24,8 +24,10 @@ void maudPipewireSetStreamActive(maudContext* context, maudStreamSlot* slot, boo
 // streams themselves stay.
 void maudPipewireDropStreams(maudContext* context);
 
-// Gives every stream that follows a default and has no pw_stream a
-// new one: after a reconnection, or when an earlier attempt failed.
+// Gives a new pw_stream to every stream without one that follows a
+// default or still has its device: after a reconnection, or when an
+// earlier attempt failed. Pinned streams whose device is gone stay
+// without one.
 void maudPipewireReconnectStreams(maudContext* context);
 
 // Offers the stream's current format again, after a move changed its
