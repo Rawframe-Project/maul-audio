@@ -190,6 +190,12 @@ extern "C"
         bool voiceReported;
         // The parts it said are active, once reported.
         maudVoiceProcessing voiceActive;
+        // Times the platform revealed that an output played without the
+        // stream's frames (underruns) or that an input lost frames before
+        // the stream got them (overruns). A duplex stream's are its
+        // output's and its input's; its slips are counted apart.
+        uint64_t underruns;
+        uint64_t overruns;
     } maudStreamStatus;
 
     /// Returns the default stream def: an output stream in callback mode,

@@ -130,6 +130,8 @@ typedef struct Blocks
     _Atomic(uint32_t) withInput;
     _Atomic(uint32_t) onControl;
     uint32_t periodFrames;
+    // The block at which the callback stalls for 300 ms, or 0.
+    uint32_t stallAt;
 } Blocks;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
@@ -146,6 +148,10 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (block->input != nullptr)
     {
         atomic_fetch_add(&blocks->withInput, 1);
+    }
+    if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
+    {
+        Sleep(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -341,6 +347,21 @@ static void TestHotplug(maudContext* context)
     CHECK(FindByKey(context, maud_directionOutput, "maud-pulse-hotplug").index1 == 0, "gone");
 }
 
+// A callback that stalls past the server's buffer leaves the sink dry:
+// an underrun, counted.
+static void TestUnderrun(maudContext* context)
+{
+    Blocks blocks = {.stallAt = 30};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.underruns >= 1,
+          "the stall counted as an underrun");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -533,6 +554,7 @@ int main(void)
     TestDevices(context);
     TestHotplug(context);
     TestOutputStream(context);
+    TestUnderrun(context);
     TestInputStream(context);
     TestDuplexConverted(context);
     TestPinnedStream(context);

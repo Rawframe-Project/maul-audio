@@ -77,6 +77,8 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     core->sampleBytes = bytes;
     core->duplexGroup = duplexGroup;
     maudResetVoice(core);
+    atomic_store_explicit(&core->underruns, 0, memory_order_relaxed);
+    atomic_store_explicit(&core->overruns, 0, memory_order_relaxed);
     if (context->backend->hasNoVoice && def->direction == maud_directionInput)
     {
         maudReportVoice(core, maud_voiceNone);

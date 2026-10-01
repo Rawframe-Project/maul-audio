@@ -34,7 +34,8 @@ typedef struct maudWasapiStream
     IAudioRenderClient* render;
     IAudioCaptureClient* capture;
     // The device's playback position, for the clock, and its units per
-    // second; the frames written since the client started.
+    // second; the frames written (or, for an input, drained) since the
+    // client started.
     IAudioClock* clock;
     UINT64 clockFrequency;
     uint64_t written;

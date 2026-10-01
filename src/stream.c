@@ -203,6 +203,8 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
             duplex != nullptr ? atomic_load_explicit(&duplex->slipped, memory_order_relaxed) : 0,
         .voiceReported = atomic_load_explicit(&captured->voiceReported, memory_order_acquire),
         .voiceActive = atomic_load_explicit(&captured->voiceActive, memory_order_relaxed),
+        .underruns = atomic_load_explicit(&slot->core.underruns, memory_order_relaxed),
+        .overruns = atomic_load_explicit(&captured->overruns, memory_order_relaxed),
     };
     return maud_success;
 }

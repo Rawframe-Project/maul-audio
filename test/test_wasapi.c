@@ -100,6 +100,8 @@ typedef struct Blocks
     // Whether the first callback's thread was named maud-wasapi.
     _Atomic(int) named;
     uint32_t periodFrames;
+    // The block at which the callback stalls for 300 ms, or 0.
+    uint32_t stallAt;
 } Blocks;
 
 // Whether the calling thread's description is maud-wasapi, through
@@ -139,6 +141,10 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (atomic_load(&blocks->count) == 0)
     {
         atomic_store(&blocks->named, NamedMaudWasapi() ? 1 : -1);
+    }
+    if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
+    {
+        Pause(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -317,6 +323,32 @@ static void TestInputStream(maudContext* context)
 }
 
 // Wine's ntdll exports wine_get_version; Windows' does not.
+static bool UnderWine(void);
+
+// A callback that stalls leaves the engine's buffer empty: an underrun,
+// counted when the stream next finds it so. Wine holds its buffer
+// instead of letting it drain, so there the count is not checked.
+static void TestUnderrun(maudContext* context)
+{
+    Blocks blocks = {.stallAt = 30};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    if (UnderWine())
+    {
+        printf("underruns after a stall under Wine: %llu\n", (unsigned long long)status.underruns);
+    }
+    else
+    {
+        CHECK(status.underruns >= 1, "the stall counted as an underrun");
+    }
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
+// Wine's ntdll exports wine_get_version; Windows' does not.
 static bool UnderWine(void)
 {
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
@@ -461,6 +493,7 @@ int main(void)
     TestOutputStream(context);
     TestInputStream(context);
     TestVoiceInput(context);
+    TestUnderrun(context);
     TestMove(context);
     TestNotifier(context);
     TestDrainRescans(context);

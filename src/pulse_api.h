@@ -57,6 +57,10 @@ typedef struct maudPulseApi
     pa_stream_state_t (*streamGetState)(const pa_stream* stream);
     void (*streamSetWriteCallback)(pa_stream* stream, pa_stream_request_cb_t callback, void* user);
     void (*streamSetReadCallback)(pa_stream* stream, pa_stream_request_cb_t callback, void* user);
+    void (*streamSetUnderflowCallback)(pa_stream* stream, pa_stream_notify_cb_t callback,
+                                       void* user);
+    void (*streamSetOverflowCallback)(pa_stream* stream, pa_stream_notify_cb_t callback,
+                                      void* user);
     int (*streamBeginWrite)(pa_stream* stream, void** data, size_t* bytes);
     int (*streamWrite)(pa_stream* stream, const void* data, size_t bytes, pa_free_cb_t free,
                        int64_t offset, pa_seek_mode_t seek);

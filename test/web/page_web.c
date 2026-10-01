@@ -119,6 +119,8 @@ EM_JS(int, Shorts, (void), {
     return globalThis.maudWeb.nodes.filter(function (record) { return record !== null && record.target !== undefined; })[0].shortSeen;
 });
 
+EM_JS(int, Isolated, (void), { return globalThis.crossOriginIsolated === true ? 1 : 0; });
+
 EM_JS(int, Target, (void), {
     return globalThis.maudWeb.nodes.filter(function (record) { return record !== null && record.target !== undefined; })[0].target;
 });
@@ -353,6 +355,26 @@ static void Restarted(double now)
     s_step = stepStalled;
 }
 
+// The stall played quanta short: underruns, as many as the worklet
+// counted. On an isolated page it also overflowed the capture ring, 85 ms
+// long; posted chunks wait instead, and lose nothing.
+static void CheckXruns(void)
+{
+    maudStreamStatus played = {0};
+    maudStreamStatus heard = {0};
+    CHECK(maudGetStreamStatus(s_context, s_stream, &played) == maud_success &&
+              played.underruns == (uint64_t)Shorts() && played.underruns >= 1,
+          "every short quantum is an underrun");
+    CHECK(maudGetStreamStatus(s_context, s_capture, &heard) == maud_success, "capture status");
+    if (s_denied)
+    {
+        CHECK(heard.overruns == 0, "a refused capture loses nothing");
+        return;
+    }
+    CHECK(Isolated() ? heard.overruns >= 1 : heard.overruns == 0,
+          "the stall overflows the capture ring, and only the ring");
+}
+
 static void Step_(void* user)
 {
     (void)user;
@@ -416,6 +438,7 @@ static void Step_(void* user)
         if (now - s_since > 300.0)
         {
             CHECK(Target() > s_targetBeforeStall, "the target grows after a stall");
+            CheckXruns();
             Finish();
         }
         break;

@@ -168,6 +168,7 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
     function fill(played, short) {
         if (short > record.shortSeen) {
             record.target = Math.min(record.target + (short - record.shortSeen) * quantum, capacity);
+            _maudWebXrun(context, slot, short - record.shortSeen);
             record.shortSeen = short;
         }
         const buffered = record.ring ? (Atomics.load(record.index, 0) - Atomics.load(record.index, 1)) | 0

@@ -17,6 +17,7 @@
 #include "wasapi_core.h"
 #include "wasapi_format.h"
 #include "wasapi_voice.h"
+#include "xrun.h"
 
 #include <avrt.h>
 #include <mmreg.h>
@@ -114,6 +115,11 @@ static HRESULT Fill(maudWasapiStream* entry)
     {
         return result;
     }
+    // Empty once playing: the engine played what the stream did not give.
+    if (padding == 0 && entry->written > 0)
+    {
+        maudCountXrun(entry->core);
+    }
     BYTE* data = nullptr;
     result = IAudioRenderClient_GetBuffer(entry->render, frames, &data);
     if (FAILED(result))
@@ -143,6 +149,13 @@ static HRESULT Drain(maudWasapiStream* entry)
         {
             return result;
         }
+        // A discontinuity past the first packet lost data; the first
+        // follows the start, a state transition.
+        if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0 && entry->written > 0)
+        {
+            maudCountXrun(entry->core);
+        }
+        entry->written += frames;
         for (UINT32 done = 0; done < frames;)
         {
             UINT32 chunk =

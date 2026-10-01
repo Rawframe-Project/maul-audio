@@ -13,6 +13,7 @@
 #include "period.h"
 #include "pipewire_core.h"
 #include "thread.h"
+#include "xrun.h"
 
 #include <spa/param/audio/format-utils.h>
 #include <spa/pod/builder.h>
@@ -80,19 +81,37 @@ static void OnStateChanged(void* data, enum pw_stream_state old, enum pw_stream_
 // delay to the device, filters included, plus the frames queued ahead
 // of the buffer and held in the resampler; for capture, the delay plus
 // the buffer's own length, back to its first frame. Real-time safe.
-static int64_t LatencyOf(const maudPipewireStream* entry, uint32_t frames, bool output)
+static int64_t LatencyOf(const maudPipewireStream* entry, const struct pw_time* time,
+                         uint32_t frames, bool output)
 {
     const maudStreamCore* core = entry->core;
-    struct pw_time time = {0};
-    if (entry->owner->api.streamGetTime(entry->stream, &time, sizeof(time)) < 0 ||
-        time.rate.denom == 0)
-    {
-        return 0;
-    }
-    int64_t delay = time.delay * 1000000000 * (int64_t)time.rate.num / (int64_t)time.rate.denom;
+    int64_t delay = time->delay * 1000000000 * (int64_t)time->rate.num / (int64_t)time->rate.denom;
     uint64_t stride = (uint64_t)core->period.channelCount * sizeof(float);
-    uint64_t extra = output ? time.queued / stride + time.buffered : frames;
+    uint64_t extra = output ? time->queued / stride + time->buffered : frames;
     return delay + (int64_t)(extra * 1000000000 / core->format.sampleRate);
+}
+
+// Counts a skipped cycle: the graph's ticks between two cycles are the
+// first one's length, so a gap past one and a half of the frames it
+// moved (at the stream's rate) is an xrun. A change of quantum shows in
+// the frames, not the gap, and is not counted.
+static void CheckTicks(maudPipewireStream* entry, const struct pw_time* time, uint32_t frames)
+{
+    if (atomic_exchange_explicit(&entry->forgetTicks, false, memory_order_acquire))
+    {
+        entry->lastFrames = 0;
+    }
+    if (entry->lastFrames != 0 && time->ticks > entry->lastTicks)
+    {
+        uint64_t gap = (time->ticks - entry->lastTicks) * time->rate.num *
+                       entry->core->format.sampleRate / time->rate.denom;
+        if (2 * gap > 3 * (uint64_t)entry->lastFrames)
+        {
+            maudCountXrun(entry->core);
+        }
+    }
+    entry->lastTicks = time->ticks;
+    entry->lastFrames = frames;
 }
 
 // Runs on libpipewire's data thread: no allocation, lock or wait.
@@ -134,7 +153,14 @@ static void OnProcess(void* data)
             maudPushPeriod(&core->period, samples, frames);
         }
         atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
-        int64_t latency = LatencyOf(entry, frames, output);
+        struct pw_time time = {0};
+        bool timed =
+            api->streamGetTime(entry->stream, &time, sizeof(time)) >= 0 && time.rate.denom != 0;
+        int64_t latency = timed ? LatencyOf(entry, &time, frames, output) : 0;
+        if (timed)
+        {
+            CheckTicks(entry, &time, frames);
+        }
         if (output)
         {
             maudStampOutputClock(core, latency);
@@ -287,6 +313,8 @@ void maudPipewireSetStreamActive(maudContext* context, maudStreamSlot* slot, boo
     maudPipewireStream* entry = EntryOf(context, slot);
     if (entry->used)
     {
+        // The gap since the stream last ran is not an xrun.
+        atomic_store_explicit(&entry->forgetTicks, true, memory_order_release);
         entry->owner->api.streamSetActive(entry->stream, active);
     }
 }

@@ -42,6 +42,8 @@ typedef struct Blocks
     // captured, in thousandths.
     float level;
     atomic_uint loudest;
+    // The block at which the callback stalls for 300 ms, or 0.
+    uint32_t stallAt;
 } Blocks;
 
 static pthread_t s_control;
@@ -104,6 +106,10 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
         {
             atomic_store(&blocks->loudest, level);
         }
+    }
+    if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
+    {
+        Sleep(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -588,6 +594,33 @@ static void TestDuplex(maudContext* context)
     TestDuplexApart(context, def.device, def.inputDevice);
 }
 
+// A callback that stalls makes the device skip its cycles: an underrun
+// for an output, an overrun for an input, each counted.
+static void TestXruns(maudContext* context)
+{
+    for (int input = 0; input < 2; ++input)
+    {
+        Blocks blocks = {.stallAt = 30};
+        maudStreamDef def = maudDefaultStreamDef();
+        def.direction = input ? maud_directionInput : maud_directionOutput;
+        def.device = FindByKey(context, def.direction, BLACKHOLE_UID);
+        maudStreamId stream = OpenStream(context, &def, &blocks);
+        CHECK(maudStartStream(context, stream) == maud_success, "start");
+        CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
+        maudStreamStatus status = {0};
+        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        if (input ? status.overruns == 0 : status.underruns == 0)
+        {
+            fprintf(stderr, "xruns after a stall: %llu under, %llu over\n",
+                    (unsigned long long)status.underruns, (unsigned long long)status.overruns);
+        }
+        CHECK(input ? status.overruns >= 1 && status.underruns == 0
+                    : status.underruns >= 1 && status.overruns == 0,
+              "the stall counted by the stream's direction");
+        CHECK(Destroy(context, stream), "destroy");
+    }
+}
+
 // A duplex stream's callback on the IO thread: plays a 440 Hz tone at
 // 0.25 and sums the square of what it hears from frame `from` on, for
 // `span` frames.
@@ -770,6 +803,7 @@ int main(void)
     TestCapture(context);
     TestDuplex(context);
     TestVoice(context);
+    TestXruns(context);
     TestDefaultMoves(context);
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

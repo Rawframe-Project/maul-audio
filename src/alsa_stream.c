@@ -15,6 +15,7 @@
 #include "context.h"
 #include "period.h"
 #include "thread.h"
+#include "xrun.h"
 
 #include <errno.h>
 #include <string.h>
@@ -171,6 +172,11 @@ static bool Transfer(maudAlsaStream* entry)
     if (result >= 0 || result == -EAGAIN)
     {
         return true;
+    }
+    // -EPIPE is an xrun: the PCM ran dry, or overflowed.
+    if (result == -EPIPE)
+    {
+        maudCountXrun(entry->core);
     }
     if (api->pcmRecover(entry->pcm, (int)result, 1) < 0)
     {

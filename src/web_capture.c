@@ -18,6 +18,7 @@
 #include "thread.h"
 #include "voice.h"
 #include "web_core.h"
+#include "xrun.h"
 
 #include <emscripten/em_js.h>
 #include <emscripten/emscripten.h>
@@ -25,7 +26,7 @@
 // clang-format off
 
 // Copies each quantum's frames, interleaved, into the ring (write index,
-// read index) or a posted chunk, and reports.
+// read index, quanta that did not fit) or a posted chunk, and reports.
 EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
     const source = [
         "class MaudCapture extends AudioWorkletProcessor {",
@@ -34,8 +35,8 @@ EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
         "    const p = options.processorOptions;",
         "    this.channels = p.channels;",
         "    this.capacity = p.capacity;",
-        "    this.index = p.ring ? new Int32Array(p.ring, 0, 2) : null;",
-        "    this.data = p.ring ? new Float32Array(p.ring, 8) : null;",
+        "    this.index = p.ring ? new Int32Array(p.ring, 0, 3) : null;",
+        "    this.data = p.ring ? new Float32Array(p.ring, 12) : null;",
         "  }",
         "  process(inputs) {",
         "    const input = inputs[0];",
@@ -51,6 +52,7 @@ EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
         "        for (let c = 0; c < channels; ++c) { this.data[at + c] = input[Math.min(c, input.length - 1)][i]; }",
         "      }",
         "      Atomics.store(this.index, 0, (write + count) | 0);",
+        "      if (count < frames) { Atomics.add(this.index, 2, 1); }",
         "      this.port.postMessage(0);",
         "      return true;",
         "    }",
@@ -78,11 +80,12 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
                                     float* chunk, int voice), {
     const web = globalThis.maudWeb;
     const entry = web.contexts[handle];
-    const record = {node: null, source: null, stream: null, closed: false, ring: null, index: null, data: null};
+    const record = {node: null, source: null, stream: null, closed: false, ring: null, index: null, data: null,
+                    lostSeen: 0};
     if (typeof SharedArrayBuffer !== "undefined" && globalThis.crossOriginIsolated) {
-        record.ring = new SharedArrayBuffer(8 + capacity * channels * 4);
-        record.index = new Int32Array(record.ring, 0, 2);
-        record.data = new Float32Array(record.ring, 8);
+        record.ring = new SharedArrayBuffer(12 + capacity * channels * 4);
+        record.index = new Int32Array(record.ring, 0, 3);
+        record.data = new Float32Array(record.ring, 12);
     }
     web.nodes.push(record);
     const id = web.nodes.length - 1;
@@ -112,6 +115,11 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
             }
         }
         Atomics.store(record.index, 1, (read + frames) | 0);
+        const lost = Atomics.load(record.index, 2);
+        if (lost > record.lostSeen) {
+            _maudWebXrun(context, slot, lost - record.lostSeen);
+            record.lostSeen = lost;
+        }
         deliver(frames);
     }
     const constraints = {audio: {
@@ -184,6 +192,19 @@ void maudWebCapture(maudContext* context, int slotIndex, int frames, double late
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
     maudStampInputClock(core, (int64_t)(latency * 1e9));
     atomic_fetch_add_explicit(&core->position, (uint64_t)frames, memory_order_release);
+}
+
+// The worklet played `count` quanta short (an output) or could not fit
+// `count` captured quanta in the ring (an input).
+EMSCRIPTEN_KEEPALIVE void maudWebXrun(maudContext* context, int slotIndex, int count);
+
+void maudWebXrun(maudContext* context, int slotIndex, int count)
+{
+    maudStreamCore* core = &context->streams.slots[slotIndex].core;
+    for (int i = 0; i < count; ++i)
+    {
+        maudCountXrun(core);
+    }
 }
 
 // The browser granted the microphone to a stream's node, with the voice

@@ -14,6 +14,7 @@
 #include "period.h"
 #include "pulse_core.h"
 #include "thread.h"
+#include "xrun.h"
 
 #include <string.h>
 
@@ -119,6 +120,14 @@ static void OnWrite(pa_stream* stream, size_t bytes, void* user)
 }
 
 // Takes every fragment the server has; a hole carries no samples.
+// The server's buffer ran dry (playback) or overflowed (capture).
+static void OnXrun(pa_stream* stream, void* user)
+{
+    (void)stream;
+    maudPulseStream* entry = user;
+    maudCountXrun(entry->core);
+}
+
 static void OnRead(pa_stream* stream, size_t bytes, void* user)
 {
     (void)bytes;
@@ -174,6 +183,8 @@ static void Disconnect(maudPulseStream* entry)
     {
         api->streamSetWriteCallback(entry->stream, nullptr, nullptr);
         api->streamSetReadCallback(entry->stream, nullptr, nullptr);
+        api->streamSetUnderflowCallback(entry->stream, nullptr, nullptr);
+        api->streamSetOverflowCallback(entry->stream, nullptr, nullptr);
         api->streamDisconnect(entry->stream);
         api->streamUnref(entry->stream);
     }
@@ -225,6 +236,8 @@ static bool ConnectStream(maudContext* context, maudPulseStream* entry, int64_t 
     bool output = core->def.direction == maud_directionOutput;
     api->streamSetWriteCallback(entry->stream, output ? OnWrite : nullptr, entry);
     api->streamSetReadCallback(entry->stream, output ? nullptr : OnRead, entry);
+    api->streamSetUnderflowCallback(entry->stream, output ? OnXrun : nullptr, entry);
+    api->streamSetOverflowCallback(entry->stream, output ? nullptr : OnXrun, entry);
     uint32_t period = core->format.periodFrames * spec.channels * (uint32_t)sizeof(float);
     pa_buffer_attr attr = {
         .maxlength = UINT32_MAX,

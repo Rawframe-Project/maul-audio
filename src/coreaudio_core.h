@@ -52,6 +52,9 @@ typedef struct maudCoreAudioStream
     // voice-processing unit captures one, spread to every channel. 0 for
     // the stream's own.
     uint32_t unitChannels;
+    // The device sample time the next IO cycle should start at, or a
+    // negative value before the first: a later start skipped cycles.
+    Float64 nextSampleTime;
     // A voiced duplex stream's halves share the input half's
     // voice-processing unit and point at each other; the output half has
     // no unit of its own.

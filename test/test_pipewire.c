@@ -340,6 +340,8 @@ typedef struct Blocks
     _Atomic(uint32_t) withInput;
     _Atomic(int32_t) controlResult;
     uint32_t periodFrames;
+    // The block at which the callback stalls for 300 ms, or 0.
+    uint32_t stallAt;
     bool tryControl;
     maudContext* context;
     maudStreamId stream;
@@ -360,6 +362,10 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (blocks->tryControl && atomic_load(&blocks->count) == 2)
     {
         atomic_store(&blocks->controlResult, maudStopStream(blocks->context, blocks->stream));
+    }
+    if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
+    {
+        Sleep(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -574,6 +580,25 @@ static void DriversOfOurNodes(uint32_t* nodesOut, uint32_t* driversOut)
     *driversOut = nodes == 0 ? 0 : (nodes == 2 && seen[0] != seen[1] ? 2u : 1u);
 }
 
+// A callback that stalls makes the graph skip the stream's cycles: an
+// underrun for an output, an overrun for an input, each counted.
+static void TestXruns(maudContext* context)
+{
+    for (int input = 0; input < 2; ++input)
+    {
+        Blocks blocks = {.stallAt = 30};
+        maudDirection direction = input ? maud_directionInput : maud_directionOutput;
+        maudStreamId stream = OpenStream(context, direction, (maudDeviceId){0, 0}, &blocks);
+        CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
+        maudStreamStatus status = {0};
+        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        CHECK(input ? status.overruns >= 1 && status.underruns == 0
+                    : status.underruns >= 1 && status.overruns == 0,
+              "the stall counted by the stream's direction");
+        CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    }
+}
+
 // A duplex stream on the default sink and source, which are two drivers
 // here: both buffers in each callback at the graph's rate, its halves
 // grouped under one driver, so the status declares one clock.
@@ -689,6 +714,7 @@ int main(void)
     TestOutputStream(context);
     TestInputStream(context);
     TestDuplexStream(context);
+    TestXruns(context);
     TestStreamsMoveAndAreLost(context, &helper);
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

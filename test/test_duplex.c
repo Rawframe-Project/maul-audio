@@ -123,6 +123,8 @@ static void TestBothInOneCallback(void)
     CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
               status.voiceActive == maud_voiceNone,
           "its input half's voice report");
+    CHECK(status.underruns == 0 && status.overruns == 0,
+          "the offline backend counts no xruns: its caller drives it");
     Feed(context, stream, 0, PERIOD);
     CHECK(maudRenderStream(context, stream, out, PERIOD) == maud_success, "render");
     CHECK(echo.calls == 2 && echo.first == 0.0f && out[2 * (PERIOD - 1)] == (float)(PERIOD - 1),

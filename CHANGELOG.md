@@ -168,3 +168,9 @@ format.
   rising only on proven speech, noise kept under a ceiling, and a
   limiter holding every sample under -1 dBFS; it may also lower a loud
   microphone's gain.
+- Underrun and overrun counters in the stream status (`underruns`,
+  `overruns`), counted as each platform reveals them: ALSA's `-EPIPE`,
+  PulseAudio's underflow and overflow, PipeWire's skipped graph cycles,
+  WASAPI's empty render buffers and capture discontinuities,
+  CoreAudio's sample time jumps, the web's short quanta and full
+  capture rings.

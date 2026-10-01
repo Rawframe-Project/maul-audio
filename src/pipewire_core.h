@@ -81,6 +81,12 @@ typedef struct maudPipewireStream
     struct spa_hook listener;
     enum pw_stream_state state;
     bool used;
+    // The graph's ticks at the last cycle and the frames it moved, to see
+    // a skipped cycle; forgotten when the control thread sets
+    // forgetTicks, as when the stream is activated.
+    uint64_t lastTicks;
+    uint32_t lastFrames;
+    atomic_bool forgetTicks;
 } maudPipewireStream;
 
 struct maudPipewire

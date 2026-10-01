@@ -51,6 +51,8 @@ static const ApiEntry s_entries[] = {
     ENTRY(streamGetState, "pa_stream_get_state"),
     ENTRY(streamSetWriteCallback, "pa_stream_set_write_callback"),
     ENTRY(streamSetReadCallback, "pa_stream_set_read_callback"),
+    ENTRY(streamSetUnderflowCallback, "pa_stream_set_underflow_callback"),
+    ENTRY(streamSetOverflowCallback, "pa_stream_set_overflow_callback"),
     ENTRY(streamBeginWrite, "pa_stream_begin_write"),
     ENTRY(streamWrite, "pa_stream_write"),
     ENTRY(streamPeek, "pa_stream_peek"),

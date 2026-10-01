@@ -55,6 +55,9 @@ typedef struct maudStreamCore
     // active parts, and whether it reported.
     _Atomic(uint8_t) voiceActive;
     atomic_bool voiceReported;
+    // Underruns and overruns the platform revealed (xrun.h).
+    _Atomic(uint64_t) underruns;
+    _Atomic(uint64_t) overruns;
     // Bytes of period samples, as allocated.
     size_t sampleBytes;
     // Running when started and not suspended.

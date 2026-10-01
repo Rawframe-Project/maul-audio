@@ -20,6 +20,7 @@
 #include "period.h"
 #include "thread.h"
 #include "voice.h"
+#include "xrun.h"
 
 #include <string.h>
 
@@ -32,15 +33,31 @@ static maudCoreAudioStream* EntryOf(maudContext* context, const maudStreamSlot* 
     return &coreaudio->streams[slot - context->streams.slots];
 }
 
+// Counts skipped cycles: an IO cycle that starts past where the last one
+// ended on the device's sample clock.
+static void CheckSampleTime(maudCoreAudioStream* entry, const AudioTimeStamp* time, UInt32 frames)
+{
+    if ((time->mFlags & kAudioTimeStampSampleTimeValid) == 0)
+    {
+        return;
+    }
+    if (entry->nextSampleTime >= 0.0 && time->mSampleTime > entry->nextSampleTime + 0.5)
+    {
+        maudCountXrun(entry->core);
+    }
+    entry->nextSampleTime = time->mSampleTime + frames;
+}
+
 // Fills the unit's buffer on the IO thread: the stream's frames while it
 // runs, silence otherwise.
 static OSStatus Render(void* user, AudioUnitRenderActionFlags* flags, const AudioTimeStamp* time,
                        UInt32 bus, UInt32 frames, AudioBufferList* data)
 {
     (void)bus;
-    const maudCoreAudioStream* entry = user;
+    maudCoreAudioStream* entry = user;
     maudStreamCore* core = entry->core;
     float* out = data->mBuffers[0].mData;
+    CheckSampleTime(entry, time, frames);
     bool running = atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning;
     atomic_store_explicit(&core->renderingThread, maudCurrentThread(), memory_order_release);
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
@@ -95,6 +112,7 @@ static OSStatus Capture(void* user, AudioUnitRenderActionFlags* flags, const Aud
     {
         return kAudioUnitErr_TooManyFramesToProcess;
     }
+    CheckSampleTime(entry, time, frames);
     // A render leaves the size at what it brought; the next asks for room,
     // over silence, so what the unit leaves unwritten is never old bytes.
     UInt32 channels = core->period.channelCount;
@@ -539,6 +557,12 @@ static void Start(maudCoreAudioStream* entry)
 {
     if (entry->unit != nullptr && !entry->playing)
     {
+        // The time since the unit last ran is not an xrun.
+        entry->nextSampleTime = -1.0;
+        if (entry->voicePartner != nullptr)
+        {
+            entry->voicePartner->nextSampleTime = -1.0;
+        }
         entry->playing = AudioOutputUnitStart(entry->unit) == noErr;
     }
 }
