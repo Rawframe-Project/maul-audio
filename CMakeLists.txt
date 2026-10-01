@@ -90,9 +90,10 @@ endif()
 # WASAPI, on Windows 10 and later, through the system's COM libraries.
 if(MAUL_AUDIO_WASAPI)
     target_sources(maul-audio PRIVATE src/backend_wasapi.c src/wasapi_format.c
-        src/wasapi_notify.c)
+        src/wasapi_notify.c src/wasapi_stream.c src/worker.c)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_WASAPI=1 _WIN32_WINNT=0x0A00)
-    target_link_libraries(maul-audio PRIVATE ole32)
+    # COM for the devices and clients, avrt for MMCSS on stream threads.
+    target_link_libraries(maul-audio PRIVATE ole32 avrt)
 endif()
 
 # Likewise ALSA's headers only.

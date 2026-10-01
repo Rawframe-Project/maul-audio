@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The WASAPI backend's devices against what COM itself reports, and its
-// notifications, whose callbacks the test calls itself: wine delivers
-// none. Without an audio endpoint the test is skipped, unless
-// MAUD_REQUIRE_WASAPI is set.
+// The WASAPI backend's devices against what COM itself reports, its
+// notifications, whose callbacks the test calls itself (wine delivers
+// none), and its streams. Without an audio endpoint the test is
+// skipped, unless MAUD_REQUIRE_WASAPI is set.
 
 #include "context.h"
 #include "device.h"
@@ -15,6 +15,8 @@
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
+#include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -75,10 +77,113 @@ static bool DefaultIs(const maudContext* context, maudDirection direction, maudD
            length == strlen(key) && memcmp(bytes, key, length) == 0;
 }
 
-static void Silence(const maudStreamBlock* block, void* user)
+// The thread that runs the test, which no callback may run on.
+static DWORD s_control;
+
+typedef struct Blocks
 {
-    (void)block;
-    (void)user;
+    _Atomic(uint32_t) count;
+    _Atomic(uint32_t) wrongSize;
+    _Atomic(uint32_t) withInput;
+    _Atomic(uint32_t) onControl;
+    // Whether the first callback's thread was named maud-wasapi.
+    _Atomic(int) named;
+    uint32_t periodFrames;
+} Blocks;
+
+// Whether the calling thread's description is maud-wasapi, through
+// GetThreadDescription, which mingw's headers do not declare.
+static bool NamedMaudWasapi(void)
+{
+    typedef HRESULT(WINAPI * Describe)(HANDLE thread, PWSTR * description);
+    FARPROC found = GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription");
+    if (found == nullptr)
+    {
+        return false;
+    }
+    Describe describe;
+    memcpy((void*)&describe, (const void*)&found, sizeof(describe));
+    PWSTR name = nullptr;
+    bool named = SUCCEEDED(describe(GetCurrentThread(), &name)) && name != nullptr &&
+                 wcscmp(name, L"maud-wasapi") == 0;
+    LocalFree(name);
+    return named;
+}
+
+static void CountBlocks(const maudStreamBlock* block, void* user)
+{
+    Blocks* blocks = user;
+    if (GetCurrentThreadId() == s_control)
+    {
+        atomic_fetch_add(&blocks->onControl, 1);
+    }
+    if (block->frameCount != blocks->periodFrames)
+    {
+        atomic_fetch_add(&blocks->wrongSize, 1);
+    }
+    if (block->input != nullptr)
+    {
+        atomic_fetch_add(&blocks->withInput, 1);
+    }
+    if (atomic_load(&blocks->count) == 0)
+    {
+        atomic_store(&blocks->named, NamedMaudWasapi() ? 1 : -1);
+    }
+    atomic_fetch_add(&blocks->count, 1);
+}
+
+static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
+{
+    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    return atomic_load(&blocks->count) >= count;
+}
+
+// Frames the stream moves per second of wall time, over 1.5 seconds.
+static double MeasureRate(const maudContext* context, maudStreamId stream)
+{
+    LARGE_INTEGER frequency;
+    LARGE_INTEGER start;
+    LARGE_INTEGER end;
+    uint64_t first = 0;
+    uint64_t last = 0;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&start);
+    CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
+    Sleep(1500);
+    CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
+    QueryPerformanceCounter(&end);
+    double seconds = (double)(end.QuadPart - start.QuadPart) / (double)frequency.QuadPart;
+    return (double)(last - first) / seconds;
+}
+
+// Whether rate is within tolerance of expected; the measurement is
+// printed when it is not.
+static bool Near(double rate, double expected, double tolerance)
+{
+    bool within = rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+    if (!within)
+    {
+        fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
+    }
+    return within;
+}
+
+static maudStreamId OpenStream(maudContext* context, maudStreamDef* def, Blocks* blocks)
+{
+    def->periodFrames = 256;
+    def->callback = CountBlocks;
+    def->user = blocks;
+    blocks->periodFrames = 256;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, def, &stream) == maud_success, "create");
+    return stream;
 }
 
 static void TestDevices(maudContext* context)
@@ -122,10 +227,105 @@ static void TestDevices(maudContext* context)
         }
     }
     IMMDeviceEnumerator_Release(enumerator);
+}
+
+static void TestOutputStream(maudContext* context)
+{
+    Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
-    def.callback = Silence;
-    maudStreamId stream = {0, 0};
-    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no streams yet");
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    maudStreamFormat format;
+    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+              format.sampleRate == 48000,
+          "native at the engine's rate");
+    Sleep(100);
+    CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
+    CHECK(atomic_load(&blocks.onControl) == 0, "on a thread of the stream's");
+    CHECK(atomic_load(&blocks.named) == 1, "named maud-wasapi");
+    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at its rate");
+    CHECK(maudStopStream(context, stream) == maud_success, "stop");
+    uint32_t stopped = atomic_load(&blocks.count);
+    Sleep(100);
+    CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
+    CHECK(maudStartStream(context, stream) == maud_success, "start again");
+    CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
+    def = maudDefaultStreamDef();
+    def.ratePolicy = maud_rateRequired;
+    def.sampleRate = 44100;
+    def.callback = CountBlocks;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "a required rate the engine does not run at");
+    Blocks converted = {0};
+    def.ratePolicy = maud_ratePlatformConverted;
+    stream = OpenStream(context, &def, &converted);
+    CHECK(maudStartStream(context, stream) == maud_success, "start converted");
+    CHECK(WaitForBlocks(context, &converted, 10), "it runs");
+    CHECK(Near(MeasureRate(context, stream), 44100.0, 0.04), "at its own rate");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    def = maudDefaultStreamDef();
+    def.mode = maud_modePull;
+    def.callback = CountBlocks;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
+}
+
+static void TestInputStream(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionInput;
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start capture");
+    CHECK(WaitForBlocks(context, &blocks, 20), "captured blocks arrive");
+    CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
+// A stream on the default moves with it: WASAPI binds it to one
+// endpoint, so it is opened again there and runs on.
+static void TestMove(maudContext* context)
+{
+    maudDeviceId ids[8];
+    uint32_t count = 0;
+    maudDeviceId original = {0, 0};
+    CHECK(maudGetDevices(context, maud_directionOutput, ids, 8, &count) == maud_success, "list");
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &original) ==
+              maud_success,
+          "the default");
+    maudDeviceId other = {0, 0};
+    for (uint32_t i = 0; i < count && i < 8 && other.index1 == 0; ++i)
+    {
+        other = ids[i].index1 != original.index1 ? ids[i] : other;
+    }
+    if (other.index1 == 0)
+    {
+        return;
+    }
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 10), "it plays");
+    maudSetDefaultDevice(context, maud_roleGeneral, other);
+    maudNotification record;
+    bool moved = false;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        moved = moved ||
+                (record.kind == maud_notifyStreamMoved && record.streamId.index1 == stream.index1 &&
+                 record.deviceId.index1 == other.index1);
+    }
+    CHECK(moved, "it moves with the default");
+    uint32_t after = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, after + 20), "and plays on the new endpoint");
+    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at its rate");
+    maudSetDefaultDevice(context, maud_roleGeneral, original);
+    CHECK(WaitForBlocks(context, &blocks, atomic_load(&blocks.count) + 20), "and back");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
 static void TestNotifier(maudContext* context)
@@ -174,6 +374,7 @@ static void TestDrainRescans(maudContext* context)
 
 int main(void)
 {
+    s_control = GetCurrentThreadId();
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendWasapi;
     maudContext* context = nullptr;
@@ -188,6 +389,9 @@ int main(void)
         return getenv("MAUD_REQUIRE_WASAPI") != nullptr ? 1 : SKIP;
     }
     TestDevices(context);
+    TestOutputStream(context);
+    TestInputStream(context);
+    TestMove(context);
     TestNotifier(context);
     TestDrainRescans(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

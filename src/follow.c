@@ -48,27 +48,42 @@ static void Suspend(maudContext* context, maudStreamSlot* slot, maudSuspendReaso
 }
 
 // Gives a native stream its device's rate, if that differs from the
-// rate it runs at.
-static void ApplyDeviceRate(maudContext* context, maudStreamSlot* slot)
+// rate it runs at; true when it did.
+static bool TakeDeviceRate(maudContext* context, maudStreamSlot* slot)
 {
     maudStreamCore* core = &slot->core;
     const maudDeviceSlot* device = maudFindDevice(context, core->binding.current);
     if (device == nullptr || core->format.ratePolicy != maud_rateNative ||
         device->info.nativeSampleRate == core->format.sampleRate)
     {
-        return;
+        return false;
     }
     core->format.sampleRate = device->info.nativeSampleRate;
     atomic_store_explicit(&core->blockRate, core->format.sampleRate, memory_order_release);
-    if (context->backend->retargetStream != nullptr)
-    {
-        context->backend->retargetStream(context, slot);
-    }
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifyStreamFormatChanged,
                                       .streamId = maudStreamIdOf(context, slot),
                                       .sampleRate = core->format.sampleRate,
                                   });
+    return true;
+}
+
+static void Retarget(maudContext* context, maudStreamSlot* slot)
+{
+    if (context->backend->retargetStream != nullptr)
+    {
+        context->backend->retargetStream(context, slot);
+    }
+}
+
+// Gives a native stream its device's rate and the platform the new
+// format, if the rate changed.
+static void ApplyDeviceRate(maudContext* context, maudStreamSlot* slot)
+{
+    if (TakeDeviceRate(context, slot))
+    {
+        Retarget(context, slot);
+    }
 }
 
 static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device)
@@ -81,7 +96,12 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
                                       .deviceId = device,
                                       .streamId = id,
                                   });
-    ApplyDeviceRate(context, slot);
+    // A backend whose streams are bound to one endpoint reopens them on
+    // every move; the others only when the rate changed.
+    if (TakeDeviceRate(context, slot) || context->backend->reopensOnMove)
+    {
+        Retarget(context, slot);
+    }
     if (core->binding.suspension != maud_suspendNone)
     {
         core->binding.suspension = maud_suspendNone;

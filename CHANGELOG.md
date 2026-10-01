@@ -90,4 +90,8 @@ format.
   and defaults through IMMNotificationClient, taken on the drain. The
   context holds the multithreaded apartment open with
   CoIncrementMTAUsage instead of initializing COM on the host's
-  threads. Streams on WASAPI come next and are refused until then.
+  threads.
+- Streams on WASAPI: shared mode, event-driven, at the engine's rate
+  unless platform-converted; each running stream has one thread, named
+  maud-wasapi, in MMCSS's "Pro Audio" class; a stream on a default is
+  opened again on its new endpoint when the default moves.

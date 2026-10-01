@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The WASAPI backend's devices. The context holds the multithreaded
+// The WASAPI backend's context and devices. The context holds the multithreaded
 // apartment open, so the host's threads call COM without initializing
 // it. Devices are the active endpoints, their formats read from the
 // property store without activating them; a notification raises a flag
@@ -12,6 +12,7 @@
 #include "device.h"
 #include "layout.h"
 #include "wasapi_core.h"
+#include "wasapi_stream.h"
 
 #include <string.h>
 
@@ -193,8 +194,10 @@ static void Release(maudContext* context, maudWasapi* wasapi)
 static maudResult OpenContext(maudContext* context)
 {
     uint32_t devices = context->def.limits.devices;
+    uint32_t streams = context->def.limits.streams;
     size_t bytes = sizeof(maudWasapi) +
-                   (size_t)devices * (sizeof(maudWasapiEndpoint) + sizeof(maudDeviceSpec));
+                   (size_t)devices * (sizeof(maudWasapiEndpoint) + sizeof(maudDeviceSpec)) +
+                   (size_t)streams * sizeof(maudWasapiStream);
     maudWasapi* wasapi = maudContextAllocate(context, bytes, alignof(maudWasapi));
     if (wasapi == nullptr)
     {
@@ -203,6 +206,8 @@ static maudResult OpenContext(maudContext* context)
     *wasapi = (maudWasapi){.context = context, .bytes = bytes};
     wasapi->endpoints = (maudWasapiEndpoint*)(wasapi + 1);
     wasapi->specs = (maudDeviceSpec*)(wasapi->endpoints + devices);
+    wasapi->streams = (maudWasapiStream*)(wasapi->specs + devices);
+    memset(wasapi->streams, 0, (size_t)streams * sizeof(maudWasapiStream));
     maudInitWasapiNotifier(&wasapi->notifier);
     context->native = wasapi;
     wasapi->apartmentHeld = SUCCEEDED(CoIncrementMTAUsage(&wasapi->apartment));
@@ -236,17 +241,31 @@ static void Pump(maudContext* context)
         maudResult result = Rescan(context);
         (void)result;
     }
+    maudWasapiResumeStreams(context);
 }
 
-// Streams come in the next step; until then WASAPI refuses them.
+// Shared mode runs at the engine's rate: a native stream takes it, a
+// required rate must be it, and only a platform-converted stream may
+// differ. With no device yet, the engine's rate is taken as 48 kHz.
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
     (void)context;
-    (void)def;
-    (void)device;
-    (void)formatOut;
-    return maud_errorUnsupported;
+    uint32_t engine =
+        device != nullptr && device->nativeSampleRate != 0 ? device->nativeSampleRate : 48000;
+    if (def->mode == maud_modePull ||
+        (def->ratePolicy == maud_rateRequired && def->sampleRate != engine))
+    {
+        return maud_errorUnsupported;
+    }
+    uint32_t rate = def->ratePolicy == maud_rateNative ? engine : def->sampleRate;
+    *formatOut = (maudStreamFormat){
+        .sampleRate = rate,
+        .periodFrames = def->periodFrames != 0 ? def->periodFrames : rate / 100,
+        .layout = def->layout,
+        .ratePolicy = def->ratePolicy,
+    };
+    return maud_success;
 }
 
 static const maudBackend s_wasapi = {
@@ -255,10 +274,11 @@ static const maudBackend s_wasapi = {
     .closeContext = CloseContext,
     .pump = Pump,
     .openStream = OpenStream,
-    .attachStream = nullptr,
-    .detachStream = nullptr,
-    .setStreamActive = nullptr,
-    .retargetStream = nullptr,
+    .attachStream = maudWasapiAttachStream,
+    .detachStream = maudWasapiDetachStream,
+    .setStreamActive = maudWasapiSetStreamActive,
+    .retargetStream = maudWasapiRetargetStream,
+    .reopensOnMove = true,
     .rendersOnCaller = false,
 };
 

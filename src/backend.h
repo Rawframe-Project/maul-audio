@@ -37,9 +37,12 @@ struct maudBackend
     void (*detachStream)(maudContext* context, maudStreamSlot* slot);
     // Lets the platform run the stream or holds it. May be NULL.
     void (*setStreamActive)(maudContext* context, maudStreamSlot* slot, bool active);
-    // Offers the stream's format again after a move changed its rate.
-    // May be NULL.
+    // Offers the stream's format again after a move changed its rate, or,
+    // with reopensOnMove, connects it again after any move. May be NULL.
     void (*retargetStream)(maudContext* context, maudStreamSlot* slot);
+    // Whether the platform binds a stream to one device, so that every
+    // move must reopen it; otherwise the platform moves it itself.
+    bool reopensOnMove;
     // Whether the caller's thread renders the streams (maudRenderStream
     // and maudFeedStream), as on the offline backend.
     bool rendersOnCaller;

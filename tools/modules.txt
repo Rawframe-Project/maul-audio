@@ -12,7 +12,7 @@ backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
 backend_offline: backend context_core device
 backend_pipewire: backend context context_core device follow layout pipewire_api pipewire_core pipewire_stream
 backend_pulse: backend context context_core device layout pulse_api pulse_core pulse_stream
-backend_wasapi: backend context device layout wasapi_core
+backend_wasapi: backend context device layout wasapi_core wasapi_stream
 base:
 buffer:
 context: allocator backend context_core invariant thread
@@ -32,7 +32,8 @@ pulse_core: context_core pulse_api worker
 pulse_stream: context context_core period pulse_core thread worker
 stream: backend context context_core follow period thread
 thread:
-wasapi_core: context_core device wasapi_notify
+wasapi_core: context_core device wasapi_notify worker
 wasapi_format:
 wasapi_notify:
+wasapi_stream: context context_core period thread wasapi_core wasapi_format worker
 worker:
