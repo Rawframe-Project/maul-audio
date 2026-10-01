@@ -597,6 +597,28 @@ static void TestXruns(maudContext* context)
               "the stall counted by the stream's direction");
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     }
+    // A calm stream, stopped and started ten times, counts next to
+    // nothing: neither its cycles nor the gaps of its stops are xruns.
+    // Five are allowed, for a loaded machine; a gap counted would add ten.
+    Blocks calm = {0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &calm);
+    for (int restart = 0; restart < 10; ++restart)
+    {
+        CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 40), "it runs");
+        CHECK(maudStopStream(context, stream) == maud_success, "stop");
+        Sleep(100);
+        CHECK(maudStartStream(context, stream) == maud_success, "start again");
+    }
+    CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 40), "it runs on");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    if (status.underruns > 5)
+    {
+        fprintf(stderr, "a calm stream counted %llu underruns\n",
+                (unsigned long long)status.underruns);
+    }
+    CHECK(status.underruns <= 5, "a calm stream counts next to none");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy calm");
 }
 
 // A duplex stream on the default sink and source, which are two drivers
@@ -627,6 +649,15 @@ static void TestDuplexStream(maudContext* context)
     }
     CHECK(status.slippedFrames - before <= 512, "and little slips on one graph");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy duplex");
+    // A stall in the duplex callback skips both halves' cycles: the
+    // output's underruns and the input's overruns.
+    Blocks stalled = {.stallAt = 30};
+    stream = OpenStream(context, maud_directionDuplex, (maudDeviceId){0, 0}, &stalled);
+    CHECK(WaitForBlocks(context, &stalled, 80), "past the duplex stall");
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.underruns >= 1 &&
+              status.overruns >= 1,
+          "both halves count the stall");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stalled duplex");
 }
 
 // Drains notifications for up to three seconds until one of kind for
