@@ -115,6 +115,8 @@ typedef enum Voicing
     uint32_t end = (uint32_t)(to * rate) < signal->count ? (uint32_t)(to * rate) : signal->count;
     double phase = 0.0;
     double word = 4 * 0.25 + 0.6;
+    double gains[64];
+    int harmonics = 0;
     float* voice = calloc(signal->count, sizeof(float));
     double energy = 0.0;
     uint32_t sounding = 0;
@@ -130,11 +132,27 @@ typedef enum Voicing
         double envelope = sin(SIGNAL_PI * inSyllable / 0.2);
         double pitch = 140.0 + 30.0 * sin(2.0 * SIGNAL_PI * 0.7 * t);
         phase = fmod(phase + 2.0 * SIGNAL_PI * pitch / rate, 2.0 * SIGNAL_PI);
-        double sample = 0.0;
-        double top = voicing == voicingNasal ? 450.0 : 4000.0;
-        for (int k = 1; voicing != voicingWhisper && k * pitch < top && k * pitch < rate / 2.0; ++k)
+        // The harmonics' gains change slowly: once per 10 ms.
+        if (i % (rate / 100) == 0 || harmonics == 0)
         {
-            sample += Formants(k * pitch) * sin(k * phase);
+            double top = voicing == voicingNasal ? 450.0 : 4000.0;
+            harmonics = 0;
+            for (int k = 1; k * pitch < top && k * pitch < rate / 2.0 && k <= 64; ++k)
+            {
+                gains[harmonics++] = Formants(k * pitch);
+            }
+        }
+        // sin(k x) by the recurrence 2 cos(x) sin((k-1) x) - sin((k-2) x).
+        double sample = 0.0;
+        double twiceCos = 2.0 * cos(phase);
+        double previous = 0.0;
+        double current = sin(phase);
+        for (int k = 0; voicing != voicingWhisper && k < harmonics; ++k)
+        {
+            sample += gains[k] * current;
+            double next = twiceCos * current - previous;
+            previous = current;
+            current = next;
         }
         sample = voicing == voicingWhisper ? (double)Uniform() : sample;
         voice[i] = (float)(envelope * sample);

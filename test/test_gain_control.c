@@ -116,13 +116,80 @@ static void TestTarget(void)
     CHECK(out > -28.0 && out < -19.0, "the output sounds near it");
     Signal loud = MakeSignal(48000, 20.0);
     Trace down = Run(&loud, -10, -80);
-    CHECK(fabsf(down.last.gainDb - -10.0f) <= 0.1f, "loud speech gets the least gain");
+    bool paced = true;
+    for (uint32_t f = 1; f < down.frames; ++f)
+    {
+        paced = paced && down.gainDb[f] - down.gainDb[f - 1] >= -0.0601f;
+    }
+    CHECK(paced, "the gain falls at its pace");
     out = LevelOf(&loud, 15.0, true);
     CHECK(out > -23.0 && out < -17.0, "and comes out 10 dB lower");
     free(up.gainDb);
     free(down.gainDb);
     FreeSignal(&quiet);
     FreeSignal(&loud);
+}
+
+// The gain stays within its range: very loud speech gets the minimum,
+// very quiet speech in a silent room the maximum.
+static void TestRange(void)
+{
+    Signal loud = MakeSignal(48000, 20.0);
+    Trace down = Run(&loud, -3, -80);
+    CHECK(fabsf(down.last.gainDb - -10.0f) <= 0.01f, "very loud speech gets the least gain");
+    Signal quiet = MakeSignal(48000, 30.0);
+    Trace up = Run(&quiet, -78, -110);
+    CHECK(fabsf(up.last.gainDb - 50.0f) <= 0.01f, "very quiet speech gets the most");
+    free(down.gainDb);
+    free(up.gainDb);
+    FreeSignal(&loud);
+    FreeSignal(&quiet);
+}
+
+// Loud bursts shorter than a run of 12 frames, in the pauses, leave the
+// speech level as it was: a run that does not prove itself is
+// forgotten.
+static void TestShortRuns(void)
+{
+    float levels[2] = {0.0f, 0.0f};
+    for (int bursts = 0; bursts < 2; ++bursts)
+    {
+        Signal signal = MakeSignal(48000, 20.0);
+        AddNoise(&signal, -80, 77);
+        AddSpeech(&signal, -45, 1.0, 20.0);
+        for (double t = 2.2; bursts == 1 && t + 0.1 < 20.0; t += 1.6)
+        {
+            AddVoicing(&signal, -15, t, t + 0.08, voicingVowel);
+        }
+        maudGainControlDef def = maudDefaultGainControlDef();
+        Trace trace = Control(&signal, &def);
+        levels[bursts] = trace.last.speechDbfs;
+        free(trace.gainDb);
+        FreeSignal(&signal);
+    }
+    CHECK(fabsf(levels[1] - levels[0]) <= 1.0f, "short loud bursts leave the speech level be");
+}
+
+// The limiter turns its gain down over many cycles, not sample by
+// sample: a sine pushed past the ceiling keeps its shape (a crest
+// factor near the square root of 2) instead of being flattened.
+static void TestLimiterShape(void)
+{
+    Signal signal = MakeSignal(48000, 2.0);
+    AddTone(&signal, 1000.0, -3, 0.0);
+    maudGainControlDef def = maudDefaultGainControlDef();
+    Trace trace = Control(&signal, &def);
+    double energy = 0.0;
+    float peak = 0.0f;
+    for (uint32_t i = 48000; i < 48000 + 4800; ++i)
+    {
+        energy += (double)signal.samples[i] * (double)signal.samples[i];
+        peak = fabsf(signal.samples[i]) > peak ? fabsf(signal.samples[i]) : peak;
+    }
+    double crest = (double)peak / sqrt(energy / 4800.0);
+    CHECK(peak > 0.85f && crest > 1.35, "a limited sine stays a sine");
+    free(trace.gainDb);
+    FreeSignal(&signal);
 }
 
 // Noise alone never raises the gain, which falls until the noise sits at
@@ -164,7 +231,7 @@ static void TestPace(void)
         if (fabsf(change) > 0.0601f)
         {
             catchUps++;
-            paced = paced && change <= 0.7201f;
+            paced = paced && change > 0.0f && change <= 0.7201f;
         }
         paced = paced && (f >= 100 || trace.gainDb[f] <= 15.0f);
     }
@@ -271,6 +338,9 @@ static void TestDefs(void)
 int main(void)
 {
     TestTarget();
+    TestRange();
+    TestShortRuns();
+    TestLimiterShape();
     TestNoise();
     TestPace();
     TestLimiter();
