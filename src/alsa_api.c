@@ -54,7 +54,6 @@ static const ApiEntry s_entries[] = {
     ENTRY(swParamsSizeof, "snd_pcm_sw_params_sizeof"),
     ENTRY(swParamsCurrent, "snd_pcm_sw_params_current"),
     ENTRY(swParamsSetStartThreshold, "snd_pcm_sw_params_set_start_threshold"),
-    ENTRY(swParamsSetAvailMin, "snd_pcm_sw_params_set_avail_min"),
     ENTRY(swParams, "snd_pcm_sw_params"),
     ENTRY(pcmGetChmap, "snd_pcm_get_chmap"),
     ENTRY(chmapFree, "free"),

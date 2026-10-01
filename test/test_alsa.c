@@ -2,9 +2,10 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The ALSA backend. Devices are listed wherever libasound loads. Streams
-// run on the default PCM, which the test points at a PulseAudio server
-// through its own ~/.asoundrc, never at the machine's sound hardware;
-// without a server they are skipped, unless MAUD_REQUIRE_ALSA is set.
+// run on the default PCM, which the test's own ~/.asoundrc makes a plug
+// over a PulseAudio server whose "hardware" runs at 44.1 kHz only,
+// never the machine's sound hardware; without a server they are
+// skipped, unless MAUD_REQUIRE_ALSA is set.
 
 #include "test_harness.h"
 
@@ -29,8 +30,8 @@ static void Sleep(int milliseconds)
     nanosleep(&pause, nullptr);
 }
 
-// Makes HOME a fresh directory whose .asoundrc sends the default PCM to
-// the pulse plugin.
+// Makes HOME a fresh directory whose .asoundrc makes the default PCM a
+// plug over the pulse plugin, fixed at 44.1 kHz.
 static bool UseTestHome(void)
 {
     static char home[] = "/tmp/maud-alsa-XXXXXX";
@@ -45,7 +46,9 @@ static bool UseTestHome(void)
     {
         return false;
     }
-    fputs("pcm.!default { type pulse }\nctl.!default { type pulse }\n", file);
+    fputs("pcm.!default { type plug; slave { pcm \"pulse\"; rate 44100 } }\n"
+          "ctl.!default { type pulse }\n",
+          file);
     fclose(file);
     return setenv("HOME", home, 1) == 0;
 }
@@ -55,6 +58,8 @@ typedef struct Blocks
     _Atomic(uint32_t) count;
     _Atomic(uint32_t) wrongSize;
     _Atomic(uint32_t) withInput;
+    // Stalls the callback once, past the device buffer, at this block.
+    uint32_t stallAt;
     uint32_t periodFrames;
 } Blocks;
 
@@ -68,6 +73,10 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (block->input != nullptr)
     {
         atomic_fetch_add(&blocks->withInput, 1);
+    }
+    if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
+    {
+        Sleep(200);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -137,8 +146,32 @@ static bool KeyIs(const maudContext* context, maudDeviceId device, const char* k
            length == strlen(key) && memcmp(bytes, key, length) == 0;
 }
 
+// Whether the machine has a sound card's control device.
+static bool HasCard(void)
+{
+    DIR* devices = opendir("/dev/snd");
+    bool found = false;
+    for (struct dirent* entry = devices != nullptr ? readdir(devices) : nullptr;
+         entry != nullptr && !found; entry = readdir(devices))
+    {
+        found = strncmp(entry->d_name, "controlC", 8) == 0;
+    }
+    if (devices != nullptr)
+    {
+        closedir(devices);
+    }
+    return found;
+}
+
+// Whether the one sink input on the server is corked.
+static bool Corked(void)
+{
+    return system("pactl list sink-inputs | grep -q 'Corked: yes'") == 0;
+}
+
 static void TestDevices(const maudContext* context)
 {
+    uint32_t endpoints = 0;
     CHECK(maudGetContextBackend(context) == maud_backendAlsa, "ALSA");
     for (int direction = 0; direction < 2; ++direction)
     {
@@ -156,6 +189,7 @@ static void TestDevices(const maudContext* context)
         CHECK(maudGetDeviceInfo(context, ids[0], &info) == maud_success, "info");
         CHECK(info.nativeSampleRate == 0 && info.nativeLayout == maud_layoutNone,
               "its rate is unknown until it opens");
+        endpoints += count - 1;
         for (uint32_t i = 1; i < count && i < 64; ++i)
         {
             char key[128];
@@ -165,6 +199,7 @@ static void TestDevices(const maudContext* context)
                   "every other device is a hardware endpoint");
         }
     }
+    CHECK(endpoints > 0 || !HasCard(), "a machine with a sound card lists its endpoints");
 }
 
 static maudStreamId OpenDefault(maudContext* context, maudDirection direction, Blocks* blocks,
@@ -187,16 +222,18 @@ static void TestOutputStream(maudContext* context)
     maudStreamId stream = OpenDefault(context, maud_directionOutput, &blocks, &def);
     maudStreamFormat format;
     CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
-              format.sampleRate == 48000,
-          "native at the rate nearest 48 kHz");
+              format.sampleRate == 44100,
+          "native at the hardware's rate nearest 48 kHz");
     CHECK(ThreadCount() == 0, "no thread before start");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(ThreadCount() == 1, "one thread while it runs");
     CHECK(WaitForBlocks(&blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at its rate");
+    CHECK(Near(MeasureRate(context, stream), 44100.0, 0.04), "at its rate");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     CHECK(ThreadCount() == 0, "joined when it stops");
+    Sleep(200);
+    CHECK(Corked(), "and what it queued is dropped");
     uint32_t stopped = atomic_load(&blocks.count);
     Sleep(100);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
@@ -204,9 +241,13 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(&blocks, stopped + 20), "it runs again");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
     CHECK(ThreadCount() == 0, "and joined");
-    Blocks required = {0};
     def = maudDefaultStreamDef();
     def.ratePolicy = maud_rateRequired;
+    def.sampleRate = 48000;
+    def.callback = CountBlocks;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "a required rate the hardware lacks");
+    Blocks required = {0};
     def.sampleRate = 44100;
     stream = OpenDefault(context, maud_directionOutput, &required, &def);
     CHECK(maudStartStream(context, stream) == maud_success, "start at 44.1 kHz");
@@ -219,6 +260,20 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
 }
 
+// A callback late past the device buffer: the stream recovers and runs
+// on.
+static void TestXrun(maudContext* context)
+{
+    Blocks blocks = {.stallAt = 30};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenDefault(context, maud_directionOutput, &blocks, &def);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(&blocks, 31), "past the stall");
+    CHECK(WaitForBlocks(&blocks, 80), "it runs on");
+    CHECK(Near(MeasureRate(context, stream), 44100.0, 0.04), "at its rate");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestInputStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -228,7 +283,7 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(&blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at its rate");
+    CHECK(Near(MeasureRate(context, stream), 44100.0, 0.04), "at its rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
@@ -282,6 +337,7 @@ int main(void)
     {
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the probe");
         TestOutputStream(context);
+        TestXrun(context);
         TestInputStream(context);
     }
     CHECK(server || getenv("MAUD_REQUIRE_ALSA") == nullptr, "a server for the streams");

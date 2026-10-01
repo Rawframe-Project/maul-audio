@@ -241,8 +241,8 @@ static maudResult SetHardware(maudAlsaStream* entry, snd_pcm_uframes_t* periodOu
     return maud_success;
 }
 
-// Wakes the thread when a period can move, and starts playback once
-// one is queued.
+// Starts playback once a period is queued. The thread wakes when a
+// period can move, which is ALSA's default.
 static maudResult SetSoftware(maudAlsaStream* entry, snd_pcm_uframes_t period)
 {
     const maudAlsaApi* api = entry->api;
@@ -250,7 +250,6 @@ static maudResult SetSoftware(maudAlsaStream* entry, snd_pcm_uframes_t period)
     memset(bytes, 0, sizeof(bytes));
     snd_pcm_sw_params_t* params = (snd_pcm_sw_params_t*)bytes;
     bool ok = api->swParamsCurrent(entry->pcm, params) == 0 &&
-              api->swParamsSetAvailMin(entry->pcm, params, period) == 0 &&
               api->swParamsSetStartThreshold(entry->pcm, params, period) == 0 &&
               api->swParams(entry->pcm, params) == 0;
     return ok ? maud_success : maud_errorPlatform;

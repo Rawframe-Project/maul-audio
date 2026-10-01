@@ -54,8 +54,6 @@ typedef struct maudAlsaApi
     int (*swParamsCurrent)(snd_pcm_t* pcm, snd_pcm_sw_params_t* params);
     int (*swParamsSetStartThreshold)(snd_pcm_t* pcm, snd_pcm_sw_params_t* params,
                                      snd_pcm_uframes_t frames);
-    int (*swParamsSetAvailMin)(snd_pcm_t* pcm, snd_pcm_sw_params_t* params,
-                               snd_pcm_uframes_t frames);
     int (*swParams)(snd_pcm_t* pcm, snd_pcm_sw_params_t* params);
     snd_pcm_chmap_t* (*pcmGetChmap)(snd_pcm_t* pcm);
     // The C library's free, as libasound links it: snd_pcm_get_chmap's
