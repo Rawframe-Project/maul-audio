@@ -15,6 +15,7 @@
 #include "maul-audio/stream.h"
 
 #include <dirent.h>
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -117,17 +118,25 @@ static bool WaitForDefaults(maudContext* context, maudDeviceId device)
     return false;
 }
 
+// The thread that runs the test, which no callback may run on.
+static pthread_t s_control;
+
 typedef struct Blocks
 {
     _Atomic(uint32_t) count;
     _Atomic(uint32_t) wrongSize;
     _Atomic(uint32_t) withInput;
+    _Atomic(uint32_t) onControl;
     uint32_t periodFrames;
 } Blocks;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
 {
     Blocks* blocks = user;
+    if (pthread_equal(pthread_self(), s_control))
+    {
+        atomic_fetch_add(&blocks->onControl, 1);
+    }
     if (block->frameCount != blocks->periodFrames)
     {
         atomic_fetch_add(&blocks->wrongSize, 1);
@@ -227,6 +236,36 @@ static bool Run(const char* command)
     return system(command) == 0;
 }
 
+// Whether the one sink input is corked: 1 yes, 0 no, -1 none.
+static int Corked(void)
+{
+    FILE* listing = popen("pactl list sink-inputs | grep 'Corked:'", "r");
+    char line[64] = {0};
+    bool read = listing != nullptr && fgets(line, sizeof(line), listing) != nullptr;
+    if (listing != nullptr)
+    {
+        pclose(listing);
+    }
+    return !read ? -1 : strstr(line, "yes") != nullptr ? 1 : 0;
+}
+
+// Drains notifications until the device with key appears, up to five
+// seconds.
+static maudDeviceId WaitForKey(maudContext* context, maudDirection direction, const char* key)
+{
+    maudDeviceId device = {0, 0};
+    for (int tries = 0; tries < 500 && device.index1 == 0; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        device = FindByKey(context, direction, key);
+        Sleep(10);
+    }
+    return device;
+}
+
 static void TestDevices(const maudContext* context)
 {
     CHECK(maudGetContextBackend(context) == maud_backendPulse, "PulseAudio");
@@ -283,20 +322,28 @@ static void TestOutputStream(maudContext* context)
     maudDeviceId none = {0, 0};
     maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
     CHECK(ThreadCount() == 0, "no stream thread before start");
+    CHECK(Corked() == 1, "connected corked");
     Sleep(100);
     CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(ThreadCount() == 1, "one thread while it runs");
+    Sleep(200);
+    CHECK(Corked() == 0, "uncorked while it runs");
+    CHECK(Run("pactl list sink-inputs | grep -q 'node.latency = \"256/48000\"'"),
+          "a period of latency asked for");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at the sink's rate");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     CHECK(ThreadCount() == 0, "joined when it stops");
+    Sleep(200);
+    CHECK(Corked() == 1, "corked once stopped");
     uint32_t stopped = atomic_load(&blocks.count);
     Sleep(100);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
+    CHECK(atomic_load(&blocks.onControl) == 0, "no callback on the control thread");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
     CHECK(ThreadCount() == 0, "and joined");
     maudStreamDef def = maudDefaultStreamDef();
@@ -330,19 +377,10 @@ static void TestInputStream(maudContext* context)
 // A stream opened on a device stays on it and is lost with it.
 static void TestPinnedStream(maudContext* context)
 {
-    CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-pinned "
+    CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-pinned rate=44100 "
               "sink_properties=device.description=Pinned > /dev/null"),
-          "load a sink");
-    maudDeviceId pinned = {0, 0};
-    for (int tries = 0; tries < 500 && pinned.index1 == 0; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        pinned = FindByKey(context, maud_directionOutput, "maud-pulse-pinned");
-        Sleep(10);
-    }
+          "load a 44.1 kHz sink");
+    maudDeviceId pinned = WaitForKey(context, maud_directionOutput, "maud-pulse-pinned");
     Blocks blocks = {0};
     maudStreamId stream = OpenStream(context, maud_directionOutput, pinned, &blocks);
     CHECK(maudStartStream(context, stream) == maud_success, "start");
@@ -352,6 +390,12 @@ static void TestPinnedStream(maudContext* context)
              "pactl list sink-inputs | grep -q \"Sink: $(pactl list short sinks | "
              "awk '$2==\"maud-pulse-pinned\"{print $1}')\"");
     CHECK(Run(command), "on the device it was opened on");
+    maudStreamFormat format;
+    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success, "format");
+    CHECK(format.sampleRate == 44100, "a native stream at its sink's rate");
+    CHECK(!Run("pactl move-sink-input $(pactl list short sink-inputs | awk '{print $1}') "
+               "maud-test-sink 2> /dev/null"),
+          "the server may not move it");
     CHECK(Run("pactl unload-module module-null-sink"), "unplug it");
     maudNotification record;
     bool lost = false;
@@ -401,6 +445,7 @@ static void TestRestart(maudContext* context)
     CHECK(sink.index1 != 0 && SameDevice(current, sink), "the sink and its default come back");
     uint32_t resumed = atomic_load(&blocks.count);
     CHECK(WaitForBlocks(context, &blocks, resumed + 20), "the stream plays on the new server");
+    CHECK(atomic_load(&blocks.onControl) == 0, "rebuilt without a callback on this thread");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
@@ -418,6 +463,7 @@ static void TestNativeFallback(void)
 
 int main(void)
 {
+    s_control = pthread_self();
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendPulse;
     maudContext* context = nullptr;
