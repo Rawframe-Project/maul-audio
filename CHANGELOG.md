@@ -95,3 +95,10 @@ format.
   unless platform-converted; each running stream has one thread, named
   maud-wasapi, in MMCSS's "Pro Audio" class; a stream on a default is
   opened again on its new endpoint when the default moves.
+- The web backend, Web Audio: one output at the AudioContext's rate,
+  played by an AudioWorklet from a queue of four chunks of 512 frames
+  that the library renders on the page's main thread; it runs on pages
+  with and without cross-origin isolation.
+- `maudResumeContext` and the suspension `maud_suspendPolicy`: streams
+  the browser's autoplay policy holds wait, and resume once a user
+  gesture's handler calls it.

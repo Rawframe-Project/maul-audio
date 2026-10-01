@@ -30,7 +30,9 @@ extern "C"
     enum
     {
         // The platform's audio thread, or one the library starts where the
-        // platform has none.
+        // platform has none. On the web it is the page's main thread: the
+        // library renders ahead there, from the browser's event loop, and
+        // plays from a queue on the audio thread.
         maud_modeCallback = 0,
         // The host's own thread, through the library; the only mode of the
         // offline backend, and refused where the platform owns the audio
@@ -120,6 +122,9 @@ extern "C"
         maud_suspendDeviceLost = 1,
         // It follows the default device, and its direction has no device.
         maud_suspendNoDevice = 2,
+        // The platform holds audio until the user acts: on the web, until
+        // a user gesture's handler calls maudResumeContext.
+        maud_suspendPolicy = 3,
     };
 
     // Where a stream stands.

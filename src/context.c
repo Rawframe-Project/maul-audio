@@ -62,6 +62,10 @@ static const maudBackend* BackendOfKind(maudBackendKind kind)
     case maud_backendWasapi:
         return maudGetWasapiBackend();
 #endif
+#if defined(__EMSCRIPTEN__)
+    case maud_backendWeb:
+        return maudGetWebBackend();
+#endif
     default:
         return nullptr;
     }
@@ -70,6 +74,8 @@ static const maudBackend* BackendOfKind(maudBackendKind kind)
 // What maud_backendNative tries, in order.
 #if defined(_WIN32)
 static const maudBackendKind s_nativeOrder[] = {maud_backendWasapi};
+#elif defined(__EMSCRIPTEN__)
+static const maudBackendKind s_nativeOrder[] = {maud_backendWeb};
 #else
 static const maudBackendKind s_nativeOrder[] = {maud_backendPipewire, maud_backendPulse,
                                                 maud_backendAlsa};
@@ -310,4 +316,22 @@ void maudReleaseStream(maudContext* context, maudStreamSlot* slot)
     slot->live = false;
     // A generation of 0 never names a stream, so it is skipped on wrap.
     slot->generation = slot->generation == UINT32_MAX ? 1 : slot->generation + 1;
+}
+
+maudResult maudResumeContext(maudContext* context)
+{
+    if (context == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    if (maudIsRenderingThread(context))
+    {
+        maudCountMisuse(context);
+        return maud_errorState;
+    }
+    if (context->backend->resumeContext != nullptr)
+    {
+        context->backend->resumeContext(context);
+    }
+    return maud_success;
 }

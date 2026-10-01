@@ -86,6 +86,23 @@ static void ApplyDeviceRate(maudContext* context, maudStreamSlot* slot)
     }
 }
 
+// Ends a stream's suspension: it runs again, or, while the platform
+// holds the context, waits for the policy instead.
+static void Resume(maudContext* context, maudStreamSlot* slot)
+{
+    if (context->held)
+    {
+        Suspend(context, slot, maud_suspendPolicy);
+        return;
+    }
+    slot->core.binding.suspension = maud_suspendNone;
+    Publish(context, slot);
+    maudPostNotification(context, &(maudNotification){
+                                      .kind = maud_notifyStreamResumed,
+                                      .streamId = maudStreamIdOf(context, slot),
+                                  });
+}
+
 static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device)
 {
     maudStreamCore* core = &slot->core;
@@ -102,14 +119,10 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
     {
         Retarget(context, slot);
     }
-    if (core->binding.suspension != maud_suspendNone)
+    if (core->binding.suspension != maud_suspendNone &&
+        core->binding.suspension != maud_suspendPolicy)
     {
-        core->binding.suspension = maud_suspendNone;
-        Publish(context, slot);
-        maudPostNotification(context, &(maudNotification){
-                                          .kind = maud_notifyStreamResumed,
-                                          .streamId = id,
-                                      });
+        Resume(context, slot);
     }
 }
 
@@ -126,7 +139,9 @@ void maudBindNewStream(maudContext* context, maudStreamSlot* slot)
         .requested = def->device,
         .current = device,
         .started = false,
-        .suspension = device.index1 == 0 ? maud_suspendNoDevice : maud_suspendNone,
+        .suspension = device.index1 == 0 ? maud_suspendNoDevice
+                      : context->held    ? maud_suspendPolicy
+                                         : maud_suspendNone,
     };
     atomic_store_explicit(&core->state, maud_streamIdle, memory_order_release);
 }
@@ -183,4 +198,26 @@ void maudSetStreamStarted(maudContext* context, maudStreamSlot* slot, bool start
 {
     slot->core.binding.started = started;
     Publish(context, slot);
+}
+
+void maudHoldStreams(maudContext* context, bool held)
+{
+    if (context->held == held)
+    {
+        return;
+    }
+    context->held = held;
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        maudSuspendReason reason = slot->core.binding.suspension;
+        if (slot->live && held && reason == maud_suspendNone)
+        {
+            Suspend(context, slot, maud_suspendPolicy);
+        }
+        else if (slot->live && !held && reason == maud_suspendPolicy)
+        {
+            Resume(context, slot);
+        }
+    }
 }

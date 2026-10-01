@@ -22,6 +22,11 @@ void maudFollowDefault(maudContext* context, maudDirection direction, maudDevice
 // changed without a move.
 void maudRefreshNativeRates(maudContext* context);
 
+// Records whether the platform holds the context's audio: holding
+// suspends every stream that runs with maud_suspendPolicy, releasing
+// resumes them.
+void maudHoldStreams(maudContext* context, bool held);
+
 // Suspends every stream opened on a device that disappeared.
 void maudLoseDevice(maudContext* context, maudDeviceId device);
 

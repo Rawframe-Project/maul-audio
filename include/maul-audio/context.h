@@ -24,7 +24,7 @@ extern "C"
     {
         // The platform's best backend that answers: on Linux PipeWire, then
         // PulseAudio, then ALSA, which answers wherever libasound loads;
-        // on Windows WASAPI. Only asked for; a context
+        // on Windows WASAPI; on the web Web Audio. Only asked for; a context
         // reports the backend it chose.
         maud_backendNative = 0,
         // Rendering to caller buffers at a caller-driven clock: no device,
@@ -106,6 +106,21 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     /// No stream of the context may be rendering on another thread.
     MAUD_NODISCARD MAUD_API maudResult maudDestroyContext(maudContext* context);
+
+    /// Asks the platform to let the context's audio run. Browsers hold audio
+    /// until the user acts: call it from a user gesture's handler, such as
+    /// a click's. Streams held meanwhile are suspended with
+    /// maud_suspendPolicy and resume, with a notification, once the
+    /// platform lets the context run. Where no policy holds audio it does
+    /// nothing.
+    ///
+    /// @param context  The context.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL context;
+    ///         `maud_errorState` when called on a thread that is rendering
+    ///         one of the context's streams, which counts as misuse.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudResumeContext(maudContext* context);
 
     /// Returns the backend a context talks to: the one its def named, or
     /// for maud_backendNative the one it chose.

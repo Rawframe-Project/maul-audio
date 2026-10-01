@@ -96,6 +96,12 @@ if(MAUL_AUDIO_WASAPI)
     target_link_libraries(maul-audio PRIVATE ole32 avrt)
 endif()
 
+# Web Audio, in Emscripten builds: the backend's JavaScript is in its
+# source, through EM_JS.
+if(EMSCRIPTEN)
+    target_sources(maul-audio PRIVATE src/backend_web.c)
+endif()
+
 # Likewise ALSA's headers only.
 if(MAUL_AUDIO_ALSA)
     find_package(PkgConfig REQUIRED)
@@ -194,6 +200,15 @@ if(MAUL_AUDIO_BUILD_TESTS)
         if(NOT MAUL_AUDIO_WASAPI)
             target_sources(test_wasapi_format PRIVATE src/wasapi_format.c)
         endif()
+    endif()
+    # The web backend's page, run in a browser by test/web/run_page.js,
+    # not by CTest; its name keeps it out of the test_*.js runs.
+    if(EMSCRIPTEN)
+        add_executable(page_web test/web/page_web.c)
+        target_link_libraries(page_web PRIVATE maul-audio)
+        set_target_properties(page_web PROPERTIES SUFFIX ".html")
+        maul_apply_flags(page_web)
+        target_link_options(page_web PRIVATE "--shell-file=${PROJECT_SOURCE_DIR}/test/web/shell.html")
     endif()
     # The audio-thread trap exists only where invariants are checked.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)

@@ -66,6 +66,8 @@ static void TestOfflineContextLifetime(void)
     CHECK(context != nullptr, "context returned");
     CHECK(maudGetContextBackend(context) == maud_backendOffline, "offline backend");
     CHECK(maudGetContextMisuse(context) == 0, "no misuse");
+    CHECK(maudResumeContext(context) == maud_success, "resume where no policy holds audio");
+    CHECK(maudResumeContext(nullptr) == maud_errorInvalid, "resume NULL");
     CHECK(counter.live == 1, "one block");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     CHECK(counter.live == 0, "block returned");

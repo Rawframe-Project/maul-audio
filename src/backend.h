@@ -43,6 +43,9 @@ struct maudBackend
     // Whether the platform binds a stream to one device, so that every
     // move must reopen it; otherwise the platform moves it itself.
     bool reopensOnMove;
+    // Asks the platform to let a context held by a policy run. May be
+    // NULL.
+    void (*resumeContext)(maudContext* context);
     // Whether the caller's thread renders the streams (maudRenderStream
     // and maudFeedStream), as on the offline backend.
     bool rendersOnCaller;
@@ -62,5 +65,8 @@ const maudBackend* maudGetAlsaBackend(void);
 
 // The WASAPI backend, in builds with MAUL_AUDIO_WASAPI.
 const maudBackend* maudGetWasapiBackend(void);
+
+// The web backend, in Emscripten builds.
+const maudBackend* maudGetWebBackend(void);
 
 #endif // MAUL_AUDIO_SRC_BACKEND_H
