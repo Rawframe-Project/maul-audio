@@ -28,7 +28,13 @@ typedef struct Helper
     struct pw_registry* registry;
     struct spa_hook registryListener;
     struct pw_metadata* metadata;
+    struct pw_metadata* settings;
     struct pw_proxy* node;
+    // The links' input nodes and the plugged sink's global id, written
+    // on the helper's loop thread.
+    uint32_t linkInputs[256];
+    uint32_t linkCount;
+    uint32_t pluggedId;
 } Helper;
 
 static void OnHelperGlobal(void* data, uint32_t id, uint32_t permissions, const char* type,
@@ -37,11 +43,28 @@ static void OnHelperGlobal(void* data, uint32_t id, uint32_t permissions, const 
     (void)permissions;
     (void)version;
     Helper* helper = data;
+    const char* input = props != nullptr ? spa_dict_lookup(props, PW_KEY_LINK_INPUT_NODE) : nullptr;
+    if (strcmp(type, PW_TYPE_INTERFACE_Link) == 0 && input != nullptr && helper->linkCount < 256)
+    {
+        helper->linkInputs[helper->linkCount++] = (uint32_t)atoi(input);
+    }
+    const char* nodeName = props != nullptr ? spa_dict_lookup(props, PW_KEY_NODE_NAME) : nullptr;
+    if (strcmp(type, PW_TYPE_INTERFACE_Node) == 0 && nodeName != nullptr &&
+        strcmp(nodeName, "maud-test-hotplug") == 0)
+    {
+        helper->pluggedId = id;
+    }
     const char* name = props != nullptr ? spa_dict_lookup(props, PW_KEY_METADATA_NAME) : nullptr;
     if (helper->metadata == nullptr && strcmp(type, PW_TYPE_INTERFACE_Metadata) == 0 &&
         name != nullptr && strcmp(name, "default") == 0)
     {
         helper->metadata = pw_registry_bind(helper->registry, id, PW_TYPE_INTERFACE_Metadata,
+                                            PW_VERSION_METADATA, 0);
+    }
+    if (helper->settings == nullptr && strcmp(type, PW_TYPE_INTERFACE_Metadata) == 0 &&
+        name != nullptr && strcmp(name, "settings") == 0)
+    {
+        helper->settings = pw_registry_bind(helper->registry, id, PW_TYPE_INTERFACE_Metadata,
                                             PW_VERSION_METADATA, 0);
     }
 }
@@ -80,7 +103,7 @@ static bool StartHelper(Helper* helper)
     {
         Sleep(10);
         pw_thread_loop_lock(helper->loop);
-        ready = helper->metadata != nullptr;
+        ready = helper->metadata != nullptr && helper->settings != nullptr;
         pw_thread_loop_unlock(helper->loop);
     }
     return ready;
@@ -121,6 +144,14 @@ static void SetDefaultKey(Helper* helper, const char* key, const char* nodeName)
     pw_thread_loop_unlock(helper->loop);
 }
 
+// Forces the graph's rate, or with "0" lets it go.
+static void ForceGraphRate(Helper* helper, const char* rate)
+{
+    pw_thread_loop_lock(helper->loop);
+    pw_metadata_set_property(helper->settings, PW_ID_CORE, "clock.force-rate", nullptr, rate);
+    pw_thread_loop_unlock(helper->loop);
+}
+
 static void StopHelper(Helper* helper)
 {
     pw_thread_loop_lock(helper->loop);
@@ -131,6 +162,10 @@ static void StopHelper(Helper* helper)
     if (helper->metadata != nullptr)
     {
         pw_proxy_destroy((struct pw_proxy*)helper->metadata);
+    }
+    if (helper->settings != nullptr)
+    {
+        pw_proxy_destroy((struct pw_proxy*)helper->settings);
     }
     if (helper->registry != nullptr)
     {
@@ -266,16 +301,10 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     PlugSink(helper);
     CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
     maudDeviceInfo info = {0};
-    for (int tries = 0; tries < 100 && info.nativeSampleRate != 44100; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success, "plugged info");
-        Sleep(10);
-    }
-    CHECK(info.nativeSampleRate == 44100, "its rate");
+    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success, "plugged info");
+    CHECK(info.nativeSampleRate == 48000 && info.minSampleRate == 48000 &&
+              info.maxSampleRate == 48000,
+          "a 44.1 kHz node runs at the graph's rate");
     // The effective default, as the session manager writes it. A direct
     // write stays until the session manager's own choice changes.
     SetDefaultKey(helper, "default.audio.sink", "maud-test-hotplug");
@@ -348,6 +377,61 @@ static bool WaitForBlocks(maudContext* context, Blocks* blocks, uint32_t count)
     return atomic_load(&blocks->count) >= count;
 }
 
+// Whether a link into the plugged sink appeared within three seconds.
+static bool WaitForLinkIntoPlugged(maudContext* context, Helper* helper)
+{
+    for (int tries = 0; tries < 300; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        pw_thread_loop_lock(helper->loop);
+        bool linked = false;
+        for (uint32_t i = 0; i < helper->linkCount && helper->pluggedId != 0; ++i)
+        {
+            linked = linked || helper->linkInputs[i] == helper->pluggedId;
+        }
+        pw_thread_loop_unlock(helper->loop);
+        if (linked)
+        {
+            return true;
+        }
+        Sleep(10);
+    }
+    return false;
+}
+
+// The stream's frames per second of wall-clock time over a second and a
+// half, draining notifications meanwhile.
+static double MeasureRate(maudContext* context, maudStreamId stream)
+{
+    struct timespec start;
+    struct timespec end;
+    uint64_t first = 0;
+    uint64_t last = 0;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
+    for (int i = 0; i < 150; ++i)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double seconds =
+        (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) * 1e-9;
+    return (double)(last - first) / seconds;
+}
+
+static bool Near(double rate, double expected, double tolerance)
+{
+    return rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+}
+
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
                                Blocks* blocks)
 {
@@ -378,9 +462,8 @@ static void TestOutputStream(maudContext* context)
     CHECK(atomic_load(&blocks.lastRate) == 48000, "blocks carry the rate");
     CHECK(atomic_load(&blocks.controlResult) == maud_errorState, "control refused there");
     CHECK(maudGetContextMisuse(context) >= 1, "and counted");
-    uint64_t position = 0;
-    CHECK(maudGetStreamPosition(context, stream, &position) == maud_success && position > 0,
-          "the clock advances");
+    double rate = MeasureRate(context, stream);
+    CHECK(Near(rate, 48000.0, 0.04), "the clock advances at the stream's rate");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     WaitForBlocks(context, &blocks, UINT32_MAX / 2);
     uint32_t stopped = atomic_load(&blocks.count);
@@ -392,6 +475,16 @@ static void TestOutputStream(maudContext* context)
     def.callback = CountBlocks;
     def.user = &blocks;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
+    def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    def.ratePolicy = maud_rateRequired;
+    def.sampleRate = 44100;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "a rate the device does not run at");
+    def.sampleRate = 48000;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "the device's own rate");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
 static void TestInputStream(maudContext* context)
@@ -435,16 +528,23 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
     CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
     Blocks pinnedBlocks = {0};
     maudStreamId pinned = OpenStream(context, maud_directionOutput, plugged, &pinnedBlocks);
+    CHECK(WaitForLinkIntoPlugged(context, helper), "the pinned stream is linked to its device");
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
     maudNotification record;
+    CHECK(WaitForStream(context, maud_notifyStreamMoved, follower, &record), "the follower moves");
+    CHECK(Near(MeasureRate(context, follower), 48000.0, 0.04), "at the graph's rate still");
+    ForceGraphRate(helper, "44100");
     CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record),
-          "the follower takes the new device's rate");
+          "the graph's new rate");
     CHECK(record.sampleRate == 44100, "44.1 kHz");
     uint32_t before = atomic_load(&following.count);
     CHECK(WaitForBlocks(context, &following, before + 20), "the follower runs on");
     CHECK(atomic_load(&following.lastRate) == 44100, "its blocks carry the new rate");
-    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
+    CHECK(Near(MeasureRate(context, follower), 44100.0, 0.04), "and it runs at it");
+    ForceGraphRate(helper, "0");
     CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record), "and back");
+    CHECK(record.sampleRate == 48000, "48 kHz");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
     UnplugSink(helper);
     CHECK(WaitForStream(context, maud_notifyStreamSuspended, pinned, &record), "pinned lost");
     CHECK(record.reason == maud_suspendDeviceLost, "its device is gone");

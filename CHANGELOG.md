@@ -53,6 +53,8 @@ format.
   formats, follows its default devices, and reports devices plugged
   in and out.
 - Streams on PipeWire: callbacks on libpipewire's real-time thread,
-  always in whole periods; native, platform-converted and (at the
-  device's own rate) required rates; streams on the default move with
-  it, and a stream on a device that is unplugged is suspended.
+  always in whole periods; native (the graph's rate, which every
+  PipeWire device reports), platform-converted and required rates;
+  streams on the default move with it, native streams follow the
+  graph's rate when it changes, and a stream on a device that is
+  unplugged is suspended.

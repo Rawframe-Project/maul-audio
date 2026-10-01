@@ -179,7 +179,10 @@ static bool WaitForFormat(maudPipewire* pipewire, const maudPipewireStream* entr
     return entry->state == PW_STREAM_STATE_PAUSED || entry->state == PW_STREAM_STATE_STREAMING;
 }
 
-maudResult maudPipewireAttachStream(maudContext* context, maudStreamSlot* slot)
+// Creates and connects the slot's pw_stream, inactive. With wait, it
+// waits up to the deadline for PipeWire to accept the format, unless
+// the stream has no device to negotiate with yet.
+static maudResult ConnectStream(maudContext* context, maudStreamSlot* slot, bool wait)
 {
     maudPipewire* pipewire = context->native;
     maudPipewireStream* entry = EntryOf(context, slot);
@@ -205,14 +208,18 @@ maudResult maudPipewireAttachStream(maudContext* context, maudStreamSlot* slot)
     int connected = pipewire->api.streamConnect(entry->stream,
                                                 output ? PW_DIRECTION_OUTPUT : PW_DIRECTION_INPUT,
                                                 PW_ID_ANY, flags, params, 1);
-    // A stream waiting for a device has nothing to negotiate with yet.
-    bool waiting = core->binding.current.index1 == 0;
+    bool waiting = !wait || core->binding.current.index1 == 0;
     if (connected < 0 || (!waiting && !WaitForFormat(pipewire, entry)))
     {
         maudPipewireDetachStream(context, slot);
         return maud_errorPlatform;
     }
     return maud_success;
+}
+
+maudResult maudPipewireAttachStream(maudContext* context, maudStreamSlot* slot)
+{
+    return ConnectStream(context, slot, true);
 }
 
 void maudPipewireDetachStream(maudContext* context, maudStreamSlot* slot)
@@ -239,11 +246,16 @@ void maudPipewireSetStreamActive(maudContext* context, maudStreamSlot* slot, boo
 
 void maudPipewireRetargetStream(maudContext* context, maudStreamSlot* slot)
 {
-    maudPipewireStream* entry = EntryOf(context, slot);
-    if (entry->used)
+    // A negotiated pw_stream keeps its format when it is offered others,
+    // so a new rate takes a new stream.
+    if (!EntryOf(context, slot)->used)
     {
-        uint8_t buffer[FORMAT_POD_BYTES];
-        const struct spa_pod* params[] = {BuildFormat(&slot->core, buffer)};
-        entry->owner->api.streamUpdateParams(entry->stream, params, 1);
+        return;
+    }
+    maudPipewireDetachStream(context, slot);
+    if (ConnectStream(context, slot, false) == maud_success &&
+        atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning)
+    {
+        maudPipewireSetStreamActive(context, slot, true);
     }
 }

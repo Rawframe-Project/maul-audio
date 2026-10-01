@@ -47,7 +47,7 @@ extern "C"
         maud_rateNative = 0,
         // The def's sampleRate, which the device must run at without
         // conversion, or the stream is refused. On PipeWire that is the
-        // device's own rate.
+        // graph's rate, which every device runs at.
         maud_rateRequired = 1,
         // The def's sampleRate, converted by the platform's own converter.
         // Refused where the platform has none.

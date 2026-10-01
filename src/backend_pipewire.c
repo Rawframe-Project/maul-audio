@@ -10,6 +10,7 @@
 #include "backend.h"
 #include "context.h"
 #include "device.h"
+#include "follow.h"
 #include "pipewire_core.h"
 #include "pipewire_stream.h"
 
@@ -141,12 +142,6 @@ static void OnNodeParam(void* data, int seq, uint32_t id, uint32_t index, uint32
     {
         return;
     }
-    const struct spa_pod_prop* rate = spa_pod_find_prop(param, nullptr, SPA_FORMAT_AUDIO_rate);
-    if (rate != nullptr)
-    {
-        ReadChoice(&rate->value, &slot->info.nativeSampleRate, &slot->info.minSampleRate,
-                   &slot->info.maxSampleRate);
-    }
     const struct spa_pod_prop* channels =
         spa_pod_find_prop(param, nullptr, SPA_FORMAT_AUDIO_channels);
     if (channels != nullptr)
@@ -180,7 +175,7 @@ static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection dir
         return;
     }
     name = name != nullptr ? name : key;
-    uint32_t rate = PropertyNumber(props, PW_KEY_AUDIO_RATE);
+    uint32_t rate = pipewire->clock.graphRate;
     maudDeviceSpec spec = {
         .info = {.direction = direction,
                  .nativeLayout = LayoutForChannels(PropertyNumber(props, PW_KEY_AUDIO_CHANNELS)),
@@ -291,6 +286,78 @@ static const struct pw_metadata_events s_metadataEvents = {
     .property = OnMetadataProperty,
 };
 
+// Gives every device the graph's rate and lets native streams follow
+// it when it changed.
+static void UpdateGraphRate(maudPipewire* pipewire)
+{
+    maudPipewireClock* clock = &pipewire->clock;
+    uint32_t rate = clock->forceRate != 0   ? clock->forceRate
+                    : clock->clockRate != 0 ? clock->clockRate
+                                            : MAUD_PIPEWIRE_FALLBACK_RATE;
+    if (rate == clock->graphRate)
+    {
+        return;
+    }
+    clock->graphRate = rate;
+    for (uint32_t i = 0; i < pipewire->nodeCapacity; ++i)
+    {
+        maudDeviceSlot* slot = pipewire->nodes[i].used
+                                   ? maudFindDevice(pipewire->context, pipewire->nodes[i].device)
+                                   : nullptr;
+        if (slot != nullptr)
+        {
+            slot->info.nativeSampleRate = rate;
+            slot->info.minSampleRate = rate;
+            slot->info.maxSampleRate = rate;
+        }
+    }
+    maudRefreshNativeRates(pipewire->context);
+}
+
+static int OnSettingsProperty(void* data, uint32_t subject, const char* key, const char* type,
+                              const char* value)
+{
+    (void)type;
+    maudPipewire* pipewire = data;
+    uint32_t number = 0;
+    if (subject != PW_ID_CORE || key == nullptr ||
+        (value != nullptr && !spa_atou32(value, &number, 10)))
+    {
+        return 0;
+    }
+    if (spa_streq(key, "clock.rate"))
+    {
+        pipewire->clock.clockRate = number;
+    }
+    else if (spa_streq(key, "clock.force-rate"))
+    {
+        pipewire->clock.forceRate = number;
+    }
+    else
+    {
+        return 0;
+    }
+    UpdateGraphRate(pipewire);
+    return 0;
+}
+
+static const struct pw_metadata_events s_settingsEvents = {
+    .version = PW_VERSION_METADATA_EVENTS,
+    .property = OnSettingsProperty,
+};
+
+static void BindSettings(maudPipewire* pipewire, uint32_t globalId)
+{
+    maudPipewireClock* clock = &pipewire->clock;
+    clock->metadata = pw_registry_bind(pipewire->connection.registry, globalId,
+                                       PW_TYPE_INTERFACE_Metadata, PW_VERSION_METADATA, 0);
+    if (clock->metadata != nullptr)
+    {
+        pw_metadata_add_listener((struct pw_metadata*)clock->metadata, &clock->listener,
+                                 &s_settingsEvents, pipewire);
+    }
+}
+
 static void BindDefaults(maudPipewire* pipewire, uint32_t globalId)
 {
     maudPipewireDefaults* defaults = &pipewire->defaults;
@@ -325,11 +392,17 @@ static void OnGlobal(void* data, uint32_t id, uint32_t permissions, const char* 
             AddNode(pipewire, id, maud_directionInput, props);
         }
     }
-    else if (spa_streq(type, PW_TYPE_INTERFACE_Metadata) &&
-             pipewire->defaults.metadata == nullptr &&
-             spa_streq(spa_dict_lookup(props, PW_KEY_METADATA_NAME), "default"))
+    else if (spa_streq(type, PW_TYPE_INTERFACE_Metadata))
     {
-        BindDefaults(pipewire, id);
+        const char* name = spa_dict_lookup(props, PW_KEY_METADATA_NAME);
+        if (pipewire->defaults.metadata == nullptr && spa_streq(name, "default"))
+        {
+            BindDefaults(pipewire, id);
+        }
+        else if (pipewire->clock.metadata == nullptr && spa_streq(name, "settings"))
+        {
+            BindSettings(pipewire, id);
+        }
     }
 }
 
@@ -432,6 +505,11 @@ static void Disconnect(maudPipewire* pipewire)
         spa_hook_remove(&pipewire->defaults.listener);
         pipewire->api.proxyDestroy(pipewire->defaults.metadata);
     }
+    if (pipewire->clock.metadata != nullptr)
+    {
+        spa_hook_remove(&pipewire->clock.listener);
+        pipewire->api.proxyDestroy(pipewire->clock.metadata);
+    }
     if (connection->registry != nullptr)
     {
         spa_hook_remove(&connection->registryListener);
@@ -507,6 +585,7 @@ static maudResult OpenContext(maudContext* context)
     *pipewire = (maudPipewire){
         .context = context,
         .nodes = (maudPipewireNode*)(pipewire + 1),
+        .clock = {.graphRate = MAUD_PIPEWIRE_FALLBACK_RATE},
         .nodeCapacity = capacity,
         .bytes = bytes,
     };
@@ -554,23 +633,21 @@ static void Pump(maudContext* context)
     pw_loop_leave(connection->loop);
 }
 
-// PipeWire runs a native stream at its device's rate, converts any
-// other rate on request, and accepts a required rate only when it is
-// the device's own. Its streams run on libpipewire's thread, so there
-// is no pull mode.
+// PipeWire runs every stream through its graph: a native stream at the
+// graph's rate, any other rate on request through PipeWire's converter,
+// and a required rate only when it is the graph's. Its streams run on
+// libpipewire's thread, so there is no pull mode.
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
-    (void)context;
-    uint32_t native = device != nullptr && device->nativeSampleRate != 0
-                          ? device->nativeSampleRate
-                          : MAUD_PIPEWIRE_FALLBACK_RATE;
-    bool requiredFits = device != nullptr && def->sampleRate == device->nativeSampleRate;
-    if (def->mode == maud_modePull || (def->ratePolicy == maud_rateRequired && !requiredFits))
+    (void)device;
+    uint32_t graph = ((const maudPipewire*)context->native)->clock.graphRate;
+    if (def->mode == maud_modePull ||
+        (def->ratePolicy == maud_rateRequired && def->sampleRate != graph))
     {
         return maud_errorUnsupported;
     }
-    uint32_t rate = def->ratePolicy == maud_rateNative ? native : def->sampleRate;
+    uint32_t rate = def->ratePolicy == maud_rateNative ? graph : def->sampleRate;
     *formatOut = (maudStreamFormat){
         .sampleRate = rate,
         .periodFrames = def->periodFrames != 0 ? def->periodFrames : rate / 100,

@@ -47,6 +47,30 @@ static void Suspend(maudContext* context, maudStreamSlot* slot, maudSuspendReaso
                                   });
 }
 
+// Gives a native stream its device's rate, if that differs from the
+// rate it runs at.
+static void ApplyDeviceRate(maudContext* context, maudStreamSlot* slot)
+{
+    maudStreamCore* core = &slot->core;
+    const maudDeviceSlot* device = maudFindDevice(context, core->binding.current);
+    if (device == nullptr || core->format.ratePolicy != maud_rateNative ||
+        device->info.nativeSampleRate == core->format.sampleRate)
+    {
+        return;
+    }
+    core->format.sampleRate = device->info.nativeSampleRate;
+    atomic_store_explicit(&core->blockRate, core->format.sampleRate, memory_order_release);
+    if (context->backend->retargetStream != nullptr)
+    {
+        context->backend->retargetStream(context, slot);
+    }
+    maudPostNotification(context, &(maudNotification){
+                                      .kind = maud_notifyStreamFormatChanged,
+                                      .streamId = maudStreamIdOf(context, slot),
+                                      .sampleRate = core->format.sampleRate,
+                                  });
+}
+
 static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device)
 {
     maudStreamCore* core = &slot->core;
@@ -57,22 +81,7 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
                                       .deviceId = device,
                                       .streamId = id,
                                   });
-    const maudDeviceSlot* target = maudFindDevice(context, device);
-    if (core->format.ratePolicy == maud_rateNative &&
-        target->info.nativeSampleRate != core->format.sampleRate)
-    {
-        core->format.sampleRate = target->info.nativeSampleRate;
-        atomic_store_explicit(&core->blockRate, core->format.sampleRate, memory_order_release);
-        if (context->backend->retargetStream != nullptr)
-        {
-            context->backend->retargetStream(context, slot);
-        }
-        maudPostNotification(context, &(maudNotification){
-                                          .kind = maud_notifyStreamFormatChanged,
-                                          .streamId = id,
-                                          .sampleRate = core->format.sampleRate,
-                                      });
-    }
+    ApplyDeviceRate(context, slot);
     if (core->binding.suspension != maud_suspendNone)
     {
         core->binding.suspension = maud_suspendNone;
@@ -122,6 +131,18 @@ void maudFollowDefault(maudContext* context, maudDirection direction, maudDevice
         else
         {
             Move(context, slot, target);
+        }
+    }
+}
+
+void maudRefreshNativeRates(maudContext* context)
+{
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        if (slot->live)
+        {
+            ApplyDeviceRate(context, slot);
         }
     }
 }

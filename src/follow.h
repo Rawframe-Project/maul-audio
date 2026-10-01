@@ -18,6 +18,10 @@ void maudBindNewStream(maudContext* context, maudStreamSlot* slot);
 // that default, or suspends it when the default is the null id.
 void maudFollowDefault(maudContext* context, maudDirection direction, maudDeviceRole role);
 
+// Gives every native stream its device's native rate where that
+// changed without a move.
+void maudRefreshNativeRates(maudContext* context);
+
 // Suspends every stream opened on a device that disappeared.
 void maudLoseDevice(maudContext* context, maudDeviceId device);
 

@@ -15,7 +15,7 @@
 #define MAUD_PIPEWIRE_DEADLINE_NS 2000000000ll
 // How many loop iterations one pump takes at most.
 #define MAUD_PIPEWIRE_PUMP_ITERATIONS 64
-// The rate a native stream takes while its device's rate is unknown.
+// The graph rate until the settings metadata gives it.
 #define MAUD_PIPEWIRE_FALLBACK_RATE 48000u
 // Bytes of a default device's node name.
 #define MAUD_PIPEWIRE_NAME_BYTES 256
@@ -55,6 +55,17 @@ typedef struct maudPipewireDefaults
     char names[2][MAUD_PIPEWIRE_NAME_BYTES];
 } maudPipewireDefaults;
 
+// The settings metadata and the graph rate it gives: the forced rate
+// when one is set, otherwise the clock rate.
+typedef struct maudPipewireClock
+{
+    struct pw_proxy* metadata;
+    struct spa_hook listener;
+    uint32_t clockRate;
+    uint32_t forceRate;
+    uint32_t graphRate;
+} maudPipewireClock;
+
 // One stream: the PipeWire stream and the core it feeds. The process
 // callback reads core from libpipewire's data thread.
 typedef struct maudPipewireStream
@@ -73,6 +84,7 @@ struct maudPipewire
     maudContext* context;
     maudPipewireConnection connection;
     maudPipewireDefaults defaults;
+    maudPipewireClock clock;
     maudPipewireNode* nodes;
     uint32_t nodeCapacity;
     maudPipewireStream* streams;
