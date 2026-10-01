@@ -15,8 +15,4 @@
 // the front center. 0 for maud_layoutNone.
 uint32_t maudWasapiMaskOfLayout(maudChannelLayout layout);
 
-// The layout a device format describes: the one whose mask is mask,
-// else the one with that many channels, else maud_layoutNone.
-maudChannelLayout maudWasapiLayoutOfFormat(uint32_t mask, uint32_t channels);
-
 #endif // MAUL_AUDIO_SRC_WASAPI_FORMAT_H

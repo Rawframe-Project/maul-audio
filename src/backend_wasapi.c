@@ -10,10 +10,9 @@
 #include "backend.h"
 #include "context.h"
 #include "device.h"
+#include "layout.h"
 #include "wasapi_core.h"
-#include "wasapi_format.h"
 
-#include <mmreg.h>
 #include <string.h>
 
 static const GUID s_clsidEnumerator = {
@@ -58,7 +57,8 @@ static bool IdOf(IMMDevice* device, char* out)
 }
 
 // Reads the audio engine's device format into info, if the store has
-// one: its rate, and the layout of its speaker mask or channel count.
+// one: its rate, and the layout of its channel count. Each layout has a
+// count of its own, so the speaker mask would name no other.
 static void ReadFormat(IPropertyStore* store, maudDeviceInfo* info)
 {
     PROPVARIANT value;
@@ -67,16 +67,10 @@ static void ReadFormat(IPropertyStore* store, maudDeviceInfo* info)
         value.blob.cbSize >= sizeof(WAVEFORMATEX))
     {
         const WAVEFORMATEX* format = (const WAVEFORMATEX*)value.blob.pBlobData;
-        uint32_t mask = 0;
-        if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
-            value.blob.cbSize >= sizeof(WAVEFORMATEXTENSIBLE))
-        {
-            mask = ((const WAVEFORMATEXTENSIBLE*)format)->dwChannelMask;
-        }
         info->nativeSampleRate = format->nSamplesPerSec;
         info->minSampleRate = format->nSamplesPerSec;
         info->maxSampleRate = format->nSamplesPerSec;
-        info->nativeLayout = maudWasapiLayoutOfFormat(mask, format->nChannels);
+        info->nativeLayout = maudLayoutWithChannels(format->nChannels);
     }
     PropVariantClear(&value);
 }

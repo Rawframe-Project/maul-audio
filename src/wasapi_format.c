@@ -6,8 +6,6 @@
 
 #include "wasapi_format.h"
 
-#include "layout.h"
-
 // The SPEAKER_* bit of each speaker, from ksmedia.h.
 static uint32_t BitOf(maudSpeaker speaker)
 {
@@ -42,16 +40,4 @@ uint32_t maudWasapiMaskOfLayout(maudChannelLayout layout)
         mask |= BitOf(maudGetLayoutSpeaker(layout, c));
     }
     return mask;
-}
-
-maudChannelLayout maudWasapiLayoutOfFormat(uint32_t mask, uint32_t channels)
-{
-    for (uint32_t layout = maud_layoutMono; layout <= maud_layout7Point1Point4; ++layout)
-    {
-        if (mask != 0 && maudWasapiMaskOfLayout((maudChannelLayout)layout) == mask)
-        {
-            return (maudChannelLayout)layout;
-        }
-    }
-    return maudLayoutWithChannels(channels);
 }
