@@ -13,6 +13,7 @@
 // AudioContext's state and suspends or resumes the streams.
 
 #include "backend.h"
+#include "clock.h"
 #include "context.h"
 #include "device.h"
 #include "follow.h"
@@ -177,7 +178,10 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
                                      : record.posted - played;
         const frames = Math.floor((record.target - buffered) / quantum) * quantum;
         if (frames > 0) {
-            write(_maudWebRender(context, slot, frames), frames);
+            // What plays before these frames: the buffer ahead of them and
+            // the context's own latency to the speaker.
+            const latency = buffered / rate + entry.context.baseLatency + (entry.context.outputLatency || 0);
+            write(_maudWebRender(context, slot, frames, latency), frames);
         }
     }
     entry.worklet.then(function () {
@@ -242,10 +246,11 @@ typedef struct maudWeb
 
 // Renders frames of a stream, a multiple of the quantum and at most the
 // capacity, on the main thread and returns them; the JavaScript side
-// calls it to top the stream up.
-EMSCRIPTEN_KEEPALIVE float* maudWebRender(maudContext* context, int slotIndex, int frames);
+// calls it to top the stream up, with the seconds until they are heard.
+EMSCRIPTEN_KEEPALIVE float* maudWebRender(maudContext* context, int slotIndex, int frames,
+                                          double latency);
 
-float* maudWebRender(maudContext* context, int slotIndex, int frames)
+float* maudWebRender(maudContext* context, int slotIndex, int frames, double latency)
 {
     maudWeb* web = context->native;
     maudStreamCore* core = &context->streams.slots[slotIndex].core;
@@ -256,6 +261,7 @@ float* maudWebRender(maudContext* context, int slotIndex, int frames)
     if (running)
     {
         maudPullPeriod(&core->period, chunk, (uint32_t)frames);
+        maudStampOutputClock(core, (int64_t)(latency * 1e9));
         atomic_fetch_add_explicit(&core->position, (uint64_t)frames, memory_order_release);
     }
     else

@@ -9,6 +9,7 @@
 
 #include "wasapi_stream.h"
 
+#include "clock.h"
 #include "context.h"
 #include "period.h"
 #include "thread.h"
@@ -25,6 +26,8 @@ static const GUID s_iidRenderClient = {
     0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2}};
 static const GUID s_iidCaptureClient = {
     0xC8ADBD64, 0xE71E, 0x48A0, {0xA4, 0xDE, 0x18, 0x5C, 0x39, 0x5C, 0xD3, 0x17}};
+static const GUID s_iidAudioClock = {
+    0xCD63314F, 0x3FBA, 0x4A1B, {0x81, 0x2C, 0xEF, 0x96, 0x35, 0x87, 0x28, 0xE7}};
 static const GUID s_subtypeFloat = {
     0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
 
@@ -39,7 +42,8 @@ static maudWasapiStream* EntryOf(maudContext* context, const maudStreamSlot* slo
 
 // Moves frames between the device's buffer and the adapter: into out
 // for render, from in for capture.
-static void Render(maudWasapiStream* entry, float* out, const float* in, uint32_t frames)
+static void Render(maudWasapiStream* entry, float* out, const float* in, uint32_t frames,
+                   int64_t latency)
 {
     maudStreamCore* core = entry->core;
     bool running = atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning;
@@ -58,7 +62,44 @@ static void Render(maudWasapiStream* entry, float* out, const float* in, uint32_
         maudPushPeriod(&core->period, in, frames);
     }
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
+    if (out != nullptr)
+    {
+        maudStampOutputClock(core, latency);
+    }
+    else
+    {
+        maudStampInputClock(core, latency);
+    }
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
+}
+
+// A performance-counter time in 100-nanosecond units as host
+// nanoseconds, or fallback when it is 0 or more than a second from now
+// (wine's counter times overflow).
+static int64_t CounterTime(UINT64 counter, int64_t now, int64_t fallback)
+{
+    int64_t time = (int64_t)counter * 100;
+    bool plausible = counter != 0 && time > now - 1000000000 && time < now + 1000000000;
+    return plausible ? time : fallback;
+}
+
+// How far from now the next frame written is heard: the device's
+// position, at the performance-counter time it was read, is behind the
+// frames written by what is still to play. 0 when the clock cannot say.
+static int64_t OutputLatency(const maudWasapiStream* entry)
+{
+    UINT64 position = 0;
+    UINT64 counter = 0;
+    if (entry->clock == nullptr || entry->clockFrequency == 0 ||
+        FAILED(IAudioClock_GetPosition(entry->clock, &position, &counter)))
+    {
+        return 0;
+    }
+    uint32_t rate = entry->core->format.sampleRate;
+    uint64_t heard = position * rate / entry->clockFrequency;
+    int64_t ahead = entry->written > heard ? (int64_t)(entry->written - heard) : 0;
+    int64_t now = maudNowNanoseconds();
+    return CounterTime(counter, now, now) - now + ahead * 1000000000 / rate;
 }
 
 // Fills the render buffer's free space.
@@ -77,7 +118,8 @@ static HRESULT Fill(maudWasapiStream* entry)
     {
         return result;
     }
-    Render(entry, (float*)data, nullptr, frames);
+    Render(entry, (float*)data, nullptr, frames, OutputLatency(entry));
+    entry->written += frames;
     return IAudioRenderClient_ReleaseBuffer(entry->render, frames, 0);
 }
 
@@ -92,8 +134,9 @@ static HRESULT Drain(maudWasapiStream* entry)
         BYTE* data = nullptr;
         UINT32 frames = 0;
         DWORD flags = 0;
-        result =
-            IAudioCaptureClient_GetBuffer(entry->capture, &data, &frames, &flags, nullptr, nullptr);
+        UINT64 counter = 0;
+        result = IAudioCaptureClient_GetBuffer(entry->capture, &data, &frames, &flags, nullptr,
+                                               &counter);
         if (FAILED(result))
         {
             return result;
@@ -106,7 +149,14 @@ static HRESULT Drain(maudWasapiStream* entry)
                 (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0
                     ? entry->zeros
                     : (const float*)data + (size_t)done * entry->core->period.channelCount;
-            Render(entry, nullptr, samples, chunk);
+            // The packet's first frame was captured at the performance
+            // counter's time, or at least the packet's length ago; later
+            // chunks were captured later by what came before them.
+            uint32_t rate = entry->core->format.sampleRate;
+            int64_t now = maudNowNanoseconds();
+            int64_t start = CounterTime(counter, now, now - (int64_t)frames * 1000000000 / rate);
+            int64_t captured = start + (int64_t)done * 1000000000 / rate;
+            Render(entry, nullptr, samples, chunk, now - captured);
             done += chunk;
         }
         result = IAudioCaptureClient_ReleaseBuffer(entry->capture, frames);
@@ -156,6 +206,10 @@ static void Disconnect(maudContext* context, maudWasapiStream* entry)
     if (entry->render != nullptr)
     {
         IAudioRenderClient_Release(entry->render);
+    }
+    if (entry->clock != nullptr)
+    {
+        IAudioClock_Release(entry->clock);
     }
     if (entry->capture != nullptr)
     {
@@ -283,6 +337,18 @@ static maudResult Connect(maudContext* context, maudWasapiStream* entry)
         return maud_errorPlatform;
     }
     entry->bufferFrames = frames;
+    // The clock is for the stream clock only; without it the latency
+    // reads 0.
+    if (output &&
+        FAILED(IAudioClient_GetService(entry->client, &s_iidAudioClock, (void**)&entry->clock)))
+    {
+        entry->clock = nullptr;
+    }
+    if (entry->clock != nullptr &&
+        FAILED(IAudioClock_GetFrequency(entry->clock, &entry->clockFrequency)))
+    {
+        entry->clockFrequency = 0;
+    }
     if (!output)
     {
         entry->zeroBytes = (size_t)frames * entry->core->period.channelCount * sizeof(float);
@@ -342,6 +408,7 @@ static void Stop(maudWasapiStream* entry)
     entry->threadRunning = false;
     IAudioClient_Stop(entry->client);
     IAudioClient_Reset(entry->client);
+    entry->written = 0;
 }
 
 static bool Running(const maudStreamSlot* slot)

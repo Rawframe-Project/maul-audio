@@ -12,6 +12,7 @@
 
 #include "context.h"
 #include "device.h"
+#include "test_clock.h"
 #include "test_harness.h"
 #include "wasapi_core.h"
 
@@ -34,6 +35,12 @@ static const PROPERTYKEY s_otherKey = {
     {0x12345678, 0x1234, 0x1234, {0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34}}, 1};
 static const PROPERTYKEY s_formatKey = {
     {0xF19F064D, 0x082C, 0x4E27, {0xBC, 0x73, 0x68, 0x82, 0xA1, 0xBB, 0x8E, 0x4C}}, 0};
+
+// The tests' sleep with the signature test_clock.h takes.
+static void Pause(int milliseconds)
+{
+    Sleep((DWORD)milliseconds);
+}
 
 static uint32_t Drain(maudContext* context, maudNotificationKind kind)
 {
@@ -266,6 +273,8 @@ static void TestOutputStream(maudContext* context)
     CHECK(atomic_load(&blocks.onControl) == 0, "on a thread of the stream's");
     CHECK(atomic_load(&blocks.named) == 1, "named maud-wasapi");
     CHECK(Near(MeasureRate(context, stream), 48000.0), "at its rate");
+    CHECK(StreamClockIsSound(context, stream, true, true, Pause),
+          "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
     Sleep(100);
@@ -302,6 +311,8 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
+    CHECK(StreamClockIsSound(context, stream, false, true, Pause),
+          "its clock maps frames to host time");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 

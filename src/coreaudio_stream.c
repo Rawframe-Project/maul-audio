@@ -10,6 +10,7 @@
 
 #include "coreaudio_stream.h"
 
+#include "clock.h"
 #include "context.h"
 #include "coreaudio_core.h"
 #include "period.h"
@@ -31,9 +32,9 @@ static maudCoreAudioStream* EntryOf(maudContext* context, const maudStreamSlot* 
 static OSStatus Render(void* user, AudioUnitRenderActionFlags* flags, const AudioTimeStamp* time,
                        UInt32 bus, UInt32 frames, AudioBufferList* data)
 {
-    (void)time;
     (void)bus;
-    maudStreamCore* core = ((maudCoreAudioStream*)user)->core;
+    const maudCoreAudioStream* entry = user;
+    maudStreamCore* core = entry->core;
     float* out = data->mBuffers[0].mData;
     bool running = atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning;
     atomic_store_explicit(&core->renderingThread, maudCurrentThread(), memory_order_release);
@@ -48,6 +49,14 @@ static OSStatus Render(void* user, AudioUnitRenderActionFlags* flags, const Audi
         *flags |= kAudioUnitRenderAction_OutputIsSilence;
     }
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
+    // The buffer reaches the device at its host time; the device adds
+    // its own latency after that.
+    int64_t latency = entry->deviceLatency;
+    if ((time->mFlags & kAudioTimeStampHostTimeValid) != 0)
+    {
+        latency += (int64_t)AudioConvertHostTimeToNanos(time->mHostTime) - maudNowNanoseconds();
+    }
+    maudStampOutputClock(core, latency);
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
     return noErr;
 }
@@ -76,6 +85,52 @@ static AudioObjectID ObjectOf(maudContext* context, const maudStreamCore* core)
                                                  (const void*)&uid, &size, &object);
     CFRelease(uid);
     return status == noErr ? object : kAudioObjectUnknown;
+}
+
+// Reads a UInt32 property of object in the output scope; 0 when missing.
+static UInt32 ReadOutputUInt32(AudioObjectID object, AudioObjectPropertySelector selector)
+{
+    AudioObjectPropertyAddress address =
+        maudCoreAudioAddress(selector, kAudioObjectPropertyScopeOutput);
+    UInt32 value = 0;
+    UInt32 size = sizeof(value);
+    return AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, &value) == noErr ? value
+                                                                                            : 0;
+}
+
+// What the device adds after a buffer's host time, in nanoseconds at its
+// nominal rate: its latency and safety offset, and its first output
+// stream's latency, as cubeb counts it.
+static int64_t DeviceLatency(AudioObjectID object)
+{
+    uint64_t frames = (uint64_t)ReadOutputUInt32(object, kAudioDevicePropertyLatency) +
+                      ReadOutputUInt32(object, kAudioDevicePropertySafetyOffset);
+    AudioObjectPropertyAddress address =
+        maudCoreAudioAddress(kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput);
+    AudioStreamID streams[1] = {0};
+    UInt32 size = sizeof(streams);
+    if (AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, streams) == noErr &&
+        size >= sizeof(AudioStreamID))
+    {
+        address.mSelector = kAudioStreamPropertyLatency;
+        address.mScope = kAudioObjectPropertyScopeGlobal;
+        UInt32 latency = 0;
+        size = sizeof(latency);
+        if (AudioObjectGetPropertyData(streams[0], &address, 0, nullptr, &size, &latency) == noErr)
+        {
+            frames += latency;
+        }
+    }
+    address = maudCoreAudioAddress(kAudioDevicePropertyNominalSampleRate,
+                                   kAudioObjectPropertyScopeGlobal);
+    Float64 rate = 0.0;
+    size = sizeof(rate);
+    if (AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, &rate) != noErr ||
+        rate < 1.0)
+    {
+        return 0;
+    }
+    return (int64_t)((double)frames * 1e9 / rate);
 }
 
 // Asks the device for an IO buffer of the stream's period, within the
@@ -166,6 +221,7 @@ static maudResult Connect(maudContext* context, maudCoreAudioStream* entry)
         return maud_errorPlatform;
     }
     AskBufferFrames(object, entry->core->format.periodFrames);
+    entry->deviceLatency = DeviceLatency(object);
     return AudioUnitInitialize(entry->unit) == noErr ? maud_success : maud_errorPlatform;
 }
 

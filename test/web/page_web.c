@@ -11,6 +11,7 @@
 // is logged for the driver, which runs the page with and without
 // cross-origin isolation.
 
+#include "../test_clock.h"
 #include "../test_harness.h"
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
@@ -51,6 +52,8 @@ static bool s_gestured;
 static int s_shortsAtMeasure;
 static int s_shortsAtRestart;
 static int s_targetBeforeStall;
+static maudStreamClock s_clock;
+static bool s_clockSound;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
 {
@@ -191,6 +194,16 @@ static void Measure(double now)
     s_best = rate > s_best ? rate : s_best;
     s_position = position;
     s_since = now;
+    // The clock over the same window; one sound window is enough, as
+    // for the rate.
+    maudStreamClock clock = {0};
+    CHECK(maudGetStreamClock(s_context, s_stream, &clock) == maud_success, "clock");
+    maudStreamFormat current = {0};
+    CHECK(maudGetStreamFormat(s_context, s_stream, &current) == maud_success, "format");
+    s_clockSound =
+        s_clockSound || ClockIsSound(&s_clock, &clock, true, true, (double)current.sampleRate,
+                                     maudGetHostNanoseconds());
+    s_clock = clock;
     if (++s_window < 3)
     {
         return;
@@ -203,6 +216,7 @@ static void Measure(double now)
         CHECK(false, "at the context's rate");
     }
     CHECK(s_wrongSize == 0, "in whole stereo periods");
+    CHECK(s_clockSound, "its clock maps frames to host time");
     ProbeCount(0);
     s_step = stepBreaks;
 }
@@ -276,6 +290,7 @@ static void Step_(void* user)
             s_shortsAtMeasure = Shorts();
             s_since = now;
             s_position = Position();
+            CHECK(maudGetStreamClock(s_context, s_stream, &s_clock) == maud_success, "clock");
             s_step = stepMeasure;
         }
         break;

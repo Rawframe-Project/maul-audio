@@ -40,6 +40,9 @@ typedef struct maudCoreAudioStream
     maudStreamCore* core;
     AudioComponentInstance unit;
     bool playing;
+    // What the device adds after a buffer's host time: its latency, its
+    // safety offset and its first stream's latency, in nanoseconds.
+    int64_t deviceLatency;
 } maudCoreAudioStream;
 
 typedef struct maudCoreAudio

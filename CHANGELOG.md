@@ -113,5 +113,8 @@ format.
   on one that goes is suspended as lost.
 - The stream clock (`maudGetStreamClock`, `maudGetHostNanoseconds`): a
   frame, the host time at which it is heard or was captured, and the
-  latency, stamped at each callback from the platform's report;
-  PipeWire, PulseAudio and ALSA stamp it so far.
+  latency, stamped at each callback from the platform's report: on
+  PipeWire, PulseAudio, ALSA, WASAPI (IAudioClock and the capture
+  packets' times), CoreAudio (the buffer's host time and the device's
+  latencies) and the web (what is buffered ahead plus the context's
+  latencies).

@@ -33,6 +33,11 @@ typedef struct maudWasapiStream
     IAudioClient* client;
     IAudioRenderClient* render;
     IAudioCaptureClient* capture;
+    // The device's playback position, for the clock, and its units per
+    // second; the frames written since the client started.
+    IAudioClock* clock;
+    UINT64 clockFrequency;
+    uint64_t written;
     // Set by WASAPI each period, and by the control thread to stop.
     HANDLE bufferEvent;
     HANDLE stopEvent;

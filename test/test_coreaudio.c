@@ -6,6 +6,7 @@
 // MAUD_REQUIRE_COREAUDIO is set (the macOS CI cell, which installs
 // BlackHole); elsewhere it skips.
 
+#include "test_clock.h"
 #include "test_harness.h"
 
 #include "maul-audio/context.h"
@@ -232,6 +233,8 @@ static void TestOutputStream(maudContext* context)
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(atomic_load(&blocks.onControl) == 0, "on the IO thread");
     CHECK(Near(MeasureRate(context, stream), nominal), "at its rate");
+    CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
+          "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
     uint64_t before = 0;
