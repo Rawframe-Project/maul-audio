@@ -27,6 +27,10 @@ void maudRefreshNativeRates(maudContext* context);
 // resumes them.
 void maudHoldStreams(maudContext* context, bool held);
 
+// Suspends every stream that runs or only waits to (maud_suspendHost),
+// or lets those it suspended run or wait again.
+void maudSuspendForHost(maudContext* context, bool suspended);
+
 // Records whether a stream waits for the platform to grant access to its
 // device: waiting suspends a running stream with maud_suspendPermission,
 // the grant resumes it.

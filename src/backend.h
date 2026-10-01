@@ -50,6 +50,10 @@ struct maudBackend
     // Asks the platform to let a context held by a policy run. May be
     // NULL.
     void (*resumeContext)(maudContext* context);
+    // Tells the platform the host suspended the context, or resumed it,
+    // after its streams were suspended or before they resume. May be
+    // NULL.
+    void (*suspendContext)(maudContext* context, bool suspended);
     // Whether the caller's thread renders the streams (maudRenderStream
     // and maudFeedStream), as on the offline backend.
     bool rendersOnCaller;

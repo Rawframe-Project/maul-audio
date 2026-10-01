@@ -66,6 +66,7 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/period.c
     src/stream.c
     src/stream_open.c
+    src/lifecycle.c
     src/duplex.c
     src/voice.c
     src/voice_dsp.c
@@ -175,6 +176,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(duplex)
     maul_add_test(voice_detector)
     maul_add_test(gain_control)
+    maul_add_test(lifecycle)
     # The stamp races a writer thread; Emscripten builds have none.
     if(NOT EMSCRIPTEN)
         maul_add_test(stamp WHITEBOX POSIX)

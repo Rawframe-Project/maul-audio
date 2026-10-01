@@ -28,6 +28,7 @@ follow: backend context context_core notify
 gain_control: allocator vad_core voice_dsp
 invariant:
 layout:
+lifecycle: backend context context_core follow
 notify: backend context context_core invariant
 offline: context context_core device
 period:

@@ -9,6 +9,8 @@
 
 #include "maul-audio/base.h"
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -121,6 +123,26 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudResumeContext(maudContext* context);
+
+    /// Suspends a context for the host's lifecycle, or resumes it: the
+    /// application went to the background, its tab was hidden or the
+    /// system sleeps, and later it is back. The library never infers this
+    /// itself. Suspending suspends every stream that runs or only waits
+    /// to run with maud_suspendHost, with a notification each, and stops
+    /// its platform side; on the web it also suspends the AudioContext.
+    /// Resuming lets each run again, or wait for what it waited for. A
+    /// stream that lost its device keeps that reason. Calling it again
+    /// the same way does nothing.
+    ///
+    /// @param context    The context.
+    /// @param suspended  Whether the host is suspended.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL context;
+    ///         `maud_errorState` when called on a thread that is rendering
+    ///         one of the context's streams, which counts as misuse.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSetContextSuspended(maudContext* context,
+                                                               bool suspended);
 
     /// Returns the backend a context talks to: the one its def named, or
     /// for maud_backendNative the one it chose.

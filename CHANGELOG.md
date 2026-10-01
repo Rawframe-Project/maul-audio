@@ -174,3 +174,8 @@ format.
   WASAPI's empty render buffers and capture discontinuities,
   CoreAudio's sample time jumps, the web's short quanta and full
   capture rings.
+- Host lifecycle suspension (`maudSetContextSuspended`): the host's
+  background, hidden-tab or sleep signal suspends every stream that
+  runs or only waits to, with the new reason `maud_suspendHost`, and
+  resumes them after; a lost device keeps its reason, and the web's
+  AudioContext suspends with the host.

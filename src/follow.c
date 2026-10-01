@@ -104,10 +104,16 @@ static void Wait(maudContext* context, maudStreamSlot* slot, maudSuspendReason r
                                   });
 }
 
-// Ends a stream's suspension: it runs again, or, while the platform
-// holds the context or has not granted access, waits for that instead.
+// Ends a stream's suspension: it runs again, or, while the host has
+// suspended the context, the platform holds it or has not granted
+// access, waits for that instead.
 static void Resume(maudContext* context, maudStreamSlot* slot)
 {
+    if (context->hostSuspended)
+    {
+        Wait(context, slot, maud_suspendHost);
+        return;
+    }
     if (context->held)
     {
         Wait(context, slot, maud_suspendPolicy);
@@ -162,9 +168,10 @@ void maudBindNewStream(maudContext* context, maudStreamSlot* slot)
         .requested = def->device,
         .current = device,
         .started = false,
-        .suspension = device.index1 == 0 ? maud_suspendNoDevice
-                      : context->held    ? maud_suspendPolicy
-                                         : maud_suspendNone,
+        .suspension = device.index1 == 0       ? maud_suspendNoDevice
+                      : context->hostSuspended ? maud_suspendHost
+                      : context->held          ? maud_suspendPolicy
+                                               : maud_suspendNone,
     };
     atomic_store_explicit(&core->state, maud_streamIdle, memory_order_release);
 }
@@ -239,6 +246,36 @@ void maudHoldStreams(maudContext* context, bool held)
             Wait(context, slot, maud_suspendPolicy);
         }
         else if (slot->live && !held && reason == maud_suspendPolicy)
+        {
+            Resume(context, slot);
+        }
+    }
+}
+
+// Whether a reason only keeps a stream from running, which a host
+// suspension replaces, as opposed to a lost device, which it does not.
+static bool OnlyWaiting(maudSuspendReason reason)
+{
+    return reason == maud_suspendNone || reason == maud_suspendPolicy ||
+           reason == maud_suspendPermission;
+}
+
+void maudSuspendForHost(maudContext* context, bool suspended)
+{
+    if (context->hostSuspended == suspended)
+    {
+        return;
+    }
+    context->hostSuspended = suspended;
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        maudSuspendReason reason = slot->core.binding.suspension;
+        if (slot->live && suspended && OnlyWaiting(reason))
+        {
+            Wait(context, slot, maud_suspendHost);
+        }
+        else if (slot->live && !suspended && reason == maud_suspendHost)
         {
             Resume(context, slot);
         }

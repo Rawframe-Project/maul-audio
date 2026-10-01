@@ -34,6 +34,8 @@ typedef enum Step
     stepStopped,
     stepRestarted,
     stepStalled,
+    stepHostSuspended,
+    stepHostResumed,
     stepDone,
 } Step;
 
@@ -46,6 +48,7 @@ static Step s_step;
 // The interval that runs Step_, cleared once the context is gone.
 static long s_interval;
 static uint32_t s_blocks;
+static uint32_t s_blocksAtSuspend;
 static uint32_t s_wrongSize;
 static double s_since;
 static uint64_t s_position;
@@ -120,6 +123,11 @@ EM_JS(int, Shorts, (void), {
 });
 
 EM_JS(int, Isolated, (void), { return globalThis.crossOriginIsolated === true ? 1 : 0; });
+
+EM_JS(int, ContextSuspended, (void), {
+    const entry = globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0];
+    return entry.context.state === "suspended" ? 1 : 0;
+});
 
 EM_JS(int, Target, (void), {
     return globalThis.maudWeb.nodes.filter(function (record) { return record !== null && record.target !== undefined; })[0].target;
@@ -375,6 +383,20 @@ static void CheckXruns(void)
           "the stall overflows the capture ring, and only the ring");
 }
 
+// The host's tab is hidden: the streams wait for it, and the
+// AudioContext suspends.
+static void SuspendForHost(void)
+{
+    CHECK(maudSetContextSuspended(s_context, true) == maud_success, "suspend for the host");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+              status.suspension == maud_suspendHost,
+          "the stream waits for the host");
+    s_blocksAtSuspend = s_blocks;
+    s_since = emscripten_get_now();
+    s_step = stepHostSuspended;
+}
+
 static void Step_(void* user)
 {
     (void)user;
@@ -439,6 +461,27 @@ static void Step_(void* user)
         {
             CHECK(Target() > s_targetBeforeStall, "the target grows after a stall");
             CheckXruns();
+            SuspendForHost();
+        }
+        break;
+    case stepHostSuspended:
+        if (now - s_since > 400.0)
+        {
+            CHECK(ContextSuspended() == 1, "the AudioContext suspends with the host");
+            CHECK(s_blocks == s_blocksAtSuspend, "and nothing plays");
+            CHECK(maudSetContextSuspended(s_context, false) == maud_success, "resume the host");
+            s_since = now;
+            s_step = stepHostResumed;
+        }
+        break;
+    case stepHostResumed:
+        if (now - s_since > 600.0)
+        {
+            maudStreamStatus status = {0};
+            CHECK(ContextSuspended() == 0, "the AudioContext runs again");
+            CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+                      status.suspension == maud_suspendNone && s_blocks > s_blocksAtSuspend,
+                  "and the stream with it");
             Finish();
         }
         break;

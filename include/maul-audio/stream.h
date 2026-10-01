@@ -150,6 +150,9 @@ extern "C"
         // The platform has not granted access to its device: on the web,
         // until the user allows the microphone. A refusal leaves it here.
         maud_suspendPermission = 4,
+        // The host suspended the context (maudSetContextSuspended): its
+        // application is in the background, hidden, or asleep.
+        maud_suspendHost = 5,
     };
 
     // Where a stream stands.

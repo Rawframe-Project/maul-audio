@@ -52,6 +52,16 @@ EM_JS(void, maudWebResume, (int handle), {
     globalThis.maudWeb.contexts[handle].context.resume();
 });
 
+// Suspends the AudioContext for the host, or resumes it.
+EM_JS(void, maudWebSuspend, (int handle, int suspended), {
+    const context = globalThis.maudWeb.contexts[handle].context;
+    if (suspended) {
+        context.suspend();
+    } else {
+        context.resume();
+    }
+});
+
 EM_JS(void, maudWebClose, (int handle), {
     const entry = globalThis.maudWeb.contexts[handle];
     entry.context.close();
@@ -411,6 +421,13 @@ static bool SharesClock(const maudContext* context, const maudStreamSlot* output
     return true;
 }
 
+// A hidden tab costs no audio thread: the AudioContext suspends with the
+// host.
+static void SuspendContext(maudContext* context, bool suspended)
+{
+    maudWebSuspend(((maudWeb*)context->native)->handle, suspended ? 1 : 0);
+}
+
 static const maudBackend s_web = {
     .kind = maud_backendWeb,
     .openContext = OpenContext,
@@ -423,6 +440,7 @@ static const maudBackend s_web = {
     .retargetStream = nullptr,
     .sharesClock = SharesClock,
     .resumeContext = ResumeContext,
+    .suspendContext = SuspendContext,
     .rendersOnCaller = false,
 };
 

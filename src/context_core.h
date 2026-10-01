@@ -169,6 +169,8 @@ struct maudContext
     size_t bytes;
     // The platform holds the context's audio until the user acts.
     bool held;
+    // The host suspended the context (maudSetContextSuspended).
+    bool hostSuspended;
     _Atomic(uint64_t) misuse;
 };
 
