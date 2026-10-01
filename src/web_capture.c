@@ -18,6 +18,7 @@
 #include "thread.h"
 #include "voice.h"
 #include "web_core.h"
+#include "web_devices.h"
 #include "xrun.h"
 
 #include <emscripten/em_js.h>
@@ -77,7 +78,7 @@ EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
 // with the parts the track's settings say are on, through
 // maudWebGranted.
 EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int channels, int capacity,
-                                    float* chunk, int voice), {
+                                    float* chunk, int voice, const char* device), {
     const web = globalThis.maudWeb;
     const entry = web.contexts[handle];
     const record = {node: null, source: null, stream: null, closed: false, ring: null, index: null, data: null,
@@ -127,6 +128,10 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
         noiseSuppression: (voice & 2) !== 0,
         autoGainControl: (voice & 4) !== 0,
     }};
+    const deviceId = UTF8ToString(device);
+    if (deviceId !== "") {
+        constraints.audio.deviceId = {exact: deviceId};
+    }
     Promise.all([entry.captureWorklet, navigator.mediaDevices.getUserMedia(constraints)]).then(function (results) {
         const stream = results[1];
         if (record.closed) {
@@ -169,6 +174,8 @@ EM_JS(void, maudWebCloseCapture, (int node), {
     }
     globalThis.maudWeb.nodes[node] = null;
 });
+
+EM_JS_DEPS(maudWebCaptureDeps, "$UTF8ToString");
 
 // clang-format on
 
@@ -216,12 +223,16 @@ void maudWebGranted(maudContext* context, int slotIndex, int active)
     maudStreamSlot* slot = &context->streams.slots[slotIndex];
     maudReportVoice(&slot->core, (maudVoiceProcessing)active);
     maudAwaitPermission(context, slot, false);
+    // Granted, the page sees its devices' ids and labels.
+    maudWebRelistDevices(((maudWeb*)context->native)->handle);
 }
 
 int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, float* chunk)
 {
     int index = (int)(slot - context->streams.slots);
     maudAwaitPermission(context, slot, true);
+    char device[MAUD_WEB_KEY_BYTES];
+    maudWebCaptureDevice(context, slot, device, sizeof(device));
     return maudWebOpenCaptureNode(handle, context, index, (int)slot->core.period.channelCount,
-                                  (int)MAUD_WEB_CAPACITY, chunk, (int)slot->core.def.voice);
+                                  (int)MAUD_WEB_CAPACITY, chunk, (int)slot->core.def.voice, device);
 }

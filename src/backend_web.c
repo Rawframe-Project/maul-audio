@@ -21,6 +21,7 @@
 #include "thread.h"
 #include "web_capture.h"
 #include "web_core.h"
+#include "web_devices.h"
 
 #include <emscripten/em_js.h>
 #include <emscripten/emscripten.h>
@@ -267,14 +268,21 @@ float* maudWebRender(maudContext* context, int slotIndex, int frames, double lat
 static maudResult OpenContext(maudContext* context)
 {
     uint32_t streams = context->def.limits.streams;
-    size_t bytes = sizeof(maudWeb) + (size_t)streams * sizeof(maudWebStream);
+    uint32_t devices = context->def.limits.devices;
+    size_t bytes = sizeof(maudWeb) + (size_t)streams * sizeof(maudWebStream) +
+                   (size_t)devices * (sizeof(maudDeviceSpec) + sizeof(maudWebEndpoint));
     maudWeb* web = maudContextAllocate(context, bytes, alignof(maudWeb));
     if (web == nullptr)
     {
         return maud_errorCapacity;
     }
-    *web = (maudWeb){.handle = maudWebOpen(), .streams = (maudWebStream*)(web + 1), .bytes = bytes};
+    *web = (maudWeb){.handle = maudWebOpen(),
+                     .streams = (maudWebStream*)(web + 1),
+                     .endpointCapacity = devices,
+                     .bytes = bytes};
     memset(web->streams, 0, (size_t)streams * sizeof(maudWebStream));
+    web->specs = (maudDeviceSpec*)(web->streams + streams);
+    web->endpoints = (maudWebEndpoint*)(web->specs + devices);
     context->native = web;
     if (web->handle == 0)
     {
@@ -285,6 +293,7 @@ static maudResult OpenContext(maudContext* context)
     maudWebAddProcessor(web->handle);
     maudWebAddCaptureProcessor(web->handle);
     uint32_t rate = (uint32_t)maudWebRate(web->handle);
+    web->rate = rate;
     maudDeviceSpec spec = {
         .info =
             {
@@ -307,7 +316,11 @@ static maudResult OpenContext(maudContext* context)
     spec.info.nativeLayout = maud_layoutMono;
     result = result == maud_success ? maudAddDevice(context, &spec, &device) : result;
     context->held = maudWebHeld(web->handle) != 0;
-    if (result != maud_success)
+    if (result == maud_success)
+    {
+        maudWebListDevices(web->handle);
+    }
+    else
     {
         maudWebClose(web->handle);
         maudContextRelease(context, web, bytes, alignof(maudWeb));
@@ -319,6 +332,7 @@ static maudResult OpenContext(maudContext* context)
 static void CloseContext(maudContext* context)
 {
     maudWeb* web = context->native;
+    maudWebStopListing(web->handle);
     maudWebClose(web->handle);
     maudContextRelease(context, web, web->bytes, alignof(maudWeb));
     context->native = nullptr;
@@ -329,6 +343,8 @@ static void Pump(maudContext* context)
 {
     maudWeb* web = context->native;
     maudHoldStreams(context, maudWebHeld(web->handle) != 0);
+    maudResult result = maudWebSyncDevices(context);
+    (void)result;
 }
 
 static void ResumeContext(maudContext* context)
@@ -339,14 +355,16 @@ static void ResumeContext(maudContext* context)
 
 // Web Audio runs every node at the AudioContext's rate, capture
 // included (the browser resamples the microphone): a native stream takes
-// it, and a required or converted rate must be it.
+// it, and a required or converted rate must be it. Its one AudioContext
+// plays to one device at a time.
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
     (void)device;
     uint32_t rate = (uint32_t)maudWebRate(((const maudWeb*)context->native)->handle);
     if (def->mode == maud_modePull ||
-        (def->ratePolicy != maud_rateNative && def->sampleRate != rate))
+        (def->ratePolicy != maud_rateNative && def->sampleRate != rate) ||
+        (def->direction == maud_directionOutput && !maudWebSinkFree(context, def->device)))
     {
         return maud_errorUnsupported;
     }
@@ -383,6 +401,7 @@ static maudResult AttachStream(maudContext* context, maudStreamSlot* slot)
     }
     entry->node = maudWebOpenNode(web->handle, context, (int)(slot - context->streams.slots),
                                   (int)channels, (int)MAUD_WEB_CAPACITY, (int)MAUD_WEB_QUANTUM);
+    maudWebSetSink(context, slot);
     return maud_success;
 }
 

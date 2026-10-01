@@ -23,6 +23,7 @@
 #include <emscripten/emscripten.h>
 #include <emscripten/eventloop.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef enum Step
 {
@@ -36,6 +37,9 @@ typedef enum Step
     stepStalled,
     stepHostSuspended,
     stepHostResumed,
+    stepDevices,
+    stepDeviceCapture,
+    stepSink,
     stepDone,
 } Step;
 
@@ -70,6 +74,11 @@ static maudStreamClock s_captureClock;
 static uint32_t s_capturedAtStop;
 // The browser refuses the microphone on this run.
 static bool s_denied;
+// A capture on the second fake microphone, chosen by its device.
+static maudStreamId s_chosen;
+static uint32_t s_chosenBlocks;
+// An output on the first fake output device, once Default is gone.
+static maudStreamId s_sinkStream;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
 {
@@ -123,6 +132,18 @@ EM_JS(int, Shorts, (void), {
 });
 
 EM_JS(int, Isolated, (void), { return globalThis.crossOriginIsolated === true ? 1 : 0; });
+
+EM_JS(int, SinkIs, (const char* key), {
+    const entry = globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0];
+    return entry.context.sinkId === UTF8ToString(key) ? 1 : 0;
+});
+
+// Whether the newest capture's track came from the device key.
+EM_JS(int, CaptureDeviceIs, (const char* key), {
+    const records = globalThis.maudWeb.nodes.filter(function (r) { return r !== null && r.stream; });
+    const track = records[records.length - 1].stream.getAudioTracks()[0];
+    return track.getSettings().deviceId === UTF8ToString(key) ? 1 : 0;
+});
 
 EM_JS(int, ContextSuspended, (void), {
     const entry = globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0];
@@ -229,7 +250,10 @@ static void Finish(void)
 {
     CHECK(maudDestroyStream(s_context, s_capture) == maud_success, "destroy the capture");
     CHECK(maudDestroyStream(s_context, s_voiced) == maud_success, "destroy the voiced one");
-    CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy while running");
+    if (s_stream.index1 != 0)
+    {
+        CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy while running");
+    }
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionDuplex;
     def.callback = CountBlocks;
@@ -397,6 +421,98 @@ static void SuspendForHost(void)
     s_step = stepHostSuspended;
 }
 
+static void CountChosen(const maudStreamBlock* block, void* user)
+{
+    (void)block;
+    (void)user;
+    s_chosenBlocks++;
+}
+
+// How many devices of a direction the context lists.
+static uint32_t Listed(maudDirection direction)
+{
+    uint32_t count = 0;
+    CHECK(maudGetDevices(s_context, direction, nullptr, 0, &count) == maud_success, "count");
+    return count;
+}
+
+// The device of a direction named name, or the null id.
+static maudDeviceId Named(maudDirection direction, const char* name)
+{
+    maudDeviceId ids[8];
+    uint32_t count = 0;
+    CHECK(maudGetDevices(s_context, direction, ids, 8, &count) == maud_success, "list");
+    for (uint32_t i = 0; i < count && i < 8; ++i)
+    {
+        char text[128];
+        size_t length = 0;
+        if (maudGetDeviceName(s_context, ids[i], text, sizeof(text) - 1, &length) == maud_success &&
+            length == strlen(name) && memcmp(text, name, length) == 0)
+        {
+            return ids[i];
+        }
+    }
+    return (maudDeviceId){0, 0};
+}
+
+static bool KeyOf(maudDeviceId device, char* key, size_t capacity)
+{
+    size_t length = 0;
+    bool ok = maudGetDeviceKey(s_context, device, key, capacity - 1, &length) == maud_success;
+    key[ok ? length : 0] = '\0';
+    return ok;
+}
+
+static maudStreamId OpenOn(maudDirection direction, maudDeviceId device, maudResult* resultOut)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = direction;
+    def.device = device;
+    def.layout = direction == maud_directionInput ? maud_layoutMono : maud_layoutStereo;
+    def.callback = direction == maud_directionInput ? CountChosen : CountBlocks;
+    maudStreamId stream = {0, 0};
+    *resultOut = maudCreateStream(s_context, &def, &stream);
+    return stream;
+}
+
+// The browser's fake devices are listed by name; while the Default
+// output plays, another output device is refused; a capture opens on the
+// second fake microphone.
+static void ChooseDevices(void)
+{
+    maudDeviceId output = Named(maud_directionOutput, "Fake Audio Output 1");
+    maudDeviceId input = Named(maud_directionInput, "Fake Audio Input 2");
+    CHECK(output.index1 != 0 && input.index1 != 0 &&
+              Named(maud_directionOutput, "Default").index1 != 0,
+          "the fake devices by their labels, and Default");
+    maudResult result = maud_success;
+    (void)OpenOn(maud_directionOutput, output, &result);
+    CHECK(result == maud_errorUnsupported, "another output while Default plays is refused");
+    s_chosen = OpenOn(maud_directionInput, input, &result);
+    CHECK(result == maud_success && maudStartStream(s_context, s_chosen) == maud_success,
+          "a capture on a chosen microphone");
+}
+
+// With Default gone, an output on a fake device takes the
+// AudioContext's sink (checked once setSinkId settles); another device
+// is refused, the same one allowed.
+static void StartSink(void)
+{
+    CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy while running");
+    s_stream = (maudStreamId){0, 0};
+    maudDeviceId first = Named(maud_directionOutput, "Fake Audio Output 1");
+    maudDeviceId second = Named(maud_directionOutput, "Fake Audio Output 2");
+    maudResult result = maud_success;
+    s_sinkStream = OpenOn(maud_directionOutput, first, &result);
+    CHECK(result == maud_success && maudStartStream(s_context, s_sinkStream) == maud_success,
+          "an output on a chosen device");
+    (void)OpenOn(maud_directionOutput, second, &result);
+    CHECK(result == maud_errorUnsupported, "a second device is refused");
+    maudStreamId again = OpenOn(maud_directionOutput, first, &result);
+    CHECK(result == maud_success && maudDestroyStream(s_context, again) == maud_success,
+          "the same device is not");
+}
+
 static void Step_(void* user)
 {
     (void)user;
@@ -484,9 +600,54 @@ static void Step_(void* user)
             CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
                       status.suspension == maud_suspendNone && s_blocks > s_blocksAtSuspend,
                   "and the stream with it");
+            s_since = now;
+            s_step = s_denied ? stepDone : stepDevices;
+            if (s_denied)
+            {
+                Finish();
+            }
+        }
+        break;
+    case stepDevices:
+        if (Listed(maud_directionOutput) == 3 && Listed(maud_directionInput) == 3)
+        {
+            ChooseDevices();
+            s_since = now;
+            s_step = stepDeviceCapture;
+        }
+        else if (now - s_since > 3000.0)
+        {
+            CHECK(false, "the fake devices are listed");
             Finish();
         }
         break;
+    case stepDeviceCapture:
+        if (s_chosenBlocks > 20 || now - s_since > 3000.0)
+        {
+            char key[128];
+            CHECK(s_chosenBlocks > 20, "the chosen microphone captures");
+            CHECK(KeyOf(Named(maud_directionInput, "Fake Audio Input 2"), key, sizeof(key)) &&
+                      CaptureDeviceIs(key) == 1,
+                  "from the device asked for");
+            CHECK(maudDestroyStream(s_context, s_chosen) == maud_success, "destroy it");
+            StartSink();
+            s_since = now;
+            s_step = stepSink;
+        }
+        break;
+    case stepSink:
+    {
+        char key[128];
+        bool moved = KeyOf(Named(maud_directionOutput, "Fake Audio Output 1"), key, sizeof(key)) &&
+                     SinkIs(key) == 1;
+        if (moved || now - s_since > 2000.0)
+        {
+            CHECK(moved, "the AudioContext plays to the chosen device");
+            CHECK(maudDestroyStream(s_context, s_sinkStream) == maud_success, "destroy it");
+            Finish();
+        }
+        break;
+    }
     default:
         break;
     }

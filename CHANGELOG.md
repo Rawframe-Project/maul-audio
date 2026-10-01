@@ -195,3 +195,10 @@ format.
   platform's thread, leaving the stream running; it now succeeds, and
   returns once that callback has. Only the offline backend, whose host
   renders, still refuses while another thread renders the stream.
+- Web device selection: the browser's audio inputs, and its outputs
+  where `AudioContext.setSinkId` exists, are listed by their ids and
+  labels (read again on `devicechange` and once the microphone is
+  granted). A capture stream asks for its device; output streams set
+  the AudioContext's sink, and since one AudioContext plays to one
+  device, an output on another device while one plays is refused with
+  `maud_errorUnsupported`.

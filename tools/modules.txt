@@ -14,7 +14,7 @@ backend_offline: backend context_core device
 backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_stream
 backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
 backend_wasapi: backend context device layout wasapi_core wasapi_stream
-backend_web: backend clock context device follow period thread web_capture web_core
+backend_web: backend clock context device follow period thread web_capture web_core web_devices
 base:
 buffer:
 clock: context_core
@@ -53,7 +53,8 @@ wasapi_format:
 wasapi_notify:
 wasapi_stream: clock context context_core period thread voice wasapi_core wasapi_format wasapi_voice worker xrun
 wasapi_voice: context_core voice wasapi_core
-web_capture: clock context context_core follow period thread voice web_core xrun
-web_core: context_core
+web_capture: clock context context_core follow period thread voice web_core web_devices xrun
+web_devices: context context_core device web_core
+web_core: context_core device
 worker:
 xrun: context_core
