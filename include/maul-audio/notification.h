@@ -52,12 +52,17 @@ extern "C"
         uint32_t droppedCount;
     } maudNotification;
 
-    /// Takes the oldest notification from the context's queue.
+    /// Takes the oldest notification from the context's queue. On native
+    /// backends whose platform reports changes through a loop the library
+    /// owns, such as PipeWire, it first takes in what the platform reported
+    /// since the last call, without blocking; a host that drains the queue
+    /// regularly keeps the device table current.
     ///
     /// @param context          The context.
     /// @param notificationOut  Receives the record.
     /// @return `maud_success`; `maud_empty` when the queue is drained;
-    ///         `maud_errorInvalid` for a NULL pointer.
+    ///         `maud_errorInvalid` for a NULL pointer; `maud_errorState` on a
+    ///         thread rendering one of the context's streams.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudNextNotification(maudContext* context,

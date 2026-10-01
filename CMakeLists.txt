@@ -22,6 +22,13 @@ option(MAUL_AUDIO_WERROR "Treat compiler warnings as errors" OFF)
 option(MAUL_AUDIO_SANITIZE "Instrument with AddressSanitizer and UBSan" OFF)
 option(MAUL_AUDIO_TSAN "Instrument with ThreadSanitizer" OFF)
 option(MAUL_AUDIO_COVERAGE "Instrument for gcov coverage" OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(MAUL_AUDIO_PIPEWIRE_DEFAULT ON)
+else()
+    set(MAUL_AUDIO_PIPEWIRE_DEFAULT OFF)
+endif()
+option(MAUL_AUDIO_PIPEWIRE "Build the PipeWire backend, loaded at run time"
+    ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -55,6 +62,24 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/thread.c)
 maul_configure_library(maul-audio)
 
+# PipeWire's headers at build time only: the library opens libpipewire
+# at run time and links nothing of it.
+if(MAUL_AUDIO_PIPEWIRE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MAUL_AUDIO_PW REQUIRED libpipewire-0.3)
+    target_sources(maul-audio PRIVATE src/backend_pipewire.c src/pipewire_api.c)
+    target_include_directories(maul-audio SYSTEM PRIVATE ${MAUL_AUDIO_PW_INCLUDE_DIRS})
+    target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_PIPEWIRE=1)
+    # PipeWire's headers use POSIX and GNU declarations (ssize_t, locale_t)
+    # that a strict C23 build hides.
+    set_source_files_properties(src/backend_pipewire.c src/pipewire_api.c
+        PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+    # PipeWire's method macros compare a uint32_t version with an int
+    # inside the code they expand to; the comparison is theirs.
+    set_source_files_properties(src/backend_pipewire.c PROPERTIES COMPILE_OPTIONS -Wno-sign-compare)
+    target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
 if(MAUL_AUDIO_BUILD_TESTS)
     enable_testing()
     maul_add_test(base)
@@ -63,6 +88,16 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(context)
     maul_add_test(stream)
     maul_add_test(device)
+    if(MAUL_AUDIO_PIPEWIRE)
+        # The test's own client links libpipewire; the library does not.
+        pkg_check_modules(MAUL_AUDIO_PW_LINK REQUIRED libpipewire-0.3)
+        maul_add_test(pipewire THREADS)
+        target_include_directories(test_pipewire SYSTEM PRIVATE ${MAUL_AUDIO_PW_INCLUDE_DIRS})
+        target_compile_definitions(test_pipewire PRIVATE _GNU_SOURCE)
+        target_compile_options(test_pipewire PRIVATE -Wno-sign-compare)
+        target_link_libraries(test_pipewire PRIVATE ${MAUL_AUDIO_PW_LINK_LIBRARIES})
+        set_tests_properties(pipewire PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     # The audio-thread trap exists only where invariants are checked.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(trap WHITEBOX POSIX)

@@ -38,7 +38,8 @@ extern "C"
         uint32_t periodFrames;
         // Devices, of both directions, that exist at once.
         uint16_t devices;
-        // Records the notification queue holds before it overflows.
+        // Records the notification queue holds before it overflows; at
+        // least 2.
         uint16_t notifications;
         // Bytes of a device's name, and of its key.
         uint16_t deviceTextBytes;
@@ -68,14 +69,17 @@ extern "C"
 
     /// Creates a context. An offline context starts with one output and one
     /// input device at the offline rate, stereo, each the default of its
-    /// direction for every role, and an empty notification queue.
+    /// direction for every role. A native context on Linux connects to
+    /// PipeWire, waiting up to two seconds on the calling thread for its
+    /// device list. Either starts with an empty notification queue.
     ///
     /// @param def         The def, from maudDefaultContextDef.
     /// @param contextOut  Receives the context; set to NULL on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def
     ///         without its cookie, an allocator with one function, a limit
     ///         of 0 or an offline rate out of range; `maud_errorUnsupported`
-    ///         when this build has no native backend for the platform;
+    ///         when this build has no native backend for the platform or
+    ///         the platform's audio service does not answer;
     ///         `maud_errorCapacity` when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread.

@@ -3,6 +3,7 @@
 allocator:
 backend: context_core
 backend_offline: backend context_core device
+backend_pipewire: backend context context_core device pipewire_api
 base:
 buffer:
 context: allocator backend context_core invariant thread
@@ -11,8 +12,9 @@ device: context context_core follow notify
 follow: context context_core notify
 invariant:
 layout:
-notify: context_core invariant
+notify: backend context context_core invariant
 offline: context context_core device
 period:
+pipewire_api:
 stream: backend context context_core follow period thread
 thread:

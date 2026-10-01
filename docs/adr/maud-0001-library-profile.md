@@ -30,8 +30,11 @@ family does not have.
     header spells it.
 - **Threads:** the library starts one thread, and only in one case: a
   stream in callback mode on a backend whose platform calls no audio
-  thread of its own (WASAPI, ALSA, PulseAudio, and PipeWire when the
-  host does not drive it). That thread runs the stream's period loop
+  thread of its own (WASAPI, ALSA, PulseAudio). CoreAudio, AAudio, the
+  AudioWorklet and PipeWire own their audio threads; libpipewire
+  starts its data thread with its context and joins it when the
+  context is destroyed, and PipeWire's main loop runs on the host's
+  thread inside the library's calls. That thread runs the stream's period loop
   at the platform's real-time priority and calls only the host's
   real-time callback. It starts when the stream starts and is joined
   when the stream stops or is destroyed, so no such thread outlives
@@ -59,7 +62,8 @@ family does not have.
   platform's audio APIs: WASAPI and the Windows multimedia class
   scheduler (`ole32`, `avrt`); PipeWire, PulseAudio and ALSA on Linux,
   each loaded at run time so a program runs where one is missing;
-  CoreAudio and AudioToolbox on macOS; AVFAudio and AudioToolbox on
+  the dynamic loader (`dlopen`) on Linux; CoreAudio and AudioToolbox on
+  macOS; AVFAudio and AudioToolbox on
   iOS; AAudio on Android (API 30 and later); Web Audio with an
   AudioWorklet on the web.
 - **Commit areas:** `aaudio`, `alsa`, `ambisonics`, `api`, `bake`,

@@ -72,12 +72,23 @@ static void TestOfflineContextLifetime(void)
     CHECK(maudDestroyContext(nullptr) == maud_success, "destroying NULL does nothing");
 }
 
-static void TestNativeBackendIsUnsupportedInThisBuild(void)
+static void TestNativeContextOrUnsupported(void)
 {
+    // Whether a native backend answers depends on the build and the
+    // machine; either outcome must be whole.
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = (maudContext*)&def;
-    CHECK(maudCreateContext(&def, &context) == maud_errorUnsupported, "no native backend");
-    CHECK(context == nullptr, "context cleared");
+    maudResult result = maudCreateContext(&def, &context);
+    CHECK(result == maud_success || result == maud_errorUnsupported, "native or unsupported");
+    if (result == maud_success)
+    {
+        CHECK(maudGetContextBackend(context) == maud_backendNative, "native backend");
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    }
+    else
+    {
+        CHECK(context == nullptr, "context cleared");
+    }
 }
 
 static void CheckRefused(const maudContextDef* def, const char* what)
@@ -131,7 +142,7 @@ int main(void)
 {
     TestDefaults();
     TestOfflineContextLifetime();
-    TestNativeBackendIsUnsupportedInThisBuild();
+    TestNativeContextOrUnsupported();
     TestInvalidDefsAreRefused();
     TestAllocatorFailureIsCapacity();
     return s_failures == 0 ? 0 : 1;

@@ -39,6 +39,16 @@ static bool DefValid(const maudContextDef* def)
            (def->backend == maud_backendNative || def->backend == maud_backendOffline);
 }
 
+// The platform's backend in this build, or NULL.
+static const maudBackend* NativeBackend(void)
+{
+#if defined(MAUD_HAVE_PIPEWIRE)
+    return maudGetPipewireBackend();
+#else
+    return nullptr;
+#endif
+}
+
 static void InitStreams(maudStreamTable* streams)
 {
     for (uint32_t i = 0; i < streams->capacity; ++i)
@@ -77,8 +87,9 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     {
         return maud_errorInvalid;
     }
-    // No native backend exists in this build yet.
-    if (def->backend != maud_backendOffline)
+    const maudBackend* backend =
+        def->backend == maud_backendOffline ? maudGetOfflineBackend() : NativeBackend();
+    if (backend == nullptr)
     {
         return maud_errorUnsupported;
     }
@@ -101,7 +112,7 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     maudContext* context = (maudContext*)(block + contextOffset);
     *context = (maudContext){
         .def = *def,
-        .backend = maudGetOfflineBackend(),
+        .backend = backend,
         .devices = {.slots = (maudDeviceSlot*)(block + devicesOffset),
                     .capacity = def->limits.devices},
         .streams = {.slots = (maudStreamSlot*)(block + streamsOffset),
@@ -142,6 +153,10 @@ maudResult maudDestroyContext(maudContext* context)
         {
             maudReleaseStream(context, &context->streams.slots[i]);
         }
+    }
+    if (context->backend->closeContext != nullptr)
+    {
+        context->backend->closeContext(context);
     }
     maudAllocator allocator = context->def.allocator;
     maudRelease(&allocator, context, context->bytes, alignof(maudContext));

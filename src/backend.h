@@ -12,9 +12,16 @@
 
 struct maudBackend
 {
-    // Fills the device table of a new context. maud_errorCapacity when
-    // the context's limits cannot hold the devices.
+    // Connects a new context to the platform and fills its device table.
+    // maud_errorUnsupported when the platform's service is missing,
+    // maud_errorCapacity when the context's limits cannot hold the
+    // starting devices.
     maudResult (*openContext)(maudContext* context);
+    // Releases what openContext set up. May be NULL.
+    void (*closeContext)(maudContext* context);
+    // Takes in the platform's pending reports, without blocking. May be
+    // NULL.
+    void (*pump)(maudContext* context);
     // Settles a stream's format from a def already checked for ranges, on
     // device (NULL while the stream has none), or refuses it:
     // maud_errorUnsupported for a mode, policy or format the backend
@@ -28,5 +35,8 @@ struct maudBackend
 
 // The offline backend.
 const maudBackend* maudGetOfflineBackend(void);
+
+// The PipeWire backend, in builds with MAUL_AUDIO_PIPEWIRE.
+const maudBackend* maudGetPipewireBackend(void);
 
 #endif // MAUL_AUDIO_SRC_BACKEND_H

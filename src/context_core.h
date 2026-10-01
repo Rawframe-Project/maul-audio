@@ -111,6 +111,8 @@ struct maudContext
     maudDeviceTable devices;
     maudStreamTable streams;
     maudNotificationQueue notifications;
+    // The backend's own state, or NULL.
+    void* native;
     // Bytes of the context's block, as allocated.
     size_t bytes;
     _Atomic(uint64_t) misuse;

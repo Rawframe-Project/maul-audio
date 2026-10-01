@@ -7,6 +7,8 @@
 
 #include "notify.h"
 
+#include "backend.h"
+#include "context.h"
 #include "invariant.h"
 
 static maudNotification* At(maudNotificationQueue* queue, uint32_t index)
@@ -44,6 +46,15 @@ maudResult maudNextNotification(maudContext* context, maudNotification* notifica
     if (context == nullptr || notificationOut == nullptr)
     {
         return maud_errorInvalid;
+    }
+    if (maudIsRenderingThread(context))
+    {
+        maudCountMisuse(context);
+        return maud_errorState;
+    }
+    if (context->backend->pump != nullptr)
+    {
+        context->backend->pump(context);
     }
     maudNotificationQueue* queue = &context->notifications;
     if (queue->count == 0)

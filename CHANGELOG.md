@@ -48,3 +48,7 @@ format.
 - Scripted offline devices (`maudAddOfflineDevice`,
   `maudRemoveOfflineDevice`, `maudSetOfflineDefaultDevice`), so device
   changes can be tested without hardware.
+- The PipeWire backend's devices: a native context on Linux connects to
+  PipeWire, opened at run time, lists its sinks and sources with their
+  formats, follows its default devices, and reports devices plugged
+  in and out. Streams on it are refused as unsupported for now.
