@@ -12,20 +12,21 @@
 #include <stdio.h>
 
 // Whether two clock reads a while apart, the later at host time now, are
-// sound: stamped, with a latency of at most two seconds (0 is honest
-// where nothing stands between the stream and a virtual device), the
+// sound: stamped, with a latency of at most two seconds, above 0 where
+// the route is known to buffer (0 is honest where nothing stands
+// between an output and a virtual device), the
 // later one's time where its direction puts it (ahead of now for
 // output, behind for input, within a callback's lateness), and the two
 // ten percent or less, plus their latencies' change, plus 30 ms, off
 // the stream's rate. Prints the reads when not.
 static inline bool ClockIsSound(const maudStreamClock* first, const maudStreamClock* second,
-                                bool output, double rate, int64_t now)
+                                bool output, bool buffered, double rate, int64_t now)
 {
     const int64_t late = 250000000;
     int64_t latency = second->latencyNanoseconds;
     bool stamped = first->hostNanoseconds != 0 && second->hostNanoseconds != 0 &&
                    second->position > first->position;
-    bool sane = latency >= 0 && latency <= 2000000000;
+    bool sane = latency >= (buffered ? 1 : 0) && latency <= 2000000000;
     int64_t host = second->hostNanoseconds;
     bool placed = output ? host >= now - late && host <= now + latency
                          : host >= now - latency - late && host <= now;
@@ -51,7 +52,7 @@ static inline bool ClockIsSound(const maudStreamClock* first, const maudStreamCl
 // loaded machine's stalls hold the stream back while host time runs
 // on, which spoils a window but never makes one sound.
 static inline bool StreamClockIsSound(const maudContext* context, maudStreamId stream, bool output,
-                                      void (*sleep)(int milliseconds))
+                                      bool buffered, void (*sleep)(int milliseconds))
 {
     maudStreamFormat format = {0};
     maudStreamClock first = {0};
@@ -68,7 +69,7 @@ static inline bool StreamClockIsSound(const maudContext* context, maudStreamId s
         {
             return false;
         }
-        if (ClockIsSound(&first, &second, output, (double)format.sampleRate,
+        if (ClockIsSound(&first, &second, output, buffered, (double)format.sampleRate,
                          maudGetHostNanoseconds()))
         {
             return true;

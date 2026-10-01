@@ -160,6 +160,10 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(stream)
     maul_add_test(device)
     maul_add_test(utf8 WHITEBOX)
+    # The stamp races a writer thread; Emscripten builds have none.
+    if(NOT EMSCRIPTEN)
+        maul_add_test(stamp WHITEBOX POSIX)
+    endif()
     if(MAUL_AUDIO_PIPEWIRE)
         # The test's own client links libpipewire; the library does not.
         pkg_check_modules(MAUL_AUDIO_PW_LINK REQUIRED libpipewire-0.3)
