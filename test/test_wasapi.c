@@ -538,6 +538,21 @@ static void TestDrainRescans(maudContext* context)
     CHECK(Drain(context, maud_notifyDeviceAdded) == real, "the drain rescans");
 }
 
+// WASAPI has no exclusive mode; this backend does not yet open it: a stream asking for it on
+// the default output device is refused, not shared.
+static void TestExclusiveRefused(maudContext* context)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.share = maud_shareExclusive;
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
+              maud_success,
+          "the default output");
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "exclusive use is refused");
+}
+
 int main(void)
 {
     s_control = GetCurrentThreadId();
@@ -559,6 +574,7 @@ int main(void)
     TestInputStream(context);
     TestVoiceInput(context);
     TestUnderrun(context);
+    TestExclusiveRefused(context);
     TestMove(context);
     TestNotifier(context);
     TestDrainRescans(context);

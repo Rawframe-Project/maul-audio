@@ -749,6 +749,21 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
     ResetDefaults(context, helper);
 }
 
+// PipeWire has no exclusive mode for a client: a stream asking for it on
+// the default output device is refused, not shared.
+static void TestExclusiveRefused(maudContext* context)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.share = maud_shareExclusive;
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
+              maud_success,
+          "the default output");
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "exclusive use is refused");
+}
+
 int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -779,6 +794,7 @@ int main(void)
     TestInputStream(context);
     TestDuplexStream(context);
     TestXruns(context);
+    TestExclusiveRefused(context);
     TestDestroyWhileRendering(context);
     TestStreamsMoveAndAreLost(context, &helper);
     StopHelper(&helper);

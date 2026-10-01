@@ -224,12 +224,16 @@ static void RunStream(void* user)
     }
 }
 
+static bool Hardware(const maudDeviceSlot* device)
+{
+    return device != nullptr && device->key.length >= 3 && memcmp(device->key.bytes, "hw:", 3) == 0;
+}
+
 // The PCM name a device key stands for: plughw for a hardware endpoint.
 static void PcmName(const maudContext* context, const maudStreamCore* core, char* name)
 {
     const maudDeviceSlot* device = maudFindDevice(context, core->binding.current);
-    if (device == nullptr || device->key.length < 3 || memcmp(device->key.bytes, "hw:", 3) != 0 ||
-        device->key.length + 4 >= MAUD_ALSA_NAME_BYTES)
+    if (!Hardware(device) || device->key.length + 4 >= MAUD_ALSA_NAME_BYTES)
     {
         memcpy(name, "default", 8);
         return;
@@ -367,6 +371,8 @@ static maudResult Open(maudContext* context, maudAlsaStream* entry)
     maudStreamCore* core = entry->core;
     char name[MAUD_ALSA_NAME_BYTES];
     PcmName(context, core, name);
+    // A hardware PCM keeps every other client off while it is open.
+    core->exclusive = core->exclusive || Hardware(maudFindDevice(context, core->binding.current));
     bool output = core->def.direction == maud_directionOutput;
     if (api->pcmOpen(&entry->pcm, name, output ? SND_PCM_STREAM_PLAYBACK : SND_PCM_STREAM_CAPTURE,
                      SND_PCM_NONBLOCK) < 0)

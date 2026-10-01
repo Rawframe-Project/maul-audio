@@ -49,6 +49,11 @@ static maudResult FindStartingDevice(const maudContext* context, const maudStrea
 static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
                            const maudDeviceInfo* device, uint32_t duplexGroup, maudStreamSlot* slot)
 {
+    if (def->share == maud_shareExclusive &&
+        (!context->backend->exclusive || def->ratePolicy == maud_ratePlatformConverted))
+    {
+        return maud_errorUnsupported;
+    }
     maudStreamFormat format;
     maudResult result = context->backend->openStream(context, def, device, &format);
     if (result != maud_success)
@@ -76,6 +81,7 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     core->format = format;
     core->sampleBytes = bytes;
     core->duplexGroup = duplexGroup;
+    core->exclusive = def->share == maud_shareExclusive;
     maudResetVoice(core);
     atomic_store_explicit(&core->underruns, 0, memory_order_relaxed);
     atomic_store_explicit(&core->overruns, 0, memory_order_relaxed);

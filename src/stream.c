@@ -35,6 +35,7 @@ maudStreamDef maudDefaultStreamDef(void)
         .device = {0, 0},
         .inputDevice = {0, 0},
         .voice = maud_voiceNone,
+        .share = maud_shareShared,
         .role = maud_roleGeneral,
         .callback = nullptr,
         .user = nullptr,
@@ -54,6 +55,11 @@ static bool DefValid(const maudStreamDef* def)
         maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
     if ((def->voice & ~parts) != 0 ||
         (def->voice != maud_voiceNone && def->direction == maud_directionOutput))
+    {
+        return false;
+    }
+    if (def->share > maud_shareExclusive ||
+        (def->share == maud_shareExclusive && def->device.index1 == 0))
     {
         return false;
     }
@@ -84,6 +90,10 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def,
     {
         maudCountMisuse(context);
         return maud_errorInvalid;
+    }
+    if (def->direction == maud_directionDuplex && def->share == maud_shareExclusive)
+    {
+        return maud_errorUnsupported;
     }
     if (def->direction == maud_directionDuplex)
     {
@@ -208,6 +218,7 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
         .voiceActive = atomic_load_explicit(&captured->voiceActive, memory_order_relaxed),
         .underruns = atomic_load_explicit(&slot->core.underruns, memory_order_relaxed),
         .overruns = atomic_load_explicit(&captured->overruns, memory_order_relaxed),
+        .exclusive = slot->core.exclusive,
     };
     return maud_success;
 }

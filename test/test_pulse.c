@@ -546,6 +546,21 @@ static void TestNativeFallback(void)
     unsetenv("PIPEWIRE_REMOTE");
 }
 
+// PulseAudio has no exclusive mode: a stream asking for it on
+// the default output device is refused, not shared.
+static void TestExclusiveRefused(maudContext* context)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.share = maud_shareExclusive;
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
+              maud_success,
+          "the default output");
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "exclusive use is refused");
+}
+
 int main(void)
 {
     s_control = pthread_self();
@@ -560,6 +575,7 @@ int main(void)
     TestHotplug(context);
     TestOutputStream(context);
     TestUnderrun(context);
+    TestExclusiveRefused(context);
     TestInputStream(context);
     TestDuplexConverted(context);
     TestPinnedStream(context);

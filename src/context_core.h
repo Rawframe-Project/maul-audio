@@ -58,6 +58,9 @@ typedef struct maudStreamCore
     // Underruns and overruns the platform revealed (xrun.h).
     _Atomic(uint64_t) underruns;
     _Atomic(uint64_t) overruns;
+    // Whether the stream keeps others off its device: asked for, or a
+    // backend's report (as for an ALSA hardware PCM).
+    bool exclusive;
     // Bytes of period samples, as allocated.
     size_t sampleBytes;
     // Running when started and not suspended.

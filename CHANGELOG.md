@@ -202,3 +202,11 @@ format.
   the AudioContext's sink, and since one AudioContext plays to one
   device, an output on another device while one plays is refused with
   `maud_errorUnsupported`.
+- Share modes: `maudStreamDef.share` asks for `maud_shareExclusive`,
+  the device for one stream alone, on a named device; it never falls
+  back to shared and is refused with `maud_errorUnsupported` where the
+  backend or device cannot give it (PipeWire, PulseAudio, the web, the
+  offline backend, ALSA's default PCM, duplex streams, converted
+  rates). ALSA opens its hardware PCMs exclusively.
+  `maudStreamStatus.exclusive` reports whether a stream keeps others
+  off its device, which an ALSA hardware PCM does even opened shared.

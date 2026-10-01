@@ -296,6 +296,42 @@ static void TestVoiceReport(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// Exclusive use needs a device and a backend that can give it; the
+// offline backend cannot, and says so rather than sharing. Shared
+// streams report that they are.
+static void TestExclusive(void)
+{
+    maudContext* context = OfflineContext();
+    Recorder recorder = {0};
+    maudStreamId stream = {0, 0};
+    maudDeviceId device = {0, 0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
+              maud_success,
+          "the device");
+    CHECK(maudDefaultStreamDef().share == maud_shareShared, "shared by default");
+    maudStreamDef def = PullDef(&recorder);
+    def.share = maud_shareExclusive;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid,
+          "exclusive on the default, which could become any device");
+    def.share = maud_shareExclusive + 1;
+    def.device = device;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "an unknown share mode");
+    CHECK(maudGetContextMisuse(context) == 2, "both counted");
+    def.share = maud_shareExclusive;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "exclusive where the backend has none");
+    def.direction = maud_directionDuplex;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "nor for a duplex stream");
+    CHECK(maudGetContextMisuse(context) == 2, "neither is misuse");
+    def = PullDef(&recorder);
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a shared stream");
+    maudStreamStatus status = {.exclusive = true};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && !status.exclusive,
+          "reports it shares");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 static void TestStreamLimitAndStaleIds(void)
 {
     maudContext* context = OfflineContext();
@@ -387,6 +423,7 @@ int main(void)
     TestUnsupportedAndInvalidDefs();
     TestStreamLimitAndStaleIds();
     TestVoiceReport();
+    TestExclusive();
     TestStoppedStreamsDoNotRender();
     TestControlCallsFromTheCallbackAreRefused();
     TestRenderingDoesNotAllocate();

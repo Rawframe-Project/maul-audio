@@ -361,6 +361,27 @@ static void TestSilentFailure(maudContext* context)
     fclose(capture);
 }
 
+// The default PCM has no exclusive mode, which a sound server shares: a stream asking for it on
+// the default output device is refused, not shared.
+static void TestExclusiveRefused(maudContext* context)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.share = maud_shareExclusive;
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
+              maud_success,
+          "the default output");
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "exclusive use is refused");
+    def.share = maud_shareShared;
+    maudStreamStatus status = {.exclusive = true};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success && !status.exclusive,
+          "and opened shared, it reports that it shares");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 int main(void)
 {
     if (!UseTestHome())
@@ -388,6 +409,7 @@ int main(void)
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the probe");
         TestOutputStream(context);
         TestXrun(context);
+        TestExclusiveRefused(context);
         TestInputStream(context);
     }
     CHECK(server || getenv("MAUD_REQUIRE_ALSA") == nullptr, "a server for the streams");

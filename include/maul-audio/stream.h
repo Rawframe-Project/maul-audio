@@ -92,6 +92,19 @@ extern "C"
         maud_voiceGainControl = 4,
     };
 
+    // Whether a stream shares its device with other streams and
+    // applications.
+    typedef uint8_t maudShareMode;
+
+    enum
+    {
+        // Through the platform's mixer, with others: the default.
+        maud_shareShared = 0,
+        // The device for this stream alone: WASAPI's exclusive mode,
+        // CoreAudio's hog mode, an ALSA hardware PCM.
+        maud_shareExclusive = 1,
+    };
+
     // How a stream is made. Build it with maudDefaultStreamDef.
     typedef struct maudStreamDef
     {
@@ -117,6 +130,15 @@ extern "C"
         // maud_voiceNone, the default, asks the platform to leave the
         // signal alone where it can. Output streams take maud_voiceNone.
         maudVoiceProcessing voice;
+        // maud_shareExclusive asks for the device for this stream alone,
+        // never falling back to shared: it needs a device (not the null
+        // id), and is refused with maud_errorUnsupported where the
+        // backend or device cannot give it (PipeWire, PulseAudio, the web,
+        // the offline backend, ALSA's default PCM, duplex streams) and
+        // with maud_errorPlatform while another application holds the
+        // device. An exclusive stream plays the device's own rate:
+        // maud_ratePlatformConverted is refused.
+        maudShareMode share;
         // The role whose default a stream on the null device follows.
         maudDeviceRole role;
         maudStreamCallback callback;
@@ -199,6 +221,10 @@ extern "C"
         // output's and its input's; its slips are counted apart.
         uint64_t underruns;
         uint64_t overruns;
+        // Whether the stream keeps other streams and applications off its
+        // device: an exclusive stream, or an ALSA hardware PCM, which does
+        // so even when opened shared.
+        bool exclusive;
     } maudStreamStatus;
 
     /// Returns the default stream def: an output stream in callback mode,

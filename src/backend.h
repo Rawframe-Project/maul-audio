@@ -60,6 +60,9 @@ struct maudBackend
     // Whether the platform has no voice processing, so input streams
     // report none from the start; otherwise the backend reports.
     bool hasNoVoice;
+    // Whether it can open a stream for exclusive use; its openStream
+    // still refuses a device that cannot be.
+    bool exclusive;
 };
 
 // The offline backend.

@@ -147,9 +147,12 @@ static void Pump(maudContext* context)
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
-    (void)context;
     (void)device;
-    if (def->mode == maud_modePull)
+    // Only a hardware PCM can be had alone; the default one is shared.
+    const maudDeviceSlot* chosen = maudFindDevice(context, def->device);
+    bool hardware =
+        chosen != nullptr && chosen->key.length >= 3 && memcmp(chosen->key.bytes, "hw:", 3) == 0;
+    if (def->mode == maud_modePull || (def->share == maud_shareExclusive && !hardware))
     {
         return maud_errorUnsupported;
     }
@@ -170,6 +173,7 @@ static const maudBackend s_alsa = {
     .pump = Pump,
     .openStream = OpenStream,
     .attachStream = maudAlsaAttachStream,
+    .exclusive = true,
     .detachStream = maudAlsaDetachStream,
     .setStreamActive = maudAlsaSetStreamActive,
     .retargetStream = nullptr,
