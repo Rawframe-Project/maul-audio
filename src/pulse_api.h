@@ -62,6 +62,7 @@ typedef struct maudPulseApi
                        int64_t offset, pa_seek_mode_t seek);
     int (*streamPeek)(pa_stream* stream, const void** data, size_t* bytes);
     int (*streamDrop)(pa_stream* stream);
+    int (*streamGetLatency)(pa_stream* stream, pa_usec_t* latency, int* negative);
     int (*streamCancelWrite)(pa_stream* stream);
     pa_operation* (*streamCork)(pa_stream* stream, int cork, pa_stream_success_cb_t callback,
                                 void* user);

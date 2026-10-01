@@ -11,6 +11,7 @@
 #include "alsa_stream.h"
 
 #include "alsa_core.h"
+#include "clock.h"
 #include "context.h"
 #include "period.h"
 #include "thread.h"
@@ -31,6 +32,28 @@ static maudAlsaStream* EntryOf(maudContext* context, const maudStreamSlot* slot)
 
 // Moves frames between samples and the adapter, as the stream runs or
 // not: playback fills samples, capture empties them.
+// Stamps the clock from the frames between the application and the
+// device: ahead of a rendered buffer, or behind a captured one, which
+// adds its own length back to its first frame.
+static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output)
+{
+    snd_pcm_sframes_t delay = 0;
+    if (entry->api->pcmDelay(entry->pcm, &delay) != 0 || delay < 0)
+    {
+        delay = 0;
+    }
+    uint64_t behind = (uint64_t)delay + (output ? 0u : frames);
+    int64_t latency = (int64_t)(behind * 1000000000u / entry->core->format.sampleRate);
+    if (output)
+    {
+        maudStampOutputClock(entry->core, latency);
+    }
+    else
+    {
+        maudStampInputClock(entry->core, latency);
+    }
+}
+
 static void Render(maudAlsaStream* entry, float* samples, uint32_t frames, bool output)
 {
     maudStreamCore* core = entry->core;
@@ -50,6 +73,7 @@ static void Render(maudAlsaStream* entry, float* samples, uint32_t frames, bool 
         maudPushPeriod(&core->period, samples, frames);
     }
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
+    Stamp(entry, frames, output);
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
 }
 

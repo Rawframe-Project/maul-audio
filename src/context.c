@@ -98,6 +98,10 @@ static void InitStreams(maudStreamTable* streams)
         atomic_init(&slot->core.blockRate, 0);
         atomic_init(&slot->core.renderingThread, 0);
         atomic_init(&slot->core.position, 0);
+        atomic_init(&slot->core.clockSequence, 0);
+        atomic_init(&slot->core.clockPosition, 0);
+        atomic_init(&slot->core.clockHost, 0);
+        atomic_init(&slot->core.clockLatency, 0);
     }
 }
 

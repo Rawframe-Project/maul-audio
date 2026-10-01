@@ -6,6 +6,7 @@
 // client of the test's own doing the plugging. Without a daemon the
 // test is skipped, unless MAUD_REQUIRE_PIPEWIRE is set.
 
+#include "test_clock.h"
 #include "test_harness.h"
 
 #include "maul-audio/notification.h"
@@ -77,7 +78,7 @@ static const struct pw_registry_events s_helperRegistry = {
 
 static void Sleep(int milliseconds)
 {
-    struct timespec pause = {0, (long)milliseconds * 1000000L};
+    struct timespec pause = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
     nanosleep(&pause, nullptr);
 }
 
@@ -487,6 +488,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudGetContextMisuse(context) >= 1, "and counted");
     double rate = MeasureRate(context, stream);
     CHECK(Near(rate, 48000.0), "the clock advances at the stream's rate");
+    CHECK(StreamClockIsSound(context, stream, true, Sleep), "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     WaitForBlocks(context, &blocks, UINT32_MAX / 2);
     uint32_t stopped = atomic_load(&blocks.count);
@@ -517,6 +519,7 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 10), "capture callbacks");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "blocks hold input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "every capture block is one period");
+    CHECK(StreamClockIsSound(context, stream, false, Sleep), "its clock maps frames to host time");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy capture");
 }
 

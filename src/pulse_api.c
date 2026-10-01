@@ -55,6 +55,7 @@ static const ApiEntry s_entries[] = {
     ENTRY(streamWrite, "pa_stream_write"),
     ENTRY(streamPeek, "pa_stream_peek"),
     ENTRY(streamDrop, "pa_stream_drop"),
+    ENTRY(streamGetLatency, "pa_stream_get_latency"),
     ENTRY(streamCancelWrite, "pa_stream_cancel_write"),
     ENTRY(streamCork, "pa_stream_cork"),
 };

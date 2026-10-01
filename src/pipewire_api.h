@@ -42,6 +42,7 @@ typedef struct maudPipewireApi
     int (*streamSetActive)(struct pw_stream* stream, bool active);
     struct pw_buffer* (*streamDequeueBuffer)(struct pw_stream* stream);
     int (*streamQueueBuffer)(struct pw_stream* stream, struct pw_buffer* buffer);
+    int (*streamGetTime)(struct pw_stream* stream, struct pw_time* time, size_t size);
 } maudPipewireApi;
 
 // Opens libpipewire and fills the table. False, with the table zeroed,

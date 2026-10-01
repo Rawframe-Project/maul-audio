@@ -7,6 +7,7 @@
 // never the machine's sound hardware; without a server they are
 // skipped, unless MAUD_REQUIRE_ALSA is set.
 
+#include "test_clock.h"
 #include "test_harness.h"
 
 #include "maul-audio/device.h"
@@ -270,6 +271,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(&blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(Near(MeasureRate(context, stream), 44100.0), "at its rate");
+    CHECK(StreamClockIsSound(context, stream, true, Sleep), "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     CHECK(ThreadCount() == 0, "joined when it stops");
     Sleep(200);
@@ -324,6 +326,7 @@ static void TestInputStream(maudContext* context)
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(Near(MeasureRate(context, stream), 44100.0), "at its rate");
+    CHECK(StreamClockIsSound(context, stream, false, Sleep), "its clock maps frames to host time");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 

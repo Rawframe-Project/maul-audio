@@ -241,6 +241,48 @@ extern "C"
                                                              maudStreamId stream,
                                                              uint64_t* framesOut);
 
+    // Where a stream's frames meet the host clock, as the platform last
+    // reported it.
+    typedef struct maudStreamClock
+    {
+        // A frame of the stream, counted from 0 as maudGetStreamPosition
+        // counts.
+        uint64_t position;
+        // When that frame is heard (output) or was captured (input), in
+        // nanoseconds of maudGetHostNanoseconds' clock; 0 before the
+        // stream's first callback, and always on the offline backend,
+        // whose clock is the caller's.
+        int64_t hostNanoseconds;
+        // How far that time is from the callback that produced or
+        // received the frame: the buffers ahead of the device and the
+        // platform's pipeline to it, with what the route adds.
+        int64_t latencyNanoseconds;
+    } maudStreamClock;
+
+    /// Reports where a stream's frames meet the host clock. The platform
+    /// stamps it at each callback, so it follows route changes; a frame's
+    /// time follows from it at the stream's rate.
+    ///
+    /// @param context   The context.
+    /// @param stream    The stream.
+    /// @param clockOut  Receives the clock.
+    /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
+    ///         NULL pointer.
+    /// @par Thread safety
+    /// Safe from any thread. It never makes the rendering thread wait.
+    MAUD_NODISCARD MAUD_API maudResult maudGetStreamClock(const maudContext* context,
+                                                          maudStreamId stream,
+                                                          maudStreamClock* clockOut);
+
+    /// Returns the host clock streams are stamped with: CLOCK_MONOTONIC on
+    /// Linux and other POSIX systems, the performance counter on Windows,
+    /// the HAL's host time on macOS, `performance.now()` on the web.
+    ///
+    /// @return Nanoseconds since an unspecified start.
+    /// @par Thread safety
+    /// Real-time safe: no allocation, lock or wait.
+    MAUD_API int64_t maudGetHostNanoseconds(void);
+
     /// Renders the next frames of an offline output stream into a caller
     /// buffer, calling the stream's callback once per period as needed, on
     /// the calling thread. The stream's clock advances by frameCount. A

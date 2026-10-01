@@ -8,6 +8,7 @@
 #include "maul-audio/stream.h"
 
 #include "backend.h"
+#include "clock.h"
 #include "context.h"
 #include "follow.h"
 #include "period.h"
@@ -115,6 +116,7 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     maudInitPeriod(&core->period, def, &format, samples);
     atomic_store_explicit(&core->blockRate, format.sampleRate, memory_order_relaxed);
     atomic_store_explicit(&core->position, 0, memory_order_relaxed);
+    maudResetClock(core);
     maudBindNewStream(context, slot);
     return maud_success;
 }
@@ -283,6 +285,29 @@ maudResult maudGetStreamPosition(const maudContext* context, maudStreamId stream
     }
     *framesOut = atomic_load_explicit(&slot->core.position, memory_order_acquire);
     return maud_success;
+}
+
+maudResult maudGetStreamClock(const maudContext* context, maudStreamId stream,
+                              maudStreamClock* clockOut)
+{
+    if (context == nullptr || clockOut == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    const maudStreamSlot* slot = maudFindStream(context, stream);
+    if (slot == nullptr)
+    {
+        return maud_errorStale;
+    }
+    maudStreamClock clock = {0};
+    maudReadClock(&slot->core, &clock.position, &clock.hostNanoseconds, &clock.latencyNanoseconds);
+    *clockOut = clock;
+    return maud_success;
+}
+
+int64_t maudGetHostNanoseconds(void)
+{
+    return maudNowNanoseconds();
 }
 
 // Checks a render or feed call and claims the stream for the calling

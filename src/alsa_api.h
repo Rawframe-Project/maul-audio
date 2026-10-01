@@ -69,6 +69,7 @@ typedef struct maudAlsaApi
     int (*pollDescriptorsRevents)(snd_pcm_t* pcm, struct pollfd* fds, unsigned int count,
                                   unsigned short* revents);
     snd_pcm_sframes_t (*pcmAvailUpdate)(snd_pcm_t* pcm);
+    int (*pcmDelay)(snd_pcm_t* pcm, snd_pcm_sframes_t* delay);
     snd_pcm_sframes_t (*pcmWritei)(snd_pcm_t* pcm, const void* buffer, snd_pcm_uframes_t frames);
     snd_pcm_sframes_t (*pcmReadi)(snd_pcm_t* pcm, void* buffer, snd_pcm_uframes_t frames);
     int (*pcmRecover)(snd_pcm_t* pcm, int error, int silent);

@@ -56,6 +56,12 @@ typedef struct maudStreamCore
     _Atomic(uintptr_t) renderingThread;
     // Frames moved to or from the device.
     _Atomic(uint64_t) position;
+    // The clock stamp (clock.h): a frame, its host time and the latency,
+    // under a sequence counter that is odd while it is written.
+    _Atomic(uint32_t) clockSequence;
+    _Atomic(uint64_t) clockPosition;
+    _Atomic(int64_t) clockHost;
+    _Atomic(int64_t) clockLatency;
 } maudStreamCore;
 
 typedef struct maudStreamSlot

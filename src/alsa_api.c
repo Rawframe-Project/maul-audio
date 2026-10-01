@@ -61,6 +61,7 @@ static const ApiEntry s_entries[] = {
     ENTRY(pollDescriptors, "snd_pcm_poll_descriptors"),
     ENTRY(pollDescriptorsRevents, "snd_pcm_poll_descriptors_revents"),
     ENTRY(pcmAvailUpdate, "snd_pcm_avail_update"),
+    ENTRY(pcmDelay, "snd_pcm_delay"),
     ENTRY(pcmWritei, "snd_pcm_writei"),
     ENTRY(pcmReadi, "snd_pcm_readi"),
     ENTRY(pcmRecover, "snd_pcm_recover"),

@@ -8,6 +8,7 @@
 
 #include "pipewire_stream.h"
 
+#include "clock.h"
 #include "context.h"
 #include "period.h"
 #include "pipewire_core.h"
@@ -75,6 +76,25 @@ static void OnStateChanged(void* data, enum pw_stream_state old, enum pw_stream_
     entry->state = state;
 }
 
+// The latency of this cycle's buffer, from the graph's report: the
+// delay to the device, filters included, plus the frames queued ahead
+// of the buffer and held in the resampler; for capture, the delay plus
+// the buffer's own length, back to its first frame. Real-time safe.
+static int64_t LatencyOf(const maudPipewireStream* entry, uint32_t frames, bool output)
+{
+    const maudStreamCore* core = entry->core;
+    struct pw_time time = {0};
+    if (entry->owner->api.streamGetTime(entry->stream, &time, sizeof(time)) < 0 ||
+        time.rate.denom == 0)
+    {
+        return 0;
+    }
+    int64_t delay = time.delay * 1000000000 * (int64_t)time.rate.num / (int64_t)time.rate.denom;
+    uint64_t stride = (uint64_t)core->period.channelCount * sizeof(float);
+    uint64_t extra = output ? time.queued / stride + time.buffered : frames;
+    return delay + (int64_t)(extra * 1000000000 / core->format.sampleRate);
+}
+
 // Runs on libpipewire's data thread: no allocation, lock or wait.
 static void OnProcess(void* data)
 {
@@ -114,6 +134,15 @@ static void OnProcess(void* data)
             maudPushPeriod(&core->period, samples, frames);
         }
         atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
+        int64_t latency = LatencyOf(entry, frames, output);
+        if (output)
+        {
+            maudStampOutputClock(core, latency);
+        }
+        else
+        {
+            maudStampInputClock(core, latency);
+        }
         atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
     }
     if (output)

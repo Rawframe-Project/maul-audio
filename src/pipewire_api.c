@@ -40,6 +40,7 @@ static const ApiEntry s_entries[] = {
     ENTRY(streamSetActive, "pw_stream_set_active"),
     ENTRY(streamDequeueBuffer, "pw_stream_dequeue_buffer"),
     ENTRY(streamQueueBuffer, "pw_stream_queue_buffer"),
+    ENTRY(streamGetTime, "pw_stream_get_time_n"),
 };
 
 // The table holds the library handle and then only function pointers.

@@ -9,6 +9,7 @@
 
 #include "pulse_stream.h"
 
+#include "clock.h"
 #include "context.h"
 #include "period.h"
 #include "pulse_core.h"
@@ -71,6 +72,23 @@ static void Render(maudPulseStream* entry, float* out, const float* in, uint32_t
         maudPushPeriod(&core->period, in, frames);
     }
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
+    // The server's latency: until data written now is heard, or since
+    // the data read now was captured. Until its first timing update it
+    // has none.
+    pa_usec_t latency = 0;
+    int negative = 0;
+    if (entry->api->streamGetLatency(entry->stream, &latency, &negative) != 0 || negative)
+    {
+        latency = 0;
+    }
+    if (output)
+    {
+        maudStampOutputClock(core, (int64_t)latency * 1000);
+    }
+    else
+    {
+        maudStampInputClock(core, (int64_t)latency * 1000);
+    }
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
 }
 
@@ -217,7 +235,9 @@ static bool ConnectStream(maudContext* context, maudPulseStream* entry, int64_t 
     };
     char name[MAUD_PULSE_NAME_BYTES] = {0};
     const maudDeviceSlot* device = maudFindDevice(context, core->binding.requested);
-    pa_stream_flags_t flags = PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY;
+    // Timing updates keep pa_stream_get_latency current for the clock.
+    pa_stream_flags_t flags = PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY |
+                              PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING;
     if (device != nullptr && device->key.length < sizeof(name))
     {
         memcpy(name, device->key.bytes, device->key.length);

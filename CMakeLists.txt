@@ -65,8 +65,15 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/offline.c
     src/period.c
     src/stream.c
+    src/clock.c
     src/thread.c)
 maul_configure_library(maul-audio)
+# clock_gettime under a strict C23 build, on POSIX systems other than
+# Darwin, which shows it (and clock_gettime_nsec_np) without the request.
+if(UNIX AND NOT APPLE)
+    set_source_files_properties(src/clock.c PROPERTIES COMPILE_DEFINITIONS
+        _POSIX_C_SOURCE=200809L)
+endif()
 
 # PipeWire's headers at build time only: the library opens libpipewire
 # at run time and links nothing of it.

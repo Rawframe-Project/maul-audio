@@ -8,6 +8,7 @@
 // Without a server the test is skipped, unless MAUD_REQUIRE_PULSE is
 // set.
 
+#include "test_clock.h"
 #include "test_harness.h"
 
 #include "maul-audio/device.h"
@@ -26,7 +27,7 @@
 
 static void Sleep(int milliseconds)
 {
-    struct timespec pause = {0, (long)milliseconds * 1000000L};
+    struct timespec pause = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
     nanosleep(&pause, nullptr);
 }
 
@@ -358,6 +359,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(Near(MeasureRate(context, stream), 48000.0), "at the sink's rate");
+    CHECK(StreamClockIsSound(context, stream, true, Sleep), "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     CHECK(ThreadCount() == 0, "joined when it stops");
     Sleep(200);
@@ -395,6 +397,7 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
+    CHECK(StreamClockIsSound(context, stream, false, Sleep), "its clock maps frames to host time");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
