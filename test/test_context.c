@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// Contexts: defaults, refusals of invalid defs, the native backend's
+// absence in this build, and memory through the def's allocator.
+
+#include "test_harness.h"
+
+#include "maul-audio/context.h"
+
+#include <stdlib.h>
+
+typedef struct CountingAllocator
+{
+    int live;
+    int calls;
+    bool fail;
+} CountingAllocator;
+
+static void* CountedAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    CountingAllocator* counter = context;
+    counter->calls++;
+    if (counter->fail)
+    {
+        return nullptr;
+    }
+    counter->live++;
+    return malloc(size);
+}
+
+static void CountedFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    CountingAllocator* counter = context;
+    counter->live--;
+    free(memory);
+}
+
+static maudContextDef OfflineDef(CountingAllocator* counter)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendOffline;
+    def.allocator = (maudAllocator){CountedAlloc, CountedFree, counter};
+    return def;
+}
+
+static void TestDefaults(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    CHECK(def.limits.streams == 8, "8 streams");
+    CHECK(def.limits.periodFrames == 8192, "8192-frame periods");
+    CHECK(def.backend == maud_backendNative, "native backend");
+    CHECK(def.offlineSampleRate == 48000, "48 kHz offline");
+    CHECK(def.allocator.alloc == nullptr && def.allocator.free == nullptr, "C allocator");
+}
+
+static void TestOfflineContextLifetime(void)
+{
+    CountingAllocator counter = {0};
+    maudContextDef def = OfflineDef(&counter);
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&def, &context) == maud_success, "create");
+    CHECK(context != nullptr, "context returned");
+    CHECK(maudGetContextBackend(context) == maud_backendOffline, "offline backend");
+    CHECK(maudGetContextMisuse(context) == 0, "no misuse");
+    CHECK(counter.live == 1, "one block");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    CHECK(counter.live == 0, "block returned");
+    CHECK(maudDestroyContext(nullptr) == maud_success, "destroying NULL does nothing");
+}
+
+static void TestNativeBackendIsUnsupportedInThisBuild(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    maudContext* context = (maudContext*)&def;
+    CHECK(maudCreateContext(&def, &context) == maud_errorUnsupported, "no native backend");
+    CHECK(context == nullptr, "context cleared");
+}
+
+static void CheckRefused(const maudContextDef* def, const char* what)
+{
+    maudContext* context = (maudContext*)def;
+    CHECK(maudCreateContext(def, &context) == maud_errorInvalid, what);
+    CHECK(context == nullptr, what);
+}
+
+static void TestInvalidDefsAreRefused(void)
+{
+    CountingAllocator counter = {0};
+    maudContextDef def = OfflineDef(&counter);
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&def, nullptr) == maud_errorInvalid, "null out");
+    CheckRefused(nullptr, "null def");
+    def.cookie = 0;
+    CheckRefused(&def, "no cookie");
+    def = OfflineDef(&counter);
+    def.allocator.free = nullptr;
+    CheckRefused(&def, "allocator with one function");
+    def = OfflineDef(&counter);
+    def.limits.streams = 0;
+    CheckRefused(&def, "no streams");
+    def = OfflineDef(&counter);
+    def.limits.periodFrames = 0;
+    CheckRefused(&def, "no period frames");
+    def = OfflineDef(&counter);
+    def.offlineSampleRate = 7999;
+    CheckRefused(&def, "rate below range");
+    def.offlineSampleRate = 384001;
+    CheckRefused(&def, "rate above range");
+    def = OfflineDef(&counter);
+    def.backend = 2;
+    CheckRefused(&def, "unknown backend");
+    CHECK(counter.calls == 0, "nothing allocated");
+    (void)context;
+}
+
+static void TestAllocatorFailureIsCapacity(void)
+{
+    CountingAllocator counter = {.fail = true};
+    maudContextDef def = OfflineDef(&counter);
+    maudContext* context = (maudContext*)&def;
+    CHECK(maudCreateContext(&def, &context) == maud_errorCapacity, "capacity");
+    CHECK(context == nullptr, "context cleared");
+    CHECK(counter.calls == 1 && counter.live == 0, "nothing kept");
+}
+
+int main(void)
+{
+    TestDefaults();
+    TestOfflineContextLifetime();
+    TestNativeBackendIsUnsupportedInThisBuild();
+    TestInvalidDefsAreRefused();
+    TestAllocatorFailureIsCapacity();
+    return s_failures == 0 ? 0 : 1;
+}

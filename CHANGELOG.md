@@ -21,3 +21,16 @@ format.
 - Exact conversion between interleaved frames and one array per
   channel (`maudInterleave`, `maudDeinterleave`), real-time safe.
 - A benchmark of the conversions.
+- Contexts (`maudCreateContext`, `maudDestroyContext`), with named
+  limits, a misuse count and the backend kind; the native backend is
+  not in this build yet.
+- The offline backend: pull streams rendered on the caller's thread
+  at a caller-driven clock (`maudRenderStream`, `maudFeedStream`).
+- Streams (`maudCreateStream`, `maudDestroyStream`, `maudStartStream`,
+  `maudStopStream`, `maudGetStreamFormat`, `maudGetStreamPosition`):
+  one real-time callback receiving fixed periods, output cleared to
+  silence before each block, and a rate policy (native, required or
+  platform-converted).
+- Control calls made on a thread that is rendering one of the
+  context's streams are refused with `maud_errorState`, and debug
+  builds trap library allocations there.

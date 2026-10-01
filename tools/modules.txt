@@ -1,5 +1,14 @@
 # The internal module graph (docs/conventions.md, section 6): each module
 # and the modules it may use. tools/check_modules.py enforces it.
+allocator:
+backend: context_core
+backend_offline: backend context_core
 base:
 buffer:
+context: allocator backend context_core invariant thread
+context_core: period
+invariant:
 layout:
+period:
+stream: backend context context_core period thread
+thread:
