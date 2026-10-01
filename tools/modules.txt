@@ -11,7 +11,7 @@ backend: context_core
 backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
 backend_coreaudio: backend context coreaudio_core coreaudio_form coreaudio_stream device layout
 backend_offline: backend context_core device
-backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_core pipewire_stream
+backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_stream
 backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
 backend_wasapi: backend context device layout wasapi_core wasapi_stream
 backend_web: backend clock context device follow period thread web_capture web_core
@@ -35,6 +35,7 @@ notify: backend context context_core invariant
 offline: context context_core device
 period:
 pipewire_api:
+pipewire_card: context context_core device form pipewire_core
 pipewire_core: context_core pipewire_api
 pipewire_stream: clock context context_core period pipewire_core thread xrun
 pulse_api:

@@ -134,7 +134,10 @@ maudResult maudDestroyStream(maudContext* context, maudStreamId stream)
     {
         return result;
     }
-    if (atomic_load_explicit(&slot->core.renderingThread, memory_order_acquire) != 0)
+    // Where the host renders, another of its threads may be inside the
+    // stream; a platform's own thread is waited for by the backend.
+    if (context->backend->rendersOnCaller &&
+        atomic_load_explicit(&slot->core.renderingThread, memory_order_acquire) != 0)
     {
         maudCountMisuse(context);
         return maud_errorState;

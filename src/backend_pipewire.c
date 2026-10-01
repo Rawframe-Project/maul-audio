@@ -13,6 +13,7 @@
 #include "follow.h"
 #include "form.h"
 #include "layout.h"
+#include "pipewire_card.h"
 #include "pipewire_core.h"
 #include "pipewire_stream.h"
 
@@ -131,6 +132,15 @@ static void AddDeviceOf(maudPipewireNode* node, const struct spa_dict* props)
     }
     name = name != nullptr ? name : key;
     uint32_t rate = pipewire->clock.graphRate;
+    // Its card's route, when it is on one, says more than its form factor.
+    node->factorForm =
+        maudFormOfName(spa_dict_lookup(props, PW_KEY_DEVICE_FORM_FACTOR), node->direction);
+    uint32_t cardId = 0;
+    const char* card = spa_dict_lookup(props, PW_KEY_DEVICE_ID);
+    const char* profileDevice = spa_dict_lookup(props, "card.profile.device");
+    node->hasCard = card != nullptr && profileDevice != nullptr && spa_atou32(card, &cardId, 10) &&
+                    spa_atoi32(profileDevice, &node->profileDevice, 10);
+    node->cardId = cardId;
     maudDeviceSpec spec = {
         .info = {.direction = node->direction,
                  .nativeLayout =
@@ -138,8 +148,7 @@ static void AddDeviceOf(maudPipewireNode* node, const struct spa_dict* props)
                  .nativeSampleRate = rate,
                  .minSampleRate = rate,
                  .maxSampleRate = rate,
-                 .form = maudFormOfName(spa_dict_lookup(props, PW_KEY_DEVICE_FORM_FACTOR),
-                                        node->direction)},
+                 .form = maudPipewireNodeForm(pipewire, node)},
         .name = name,
         .nameLength = maudCutUtf8(name, pipewire->context->def.limits.deviceTextBytes),
         .key = key,
@@ -172,9 +181,9 @@ static void OnNodeInfo(void* data, const struct pw_node_info* info)
     maudDeviceSlot* slot = maudFindDevice(node->owner->context, node->device);
     if (slot != nullptr)
     {
-        maudSetDeviceForm(node->owner->context, slot,
-                          maudFormOfName(spa_dict_lookup(info->props, PW_KEY_DEVICE_FORM_FACTOR),
-                                         node->direction));
+        node->factorForm = maudFormOfName(spa_dict_lookup(info->props, PW_KEY_DEVICE_FORM_FACTOR),
+                                          node->direction);
+        maudSetDeviceForm(node->owner->context, slot, maudPipewireNodeForm(node->owner, node));
     }
 }
 
@@ -395,6 +404,11 @@ static void OnGlobal(void* data, uint32_t id, uint32_t permissions, const char* 
             AddNode(pipewire, id, maud_directionInput);
         }
     }
+    else if (spa_streq(type, PW_TYPE_INTERFACE_Device) &&
+             spa_streq(spa_dict_lookup(props, PW_KEY_MEDIA_CLASS), "Audio/Device"))
+    {
+        maudPipewireAddCard(pipewire, id);
+    }
     else if (spa_streq(type, PW_TYPE_INTERFACE_Metadata))
     {
         const char* name = spa_dict_lookup(props, PW_KEY_METADATA_NAME);
@@ -416,6 +430,10 @@ static void OnGlobalRemove(void* data, uint32_t id)
     if (node != nullptr)
     {
         RemoveNode(pipewire, node);
+    }
+    else
+    {
+        (void)maudPipewireRemoveCard(pipewire, id);
     }
 }
 
@@ -469,6 +487,7 @@ static void LoseConnection(maudPipewire* pipewire)
             RemoveNode(pipewire, &pipewire->nodes[i]);
         }
     }
+    maudPipewireDropCards(pipewire);
     DropCore(pipewire);
     pipewire->connection.nextAttempt = maudPipewireNow() + MAUD_PIPEWIRE_RETRY_NS;
 }
@@ -540,6 +559,7 @@ static void Disconnect(maudPipewire* pipewire)
             pipewire->api.proxyDestroy(node->proxy);
         }
     }
+    maudPipewireDropCards(pipewire);
     DropCore(pipewire);
     if (connection->context != nullptr)
     {
@@ -602,7 +622,8 @@ static maudResult OpenContext(maudContext* context)
 {
     uint32_t capacity = context->def.limits.devices;
     uint32_t streams = context->def.limits.streams;
-    size_t bytes = sizeof(maudPipewire) + (size_t)capacity * sizeof(maudPipewireNode) +
+    size_t bytes = sizeof(maudPipewire) +
+                   (size_t)capacity * (sizeof(maudPipewireNode) + sizeof(maudPipewireCard)) +
                    (size_t)streams * sizeof(maudPipewireStream);
     maudPipewire* pipewire = maudContextAllocate(context, bytes, alignof(maudPipewire));
     if (pipewire == nullptr)
@@ -614,10 +635,13 @@ static maudResult OpenContext(maudContext* context)
         .nodes = (maudPipewireNode*)(pipewire + 1),
         .clock = {.graphRate = MAUD_PIPEWIRE_FALLBACK_RATE},
         .nodeCapacity = capacity,
+        .cardCapacity = capacity,
         .bytes = bytes,
     };
-    pipewire->streams = (maudPipewireStream*)(pipewire->nodes + capacity);
+    pipewire->cards = (maudPipewireCard*)(pipewire->nodes + capacity);
+    pipewire->streams = (maudPipewireStream*)(pipewire->cards + capacity);
     memset(pipewire->nodes, 0, (size_t)capacity * sizeof(maudPipewireNode));
+    memset(pipewire->cards, 0, (size_t)capacity * sizeof(maudPipewireCard));
     memset(pipewire->streams, 0, (size_t)streams * sizeof(maudPipewireStream));
     context->native = pipewire;
     if (!maudLoadPipewire(&pipewire->api))

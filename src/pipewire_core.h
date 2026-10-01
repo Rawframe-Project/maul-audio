@@ -34,8 +34,39 @@ typedef struct maudPipewireNode
     maudDeviceId device;
     uint32_t globalId;
     maudDirection direction;
+    // Its own form factor, and the card and card profile device it is
+    // on, whose route may say more.
+    maudDeviceForm factorForm;
+    bool hasCard;
+    uint32_t cardId;
+    int32_t profileDevice;
     bool used;
 } maudPipewireNode;
+
+// How many routes a card keeps: one per profile device and direction.
+#define MAUD_PIPEWIRE_CARD_ROUTES 8
+
+// One active route: the card profile device it serves, its direction
+// and the form its port type names.
+typedef struct maudPipewireRoute
+{
+    int32_t device;
+    maudDirection direction;
+    maudDeviceForm form;
+} maudPipewireRoute;
+
+// One card's Device proxy and its active routes, filled by
+// pipewire_card.
+typedef struct maudPipewireCard
+{
+    maudPipewire* owner;
+    struct pw_proxy* proxy;
+    struct spa_hook listener;
+    uint32_t globalId;
+    maudPipewireRoute routes[MAUD_PIPEWIRE_CARD_ROUTES];
+    uint32_t routeCount;
+    bool used;
+} maudPipewireCard;
 
 // The connection: the loop, the core and the registry.
 typedef struct maudPipewireConnection
@@ -89,6 +120,11 @@ typedef struct maudPipewireStream
     uint64_t lastTicks;
     uint32_t lastFrames;
     atomic_bool forgetTicks;
+    // Process callbacks in flight on the data thread, and the control
+    // thread's word that the stream is going: pw_stream_destroy does not
+    // always wait for a callback already running, so detaching does.
+    atomic_uint inside;
+    atomic_bool closing;
 } maudPipewireStream;
 
 struct maudPipewire
@@ -100,6 +136,8 @@ struct maudPipewire
     maudPipewireClock clock;
     maudPipewireNode* nodes;
     uint32_t nodeCapacity;
+    maudPipewireCard* cards;
+    uint32_t cardCapacity;
     maudPipewireStream* streams;
     size_t bytes;
 };

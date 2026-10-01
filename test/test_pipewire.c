@@ -342,8 +342,10 @@ typedef struct Blocks
     _Atomic(uint32_t) withInput;
     _Atomic(int32_t) controlResult;
     uint32_t periodFrames;
-    // The block at which the callback stalls for 300 ms, or 0.
+    // The block at which the callback stalls for 300 ms, or 0; set while
+    // it stalls.
     uint32_t stallAt;
+    atomic_bool stalling;
     bool tryControl;
     maudContext* context;
     maudStreamId stream;
@@ -367,7 +369,9 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
+        atomic_store(&blocks->stalling, true);
         Sleep(300);
+        atomic_store(&blocks->stalling, false);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -623,6 +627,33 @@ static void TestXruns(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy calm");
 }
 
+// Destroying a stream whose callback is running on the data thread
+// succeeds, and returns only once that callback has: none comes after.
+static void TestDestroyWhileRendering(maudContext* context)
+{
+    for (int duplex = 0; duplex < 2; ++duplex)
+    {
+        Blocks blocks = {.stallAt = 10};
+        maudDirection direction = duplex ? maud_directionDuplex : maud_directionOutput;
+        maudStreamId stream = OpenStream(context, direction, (maudDeviceId){0, 0}, &blocks);
+        for (int tries = 0; tries < 300 && !atomic_load(&blocks.stalling); ++tries)
+        {
+            maudNotification ignored;
+            while (maudNextNotification(context, &ignored) == maud_success)
+            {
+            }
+            Sleep(1);
+        }
+        CHECK(atomic_load(&blocks.stalling), "its callback is running");
+        CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed meanwhile");
+        uint32_t count = atomic_load(&blocks.count);
+        CHECK(!atomic_load(&blocks.stalling) && count == blocks.stallAt + 1,
+              "after the callback returned");
+        Sleep(100);
+        CHECK(atomic_load(&blocks.count) == count, "and no callback came after");
+    }
+}
+
 // A duplex stream on the default sink and source, which are two drivers
 // here: both buffers in each callback at the graph's rate, its halves
 // grouped under one driver, so the status declares one clock.
@@ -748,6 +779,7 @@ int main(void)
     TestInputStream(context);
     TestDuplexStream(context);
     TestXruns(context);
+    TestDestroyWhileRendering(context);
     TestStreamsMoveAndAreLost(context, &helper);
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

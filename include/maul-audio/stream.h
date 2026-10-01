@@ -230,14 +230,16 @@ extern "C"
                                                         const maudStreamDef* def,
                                                         maudStreamId* streamIdOut);
 
-    /// Destroys a stream. Its id becomes stale.
+    /// Destroys a stream. Its id becomes stale. On a platform backend its
+    /// callback has returned for the last time when this returns.
     ///
     /// @param context  The context.
     /// @param stream   The stream.
     /// @return `maud_success`; `maud_errorStale` for an id that names no
     ///         stream; `maud_errorInvalid` for a NULL context;
     ///         `maud_errorState` on a thread rendering one of the context's
-    ///         streams, or while the stream renders.
+    ///         streams, or, on the offline backend, while another thread
+    ///         renders the stream.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudDestroyStream(maudContext* context, maudStreamId stream);

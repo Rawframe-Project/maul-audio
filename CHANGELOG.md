@@ -187,4 +187,11 @@ format.
   same device, as headphones in its jack, posts
   `maud_notifyRouteChanged` with the new form. The offline backend
   scripts it with `maudSetOfflineDeviceForm`. ALSA hardware PCMs named for HDMI,
-  DisplayPort, IEC958 or S/PDIF are digital.
+  DisplayPort, IEC958 or S/PDIF are digital. On PipeWire, a node on a card
+  takes the form of its card's active route (the Device's Route
+  `port.type`), so a jack switch on one node is a route change.
+- Fixed: destroying a stream on a platform backend failed with
+  `maud_errorState` whenever its callback happened to be running on the
+  platform's thread, leaving the stream running; it now succeeds, and
+  returns once that callback has. Only the offline backend, whose host
+  renders, still refuses while another thread renders the stream.

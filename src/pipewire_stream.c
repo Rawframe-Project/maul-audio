@@ -15,6 +15,7 @@
 #include "thread.h"
 #include "xrun.h"
 
+#include <sched.h>
 #include <spa/param/audio/format-utils.h>
 #include <spa/pod/builder.h>
 #include <string.h>
@@ -115,9 +116,8 @@ static void CheckTicks(maudPipewireStream* entry, const struct pw_time* time, ui
 }
 
 // Runs on libpipewire's data thread: no allocation, lock or wait.
-static void OnProcess(void* data)
+static void Process(maudPipewireStream* entry)
 {
-    maudPipewireStream* entry = data;
     maudStreamCore* core = entry->core;
     const maudPipewireApi* api = &entry->owner->api;
     struct pw_buffer* buffer = api->streamDequeueBuffer(entry->stream);
@@ -178,6 +178,19 @@ static void OnProcess(void* data)
         plane->chunk->size = frames * stride;
     }
     api->streamQueueBuffer(entry->stream, buffer);
+}
+
+// Counts itself in before looking at closing, as detaching marks
+// closing before counting the callbacks in: one or the other sees.
+static void OnProcess(void* data)
+{
+    maudPipewireStream* entry = data;
+    atomic_fetch_add(&entry->inside, 1);
+    if (!atomic_load(&entry->closing))
+    {
+        Process(entry);
+    }
+    atomic_fetch_sub(&entry->inside, 1);
 }
 
 static const struct pw_stream_events s_streamEvents = {
@@ -302,6 +315,12 @@ void maudPipewireDetachStream(maudContext* context, maudStreamSlot* slot)
     if (!entry->used)
     {
         return;
+    }
+    // No callback may reach the host once this returns.
+    atomic_store(&entry->closing, true);
+    while (atomic_load(&entry->inside) != 0)
+    {
+        sched_yield();
     }
     spa_hook_remove(&entry->listener);
     pipewire->api.streamDestroy(entry->stream);
