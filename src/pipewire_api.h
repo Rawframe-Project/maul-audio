@@ -26,6 +26,22 @@ typedef struct maudPipewireApi
                                       size_t userDataSize);
     int (*coreDisconnect)(struct pw_core* core);
     void (*proxyDestroy)(struct pw_proxy* proxy);
+    struct pw_properties* (*propertiesNew)(const char* key, ...);
+    int (*propertiesSetf)(struct pw_properties* properties, const char* key, const char* format,
+                          ...);
+    struct pw_stream* (*streamNew)(struct pw_core* core, const char* name,
+                                   struct pw_properties* props);
+    void (*streamDestroy)(struct pw_stream* stream);
+    void (*streamAddListener)(struct pw_stream* stream, struct spa_hook* listener,
+                              const struct pw_stream_events* events, void* data);
+    int (*streamConnect)(struct pw_stream* stream, enum pw_direction direction, uint32_t targetId,
+                         enum pw_stream_flags flags, const struct spa_pod** params,
+                         uint32_t paramCount);
+    int (*streamUpdateParams)(struct pw_stream* stream, const struct spa_pod** params,
+                              uint32_t paramCount);
+    int (*streamSetActive)(struct pw_stream* stream, bool active);
+    struct pw_buffer* (*streamDequeueBuffer)(struct pw_stream* stream);
+    int (*streamQueueBuffer)(struct pw_stream* stream, struct pw_buffer* buffer);
 } maudPipewireApi;
 
 // Opens libpipewire and fills the table. False, with the table zeroed,

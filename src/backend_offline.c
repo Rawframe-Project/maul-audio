@@ -64,6 +64,10 @@ static const maudBackend s_offline = {
     .closeContext = nullptr,
     .pump = nullptr,
     .openStream = OpenStream,
+    .attachStream = nullptr,
+    .detachStream = nullptr,
+    .setStreamActive = nullptr,
+    .retargetStream = nullptr,
     .rendersOnCaller = true,
 };
 

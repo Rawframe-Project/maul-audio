@@ -2,27 +2,51 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Opening libpipewire. The library is reference counted by the dynamic
-// loader, so each context opens and closes it on its own.
+// loader, so each context opens and closes it on its own. Every
+// function of the table has one entry below, and the build fails when
+// one is missing.
 
 #include "pipewire_api.h"
 
 #include <dlfcn.h>
+#include <stddef.h>
 #include <string.h>
 
-// Resolves one function into a table slot, which has the function's
-// pointer type; the loader returns an object pointer.
-static bool Resolve(void* library, const char* name, void* slot, size_t slotSize)
+typedef struct ApiEntry
 {
-    void* function = dlsym(library, name);
-    if (function == nullptr)
-    {
-        return false;
-    }
-    memcpy(slot, (const void*)&function, slotSize);
-    return true;
-}
+    const char* name;
+    size_t offset;
+} ApiEntry;
 
-#define RESOLVE(field, name) Resolve(api->library, name, (void*)&api->field, sizeof(api->field))
+#define ENTRY(field, name) {name, offsetof(maudPipewireApi, field)}
+
+static const ApiEntry s_entries[] = {
+    ENTRY(init, "pw_init"),
+    ENTRY(deinit, "pw_deinit"),
+    ENTRY(loopNew, "pw_loop_new"),
+    ENTRY(loopDestroy, "pw_loop_destroy"),
+    ENTRY(contextNew, "pw_context_new"),
+    ENTRY(contextDestroy, "pw_context_destroy"),
+    ENTRY(contextConnect, "pw_context_connect"),
+    ENTRY(coreDisconnect, "pw_core_disconnect"),
+    ENTRY(proxyDestroy, "pw_proxy_destroy"),
+    ENTRY(propertiesNew, "pw_properties_new"),
+    ENTRY(propertiesSetf, "pw_properties_setf"),
+    ENTRY(streamNew, "pw_stream_new"),
+    ENTRY(streamDestroy, "pw_stream_destroy"),
+    ENTRY(streamAddListener, "pw_stream_add_listener"),
+    ENTRY(streamConnect, "pw_stream_connect"),
+    ENTRY(streamUpdateParams, "pw_stream_update_params"),
+    ENTRY(streamSetActive, "pw_stream_set_active"),
+    ENTRY(streamDequeueBuffer, "pw_stream_dequeue_buffer"),
+    ENTRY(streamQueueBuffer, "pw_stream_queue_buffer"),
+};
+
+// The table holds the library handle and then only function pointers.
+static_assert(sizeof(s_entries) / sizeof(s_entries[0]) ==
+                  (sizeof(maudPipewireApi) - offsetof(maudPipewireApi, init)) /
+                      sizeof(void (*)(void)),
+              "every function of maudPipewireApi has an entry");
 
 bool maudLoadPipewire(maudPipewireApi* api)
 {
@@ -32,16 +56,18 @@ bool maudLoadPipewire(maudPipewireApi* api)
     {
         return false;
     }
-    bool loaded =
-        RESOLVE(init, "pw_init") && RESOLVE(deinit, "pw_deinit") &&
-        RESOLVE(loopNew, "pw_loop_new") && RESOLVE(loopDestroy, "pw_loop_destroy") &&
-        RESOLVE(contextNew, "pw_context_new") && RESOLVE(contextDestroy, "pw_context_destroy") &&
-        RESOLVE(contextConnect, "pw_context_connect") &&
-        RESOLVE(coreDisconnect, "pw_core_disconnect") && RESOLVE(proxyDestroy, "pw_proxy_destroy");
-    if (!loaded)
+    for (size_t i = 0; i < sizeof(s_entries) / sizeof(s_entries[0]); ++i)
     {
-        maudUnloadPipewire(api);
-        return false;
+        void* function = dlsym(api->library, s_entries[i].name);
+        if (function == nullptr)
+        {
+            maudUnloadPipewire(api);
+            return false;
+        }
+        // The loader returns an object pointer; the slot has the
+        // function's pointer type and the same size on every platform
+        // with dlopen.
+        memcpy((char*)api + s_entries[i].offset, (const void*)&function, sizeof(function));
     }
     return true;
 }

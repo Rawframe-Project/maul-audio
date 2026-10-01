@@ -115,7 +115,7 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     maudInitPeriod(&core->period, def, &format, samples);
     atomic_store_explicit(&core->blockRate, format.sampleRate, memory_order_relaxed);
     atomic_store_explicit(&core->position, 0, memory_order_relaxed);
-    maudBindNewStream(context, core);
+    maudBindNewStream(context, slot);
     return maud_success;
 }
 
@@ -159,6 +159,16 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def,
     if (result != maud_success)
     {
         return result;
+    }
+    if (context->backend->attachStream != nullptr)
+    {
+        result = context->backend->attachStream(context, slot);
+        if (result != maud_success)
+        {
+            maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes,
+                               alignof(float));
+            return result;
+        }
     }
     slot->live = true;
     *streamIdOut = maudStreamIdOf(context, slot);
@@ -208,7 +218,7 @@ static maudResult SetStarted(maudContext* context, maudStreamId stream, bool sta
     {
         return result;
     }
-    maudSetStreamStarted(&slot->core, started);
+    maudSetStreamStarted(context, slot, started);
     return maud_success;
 }
 

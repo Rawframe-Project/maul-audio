@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// What the PipeWire backend holds for a context: the loaded library,
+// the connection, the default metadata, one entry per device node and
+// one per stream, in the context's stream slot order.
+
+#ifndef MAUL_AUDIO_SRC_PIPEWIRE_CORE_H
+#define MAUL_AUDIO_SRC_PIPEWIRE_CORE_H
+
+#include "context_core.h"
+#include "pipewire_api.h"
+
+// How long creation and stream opening wait for PipeWire's answers.
+#define MAUD_PIPEWIRE_DEADLINE_NS 2000000000ll
+// How many loop iterations one pump takes at most.
+#define MAUD_PIPEWIRE_PUMP_ITERATIONS 64
+// The rate a native stream takes while its device's rate is unknown.
+#define MAUD_PIPEWIRE_FALLBACK_RATE 48000u
+// Bytes of a default device's node name.
+#define MAUD_PIPEWIRE_NAME_BYTES 256
+
+typedef struct maudPipewire maudPipewire;
+
+// One sink or source node and the proxy that reports its formats.
+typedef struct maudPipewireNode
+{
+    maudPipewire* owner;
+    struct pw_proxy* proxy;
+    struct spa_hook listener;
+    maudDeviceId device;
+    uint32_t globalId;
+    bool used;
+} maudPipewireNode;
+
+// The connection: the loop, the core and the registry.
+typedef struct maudPipewireConnection
+{
+    struct pw_loop* loop;
+    struct pw_context* context;
+    struct pw_core* core;
+    struct spa_hook coreListener;
+    struct pw_registry* registry;
+    struct spa_hook registryListener;
+    int pendingSync;
+    bool synced;
+    bool lost;
+} maudPipewireConnection;
+
+// The default metadata and the node names it gives per direction.
+typedef struct maudPipewireDefaults
+{
+    struct pw_proxy* metadata;
+    struct spa_hook listener;
+    char names[2][MAUD_PIPEWIRE_NAME_BYTES];
+} maudPipewireDefaults;
+
+// One stream: the PipeWire stream and the core it feeds. The process
+// callback reads core from libpipewire's data thread.
+typedef struct maudPipewireStream
+{
+    maudPipewire* owner;
+    maudStreamCore* core;
+    struct pw_stream* stream;
+    struct spa_hook listener;
+    enum pw_stream_state state;
+    bool used;
+} maudPipewireStream;
+
+struct maudPipewire
+{
+    maudPipewireApi api;
+    maudContext* context;
+    maudPipewireConnection connection;
+    maudPipewireDefaults defaults;
+    maudPipewireNode* nodes;
+    uint32_t nodeCapacity;
+    maudPipewireStream* streams;
+    size_t bytes;
+};
+
+// The monotonic clock, in nanoseconds.
+int64_t maudPipewireNow(void);
+
+// Waits on the calling thread until PipeWire has answered everything
+// asked so far, or the deadline passes. False on the deadline or a
+// lost connection.
+bool maudPipewireRoundtrip(maudPipewire* pipewire, int64_t deadline);
+
+#endif // MAUL_AUDIO_SRC_PIPEWIRE_CORE_H

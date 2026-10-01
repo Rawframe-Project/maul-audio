@@ -10,7 +10,8 @@
 #include "backend.h"
 #include "context.h"
 #include "device.h"
-#include "pipewire_api.h"
+#include "pipewire_core.h"
+#include "pipewire_stream.h"
 
 #include <errno.h>
 #include <pipewire/extensions/metadata.h>
@@ -22,66 +23,6 @@
 #include <spa/utils/string.h>
 #include <string.h>
 #include <time.h>
-
-// How long creation waits for PipeWire's answers.
-#define ROUNDTRIP_DEADLINE_NS 2000000000ll
-// How many loop iterations one pump takes at most.
-#define PUMP_ITERATIONS 64
-// Bytes of a default device's node name.
-#define DEFAULT_NAME_BYTES 256
-
-typedef struct maudPipewire maudPipewire;
-
-// One sink or source node and the proxy that reports its formats.
-typedef struct PipewireNode
-{
-    maudPipewire* owner;
-    struct pw_proxy* proxy;
-    struct spa_hook listener;
-    maudDeviceId device;
-    uint32_t globalId;
-    bool used;
-} PipewireNode;
-
-// The connection: the loop, the core and the registry.
-typedef struct PipewireConnection
-{
-    struct pw_loop* loop;
-    struct pw_context* context;
-    struct pw_core* core;
-    struct spa_hook coreListener;
-    struct pw_registry* registry;
-    struct spa_hook registryListener;
-    int pendingSync;
-    bool synced;
-    bool lost;
-} PipewireConnection;
-
-// The default metadata and the node names it gives per direction.
-typedef struct PipewireDefaults
-{
-    struct pw_proxy* metadata;
-    struct spa_hook listener;
-    char names[2][DEFAULT_NAME_BYTES];
-} PipewireDefaults;
-
-struct maudPipewire
-{
-    maudPipewireApi api;
-    maudContext* context;
-    PipewireConnection connection;
-    PipewireDefaults defaults;
-    PipewireNode* nodes;
-    uint32_t nodeCapacity;
-    size_t bytes;
-};
-
-static int64_t Now(void)
-{
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    return (int64_t)now.tv_sec * 1000000000ll + now.tv_nsec;
-}
 
 // The layout with this many channels, or maud_layoutNone.
 static maudChannelLayout LayoutForChannels(uint32_t channels)
@@ -128,7 +69,7 @@ static size_t CutUtf8(const char* text, size_t limit)
     return limit;
 }
 
-static PipewireNode* FindNode(maudPipewire* pipewire, uint32_t globalId)
+static maudPipewireNode* FindNode(maudPipewire* pipewire, uint32_t globalId)
 {
     for (uint32_t i = 0; i < pipewire->nodeCapacity; ++i)
     {
@@ -146,7 +87,7 @@ static void ResolveDefaults(maudPipewire* pipewire)
 {
     for (uint32_t i = 0; i < pipewire->nodeCapacity; ++i)
     {
-        const PipewireNode* node = &pipewire->nodes[i];
+        const maudPipewireNode* node = &pipewire->nodes[i];
         const maudDeviceSlot* slot =
             node->used ? maudFindDevice(pipewire->context, node->device) : nullptr;
         if (slot == nullptr)
@@ -194,7 +135,7 @@ static void OnNodeParam(void* data, int seq, uint32_t id, uint32_t index, uint32
     (void)seq;
     (void)index;
     (void)next;
-    PipewireNode* node = data;
+    maudPipewireNode* node = data;
     maudDeviceSlot* slot = maudFindDevice(node->owner->context, node->device);
     if (id != SPA_PARAM_EnumFormat || param == nullptr || slot == nullptr)
     {
@@ -227,7 +168,7 @@ static const struct pw_node_events s_nodeEvents = {
 static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection direction,
                     const struct spa_dict* props)
 {
-    PipewireNode* node = nullptr;
+    maudPipewireNode* node = nullptr;
     for (uint32_t i = 0; i < pipewire->nodeCapacity && node == nullptr; ++i)
     {
         node = pipewire->nodes[i].used ? nullptr : &pipewire->nodes[i];
@@ -256,7 +197,8 @@ static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection dir
     {
         return;
     }
-    *node = (PipewireNode){.owner = pipewire, .device = device, .globalId = globalId, .used = true};
+    *node =
+        (maudPipewireNode){.owner = pipewire, .device = device, .globalId = globalId, .used = true};
     node->proxy = pw_registry_bind(pipewire->connection.registry, globalId, PW_TYPE_INTERFACE_Node,
                                    PW_VERSION_NODE, 0);
     if (node->proxy != nullptr)
@@ -269,7 +211,7 @@ static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection dir
     ResolveDefaults(pipewire);
 }
 
-static void RemoveNode(maudPipewire* pipewire, PipewireNode* node)
+static void RemoveNode(maudPipewire* pipewire, maudPipewireNode* node)
 {
     if (node->proxy != nullptr)
     {
@@ -281,7 +223,7 @@ static void RemoveNode(maudPipewire* pipewire, PipewireNode* node)
     {
         maudRemoveDevice(pipewire->context, slot);
     }
-    *node = (PipewireNode){0};
+    *node = (maudPipewireNode){0};
 }
 
 // Reads the node name out of a default metadata value,
@@ -305,7 +247,7 @@ static void ParseDefaultName(const char* value, char* name)
     {
         if (spa_streq(key, "name"))
         {
-            if (spa_json_get_string(&object, name, DEFAULT_NAME_BYTES) <= 0)
+            if (spa_json_get_string(&object, name, MAUD_PIPEWIRE_NAME_BYTES) <= 0)
             {
                 name[0] = '\0';
             }
@@ -351,7 +293,7 @@ static const struct pw_metadata_events s_metadataEvents = {
 
 static void BindDefaults(maudPipewire* pipewire, uint32_t globalId)
 {
-    PipewireDefaults* defaults = &pipewire->defaults;
+    maudPipewireDefaults* defaults = &pipewire->defaults;
     defaults->metadata = pw_registry_bind(pipewire->connection.registry, globalId,
                                           PW_TYPE_INTERFACE_Metadata, PW_VERSION_METADATA, 0);
     if (defaults->metadata != nullptr)
@@ -394,7 +336,7 @@ static void OnGlobal(void* data, uint32_t id, uint32_t permissions, const char* 
 static void OnGlobalRemove(void* data, uint32_t id)
 {
     maudPipewire* pipewire = data;
-    PipewireNode* node = FindNode(pipewire, id);
+    maudPipewireNode* node = FindNode(pipewire, id);
     if (node != nullptr)
     {
         RemoveNode(pipewire, node);
@@ -446,17 +388,22 @@ static const struct pw_core_events s_coreEvents = {
     .error = OnCoreError,
 };
 
-// Waits on the calling thread until PipeWire has answered everything
-// asked so far, or the deadline passes.
-static bool Roundtrip(maudPipewire* pipewire, int64_t deadline)
+int64_t maudPipewireNow(void)
 {
-    PipewireConnection* connection = &pipewire->connection;
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (int64_t)now.tv_sec * 1000000000ll + now.tv_nsec;
+}
+
+bool maudPipewireRoundtrip(maudPipewire* pipewire, int64_t deadline)
+{
+    maudPipewireConnection* connection = &pipewire->connection;
     connection->synced = false;
     connection->pendingSync = pw_core_sync(connection->core, PW_ID_CORE, 0);
     pw_loop_enter(connection->loop);
     while (!connection->synced && !connection->lost)
     {
-        int64_t remaining = deadline - Now();
+        int64_t remaining = deadline - maudPipewireNow();
         if (remaining <= 0)
         {
             break;
@@ -470,10 +417,10 @@ static bool Roundtrip(maudPipewire* pipewire, int64_t deadline)
 // Releases the connection's parts in the reverse order of creation.
 static void Disconnect(maudPipewire* pipewire)
 {
-    PipewireConnection* connection = &pipewire->connection;
+    maudPipewireConnection* connection = &pipewire->connection;
     for (uint32_t i = 0; i < pipewire->nodeCapacity; ++i)
     {
-        PipewireNode* node = &pipewire->nodes[i];
+        maudPipewireNode* node = &pipewire->nodes[i];
         if (node->used && node->proxy != nullptr)
         {
             spa_hook_remove(&node->listener);
@@ -522,7 +469,7 @@ static void Release(maudContext* context, maudPipewire* pipewire)
 // daemon does not answer.
 static bool Connect(maudPipewire* pipewire)
 {
-    PipewireConnection* connection = &pipewire->connection;
+    maudPipewireConnection* connection = &pipewire->connection;
     pipewire->api.init(nullptr, nullptr);
     connection->loop = pipewire->api.loopNew(nullptr);
     connection->context = connection->loop != nullptr
@@ -549,7 +496,9 @@ static bool Connect(maudPipewire* pipewire)
 static maudResult OpenContext(maudContext* context)
 {
     uint32_t capacity = context->def.limits.devices;
-    size_t bytes = sizeof(maudPipewire) + (size_t)capacity * sizeof(PipewireNode);
+    uint32_t streams = context->def.limits.streams;
+    size_t bytes = sizeof(maudPipewire) + (size_t)capacity * sizeof(maudPipewireNode) +
+                   (size_t)streams * sizeof(maudPipewireStream);
     maudPipewire* pipewire = maudContextAllocate(context, bytes, alignof(maudPipewire));
     if (pipewire == nullptr)
     {
@@ -557,11 +506,13 @@ static maudResult OpenContext(maudContext* context)
     }
     *pipewire = (maudPipewire){
         .context = context,
-        .nodes = (PipewireNode*)(pipewire + 1),
+        .nodes = (maudPipewireNode*)(pipewire + 1),
         .nodeCapacity = capacity,
         .bytes = bytes,
     };
-    memset(pipewire->nodes, 0, (size_t)capacity * sizeof(PipewireNode));
+    pipewire->streams = (maudPipewireStream*)(pipewire->nodes + capacity);
+    memset(pipewire->nodes, 0, (size_t)capacity * sizeof(maudPipewireNode));
+    memset(pipewire->streams, 0, (size_t)streams * sizeof(maudPipewireStream));
     context->native = pipewire;
     if (!maudLoadPipewire(&pipewire->api))
     {
@@ -570,8 +521,9 @@ static maudResult OpenContext(maudContext* context)
     }
     // The first round trip lists the globals; the second answers the
     // binds the first one made: node formats and the default metadata.
-    int64_t deadline = Now() + ROUNDTRIP_DEADLINE_NS;
-    if (!Connect(pipewire) || !Roundtrip(pipewire, deadline) || !Roundtrip(pipewire, deadline))
+    int64_t deadline = maudPipewireNow() + MAUD_PIPEWIRE_DEADLINE_NS;
+    if (!Connect(pipewire) || !maudPipewireRoundtrip(pipewire, deadline) ||
+        !maudPipewireRoundtrip(pipewire, deadline))
     {
         Release(context, pipewire);
         return maud_errorUnsupported;
@@ -586,13 +538,13 @@ static void CloseContext(maudContext* context)
 
 static void Pump(maudContext* context)
 {
-    PipewireConnection* connection = &((maudPipewire*)context->native)->connection;
+    maudPipewireConnection* connection = &((maudPipewire*)context->native)->connection;
     if (connection->lost)
     {
         return;
     }
     pw_loop_enter(connection->loop);
-    for (int i = 0; i < PUMP_ITERATIONS && !connection->lost; ++i)
+    for (int i = 0; i < MAUD_PIPEWIRE_PUMP_ITERATIONS && !connection->lost; ++i)
     {
         if (pw_loop_iterate(connection->loop, 0) <= 0)
         {
@@ -602,14 +554,30 @@ static void Pump(maudContext* context)
     pw_loop_leave(connection->loop);
 }
 
+// PipeWire runs a native stream at its device's rate, converts any
+// other rate on request, and accepts a required rate only when it is
+// the device's own. Its streams run on libpipewire's thread, so there
+// is no pull mode.
 static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut)
 {
     (void)context;
-    (void)def;
-    (void)device;
-    (void)formatOut;
-    return maud_errorUnsupported;
+    uint32_t native = device != nullptr && device->nativeSampleRate != 0
+                          ? device->nativeSampleRate
+                          : MAUD_PIPEWIRE_FALLBACK_RATE;
+    bool requiredFits = device != nullptr && def->sampleRate == device->nativeSampleRate;
+    if (def->mode == maud_modePull || (def->ratePolicy == maud_rateRequired && !requiredFits))
+    {
+        return maud_errorUnsupported;
+    }
+    uint32_t rate = def->ratePolicy == maud_rateNative ? native : def->sampleRate;
+    *formatOut = (maudStreamFormat){
+        .sampleRate = rate,
+        .periodFrames = def->periodFrames != 0 ? def->periodFrames : rate / 100,
+        .layout = def->layout,
+        .ratePolicy = def->ratePolicy,
+    };
+    return maud_success;
 }
 
 static const maudBackend s_pipewire = {
@@ -617,6 +585,10 @@ static const maudBackend s_pipewire = {
     .closeContext = CloseContext,
     .pump = Pump,
     .openStream = OpenStream,
+    .attachStream = maudPipewireAttachStream,
+    .detachStream = maudPipewireDetachStream,
+    .setStreamActive = maudPipewireSetStreamActive,
+    .retargetStream = maudPipewireRetargetStream,
     .rendersOnCaller = false,
 };
 

@@ -51,4 +51,8 @@ format.
 - The PipeWire backend's devices: a native context on Linux connects to
   PipeWire, opened at run time, lists its sinks and sources with their
   formats, follows its default devices, and reports devices plugged
-  in and out. Streams on it are refused as unsupported for now.
+  in and out.
+- Streams on PipeWire: callbacks on libpipewire's real-time thread,
+  always in whole periods; native, platform-converted and (at the
+  device's own rate) required rates; streams on the default move with
+  it, and a stream on a device that is unplugged is suspended.

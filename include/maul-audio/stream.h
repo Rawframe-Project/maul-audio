@@ -33,7 +33,8 @@ extern "C"
         // platform has none.
         maud_modeCallback = 0,
         // The host's own thread, through the library; the only mode of the
-        // offline backend.
+        // offline backend, and refused where the platform owns the audio
+        // thread (PipeWire).
         maud_modePull = 1,
     };
 
@@ -45,7 +46,8 @@ extern "C"
         // The device's own rate. The def's sampleRate must be 0.
         maud_rateNative = 0,
         // The def's sampleRate, which the device must run at without
-        // conversion, or the stream is refused.
+        // conversion, or the stream is refused. On PipeWire that is the
+        // device's own rate.
         maud_rateRequired = 1,
         // The def's sampleRate, converted by the platform's own converter.
         // Refused where the platform has none.

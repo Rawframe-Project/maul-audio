@@ -28,6 +28,17 @@ struct maudBackend
     // cannot run.
     maudResult (*openStream)(const maudContext* context, const maudStreamDef* def,
                              const maudDeviceInfo* device, maudStreamFormat* formatOut);
+    // Connects a stream's platform side once its slot's core is set up.
+    // May be NULL.
+    maudResult (*attachStream)(maudContext* context, maudStreamSlot* slot);
+    // Releases what attachStream set up; afterwards no platform thread
+    // touches the core. May be NULL.
+    void (*detachStream)(maudContext* context, maudStreamSlot* slot);
+    // Lets the platform run the stream or holds it. May be NULL.
+    void (*setStreamActive)(maudContext* context, maudStreamSlot* slot, bool active);
+    // Offers the stream's format again after a move changed its rate.
+    // May be NULL.
+    void (*retargetStream)(maudContext* context, maudStreamSlot* slot);
     // Whether the caller's thread renders the streams (maudRenderStream
     // and maudFeedStream), as on the offline backend.
     bool rendersOnCaller;

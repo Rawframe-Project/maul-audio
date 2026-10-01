@@ -247,6 +247,10 @@ maudStreamId maudStreamIdOf(const maudContext* context, const maudStreamSlot* sl
 void maudReleaseStream(maudContext* context, maudStreamSlot* slot)
 {
     MAUD_ASSERT(slot->live);
+    if (context->backend->detachStream != nullptr)
+    {
+        context->backend->detachStream(context, slot);
+    }
     maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes, alignof(float));
     slot->live = false;
     // A generation of 0 never names a stream, so it is skipped on wrap.

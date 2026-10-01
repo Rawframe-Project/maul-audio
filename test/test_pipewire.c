@@ -12,6 +12,7 @@
 
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/pipewire.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -299,6 +300,159 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     ResetDefaults(context, helper);
 }
 
+// What a stream's callback saw, written on libpipewire's data thread.
+typedef struct Blocks
+{
+    _Atomic(uint32_t) count;
+    _Atomic(uint32_t) wrongSize;
+    _Atomic(uint32_t) lastRate;
+    _Atomic(uint32_t) withInput;
+    _Atomic(int32_t) controlResult;
+    uint32_t periodFrames;
+    bool tryControl;
+    maudContext* context;
+    maudStreamId stream;
+} Blocks;
+
+static void CountBlocks(const maudStreamBlock* block, void* user)
+{
+    Blocks* blocks = user;
+    if (block->frameCount != blocks->periodFrames)
+    {
+        atomic_fetch_add(&blocks->wrongSize, 1);
+    }
+    if (block->input != nullptr)
+    {
+        atomic_fetch_add(&blocks->withInput, 1);
+    }
+    atomic_store(&blocks->lastRate, block->sampleRate);
+    if (blocks->tryControl && atomic_load(&blocks->count) == 2)
+    {
+        atomic_store(&blocks->controlResult, maudStopStream(blocks->context, blocks->stream));
+    }
+    atomic_fetch_add(&blocks->count, 1);
+}
+
+// Drains notifications, which runs PipeWire's main loop, for up to
+// three seconds until the callback has run count times.
+static bool WaitForBlocks(maudContext* context, Blocks* blocks, uint32_t count)
+{
+    for (int tries = 0; tries < 300 && atomic_load(&blocks->count) < count; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    return atomic_load(&blocks->count) >= count;
+}
+
+static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
+                               Blocks* blocks)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = direction;
+    def.device = device;
+    def.periodFrames = 256;
+    def.callback = CountBlocks;
+    def.user = blocks;
+    blocks->periodFrames = 256;
+    blocks->context = context;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create stream");
+    blocks->stream = stream;
+    CHECK(maudStartStream(context, stream) == maud_success, "start stream");
+    return stream;
+}
+
+static void TestOutputStream(maudContext* context)
+{
+    Blocks blocks = {.tryControl = true};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &blocks);
+    maudStreamFormat format = {0};
+    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success, "format");
+    CHECK(format.sampleRate == 48000 && format.periodFrames == 256, "the sink's rate");
+    CHECK(WaitForBlocks(context, &blocks, 20), "callbacks on the data thread");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "every block is one period");
+    CHECK(atomic_load(&blocks.lastRate) == 48000, "blocks carry the rate");
+    CHECK(atomic_load(&blocks.controlResult) == maud_errorState, "control refused there");
+    CHECK(maudGetContextMisuse(context) >= 1, "and counted");
+    uint64_t position = 0;
+    CHECK(maudGetStreamPosition(context, stream, &position) == maud_success && position > 0,
+          "the clock advances");
+    CHECK(maudStopStream(context, stream) == maud_success, "stop");
+    WaitForBlocks(context, &blocks, UINT32_MAX / 2);
+    uint32_t stopped = atomic_load(&blocks.count);
+    Sleep(100);
+    CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy stream");
+    maudStreamDef def = maudDefaultStreamDef();
+    def.mode = maud_modePull;
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
+}
+
+static void TestInputStream(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamId stream = OpenStream(context, maud_directionInput, (maudDeviceId){0, 0}, &blocks);
+    CHECK(WaitForBlocks(context, &blocks, 10), "capture callbacks");
+    CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "blocks hold input");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "every capture block is one period");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy capture");
+}
+
+// Drains notifications for up to three seconds until one of kind for
+// stream arrives.
+static bool WaitForStream(maudContext* context, maudNotificationKind kind, maudStreamId stream,
+                          maudNotification* recordOut)
+{
+    for (int tries = 0; tries < 300; ++tries)
+    {
+        while (maudNextNotification(context, recordOut) == maud_success)
+        {
+            if (recordOut->kind == kind && recordOut->streamId.index1 == stream.index1 &&
+                recordOut->streamId.generation == stream.generation)
+            {
+                return true;
+            }
+        }
+        Sleep(10);
+    }
+    return false;
+}
+
+static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
+{
+    ResetDefaults(context, helper);
+    Blocks following = {0};
+    maudStreamId follower =
+        OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &following);
+    PlugSink(helper);
+    maudDeviceId plugged = {0, 0};
+    CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
+    Blocks pinnedBlocks = {0};
+    maudStreamId pinned = OpenStream(context, maud_directionOutput, plugged, &pinnedBlocks);
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
+    maudNotification record;
+    CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record),
+          "the follower takes the new device's rate");
+    CHECK(record.sampleRate == 44100, "44.1 kHz");
+    uint32_t before = atomic_load(&following.count);
+    CHECK(WaitForBlocks(context, &following, before + 20), "the follower runs on");
+    CHECK(atomic_load(&following.lastRate) == 44100, "its blocks carry the new rate");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
+    CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record), "and back");
+    UnplugSink(helper);
+    CHECK(WaitForStream(context, maud_notifyStreamSuspended, pinned, &record), "pinned lost");
+    CHECK(record.reason == maud_suspendDeviceLost, "its device is gone");
+    CHECK(maudDestroyStream(context, pinned) == maud_success, "destroy pinned");
+    CHECK(maudDestroyStream(context, follower) == maud_success, "destroy follower");
+    ResetDefaults(context, helper);
+}
+
 int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -317,6 +471,9 @@ int main(void)
     Helper helper;
     CHECK(StartHelper(&helper), "the test's own client");
     TestHotplugAndDefaults(context, &helper);
+    TestOutputStream(context);
+    TestInputStream(context);
+    TestStreamsMoveAndAreLost(context, &helper);
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;

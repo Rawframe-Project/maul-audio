@@ -7,6 +7,7 @@
 
 #include "follow.h"
 
+#include "backend.h"
 #include "context.h"
 #include "notify.h"
 
@@ -15,11 +16,18 @@ static bool SameDevice(maudDeviceId a, maudDeviceId b)
     return a.index1 == b.index1 && a.generation == b.generation;
 }
 
-static void Publish(maudStreamCore* core)
+// Publishes whether the stream runs, and lets the platform run it or
+// holds it when that changes.
+static void Publish(maudContext* context, maudStreamSlot* slot)
 {
+    maudStreamCore* core = &slot->core;
     bool running = core->binding.started && core->binding.suspension == maud_suspendNone;
-    atomic_store_explicit(&core->state, running ? maud_streamRunning : maud_streamIdle,
-                          memory_order_release);
+    uint8_t state = running ? maud_streamRunning : maud_streamIdle;
+    uint8_t previous = atomic_exchange_explicit(&core->state, state, memory_order_acq_rel);
+    if (previous != state && context->backend->setStreamActive != nullptr)
+    {
+        context->backend->setStreamActive(context, slot, running);
+    }
 }
 
 static void Suspend(maudContext* context, maudStreamSlot* slot, maudSuspendReason reason)
@@ -31,7 +39,7 @@ static void Suspend(maudContext* context, maudStreamSlot* slot, maudSuspendReaso
         return;
     }
     core->binding.suspension = reason;
-    Publish(core);
+    Publish(context, slot);
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifyStreamSuspended,
                                       .reason = reason,
@@ -55,6 +63,10 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
     {
         core->format.sampleRate = target->info.nativeSampleRate;
         atomic_store_explicit(&core->blockRate, core->format.sampleRate, memory_order_release);
+        if (context->backend->retargetStream != nullptr)
+        {
+            context->backend->retargetStream(context, slot);
+        }
         maudPostNotification(context, &(maudNotification){
                                           .kind = maud_notifyStreamFormatChanged,
                                           .streamId = id,
@@ -64,7 +76,7 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
     if (core->binding.suspension != maud_suspendNone)
     {
         core->binding.suspension = maud_suspendNone;
-        Publish(core);
+        Publish(context, slot);
         maudPostNotification(context, &(maudNotification){
                                           .kind = maud_notifyStreamResumed,
                                           .streamId = id,
@@ -72,8 +84,9 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
     }
 }
 
-void maudBindNewStream(maudContext* context, maudStreamCore* core)
+void maudBindNewStream(maudContext* context, maudStreamSlot* slot)
 {
+    maudStreamCore* core = &slot->core;
     const maudStreamDef* def = &core->def;
     maudDeviceId device = def->device;
     if (device.index1 == 0)
@@ -86,7 +99,7 @@ void maudBindNewStream(maudContext* context, maudStreamCore* core)
         .started = false,
         .suspension = device.index1 == 0 ? maud_suspendNoDevice : maud_suspendNone,
     };
-    Publish(core);
+    atomic_store_explicit(&core->state, maud_streamIdle, memory_order_release);
 }
 
 void maudFollowDefault(maudContext* context, maudDirection direction, maudDeviceRole role)
@@ -125,8 +138,8 @@ void maudLoseDevice(maudContext* context, maudDeviceId device)
     }
 }
 
-void maudSetStreamStarted(maudStreamCore* core, bool started)
+void maudSetStreamStarted(maudContext* context, maudStreamSlot* slot, bool started)
 {
-    core->binding.started = started;
-    Publish(core);
+    slot->core.binding.started = started;
+    Publish(context, slot);
 }
