@@ -39,6 +39,7 @@ static double s_since;
 static uint64_t s_position;
 static int s_window;
 static double s_best;
+static bool s_gestured;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
 {
@@ -55,6 +56,7 @@ EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 
 void TestGesture(void)
 {
+    s_gestured = true;
     CHECK(maudResumeContext(s_context) == maud_success, "resume from the gesture");
 }
 
@@ -117,6 +119,7 @@ static void Step_(void* user)
     switch (s_step)
     {
     case stepWaitForResume:
+        CHECK(!resumed || s_gestured, "held until the gesture");
         if (resumed)
         {
             maudStreamStatus status;
@@ -197,6 +200,15 @@ int main(void)
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendPolicy,
           "held by the autoplay policy");
+    // The drain reads the browser's hold and keeps the stream waiting.
+    maudNotification record;
+    while (maudNextNotification(s_context, &record) == maud_success)
+    {
+        CHECK(record.kind != maud_notifyStreamResumed, "no resume before the gesture");
+    }
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+              status.suspension == maud_suspendPolicy,
+          "still held after a drain");
     ListenForGesture();
     printf("MAUD_TEST_WAITING_FOR_GESTURE\n");
     s_step = stepWaitForResume;
