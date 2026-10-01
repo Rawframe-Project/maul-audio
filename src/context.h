@@ -26,6 +26,9 @@ void maudCountMisuse(maudContext* context);
 // The live stream an id names, or NULL for a stale or null id.
 maudStreamSlot* maudFindStream(const maudContext* context, maudStreamId stream);
 
+// The live device an id names, or NULL for a stale or null id.
+maudDeviceSlot* maudFindDevice(const maudContext* context, maudDeviceId device);
+
 // A free slot, or NULL when every slot holds a stream.
 maudStreamSlot* maudFindFreeStreamSlot(const maudContext* context);
 

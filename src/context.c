@@ -20,7 +20,11 @@ maudContextDef maudDefaultContextDef(void)
     return (maudContextDef){
         .cookie = CONTEXT_DEF_COOKIE,
         .allocator = {0},
-        .limits = {.streams = 8, .periodFrames = 8192},
+        .limits = {.streams = 8,
+                   .periodFrames = 8192,
+                   .devices = 32,
+                   .notifications = 256,
+                   .deviceTextBytes = 256},
         .backend = maud_backendNative,
         .offlineSampleRate = 48000,
     };
@@ -29,9 +33,37 @@ maudContextDef maudDefaultContextDef(void)
 static bool DefValid(const maudContextDef* def)
 {
     return def->cookie == CONTEXT_DEF_COOKIE && maudIsAllocatorValid(&def->allocator) &&
-           def->limits.streams != 0 && def->limits.periodFrames != 0 &&
+           def->limits.streams != 0 && def->limits.periodFrames != 0 && def->limits.devices != 0 &&
+           def->limits.notifications >= 2 && def->limits.deviceTextBytes != 0 &&
            def->offlineSampleRate >= MIN_RATE && def->offlineSampleRate <= MAX_RATE &&
            (def->backend == maud_backendNative || def->backend == maud_backendOffline);
+}
+
+static void InitStreams(maudStreamTable* streams)
+{
+    for (uint32_t i = 0; i < streams->capacity; ++i)
+    {
+        maudStreamSlot* slot = &streams->slots[i];
+        slot->generation = 1;
+        slot->live = false;
+        atomic_init(&slot->core.state, maud_streamIdle);
+        atomic_init(&slot->core.blockRate, 0);
+        atomic_init(&slot->core.renderingThread, 0);
+        atomic_init(&slot->core.position, 0);
+    }
+}
+
+// Gives each device slot its two places in the text storage.
+static void InitDevices(maudDeviceTable* devices, char* text, uint32_t textBytes)
+{
+    for (uint32_t i = 0; i < devices->capacity; ++i)
+    {
+        devices->slots[i] = (maudDeviceSlot){
+            .name = {.bytes = text + (size_t)i * 2u * textBytes},
+            .key = {.bytes = text + ((size_t)i * 2u + 1u) * textBytes},
+            .generation = 1,
+        };
+    }
 }
 
 maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut)
@@ -52,8 +84,14 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     }
     maudLayout layout = {0};
     size_t contextOffset = maudLayoutAdd(&layout, 1, sizeof(maudContext), alignof(maudContext));
-    size_t slotsOffset = maudLayoutAdd(&layout, def->limits.streams, sizeof(maudStreamSlot),
-                                       alignof(maudStreamSlot));
+    size_t streamsOffset = maudLayoutAdd(&layout, def->limits.streams, sizeof(maudStreamSlot),
+                                         alignof(maudStreamSlot));
+    size_t devicesOffset = maudLayoutAdd(&layout, def->limits.devices, sizeof(maudDeviceSlot),
+                                         alignof(maudDeviceSlot));
+    size_t recordsOffset = maudLayoutAdd(&layout, def->limits.notifications,
+                                         sizeof(maudNotification), alignof(maudNotification));
+    size_t textOffset =
+        maudLayoutAdd(&layout, (size_t)def->limits.devices * 2u, def->limits.deviceTextBytes, 1);
     MAUD_ASSERT(!layout.overflow);
     unsigned char* block = maudAllocate(&def->allocator, layout.size, alignof(maudContext));
     if (block == nullptr)
@@ -64,20 +102,25 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     *context = (maudContext){
         .def = *def,
         .backend = maudGetOfflineBackend(),
-        .streams = {.slots = (maudStreamSlot*)(block + slotsOffset),
+        .devices = {.slots = (maudDeviceSlot*)(block + devicesOffset),
+                    .capacity = def->limits.devices},
+        .streams = {.slots = (maudStreamSlot*)(block + streamsOffset),
                     .capacity = def->limits.streams},
+        .notifications = {.records = (maudNotification*)(block + recordsOffset),
+                          .capacity = def->limits.notifications},
         .bytes = layout.size,
     };
     atomic_init(&context->misuse, 0);
-    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    InitStreams(&context->streams);
+    InitDevices(&context->devices, (char*)(block + textOffset), def->limits.deviceTextBytes);
+    maudResult result = context->backend->openContext(context);
+    if (result != maud_success)
     {
-        maudStreamSlot* slot = &context->streams.slots[i];
-        slot->generation = 1;
-        slot->live = false;
-        atomic_init(&slot->core.state, maud_streamStopped);
-        atomic_init(&slot->core.renderingThread, 0);
-        atomic_init(&slot->core.position, 0);
+        maudRelease(&context->def.allocator, block, layout.size, alignof(maudContext));
+        return result;
     }
+    // A new context reports changes from here on, not its starting devices.
+    context->notifications.count = 0;
     *contextOut = context;
     return maud_success;
 }
@@ -156,6 +199,16 @@ maudStreamSlot* maudFindStream(const maudContext* context, maudStreamId stream)
     }
     maudStreamSlot* slot = &context->streams.slots[stream.index1 - 1];
     return slot->live && slot->generation == stream.generation ? slot : nullptr;
+}
+
+maudDeviceSlot* maudFindDevice(const maudContext* context, maudDeviceId device)
+{
+    if (device.index1 == 0 || device.index1 > context->devices.capacity)
+    {
+        return nullptr;
+    }
+    maudDeviceSlot* slot = &context->devices.slots[device.index1 - 1];
+    return slot->live && slot->generation == device.generation ? slot : nullptr;
 }
 
 maudStreamSlot* maudFindFreeStreamSlot(const maudContext* context)

@@ -36,6 +36,12 @@ extern "C"
         uint16_t streams;
         // The largest period a stream may ask for, in frames.
         uint32_t periodFrames;
+        // Devices, of both directions, that exist at once.
+        uint16_t devices;
+        // Records the notification queue holds before it overflows.
+        uint16_t notifications;
+        // Bytes of a device's name, and of its key.
+        uint16_t deviceTextBytes;
     } maudLimits;
 
     // How a context is made. Build it with maudDefaultContextDef.
@@ -51,7 +57,8 @@ extern "C"
     } maudContextDef;
 
     /// Returns the default context def: 8 streams, periods of at most
-    /// 8,192 frames, the C library's allocator, the native backend and an
+    /// 8,192 frames, 32 devices, 256 notifications, 256 bytes of device
+    /// name and key, the C library's allocator, the native backend and an
     /// offline rate of 48,000.
     ///
     /// @return The def, with a valid cookie.
@@ -59,7 +66,9 @@ extern "C"
     /// Safe from any thread.
     MAUD_API maudContextDef maudDefaultContextDef(void);
 
-    /// Creates a context.
+    /// Creates a context. An offline context starts with one output and one
+    /// input device at the offline rate, stereo, each the default of its
+    /// direction for every role, and an empty notification queue.
     ///
     /// @param def         The def, from maudDefaultContextDef.
     /// @param contextOut  Receives the context; set to NULL on failure.

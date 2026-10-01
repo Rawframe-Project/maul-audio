@@ -2,13 +2,17 @@
 # and the modules it may use. tools/check_modules.py enforces it.
 allocator:
 backend: context_core
-backend_offline: backend context_core
+backend_offline: backend context_core device
 base:
 buffer:
 context: allocator backend context_core invariant thread
 context_core: period
+device: context context_core follow notify
+follow: context context_core notify
 invariant:
 layout:
+notify: context_core invariant
+offline: context context_core device
 period:
-stream: backend context context_core period thread
+stream: backend context context_core follow period thread
 thread:

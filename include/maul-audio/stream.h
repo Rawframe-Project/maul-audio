@@ -8,8 +8,7 @@
 #ifndef MAUL_AUDIO_STREAM_H
 #define MAUL_AUDIO_STREAM_H
 
-#include "maul-audio/context.h"
-#include "maul-audio/layout.h"
+#include "maul-audio/device.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -24,17 +23,6 @@ extern "C"
         uint32_t index1;
         uint32_t generation;
     } maudStreamId;
-
-    // Which way samples move.
-    typedef uint8_t maudStreamDirection;
-
-    enum
-    {
-        // From the host to the device: playback.
-        maud_directionOutput = 0,
-        // From the device to the host: capture.
-        maud_directionInput = 1,
-    };
 
     // Which thread runs the stream's period loop.
     typedef uint8_t maudStreamMode;
@@ -89,7 +77,7 @@ extern "C"
     typedef struct maudStreamDef
     {
         uint32_t cookie;
-        maudStreamDirection direction;
+        maudDirection direction;
         maudStreamMode mode;
         maudRatePolicy ratePolicy;
         maudChannelLayout layout;
@@ -100,6 +88,11 @@ extern "C"
         // Frames per callback; 0 asks for the backend's default, 10 ms on
         // the offline backend.
         uint32_t periodFrames;
+        // The device, or the null id to follow the default device of the
+        // stream's direction and role.
+        maudDeviceId device;
+        // The role whose default a stream on the null device follows.
+        maudDeviceRole role;
         maudStreamCallback callback;
         void* user;
     } maudStreamDef;
@@ -114,9 +107,35 @@ extern "C"
         maudRatePolicy ratePolicy;
     } maudStreamFormat;
 
+    // Why a stream cannot run.
+    typedef uint8_t maudSuspendReason;
+
+    enum
+    {
+        // It is not suspended.
+        maud_suspendNone = 0,
+        // Its device disappeared, and it was opened on that device.
+        maud_suspendDeviceLost = 1,
+        // It follows the default device, and its direction has no device.
+        maud_suspendNoDevice = 2,
+    };
+
+    // Where a stream stands.
+    typedef struct maudStreamStatus
+    {
+        // Whether the host started it.
+        bool started;
+        // Why it cannot run, or maud_suspendNone. A started stream that is
+        // suspended renders nothing until it resumes.
+        maudSuspendReason suspension;
+        // The device it is on; the null id while it has none.
+        maudDeviceId device;
+    } maudStreamStatus;
+
     /// Returns the default stream def: an output stream in callback mode,
     /// stereo, at the device's native rate, with the backend's default
-    /// period and no callback.
+    /// period, following the general role's default device, and no
+    /// callback.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -189,6 +208,19 @@ extern "C"
                                                            maudStreamId stream,
                                                            maudStreamFormat* formatOut);
 
+    /// Reports whether a stream is started, suspended, and on which device.
+    ///
+    /// @param context    The context.
+    /// @param stream     The stream.
+    /// @param statusOut  Receives the status.
+    /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
+    ///         NULL pointer.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudGetStreamStatus(const maudContext* context,
+                                                           maudStreamId stream,
+                                                           maudStreamStatus* statusOut);
+
     /// Reports how many frames a stream has moved to or from its device.
     ///
     /// @param context    The context.
@@ -204,10 +236,13 @@ extern "C"
 
     /// Renders the next frames of an offline output stream into a caller
     /// buffer, calling the stream's callback once per period as needed, on
-    /// the calling thread. The stream's clock advances by frameCount.
+    /// the calling thread. The stream's clock advances by frameCount. A
+    /// rate change from a move to another device applies from the first
+    /// block this call produces.
     ///
     /// @param context     The context.
-    /// @param stream      A started output stream of an offline context.
+    /// @param stream      A started, running output stream of an offline
+    ///                    context.
     /// @param framesOut   Room for frameCount interleaved frames. May be NULL
     ///                    when frameCount is 0.
     /// @param frameCount  The number of frames.
@@ -215,7 +250,7 @@ extern "C"
     ///         NULL pointer where frames are due, an input stream or a total
     ///         that does not fit in memory; `maud_errorUnsupported` on a
     ///         context that is not offline; `maud_errorState` for a stopped
-    ///         stream or one already rendering.
+    ///         or suspended stream or one already rendering.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. A stream renders on one
     /// thread at a time.
@@ -227,7 +262,8 @@ extern "C"
     /// the calling thread. The stream's clock advances by frameCount.
     ///
     /// @param context     The context.
-    /// @param stream      A started input stream of an offline context.
+    /// @param stream      A started, running input stream of an offline
+    ///                    context.
     /// @param frames      frameCount interleaved frames. May be NULL when
     ///                    frameCount is 0.
     /// @param frameCount  The number of frames.
@@ -235,7 +271,7 @@ extern "C"
     ///         NULL pointer where frames are due, an output stream or a total
     ///         that does not fit in memory; `maud_errorUnsupported` on a
     ///         context that is not offline; `maud_errorState` for a stopped
-    ///         stream or one already rendering.
+    ///         or suspended stream or one already rendering.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. A stream renders on one
     /// thread at a time.

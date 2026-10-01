@@ -9,6 +9,7 @@
 
 #include "backend.h"
 #include "context.h"
+#include "follow.h"
 #include "period.h"
 #include "thread.h"
 
@@ -28,6 +29,8 @@ maudStreamDef maudDefaultStreamDef(void)
         .layout = maud_layoutStereo,
         .sampleRate = 0,
         .periodFrames = 0,
+        .device = {0, 0},
+        .role = maud_roleGeneral,
         .callback = nullptr,
         .user = nullptr,
     };
@@ -37,7 +40,8 @@ static bool DefValid(const maudStreamDef* def)
 {
     if (def->cookie != STREAM_DEF_COOKIE || def->callback == nullptr ||
         def->direction > maud_directionInput || def->mode > maud_modePull ||
-        def->ratePolicy > maud_ratePlatformConverted || maudGetLayoutChannelCount(def->layout) == 0)
+        def->ratePolicy > maud_ratePlatformConverted || def->role > maud_roleCommunications ||
+        maudGetLayoutChannelCount(def->layout) == 0)
     {
         return false;
     }
@@ -48,12 +52,42 @@ static bool DefValid(const maudStreamDef* def)
     return def->sampleRate >= MIN_RATE && def->sampleRate <= MAX_RATE;
 }
 
+// The device a new stream will start on: its requested device, which
+// must be live and of its direction, or the default it follows, which
+// may be none.
+static maudResult FindStartingDevice(const maudContext* context, const maudStreamDef* def,
+                                     const maudDeviceInfo** deviceOut)
+{
+    maudDeviceId id = def->device;
+    if (id.index1 == 0)
+    {
+        id = context->devices.defaults[def->direction][def->role];
+        if (id.index1 == 0)
+        {
+            *deviceOut = nullptr;
+            return maud_success;
+        }
+    }
+    const maudDeviceSlot* slot = maudFindDevice(context, id);
+    if (slot == nullptr)
+    {
+        return maud_errorStale;
+    }
+    if (slot->info.direction != def->direction)
+    {
+        return maud_errorInvalid;
+    }
+    *deviceOut = &slot->info;
+    return maud_success;
+}
+
 // Opens the stream's format through the backend and allocates its
 // period. The slot is untouched on failure.
-static maudResult OpenCore(maudContext* context, const maudStreamDef* def, maudStreamSlot* slot)
+static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
+                           const maudDeviceInfo* device, maudStreamSlot* slot)
 {
     maudStreamFormat format;
-    maudResult result = context->backend->openStream(context, def, &format);
+    maudResult result = context->backend->openStream(context, def, device, &format);
     if (result != maud_success)
     {
         return result;
@@ -79,8 +113,9 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def, maudS
     core->format = format;
     core->sampleBytes = bytes;
     maudInitPeriod(&core->period, def, &format, samples);
-    atomic_store_explicit(&core->state, maud_streamStopped, memory_order_relaxed);
+    atomic_store_explicit(&core->blockRate, format.sampleRate, memory_order_relaxed);
     atomic_store_explicit(&core->position, 0, memory_order_relaxed);
+    maudBindNewStream(context, core);
     return maud_success;
 }
 
@@ -105,12 +140,22 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def,
         maudCountMisuse(context);
         return maud_errorInvalid;
     }
+    const maudDeviceInfo* device = nullptr;
+    maudResult result = FindStartingDevice(context, def, &device);
+    if (result == maud_errorInvalid)
+    {
+        maudCountMisuse(context);
+    }
+    if (result != maud_success)
+    {
+        return result;
+    }
     maudStreamSlot* slot = maudFindFreeStreamSlot(context);
     if (slot == nullptr)
     {
         return maud_errorCapacity;
     }
-    maudResult result = OpenCore(context, def, slot);
+    result = OpenCore(context, def, device, slot);
     if (result != maud_success)
     {
         return result;
@@ -155,7 +200,7 @@ maudResult maudDestroyStream(maudContext* context, maudStreamId stream)
     return maud_success;
 }
 
-static maudResult SetState(maudContext* context, maudStreamId stream, uint8_t state)
+static maudResult SetStarted(maudContext* context, maudStreamId stream, bool started)
 {
     maudStreamSlot* slot = nullptr;
     maudResult result = FindForControl(context, stream, &slot);
@@ -163,18 +208,39 @@ static maudResult SetState(maudContext* context, maudStreamId stream, uint8_t st
     {
         return result;
     }
-    atomic_store_explicit(&slot->core.state, state, memory_order_release);
+    maudSetStreamStarted(&slot->core, started);
     return maud_success;
 }
 
 maudResult maudStartStream(maudContext* context, maudStreamId stream)
 {
-    return SetState(context, stream, maud_streamStarted);
+    return SetStarted(context, stream, true);
 }
 
 maudResult maudStopStream(maudContext* context, maudStreamId stream)
 {
-    return SetState(context, stream, maud_streamStopped);
+    return SetStarted(context, stream, false);
+}
+
+maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
+                               maudStreamStatus* statusOut)
+{
+    if (context == nullptr || statusOut == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    const maudStreamSlot* slot = maudFindStream(context, stream);
+    if (slot == nullptr)
+    {
+        return maud_errorStale;
+    }
+    const maudStreamBinding* binding = &slot->core.binding;
+    *statusOut = (maudStreamStatus){
+        .started = binding->started,
+        .suspension = binding->suspension,
+        .device = binding->current,
+    };
+    return maud_success;
 }
 
 maudResult maudGetStreamFormat(const maudContext* context, maudStreamId stream,
@@ -211,9 +277,8 @@ maudResult maudGetStreamPosition(const maudContext* context, maudStreamId stream
 
 // Checks a render or feed call and claims the stream for the calling
 // thread. On success the caller must release it with EndRender.
-static maudResult BeginRender(maudContext* context, maudStreamId stream,
-                              maudStreamDirection direction, bool haveFrames, uint32_t frameCount,
-                              maudStreamCore** coreOut)
+static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDirection direction,
+                              bool haveFrames, uint32_t frameCount, maudStreamCore** coreOut)
 {
     if (context == nullptr)
     {
@@ -237,7 +302,7 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream,
     {
         return maud_errorUnsupported;
     }
-    if (atomic_load_explicit(&core->state, memory_order_acquire) != maud_streamStarted)
+    if (atomic_load_explicit(&core->state, memory_order_acquire) != maud_streamRunning)
     {
         return maud_errorState;
     }
@@ -247,6 +312,7 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream,
     {
         return maud_errorState;
     }
+    core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
     *coreOut = core;
     return maud_success;
 }

@@ -34,3 +34,17 @@ format.
 - Control calls made on a thread that is rendering one of the
   context's streams are refused with `maud_errorState`, and debug
   builds trap library allocations there.
+- Devices (`maudGetDevices`, `maudGetDeviceInfo`, `maudGetDeviceName`,
+  `maudGetDeviceKey`, `maudGetDefaultDevice`): ids, native formats,
+  rate ranges, display names, persistent keys and the default per role
+  (general, communications).
+- Streams follow the default device of their direction and role when
+  opened on the null device, and move when it changes; a stream on a
+  device that disappears is suspended (`maudGetStreamStatus`).
+- The notification queue (`maudNextNotification`): device added and
+  removed, default changed, stream moved, suspended, resumed and
+  format changed, and an overflow record that counts what a full queue
+  dropped.
+- Scripted offline devices (`maudAddOfflineDevice`,
+  `maudRemoveOfflineDevice`, `maudSetOfflineDefaultDevice`), so device
+  changes can be tested without hardware.

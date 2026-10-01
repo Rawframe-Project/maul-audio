@@ -45,7 +45,11 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/base.c
     src/buffer.c
     src/context.c
+    src/device.c
+    src/follow.c
     src/layout.c
+    src/notify.c
+    src/offline.c
     src/period.c
     src/stream.c
     src/thread.c)
@@ -58,6 +62,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(layout)
     maul_add_test(context)
     maul_add_test(stream)
+    maul_add_test(device)
     # The audio-thread trap exists only where invariants are checked.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(trap WHITEBOX POSIX)
