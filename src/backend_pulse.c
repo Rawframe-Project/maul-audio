@@ -1,0 +1,532 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// The PulseAudio backend's connection and devices. The context owns a
+// plain pa_mainloop and iterates it on the host's thread: without
+// blocking when the host drains notifications, and up to a deadline at
+// creation. Sinks and sources become devices, the server's defaults the
+// defaults, and subscription events new queries. A server that goes
+// away is reconnected on later drains.
+
+#include "backend.h"
+#include "context.h"
+#include "device.h"
+#include "layout.h"
+#include "pulse_api.h"
+
+#include <string.h>
+#include <time.h>
+
+// How long creation waits for the server.
+#define DEADLINE_NS 2000000000ll
+// How long after a lost or refused connection the next one is tried.
+#define RETRY_NS 500000000ll
+// How many loop iterations one pump takes at most.
+#define PUMP_ITERATIONS 64
+// Bytes of a default device's name.
+#define NAME_BYTES 256
+
+typedef struct maudPulse maudPulse;
+
+// One sink or source, by PulseAudio's index, which is per direction.
+typedef struct PulseNode
+{
+    maudDeviceId device;
+    uint32_t index;
+    maudDirection direction;
+    bool used;
+} PulseNode;
+
+// The connection to the server and what its first queries owe.
+typedef struct PulseServer
+{
+    pa_context* context;
+    // Queries of the first listing still unanswered.
+    int pending;
+    bool ready;
+    // The server went away; the context is dropped after the iteration
+    // that reported it, and a new one is tried from nextAttempt on.
+    bool lost;
+    int64_t nextAttempt;
+    char defaultNames[2][NAME_BYTES];
+} PulseServer;
+
+struct maudPulse
+{
+    maudPulseApi api;
+    maudContext* context;
+    pa_mainloop* loop;
+    PulseServer server;
+    PulseNode* nodes;
+    uint32_t nodeCapacity;
+    size_t bytes;
+};
+
+static int64_t Now(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (int64_t)now.tv_sec * 1000000000ll + now.tv_nsec;
+}
+
+static PulseNode* FindNode(maudPulse* pulse, maudDirection direction, uint32_t index)
+{
+    for (uint32_t i = 0; i < pulse->nodeCapacity; ++i)
+    {
+        PulseNode* node = &pulse->nodes[i];
+        if (node->used && node->direction == direction && node->index == index)
+        {
+            return node;
+        }
+    }
+    return nullptr;
+}
+
+// Points both roles' defaults at the devices the server names, where
+// those exist.
+static void ResolveDefaults(maudPulse* pulse)
+{
+    for (uint32_t i = 0; i < pulse->nodeCapacity; ++i)
+    {
+        const PulseNode* node = &pulse->nodes[i];
+        const maudDeviceSlot* slot =
+            node->used ? maudFindDevice(pulse->context, node->device) : nullptr;
+        const char* wanted = slot != nullptr ? pulse->server.defaultNames[node->direction] : "";
+        if (slot != nullptr && strlen(wanted) == slot->key.length &&
+            memcmp(wanted, slot->key.bytes, slot->key.length) == 0)
+        {
+            maudSetDefaultDevice(pulse->context, maud_roleGeneral, node->device);
+            maudSetDefaultDevice(pulse->context, maud_roleCommunications, node->device);
+        }
+    }
+}
+
+// The length of text cut to at most limit bytes without splitting a
+// UTF-8 sequence.
+static size_t CutUtf8(const char* text, size_t limit)
+{
+    size_t length = strlen(text);
+    if (length <= limit)
+    {
+        return length;
+    }
+    while (limit > 0 && ((unsigned char)text[limit] & 0xC0u) == 0x80u)
+    {
+        limit--;
+    }
+    return limit;
+}
+
+// Adds a sink or source as a device, or updates the format of one
+// already known.
+static void ApplyNode(maudPulse* pulse, maudDirection direction, uint32_t index, const char* name,
+                      const char* description, const pa_sample_spec* spec)
+{
+    maudDeviceInfo info = {
+        .direction = direction,
+        .nativeLayout = maudLayoutWithChannels(spec->channels),
+        .nativeSampleRate = spec->rate,
+        .minSampleRate = spec->rate,
+        .maxSampleRate = spec->rate,
+    };
+    PulseNode* node = FindNode(pulse, direction, index);
+    maudDeviceSlot* slot = node != nullptr ? maudFindDevice(pulse->context, node->device) : nullptr;
+    if (slot != nullptr)
+    {
+        slot->info.nativeLayout = info.nativeLayout;
+        slot->info.nativeSampleRate = info.nativeSampleRate;
+        slot->info.minSampleRate = info.minSampleRate;
+        slot->info.maxSampleRate = info.maxSampleRate;
+        return;
+    }
+    for (uint32_t i = 0; i < pulse->nodeCapacity && node == nullptr; ++i)
+    {
+        node = pulse->nodes[i].used ? nullptr : &pulse->nodes[i];
+    }
+    if (node == nullptr || name == nullptr)
+    {
+        return;
+    }
+    const char* shown = description != nullptr ? description : name;
+    maudDeviceSpec deviceSpec = {
+        .info = info,
+        .name = shown,
+        .nameLength = CutUtf8(shown, pulse->context->def.limits.deviceTextBytes),
+        .key = name,
+        .keyLength = strlen(name),
+    };
+    maudDeviceId device;
+    if (maudAddDevice(pulse->context, &deviceSpec, &device) == maud_success)
+    {
+        *node = (PulseNode){.device = device, .index = index, .direction = direction, .used = true};
+        ResolveDefaults(pulse);
+    }
+}
+
+static void RemoveNode(maudPulse* pulse, PulseNode* node)
+{
+    maudDeviceSlot* slot = maudFindDevice(pulse->context, node->device);
+    if (slot != nullptr)
+    {
+        maudRemoveDevice(pulse->context, slot);
+    }
+    *node = (PulseNode){0};
+}
+
+static void ApplySink(maudPulse* pulse, const pa_sink_info* info)
+{
+    ApplyNode(pulse, maud_directionOutput, info->index, info->name, info->description,
+              &info->sample_spec);
+}
+
+// A sink's monitor is a source too, but not a capture device.
+static void ApplySource(maudPulse* pulse, const pa_source_info* info)
+{
+    if (info->monitor_of_sink == PA_INVALID_INDEX)
+    {
+        ApplyNode(pulse, maud_directionInput, info->index, info->name, info->description,
+                  &info->sample_spec);
+    }
+}
+
+static void ApplyServer(maudPulse* pulse, const pa_server_info* info)
+{
+    const char* names[2] = {info->default_sink_name, info->default_source_name};
+    for (int direction = 0; direction < 2; ++direction)
+    {
+        char* target = pulse->server.defaultNames[direction];
+        size_t length = names[direction] != nullptr ? strlen(names[direction]) : 0;
+        length = length < NAME_BYTES - 1 ? length : NAME_BYTES - 1;
+        if (length != 0)
+        {
+            memcpy(target, names[direction], length);
+        }
+        target[length] = '\0';
+    }
+    ResolveDefaults(pulse);
+}
+
+// The first listing's callbacks: each counts its query answered.
+static void OnSinkListed(pa_context* context, const pa_sink_info* info, int last, void* user)
+{
+    (void)context;
+    maudPulse* pulse = user;
+    if (last != 0)
+    {
+        pulse->server.pending--;
+    }
+    else if (info != nullptr)
+    {
+        ApplySink(pulse, info);
+    }
+}
+
+static void OnSourceListed(pa_context* context, const pa_source_info* info, int last, void* user)
+{
+    (void)context;
+    maudPulse* pulse = user;
+    if (last != 0)
+    {
+        pulse->server.pending--;
+    }
+    else if (info != nullptr)
+    {
+        ApplySource(pulse, info);
+    }
+}
+
+static void OnServerListed(pa_context* context, const pa_server_info* info, void* user)
+{
+    (void)context;
+    maudPulse* pulse = user;
+    pulse->server.pending--;
+    if (info != nullptr)
+    {
+        ApplyServer(pulse, info);
+    }
+}
+
+// The answers to queries a change event asked for.
+static void OnSinkChanged(pa_context* context, const pa_sink_info* info, int last, void* user)
+{
+    (void)context;
+    if (last == 0 && info != nullptr)
+    {
+        ApplySink(user, info);
+    }
+}
+
+static void OnSourceChanged(pa_context* context, const pa_source_info* info, int last, void* user)
+{
+    (void)context;
+    if (last == 0 && info != nullptr)
+    {
+        ApplySource(user, info);
+    }
+}
+
+static void OnServerChanged(pa_context* context, const pa_server_info* info, void* user)
+{
+    (void)context;
+    if (info != nullptr)
+    {
+        ApplyServer(user, info);
+    }
+}
+
+// Starts a query and lets go of its operation; its callback still runs.
+static void Ask(maudPulse* pulse, pa_operation* operation)
+{
+    if (operation != nullptr)
+    {
+        pulse->api.operationUnref(operation);
+    }
+}
+
+static void OnSubscription(pa_context* context, pa_subscription_event_type_t event, uint32_t index,
+                           void* user)
+{
+    maudPulse* pulse = user;
+    uint32_t facility = event & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
+    uint32_t type = event & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
+    maudDirection direction =
+        facility == PA_SUBSCRIPTION_EVENT_SINK ? maud_directionOutput : maud_directionInput;
+    if (facility == PA_SUBSCRIPTION_EVENT_SERVER)
+    {
+        Ask(pulse, pulse->api.contextGetServerInfo(context, OnServerChanged, pulse));
+    }
+    else if (facility != PA_SUBSCRIPTION_EVENT_SINK && facility != PA_SUBSCRIPTION_EVENT_SOURCE)
+    {
+        return;
+    }
+    else if (type == PA_SUBSCRIPTION_EVENT_REMOVE)
+    {
+        PulseNode* node = FindNode(pulse, direction, index);
+        if (node != nullptr)
+        {
+            RemoveNode(pulse, node);
+        }
+    }
+    else if (direction == maud_directionOutput)
+    {
+        Ask(pulse, pulse->api.contextGetSinkInfoByIndex(context, index, OnSinkChanged, pulse));
+    }
+    else
+    {
+        Ask(pulse, pulse->api.contextGetSourceInfoByIndex(context, index, OnSourceChanged, pulse));
+    }
+}
+
+// Once connected: subscribe to changes and list the server, the sinks
+// and the sources.
+static void StartListing(maudPulse* pulse, pa_context* context)
+{
+    const maudPulseApi* api = &pulse->api;
+    pulse->server.ready = true;
+    pulse->server.pending = 3;
+    Ask(pulse, api->contextSubscribe(context,
+                                     PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SOURCE |
+                                         PA_SUBSCRIPTION_MASK_SERVER,
+                                     nullptr, nullptr));
+    Ask(pulse, api->contextGetServerInfo(context, OnServerListed, pulse));
+    Ask(pulse, api->contextGetSinkInfoList(context, OnSinkListed, pulse));
+    Ask(pulse, api->contextGetSourceInfoList(context, OnSourceListed, pulse));
+}
+
+// Nothing of the context may be released inside its own callback; the
+// pump does it once the iteration returns.
+static void OnState(pa_context* context, void* user)
+{
+    maudPulse* pulse = user;
+    pa_context_state_t state = pulse->api.contextGetState(context);
+    if (state == PA_CONTEXT_READY)
+    {
+        StartListing(pulse, context);
+    }
+    else if (state == PA_CONTEXT_FAILED || state == PA_CONTEXT_TERMINATED)
+    {
+        pulse->server.lost = true;
+    }
+}
+
+// Makes a context and starts connecting it, never spawning a server.
+// False when the connection fails at once.
+static bool Connect(maudPulse* pulse)
+{
+    PulseServer* server = &pulse->server;
+    server->ready = false;
+    server->lost = false;
+    server->pending = 0;
+    server->context = pulse->api.contextNew(pulse->api.mainloopGetApi(pulse->loop), "Maul Audio");
+    if (server->context == nullptr)
+    {
+        return false;
+    }
+    pulse->api.contextSetStateCallback(server->context, OnState, pulse);
+    pulse->api.contextSetSubscribeCallback(server->context, OnSubscription, pulse);
+    return pulse->api.contextConnect(server->context, nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr) >=
+           0;
+}
+
+static void DropContext(maudPulse* pulse)
+{
+    PulseServer* server = &pulse->server;
+    if (server->context != nullptr)
+    {
+        pulse->api.contextSetStateCallback(server->context, nullptr, nullptr);
+        pulse->api.contextSetSubscribeCallback(server->context, nullptr, nullptr);
+        pulse->api.contextDisconnect(server->context);
+        pulse->api.contextUnref(server->context);
+        server->context = nullptr;
+    }
+    server->ready = false;
+    memset(server->defaultNames, 0, sizeof(server->defaultNames));
+}
+
+// The server went away: every device with it. Runs after the loop
+// iteration that reported it.
+static void LoseConnection(maudPulse* pulse)
+{
+    for (uint32_t i = 0; i < pulse->nodeCapacity; ++i)
+    {
+        if (pulse->nodes[i].used)
+        {
+            RemoveNode(pulse, &pulse->nodes[i]);
+        }
+    }
+    DropContext(pulse);
+    pulse->server.nextAttempt = Now() + RETRY_NS;
+}
+
+// Runs the loop on the calling thread until the first listing is
+// answered, the connection fails, or the deadline passes.
+static bool WaitForListing(maudPulse* pulse, int64_t deadline)
+{
+    PulseServer* server = &pulse->server;
+    while (!(server->ready && server->pending == 0) && !server->lost)
+    {
+        int64_t remaining = deadline - Now();
+        if (remaining <= 0)
+        {
+            return false;
+        }
+        if (pulse->api.mainloopPrepare(pulse->loop, (int)(remaining / 1000) + 1) < 0 ||
+            pulse->api.mainloopPoll(pulse->loop) < 0 ||
+            pulse->api.mainloopDispatch(pulse->loop) < 0)
+        {
+            return false;
+        }
+    }
+    return !server->lost;
+}
+
+static void Release(maudContext* context, maudPulse* pulse)
+{
+    DropContext(pulse);
+    if (pulse->loop != nullptr)
+    {
+        pulse->api.mainloopFree(pulse->loop);
+    }
+    maudUnloadPulse(&pulse->api);
+    maudContextRelease(context, pulse, pulse->bytes, alignof(maudPulse));
+    context->native = nullptr;
+}
+
+static maudResult OpenContext(maudContext* context)
+{
+    uint32_t capacity = context->def.limits.devices;
+    size_t bytes = sizeof(maudPulse) + (size_t)capacity * sizeof(PulseNode);
+    maudPulse* pulse = maudContextAllocate(context, bytes, alignof(maudPulse));
+    if (pulse == nullptr)
+    {
+        return maud_errorCapacity;
+    }
+    *pulse = (maudPulse){
+        .context = context,
+        .nodes = (PulseNode*)(pulse + 1),
+        .nodeCapacity = capacity,
+        .bytes = bytes,
+    };
+    memset(pulse->nodes, 0, (size_t)capacity * sizeof(PulseNode));
+    context->native = pulse;
+    if (!maudLoadPulse(&pulse->api))
+    {
+        Release(context, pulse);
+        return maud_errorUnsupported;
+    }
+    pulse->loop = pulse->api.mainloopNew();
+    if (pulse->loop == nullptr || !Connect(pulse) || !WaitForListing(pulse, Now() + DEADLINE_NS))
+    {
+        Release(context, pulse);
+        return maud_errorUnsupported;
+    }
+    return maud_success;
+}
+
+static void CloseContext(maudContext* context)
+{
+    Release(context, context->native);
+}
+
+static void Reconnect(maudPulse* pulse)
+{
+    if (Now() < pulse->server.nextAttempt)
+    {
+        return;
+    }
+    if (!Connect(pulse))
+    {
+        DropContext(pulse);
+        pulse->server.lost = true;
+        pulse->server.nextAttempt = Now() + RETRY_NS;
+    }
+}
+
+static void Pump(maudContext* context)
+{
+    maudPulse* pulse = context->native;
+    PulseServer* server = &pulse->server;
+    if (server->context == nullptr)
+    {
+        Reconnect(pulse);
+    }
+    for (int i = 0; i < PUMP_ITERATIONS && !server->lost; ++i)
+    {
+        if (pulse->api.mainloopIterate(pulse->loop, 0, nullptr) <= 0)
+        {
+            break;
+        }
+    }
+    if (server->lost && server->context != nullptr)
+    {
+        LoseConnection(pulse);
+    }
+}
+
+static maudResult OpenStream(const maudContext* context, const maudStreamDef* def,
+                             const maudDeviceInfo* device, maudStreamFormat* formatOut)
+{
+    (void)context;
+    (void)def;
+    (void)device;
+    (void)formatOut;
+    return maud_errorUnsupported;
+}
+
+static const maudBackend s_pulse = {
+    .kind = maud_backendPulse,
+    .openContext = OpenContext,
+    .closeContext = CloseContext,
+    .pump = Pump,
+    .openStream = OpenStream,
+    .attachStream = nullptr,
+    .detachStream = nullptr,
+    .setStreamActive = nullptr,
+    .retargetStream = nullptr,
+    .rendersOnCaller = false,
+};
+
+const maudBackend* maudGetPulseBackend(void)
+{
+    return &s_pulse;
+}

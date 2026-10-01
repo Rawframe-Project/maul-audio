@@ -36,18 +36,31 @@ static bool DefValid(const maudContextDef* def)
            def->limits.streams != 0 && def->limits.periodFrames != 0 && def->limits.devices != 0 &&
            def->limits.notifications >= 2 && def->limits.deviceTextBytes != 0 &&
            def->offlineSampleRate >= MIN_RATE && def->offlineSampleRate <= MAX_RATE &&
-           (def->backend == maud_backendNative || def->backend == maud_backendOffline);
+           def->backend <= maud_backendWeb;
 }
 
-// The platform's backend in this build, or NULL.
-static const maudBackend* NativeBackend(void)
+// The backend of a kind in this build, or NULL.
+static const maudBackend* BackendOfKind(maudBackendKind kind)
 {
+    switch (kind)
+    {
+    case maud_backendOffline:
+        return maudGetOfflineBackend();
 #if defined(MAUD_HAVE_PIPEWIRE)
-    return maudGetPipewireBackend();
-#else
-    return nullptr;
+    case maud_backendPipewire:
+        return maudGetPipewireBackend();
 #endif
+#if defined(MAUD_HAVE_PULSE)
+    case maud_backendPulse:
+        return maudGetPulseBackend();
+#endif
+    default:
+        return nullptr;
+    }
 }
+
+// What maud_backendNative tries, in order.
+static const maudBackendKind s_nativeOrder[] = {maud_backendPipewire, maud_backendPulse};
 
 static void InitStreams(maudStreamTable* streams)
 {
@@ -76,6 +89,45 @@ static void InitDevices(maudDeviceTable* devices, char* text, uint32_t textBytes
     }
 }
 
+// Opens one backend on a context with an empty device table. On
+// success the queue is emptied: a new context reports changes from
+// then on, not its starting devices.
+static maudResult TryBackend(maudContext* context, const maudBackend* backend, char* text)
+{
+    InitDevices(&context->devices, text, context->def.limits.deviceTextBytes);
+    context->devices.defaults[0][0] = context->devices.defaults[0][1] = (maudDeviceId){0, 0};
+    context->devices.defaults[1][0] = context->devices.defaults[1][1] = (maudDeviceId){0, 0};
+    context->backend = backend;
+    maudResult result = backend->openContext(context);
+    context->notifications = (maudNotificationQueue){
+        .records = context->notifications.records,
+        .capacity = context->notifications.capacity,
+    };
+    return result;
+}
+
+// Opens the backend the def names, or for maud_backendNative the first
+// in the native order that answers.
+static maudResult OpenBackend(maudContext* context, char* text)
+{
+    if (context->def.backend != maud_backendNative)
+    {
+        const maudBackend* backend = BackendOfKind(context->def.backend);
+        return backend != nullptr ? TryBackend(context, backend, text) : maud_errorUnsupported;
+    }
+    maudResult result = maud_errorUnsupported;
+    for (size_t i = 0; i < sizeof(s_nativeOrder) / sizeof(s_nativeOrder[0]); ++i)
+    {
+        const maudBackend* backend = BackendOfKind(s_nativeOrder[i]);
+        result = backend != nullptr ? TryBackend(context, backend, text) : maud_errorUnsupported;
+        if (result != maud_errorUnsupported)
+        {
+            return result;
+        }
+    }
+    return result;
+}
+
 maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut)
 {
     if (contextOut == nullptr)
@@ -86,12 +138,6 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     if (def == nullptr || !DefValid(def))
     {
         return maud_errorInvalid;
-    }
-    const maudBackend* backend =
-        def->backend == maud_backendOffline ? maudGetOfflineBackend() : NativeBackend();
-    if (backend == nullptr)
-    {
-        return maud_errorUnsupported;
     }
     maudLayout layout = {0};
     size_t contextOffset = maudLayoutAdd(&layout, 1, sizeof(maudContext), alignof(maudContext));
@@ -112,7 +158,6 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     maudContext* context = (maudContext*)(block + contextOffset);
     *context = (maudContext){
         .def = *def,
-        .backend = backend,
         .devices = {.slots = (maudDeviceSlot*)(block + devicesOffset),
                     .capacity = def->limits.devices},
         .streams = {.slots = (maudStreamSlot*)(block + streamsOffset),
@@ -123,15 +168,12 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     };
     atomic_init(&context->misuse, 0);
     InitStreams(&context->streams);
-    InitDevices(&context->devices, (char*)(block + textOffset), def->limits.deviceTextBytes);
-    maudResult result = context->backend->openContext(context);
+    maudResult result = OpenBackend(context, (char*)(block + textOffset));
     if (result != maud_success)
     {
         maudRelease(&context->def.allocator, block, layout.size, alignof(maudContext));
         return result;
     }
-    // A new context reports changes from here on, not its starting devices.
-    context->notifications.count = 0;
     *contextOut = context;
     return maud_success;
 }
@@ -165,7 +207,7 @@ maudResult maudDestroyContext(maudContext* context)
 
 maudBackendKind maudGetContextBackend(const maudContext* context)
 {
-    return context->def.backend;
+    return context->backend->kind;
 }
 
 uint64_t maudGetContextMisuse(const maudContext* context)

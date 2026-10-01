@@ -61,3 +61,9 @@ format.
 - A restarted PipeWire daemon is reconnected: while it is away every
   device is removed and streams on a default wait; when it is back
   they resume on its devices.
+- Backends by name: a context def may ask for PipeWire or PulseAudio
+  as well as native, and a context reports the backend it chose;
+  native tries PipeWire, then PulseAudio.
+- PulseAudio devices (sinks and sources, monitors excluded), the
+  server's defaults, hotplug, and reconnection to a restarted server;
+  libpulse is loaded at run time.

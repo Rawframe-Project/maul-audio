@@ -11,6 +11,7 @@
 #include "context.h"
 #include "device.h"
 #include "follow.h"
+#include "layout.h"
 #include "pipewire_core.h"
 #include "pipewire_stream.h"
 
@@ -24,28 +25,6 @@
 #include <spa/utils/string.h>
 #include <string.h>
 #include <time.h>
-
-// The layout with this many channels, or maud_layoutNone.
-static maudChannelLayout LayoutForChannels(uint32_t channels)
-{
-    switch (channels)
-    {
-    case 1:
-        return maud_layoutMono;
-    case 2:
-        return maud_layoutStereo;
-    case 4:
-        return maud_layoutQuad;
-    case 6:
-        return maud_layout5Point1;
-    case 8:
-        return maud_layout7Point1;
-    case 12:
-        return maud_layout7Point1Point4;
-    default:
-        return maud_layoutNone;
-    }
-}
 
 static uint32_t PropertyNumber(const struct spa_dict* props, const char* key)
 {
@@ -150,7 +129,7 @@ static void OnNodeParam(void* data, int seq, uint32_t id, uint32_t index, uint32
         uint32_t least = 0;
         uint32_t most = 0;
         ReadChoice(&channels->value, &count, &least, &most);
-        slot->info.nativeLayout = LayoutForChannels(count);
+        slot->info.nativeLayout = maudLayoutWithChannels(count);
     }
 }
 
@@ -178,7 +157,8 @@ static void AddNode(maudPipewire* pipewire, uint32_t globalId, maudDirection dir
     uint32_t rate = pipewire->clock.graphRate;
     maudDeviceSpec spec = {
         .info = {.direction = direction,
-                 .nativeLayout = LayoutForChannels(PropertyNumber(props, PW_KEY_AUDIO_CHANNELS)),
+                 .nativeLayout =
+                     maudLayoutWithChannels(PropertyNumber(props, PW_KEY_AUDIO_CHANNELS)),
                  .nativeSampleRate = rate,
                  .minSampleRate = rate,
                  .maxSampleRate = rate},
@@ -709,6 +689,7 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
 }
 
 static const maudBackend s_pipewire = {
+    .kind = maud_backendPipewire,
     .openContext = OpenContext,
     .closeContext = CloseContext,
     .pump = Pump,

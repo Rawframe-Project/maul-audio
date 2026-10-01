@@ -12,6 +12,7 @@
 
 struct maudBackend
 {
+    maudBackendKind kind;
     // Connects a new context to the platform and fills its device table.
     // maud_errorUnsupported when the platform's service is missing,
     // maud_errorCapacity when the context's limits cannot hold the
@@ -49,5 +50,8 @@ const maudBackend* maudGetOfflineBackend(void);
 
 // The PipeWire backend, in builds with MAUL_AUDIO_PIPEWIRE.
 const maudBackend* maudGetPipewireBackend(void);
+
+// The PulseAudio backend, in builds with MAUL_AUDIO_PULSE.
+const maudBackend* maudGetPulseBackend(void);
 
 #endif // MAUL_AUDIO_SRC_BACKEND_H

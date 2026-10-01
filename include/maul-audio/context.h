@@ -22,11 +22,20 @@ extern "C"
 
     enum
     {
-        // The platform's own audio system.
+        // The platform's best backend that answers: on Linux PipeWire, then
+        // PulseAudio, then ALSA. Only asked for; a context reports the
+        // backend it chose.
         maud_backendNative = 0,
         // Rendering to caller buffers at a caller-driven clock: no device,
         // no thread, the same samples from the same inputs. Always built.
         maud_backendOffline = 1,
+        maud_backendPipewire = 2,
+        maud_backendPulse = 3,
+        maud_backendAlsa = 4,
+        maud_backendWasapi = 5,
+        maud_backendCoreAudio = 6,
+        maud_backendAaudio = 7,
+        maud_backendWeb = 8,
     };
 
     // The named limits of a context. A request past one is refused.
@@ -78,8 +87,8 @@ extern "C"
     /// @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def
     ///         without its cookie, an allocator with one function, a limit
     ///         of 0 or an offline rate out of range; `maud_errorUnsupported`
-    ///         when this build has no native backend for the platform or
-    ///         the platform's audio service does not answer;
+    ///         when this build or platform lacks the backend asked for, or
+    ///         no audio service of it answers;
     ///         `maud_errorCapacity` when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread.
@@ -97,10 +106,11 @@ extern "C"
     /// No stream of the context may be rendering on another thread.
     MAUD_NODISCARD MAUD_API maudResult maudDestroyContext(maudContext* context);
 
-    /// Returns the backend a context talks to.
+    /// Returns the backend a context talks to: the one its def named, or
+    /// for maud_backendNative the one it chose.
     ///
     /// @param context  The context.
-    /// @return The backend kind.
+    /// @return The backend kind, never maud_backendNative.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_API maudBackendKind maudGetContextBackend(const maudContext* context);

@@ -4,6 +4,8 @@
 // The channel layouts: speakers in the Windows speaker mask order, with
 // the nominal positions of Recommendation ITU-R BS.2051.
 
+#include "layout.h"
+
 #include "maul-audio/layout.h"
 
 #define LAYOUT_MAX_CHANNELS 12
@@ -112,4 +114,16 @@ maudSpeakerPosition maudGetLayoutSpeakerPosition(maudChannelLayout layout, uint3
         return (maudSpeakerPosition){0.0f, 0.0f};
     }
     return (maudSpeakerPosition){found->azimuth, found->elevation};
+}
+
+maudChannelLayout maudLayoutWithChannels(uint32_t channels)
+{
+    for (uint32_t layout = maud_layoutMono; layout <= maud_layout7Point1Point4; ++layout)
+    {
+        if (s_layouts[layout].channelCount == channels)
+        {
+            return (maudChannelLayout)layout;
+        }
+    }
+    return maud_layoutNone;
 }

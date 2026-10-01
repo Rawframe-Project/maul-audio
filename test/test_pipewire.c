@@ -263,7 +263,7 @@ static bool FindByKey(const maudContext* context, maudDirection direction, const
 
 static void TestTheDaemonsDevices(maudContext* context)
 {
-    CHECK(maudGetContextBackend(context) == maud_backendNative, "native backend");
+    CHECK(maudGetContextBackend(context) == maud_backendPipewire, "PipeWire chosen");
     maudDeviceId sink = {0, 0};
     CHECK(FindByKey(context, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
     maudDeviceInfo info = {0};

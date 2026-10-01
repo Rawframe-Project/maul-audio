@@ -82,7 +82,7 @@ static void TestNativeContextOrUnsupported(void)
     CHECK(result == maud_success || result == maud_errorUnsupported, "native or unsupported");
     if (result == maud_success)
     {
-        CHECK(maudGetContextBackend(context) == maud_backendNative, "native backend");
+        CHECK(maudGetContextBackend(context) != maud_backendNative, "the backend it chose");
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
     }
     else
@@ -122,7 +122,7 @@ static void TestInvalidDefsAreRefused(void)
     def.offlineSampleRate = 384001;
     CheckRefused(&def, "rate above range");
     def = OfflineDef(&counter);
-    def.backend = 2;
+    def.backend = 200;
     CheckRefused(&def, "unknown backend");
     CHECK(counter.calls == 0, "nothing allocated");
     (void)context;

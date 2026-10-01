@@ -60,6 +60,7 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
 }
 
 static const maudBackend s_offline = {
+    .kind = maud_backendOffline,
     .openContext = OpenContext,
     .closeContext = nullptr,
     .pump = nullptr,

@@ -29,6 +29,8 @@ else()
 endif()
 option(MAUL_AUDIO_PIPEWIRE "Build the PipeWire backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
+option(MAUL_AUDIO_PULSE "Build the PulseAudio backend, loaded at run time"
+    ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -82,6 +84,18 @@ if(MAUL_AUDIO_PIPEWIRE)
     target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
+# Likewise libpulse's headers only.
+if(MAUL_AUDIO_PULSE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MAUL_AUDIO_PA REQUIRED libpulse)
+    target_sources(maul-audio PRIVATE src/backend_pulse.c src/pulse_api.c)
+    target_include_directories(maul-audio SYSTEM PRIVATE ${MAUL_AUDIO_PA_INCLUDE_DIRS})
+    target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_PULSE=1)
+    set_source_files_properties(src/backend_pulse.c src/pulse_api.c
+        PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+    target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
 if(MAUL_AUDIO_BUILD_TESTS)
     enable_testing()
     maul_add_test(base)
@@ -103,6 +117,12 @@ if(MAUL_AUDIO_BUILD_TESTS)
         # Both use the one test daemon, and the second one restarts it.
         set_tests_properties(pipewire pipewire_restart PROPERTIES SKIP_RETURN_CODE 77
             RESOURCE_LOCK pipewire-daemon)
+    endif()
+    if(MAUL_AUDIO_PULSE)
+        maul_add_test(pulse)
+        target_compile_definitions(test_pulse PRIVATE _GNU_SOURCE)
+        # The test server is the PipeWire daemon's pulse service.
+        set_tests_properties(pulse PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
     endif()
     # The audio-thread trap exists only where invariants are checked.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)
