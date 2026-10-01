@@ -9,6 +9,7 @@
 #include "alsa_scan.h"
 #include "alsa_watch.h"
 #include "context.h"
+#include "device.h"
 #include "test_harness.h"
 
 #include "maul-audio/device.h"
@@ -64,11 +65,19 @@ static void TestSync(maudContext* context)
 {
     uint32_t outputs = CountDevices(context, maud_directionOutput);
     uint32_t inputs = CountDevices(context, maud_directionInput);
-    maudAlsaEndpoint fake[2] = {
-        {maud_directionOutput, "hw:CARD=Fake,DEV=0", "Fake card, Fake PCM"},
-        {maud_directionInput, "hw:CARD=Fake,DEV=0", "Fake card, Fake PCM"},
+    maudDeviceSpec fake[2] = {
+        {.info = {.direction = maud_directionOutput},
+         .name = "Fake card, Fake PCM",
+         .nameLength = 19,
+         .key = "hw:CARD=Fake,DEV=0",
+         .keyLength = 18},
+        {.info = {.direction = maud_directionInput},
+         .name = "Fake card, Fake PCM",
+         .nameLength = 19,
+         .key = "hw:CARD=Fake,DEV=0",
+         .keyLength = 18},
     };
-    CHECK(maudAlsaSyncDevices(context, fake, 2) == maud_success, "sync to a made-up card");
+    CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success, "sync to a made-up card");
     CHECK(Drain(context, maud_notifyDeviceRemoved) == outputs + inputs - 2,
           "the real endpoints go");
     CHECK(CountDevices(context, maud_directionOutput) == 2 &&
@@ -77,13 +86,25 @@ static void TestSync(maudContext* context)
     CHECK(HasKey(context, maud_directionOutput, "hw:CARD=Fake,DEV=0") &&
               HasKey(context, maud_directionInput, "hw:CARD=Fake,DEV=0"),
           "in both directions");
-    CHECK(maudAlsaSyncDevices(context, fake, 2) == maud_success, "the same list again");
+    CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success, "the same list again");
     CHECK(Drain(context, maud_notifyDeviceAdded) == 0, "changes nothing");
-    CHECK(maudAlsaSyncDevices(context, fake, 1) == maud_success, "its input goes");
+    fake[0].info.nativeSampleRate = fake[0].info.minSampleRate = fake[0].info.maxSampleRate = 44100;
+    fake[0].info.nativeLayout = maud_layoutStereo;
+    CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success, "a format changes");
+    maudDeviceId ids[4];
+    uint32_t outputs2 = 0;
+    CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &outputs2) == maud_success, "list");
+    maudDeviceInfo info = {0};
+    CHECK(outputs2 == 2 && maudGetDeviceInfo(context, ids[1], &info) == maud_success &&
+              info.nativeSampleRate == 44100 && info.maxSampleRate == 44100 &&
+              info.nativeLayout == maud_layoutStereo,
+          "the device takes it in place");
+    CHECK(Drain(context, maud_notifyDeviceAdded) == 0, "without being added again");
+    CHECK(maudSyncDevices(context, fake, 1, "default") == maud_success, "its input goes");
     CHECK(!HasKey(context, maud_directionInput, "hw:CARD=Fake,DEV=0") &&
               HasKey(context, maud_directionOutput, "hw:CARD=Fake,DEV=0"),
           "by direction");
-    CHECK(maudAlsaSyncDevices(context, nullptr, 0) == maud_success, "no cards");
+    CHECK(maudSyncDevices(context, nullptr, 0, "default") == maud_success, "no cards");
     CHECK(CountDevices(context, maud_directionOutput) == 1 &&
               HasKey(context, maud_directionOutput, "default"),
           "the default stays");
@@ -144,7 +165,8 @@ static void TestDrainRescans(maudContext* context, const char* directory)
     maudAlsa* alsa = context->native;
     struct stat snd;
     CHECK(alsa->watch >= 0 || stat("/dev/snd", &snd) != 0, "a machine with /dev/snd is watched");
-    uint32_t real = maudAlsaScan(&alsa->api, alsa->endpoints, context->def.limits.devices);
+    uint32_t real = maudAlsaScan(&alsa->api, alsa->endpoints, alsa->specs,
+                                 context->def.limits.devices, context->def.limits.deviceTextBytes);
     maudAlsaCloseWatch(alsa->watch);
     alsa->watch = maudAlsaOpenWatch(directory);
     CHECK(Drain(context, maud_notifyDeviceAdded) == 0, "no rescan without an event");

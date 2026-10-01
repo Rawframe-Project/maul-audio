@@ -52,6 +52,7 @@ typedef struct maudAlsa
     maudAlsaStream* streams;
     // Room for a scan of as many endpoints as the context has devices.
     maudAlsaEndpoint* endpoints;
+    maudDeviceSpec* specs;
     // The watch on the card nodes, or -1.
     int watch;
     size_t bytes;

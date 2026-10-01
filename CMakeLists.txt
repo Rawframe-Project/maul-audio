@@ -33,6 +33,7 @@ option(MAUL_AUDIO_PULSE "Build the PulseAudio backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 option(MAUL_AUDIO_ALSA "Build the ALSA backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
+option(MAUL_AUDIO_WASAPI "Build the WASAPI backend" ${WIN32})
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -84,6 +85,14 @@ if(MAUL_AUDIO_PIPEWIRE)
     set_source_files_properties(src/backend_pipewire.c src/pipewire_stream.c
         PROPERTIES COMPILE_OPTIONS -Wno-sign-compare)
     target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+# WASAPI, on Windows 10 and later, through the system's COM libraries.
+if(MAUL_AUDIO_WASAPI)
+    target_sources(maul-audio PRIVATE src/backend_wasapi.c src/wasapi_format.c
+        src/wasapi_notify.c)
+    target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_WASAPI=1 _WIN32_WINNT=0x0A00)
+    target_link_libraries(maul-audio PRIVATE ole32)
 endif()
 
 # Likewise ALSA's headers only.
@@ -170,6 +179,19 @@ if(MAUL_AUDIO_BUILD_TESTS)
         if(MAUL_AUDIO_TSAN)
             set_tests_properties(pulse PROPERTIES ENVIRONMENT
                 "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-pulse.supp")
+        endif()
+    endif()
+    if(MAUL_AUDIO_WASAPI AND NOT MAUL_AUDIO_BUILD_SHARED)
+        maul_add_test(wasapi WHITEBOX)
+        target_compile_definitions(test_wasapi PRIVATE _WIN32_WINNT=0x0A00)
+        target_link_libraries(test_wasapi PRIVATE ole32)
+        set_tests_properties(wasapi PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
+    # Speaker masks are plain integers, tested on every platform.
+    if(NOT MAUL_AUDIO_BUILD_SHARED)
+        maul_add_test(wasapi_format WHITEBOX)
+        if(NOT MAUL_AUDIO_WASAPI)
+            target_sources(test_wasapi_format PRIVATE src/wasapi_format.c)
         endif()
     endif()
     # The audio-thread trap exists only where invariants are checked.

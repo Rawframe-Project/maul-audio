@@ -58,14 +58,22 @@ static const maudBackend* BackendOfKind(maudBackendKind kind)
     case maud_backendAlsa:
         return maudGetAlsaBackend();
 #endif
+#if defined(MAUD_HAVE_WASAPI)
+    case maud_backendWasapi:
+        return maudGetWasapiBackend();
+#endif
     default:
         return nullptr;
     }
 }
 
 // What maud_backendNative tries, in order.
+#if defined(_WIN32)
+static const maudBackendKind s_nativeOrder[] = {maud_backendWasapi};
+#else
 static const maudBackendKind s_nativeOrder[] = {maud_backendPipewire, maud_backendPulse,
                                                 maud_backendAlsa};
+#endif
 
 static void InitStreams(maudStreamTable* streams)
 {

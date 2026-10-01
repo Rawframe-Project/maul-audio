@@ -57,4 +57,7 @@ const maudBackend* maudGetPulseBackend(void);
 // The ALSA backend, in builds with MAUL_AUDIO_ALSA.
 const maudBackend* maudGetAlsaBackend(void);
 
+// The WASAPI backend, in builds with MAUL_AUDIO_WASAPI.
+const maudBackend* maudGetWasapiBackend(void);
+
 #endif // MAUL_AUDIO_SRC_BACKEND_H

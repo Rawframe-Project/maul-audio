@@ -218,3 +218,89 @@ maudResult maudGetDefaultDevice(const maudContext* context, maudDirection direct
     *deviceIdOut = context->devices.defaults[direction][role];
     return deviceIdOut->index1 != 0 ? maud_success : maud_empty;
 }
+
+static bool KeyIs(const maudDeviceSlot* slot, const char* key, size_t length)
+{
+    return slot->key.length == length && memcmp(slot->key.bytes, key, length) == 0;
+}
+
+// The spec a live device is, or NULL.
+static const maudDeviceSpec* SpecOf(const maudDeviceSlot* slot, const maudDeviceSpec* specs,
+                                    uint32_t count)
+{
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        if (specs[i].info.direction == slot->info.direction &&
+            KeyIs(slot, specs[i].key, specs[i].keyLength))
+        {
+            return &specs[i];
+        }
+    }
+    return nullptr;
+}
+
+// Takes a scanned device's format; true when its native rate changed.
+static bool Update(maudDeviceSlot* slot, const maudDeviceInfo* info)
+{
+    bool rateChanged = slot->info.nativeSampleRate != info->nativeSampleRate;
+    slot->info.nativeLayout = info->nativeLayout;
+    slot->info.nativeSampleRate = info->nativeSampleRate;
+    slot->info.minSampleRate = info->minSampleRate;
+    slot->info.maxSampleRate = info->maxSampleRate;
+    return rateChanged;
+}
+
+maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, uint32_t count,
+                           const char* kept)
+{
+    size_t keptLength = kept != nullptr ? strlen(kept) : 0;
+    bool rateChanged = false;
+    for (uint32_t i = 0; i < context->devices.capacity; ++i)
+    {
+        maudDeviceSlot* slot = &context->devices.slots[i];
+        const maudDeviceSpec* spec = slot->live ? SpecOf(slot, specs, count) : nullptr;
+        if (spec != nullptr)
+        {
+            rateChanged = Update(slot, &spec->info) || rateChanged;
+        }
+        else if (slot->live && (kept == nullptr || !KeyIs(slot, kept, keptLength)))
+        {
+            maudRemoveDevice(context, slot);
+        }
+    }
+    if (rateChanged)
+    {
+        maudRefreshNativeRates(context);
+    }
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        bool present = false;
+        for (uint32_t d = 0; d < context->devices.capacity && !present; ++d)
+        {
+            const maudDeviceSlot* slot = &context->devices.slots[d];
+            present = slot->live && slot->info.direction == specs[i].info.direction &&
+                      KeyIs(slot, specs[i].key, specs[i].keyLength);
+        }
+        maudDeviceId id;
+        maudResult result = present ? maud_success : maudAddDevice(context, &specs[i], &id);
+        if (result != maud_success)
+        {
+            return result;
+        }
+    }
+    return maud_success;
+}
+
+maudDeviceId maudFindDeviceByKey(const maudContext* context, maudDirection direction,
+                                 const char* key, size_t length)
+{
+    for (uint32_t i = 0; i < context->devices.capacity; ++i)
+    {
+        const maudDeviceSlot* slot = &context->devices.slots[i];
+        if (slot->live && slot->info.direction == direction && KeyIs(slot, key, length))
+        {
+            return IdOf(context, slot);
+        }
+    }
+    return (maudDeviceId){0, 0};
+}

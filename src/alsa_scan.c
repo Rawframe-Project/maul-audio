@@ -7,9 +7,6 @@
 
 #include "alsa_scan.h"
 
-#include "context.h"
-#include "device.h"
-
 #include <stdio.h>
 #include <string.h>
 
@@ -70,7 +67,8 @@ static uint32_t ScanCard(const maudAlsaApi* api, int card, maudAlsaEndpoint* end
     return count;
 }
 
-uint32_t maudAlsaScan(const maudAlsaApi* api, maudAlsaEndpoint* endpoints, uint32_t capacity)
+uint32_t maudAlsaScan(const maudAlsaApi* api, maudAlsaEndpoint* endpoints, maudDeviceSpec* specs,
+                      uint32_t capacity, size_t nameLimit)
 {
     uint32_t count = 0;
     int card = -1;
@@ -78,77 +76,16 @@ uint32_t maudAlsaScan(const maudAlsaApi* api, maudAlsaEndpoint* endpoints, uint3
     {
         count = ScanCard(api, card, endpoints, count, capacity);
     }
-    return count;
-}
-
-static bool SameText(const maudDeviceText* text, const char* bytes)
-{
-    return text->length == strlen(bytes) && memcmp(text->bytes, bytes, text->length) == 0;
-}
-
-// The listed endpoint a device is, or NULL.
-static const maudAlsaEndpoint* Listed(const maudDeviceSlot* slot, const maudAlsaEndpoint* endpoints,
-                                      uint32_t count)
-{
     for (uint32_t i = 0; i < count; ++i)
     {
-        if (endpoints[i].direction == slot->info.direction &&
-            SameText(&slot->key, endpoints[i].key))
-        {
-            return &endpoints[i];
-        }
-    }
-    return nullptr;
-}
-
-// Whether a live device is the endpoint.
-static bool Present(const maudContext* context, const maudAlsaEndpoint* endpoint)
-{
-    for (uint32_t i = 0; i < context->devices.capacity; ++i)
-    {
-        const maudDeviceSlot* slot = &context->devices.slots[i];
-        if (slot->live && slot->info.direction == endpoint->direction &&
-            SameText(&slot->key, endpoint->key))
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-maudResult maudAlsaSyncDevices(maudContext* context, const maudAlsaEndpoint* endpoints,
-                               uint32_t count)
-{
-    for (uint32_t i = 0; i < context->devices.capacity; ++i)
-    {
-        maudDeviceSlot* slot = &context->devices.slots[i];
-        if (slot->live && !SameText(&slot->key, "default") &&
-            Listed(slot, endpoints, count) == nullptr)
-        {
-            maudRemoveDevice(context, slot);
-        }
-    }
-    size_t limit = context->def.limits.deviceTextBytes;
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        if (Present(context, &endpoints[i]))
-        {
-            continue;
-        }
         size_t nameLength = strlen(endpoints[i].name);
-        maudDeviceSpec spec = {
+        specs[i] = (maudDeviceSpec){
             .info = {.direction = endpoints[i].direction},
             .name = endpoints[i].name,
-            .nameLength = nameLength < limit ? nameLength : limit,
+            .nameLength = nameLength < nameLimit ? nameLength : nameLimit,
             .key = endpoints[i].key,
             .keyLength = strlen(endpoints[i].key),
         };
-        maudDeviceId id;
-        maudResult result = maudAddDevice(context, &spec, &id);
-        if (result != maud_success)
-        {
-            return result;
-        }
     }
-    return maud_success;
+    return count;
 }

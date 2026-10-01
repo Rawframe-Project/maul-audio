@@ -84,3 +84,10 @@ format.
   drain, rescans the cards when one's nodes come, go or become
   readable, posting added and removed devices. A stream whose card
   went away stops polling its PCM.
+- WASAPI devices on Windows 10 and later: the active endpoints with
+  the engine's format, read without activating them; the console and
+  communications roles' defaults; added, removed and changed devices
+  and defaults through IMMNotificationClient, taken on the drain. The
+  context holds the multithreaded apartment open with
+  CoIncrementMTAUsage instead of initializing COM on the host's
+  threads. Streams on WASAPI come next and are refused until then.

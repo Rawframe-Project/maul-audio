@@ -23,7 +23,8 @@ extern "C"
     enum
     {
         // The platform's best backend that answers: on Linux PipeWire, then
-        // PulseAudio, then ALSA, which answers wherever libasound loads. Only asked for; a context
+        // PulseAudio, then ALSA, which answers wherever libasound loads;
+        // on Windows WASAPI. Only asked for; a context
         // reports the backend it chose.
         maud_backendNative = 0,
         // Rendering to caller buffers at a caller-driven clock: no device,

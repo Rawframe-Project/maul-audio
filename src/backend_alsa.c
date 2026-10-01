@@ -64,8 +64,9 @@ static maudResult AddDefaults(maudContext* context)
 static maudResult Rescan(maudContext* context)
 {
     maudAlsa* alsa = context->native;
-    uint32_t count = maudAlsaScan(&alsa->api, alsa->endpoints, context->def.limits.devices);
-    return maudAlsaSyncDevices(context, alsa->endpoints, count);
+    uint32_t count = maudAlsaScan(&alsa->api, alsa->endpoints, alsa->specs,
+                                  context->def.limits.devices, context->def.limits.deviceTextBytes);
+    return maudSyncDevices(context, alsa->specs, count, "default");
 }
 
 static void Release(maudContext* context, maudAlsa* alsa)
@@ -90,7 +91,7 @@ static maudResult OpenContext(maudContext* context)
     uint32_t streams = context->def.limits.streams;
     uint32_t devices = context->def.limits.devices;
     size_t bytes = sizeof(maudAlsa) + (size_t)streams * sizeof(maudAlsaStream) +
-                   (size_t)devices * sizeof(maudAlsaEndpoint);
+                   (size_t)devices * (sizeof(maudAlsaEndpoint) + sizeof(maudDeviceSpec));
     maudAlsa* alsa = maudContextAllocate(context, bytes, alignof(maudAlsa));
     if (alsa == nullptr)
     {
@@ -104,6 +105,7 @@ static maudResult OpenContext(maudContext* context)
     };
     memset(alsa->streams, 0, (size_t)streams * sizeof(maudAlsaStream));
     alsa->endpoints = (maudAlsaEndpoint*)(alsa->streams + streams);
+    alsa->specs = (maudDeviceSpec*)(alsa->endpoints + devices);
     context->native = alsa;
     if (!maudLoadAlsa(&alsa->api) || !StructsFit(&alsa->api))
     {
