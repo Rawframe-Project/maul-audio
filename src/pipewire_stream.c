@@ -187,6 +187,12 @@ static maudResult ConnectStream(maudContext* context, maudStreamSlot* slot, bool
     maudPipewire* pipewire = context->native;
     maudPipewireStream* entry = EntryOf(context, slot);
     maudStreamCore* core = &slot->core;
+    // While the daemon is away the stream waits without a pw_stream; it
+    // gets one when a new core connects.
+    if (pipewire->connection.core == nullptr)
+    {
+        return maud_success;
+    }
     struct pw_properties* props = StreamProperties(context, core);
     if (props == nullptr)
     {
@@ -257,5 +263,30 @@ void maudPipewireRetargetStream(maudContext* context, maudStreamSlot* slot)
         atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning)
     {
         maudPipewireSetStreamActive(context, slot, true);
+    }
+}
+
+void maudPipewireDropStreams(maudContext* context)
+{
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        if (context->streams.slots[i].live)
+        {
+            maudPipewireDetachStream(context, &context->streams.slots[i]);
+        }
+    }
+}
+
+void maudPipewireReconnectStreams(maudContext* context)
+{
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        if (slot->live && slot->core.binding.requested.index1 == 0 &&
+            !EntryOf(context, slot)->used && ConnectStream(context, slot, false) == maud_success &&
+            atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning)
+        {
+            maudPipewireSetStreamActive(context, slot, true);
+        }
     }
 }

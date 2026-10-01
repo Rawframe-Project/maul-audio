@@ -55,8 +55,9 @@ extern "C"
     /// Takes the oldest notification from the context's queue. On native
     /// backends whose platform reports changes through a loop the library
     /// owns, such as PipeWire, it first takes in what the platform reported
-    /// since the last call, without blocking; a host that drains the queue
-    /// regularly keeps the device table current.
+    /// since the last call, without blocking, and reconnects to a platform
+    /// service that went away; a host that drains the queue regularly
+    /// keeps the device table current.
     ///
     /// @param context          The context.
     /// @param notificationOut  Receives the record.

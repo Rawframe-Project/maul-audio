@@ -58,3 +58,6 @@ format.
   streams on the default move with it, native streams follow the
   graph's rate when it changes, and a stream on a device that is
   unplugged is suspended.
+- A restarted PipeWire daemon is reconnected: while it is away every
+  device is removed and streams on a default wait; when it is back
+  they resume on its devices.

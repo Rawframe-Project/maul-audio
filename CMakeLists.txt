@@ -98,7 +98,11 @@ if(MAUL_AUDIO_BUILD_TESTS)
         target_compile_definitions(test_pipewire PRIVATE _GNU_SOURCE)
         target_compile_options(test_pipewire PRIVATE -Wno-sign-compare)
         target_link_libraries(test_pipewire PRIVATE ${MAUL_AUDIO_PW_LINK_LIBRARIES})
-        set_tests_properties(pipewire PROPERTIES SKIP_RETURN_CODE 77)
+        maul_add_test(pipewire_restart THREADS)
+        target_compile_definitions(test_pipewire_restart PRIVATE _GNU_SOURCE)
+        # Both use the one test daemon, and the second one restarts it.
+        set_tests_properties(pipewire pipewire_restart PROPERTIES SKIP_RETURN_CODE 77
+            RESOURCE_LOCK pipewire-daemon)
     endif()
     # The audio-thread trap exists only where invariants are checked.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)

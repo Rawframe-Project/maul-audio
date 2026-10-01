@@ -423,9 +423,42 @@ static const struct pw_registry_events s_registryEvents = {
 };
 
 // The daemon went away: every device with it.
+// Destroys what belongs to the core, which goes with it: the metadata,
+// the registry and the core itself. The nodes are removed before.
+static void DropCore(maudPipewire* pipewire)
+{
+    maudPipewireConnection* connection = &pipewire->connection;
+    if (pipewire->defaults.metadata != nullptr)
+    {
+        spa_hook_remove(&pipewire->defaults.listener);
+        pipewire->api.proxyDestroy(pipewire->defaults.metadata);
+    }
+    if (pipewire->clock.metadata != nullptr)
+    {
+        spa_hook_remove(&pipewire->clock.listener);
+        pipewire->api.proxyDestroy(pipewire->clock.metadata);
+    }
+    pipewire->defaults = (maudPipewireDefaults){0};
+    pipewire->clock.metadata = nullptr;
+    if (connection->registry != nullptr)
+    {
+        spa_hook_remove(&connection->registryListener);
+        pipewire->api.proxyDestroy((struct pw_proxy*)connection->registry);
+        connection->registry = nullptr;
+    }
+    if (connection->core != nullptr)
+    {
+        spa_hook_remove(&connection->coreListener);
+        pipewire->api.coreDisconnect(connection->core);
+        connection->core = nullptr;
+    }
+}
+
+// The daemon went away: every stream's pw_stream and every device with
+// it. Runs after the loop iteration that reported it.
 static void LoseConnection(maudPipewire* pipewire)
 {
-    pipewire->connection.lost = true;
+    maudPipewireDropStreams(pipewire->context);
     for (uint32_t i = 0; i < pipewire->nodeCapacity; ++i)
     {
         if (pipewire->nodes[i].used)
@@ -433,6 +466,8 @@ static void LoseConnection(maudPipewire* pipewire)
             RemoveNode(pipewire, &pipewire->nodes[i]);
         }
     }
+    DropCore(pipewire);
+    pipewire->connection.nextAttempt = maudPipewireNow() + MAUD_PIPEWIRE_RETRY_NS;
 }
 
 static void OnCoreDone(void* data, uint32_t id, int seq)
@@ -449,9 +484,11 @@ static void OnCoreError(void* data, uint32_t id, int seq, int res, const char* m
     (void)seq;
     (void)message;
     maudPipewire* pipewire = data;
+    // Nothing of the core may be destroyed inside its own event; the
+    // pump does it once the iteration returns.
     if (id == PW_ID_CORE && res == -EPIPE)
     {
-        LoseConnection(pipewire);
+        pipewire->connection.lost = true;
     }
 }
 
@@ -500,26 +537,7 @@ static void Disconnect(maudPipewire* pipewire)
             pipewire->api.proxyDestroy(node->proxy);
         }
     }
-    if (pipewire->defaults.metadata != nullptr)
-    {
-        spa_hook_remove(&pipewire->defaults.listener);
-        pipewire->api.proxyDestroy(pipewire->defaults.metadata);
-    }
-    if (pipewire->clock.metadata != nullptr)
-    {
-        spa_hook_remove(&pipewire->clock.listener);
-        pipewire->api.proxyDestroy(pipewire->clock.metadata);
-    }
-    if (connection->registry != nullptr)
-    {
-        spa_hook_remove(&connection->registryListener);
-        pipewire->api.proxyDestroy((struct pw_proxy*)connection->registry);
-    }
-    if (connection->core != nullptr)
-    {
-        spa_hook_remove(&connection->coreListener);
-        pipewire->api.coreDisconnect(connection->core);
-    }
+    DropCore(pipewire);
     if (connection->context != nullptr)
     {
         pipewire->api.contextDestroy(connection->context);
@@ -543,19 +561,12 @@ static void Release(maudContext* context, maudPipewire* pipewire)
     context->native = nullptr;
 }
 
-// Connects to the daemon and asks for the registry. False when the
-// daemon does not answer.
-static bool Connect(maudPipewire* pipewire)
+// Connects a core to the daemon and asks for the registry. False when
+// the daemon does not answer.
+static bool ConnectCore(maudPipewire* pipewire)
 {
     maudPipewireConnection* connection = &pipewire->connection;
-    pipewire->api.init(nullptr, nullptr);
-    connection->loop = pipewire->api.loopNew(nullptr);
-    connection->context = connection->loop != nullptr
-                              ? pipewire->api.contextNew(connection->loop, nullptr, 0)
-                              : nullptr;
-    connection->core = connection->context != nullptr
-                           ? pipewire->api.contextConnect(connection->context, nullptr, 0)
-                           : nullptr;
+    connection->core = pipewire->api.contextConnect(connection->context, nullptr, 0);
     if (connection->core == nullptr)
     {
         return false;
@@ -569,6 +580,19 @@ static bool Connect(maudPipewire* pipewire)
     pw_registry_add_listener(connection->registry, &connection->registryListener, &s_registryEvents,
                              pipewire);
     return true;
+}
+
+// Sets up the loop and the context, which starts libpipewire's data
+// thread, and connects the first core.
+static bool Connect(maudPipewire* pipewire)
+{
+    maudPipewireConnection* connection = &pipewire->connection;
+    pipewire->api.init(nullptr, nullptr);
+    connection->loop = pipewire->api.loopNew(nullptr);
+    connection->context = connection->loop != nullptr
+                              ? pipewire->api.contextNew(connection->loop, nullptr, 0)
+                              : nullptr;
+    return connection->context != nullptr && ConnectCore(pipewire);
 }
 
 static maudResult OpenContext(maudContext* context)
@@ -615,12 +639,31 @@ static void CloseContext(maudContext* context)
     Release(context, context->native);
 }
 
-static void Pump(maudContext* context)
+// Tries a new core once the retry time has come. Its devices arrive
+// through the registry as the loop runs on.
+static void Reconnect(maudPipewire* pipewire)
 {
-    maudPipewireConnection* connection = &((maudPipewire*)context->native)->connection;
-    if (connection->lost)
+    maudPipewireConnection* connection = &pipewire->connection;
+    if (maudPipewireNow() < connection->nextAttempt)
     {
         return;
+    }
+    if (!ConnectCore(pipewire))
+    {
+        DropCore(pipewire);
+        connection->nextAttempt = maudPipewireNow() + MAUD_PIPEWIRE_RETRY_NS;
+        return;
+    }
+    connection->lost = false;
+}
+
+static void Pump(maudContext* context)
+{
+    maudPipewire* pipewire = context->native;
+    maudPipewireConnection* connection = &pipewire->connection;
+    if (connection->lost && connection->core == nullptr)
+    {
+        Reconnect(pipewire);
     }
     pw_loop_enter(connection->loop);
     for (int i = 0; i < MAUD_PIPEWIRE_PUMP_ITERATIONS && !connection->lost; ++i)
@@ -631,6 +674,14 @@ static void Pump(maudContext* context)
         }
     }
     pw_loop_leave(connection->loop);
+    if (connection->lost && connection->core != nullptr)
+    {
+        LoseConnection(pipewire);
+    }
+    if (!connection->lost)
+    {
+        maudPipewireReconnectStreams(context);
+    }
 }
 
 // PipeWire runs every stream through its graph: a native stream at the

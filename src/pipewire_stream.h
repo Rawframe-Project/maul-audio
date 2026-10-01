@@ -20,6 +20,14 @@ void maudPipewireDetachStream(maudContext* context, maudStreamSlot* slot);
 // Activates or deactivates the slot's pw_stream.
 void maudPipewireSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active);
 
+// Destroys every stream's pw_stream when the daemon went away; the
+// streams themselves stay.
+void maudPipewireDropStreams(maudContext* context);
+
+// Gives every stream that follows a default and has no pw_stream a
+// new one: after a reconnection, or when an earlier attempt failed.
+void maudPipewireReconnectStreams(maudContext* context);
+
 // Offers the stream's current format again, after a move changed its
 // rate.
 void maudPipewireRetargetStream(maudContext* context, maudStreamSlot* slot);

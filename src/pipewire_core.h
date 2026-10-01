@@ -13,6 +13,8 @@
 
 // How long creation and stream opening wait for PipeWire's answers.
 #define MAUD_PIPEWIRE_DEADLINE_NS 2000000000ll
+// How long after a failed connection the next one is tried.
+#define MAUD_PIPEWIRE_RETRY_NS 500000000ll
 // How many loop iterations one pump takes at most.
 #define MAUD_PIPEWIRE_PUMP_ITERATIONS 64
 // The graph rate until the settings metadata gives it.
@@ -44,7 +46,10 @@ typedef struct maudPipewireConnection
     struct spa_hook registryListener;
     int pendingSync;
     bool synced;
+    // The daemon went away; the core is dropped after the iteration
+    // that reported it, and a new one is tried from nextAttempt on.
     bool lost;
+    int64_t nextAttempt;
 } maudPipewireConnection;
 
 // The default metadata and the node names it gives per direction.
