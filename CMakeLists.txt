@@ -71,6 +71,7 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/voice_dsp.c
     src/vad_core.c
     src/voice_detector.c
+    src/gain_control.c
     src/clock.c
     src/thread.c)
 maul_configure_library(maul-audio)
@@ -173,6 +174,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(utf8 WHITEBOX)
     maul_add_test(duplex)
     maul_add_test(voice_detector)
+    maul_add_test(gain_control)
     # The stamp races a writer thread; Emscripten builds have none.
     if(NOT EMSCRIPTEN)
         maul_add_test(stamp WHITEBOX POSIX)

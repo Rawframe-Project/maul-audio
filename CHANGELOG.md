@@ -159,3 +159,9 @@ format.
   band levels against noise floors learned over 1.5 s, four
   aggressiveness levels, a hangover; real-time safe, and its decisions
   do not depend on how the frames are cut.
+- A first-party automatic gain control (`maudGainControl`), after
+  WebRTC AGC2's adaptive digital rules on the voice detector: speech
+  brought to a target level, the gain changing at a bounded pace and
+  rising only on proven speech, noise kept under a ceiling, and a
+  limiter holding every sample under -1 dBFS; it may also lower a loud
+  microphone's gain.

@@ -25,6 +25,7 @@ coreaudio_stream: clock context context_core coreaudio_core period thread voice
 device: context context_core follow notify
 duplex: context context_core stream_open
 follow: backend context context_core notify
+gain_control: allocator vad_core voice_dsp
 invariant:
 layout:
 notify: backend context context_core invariant
