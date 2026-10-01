@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The base of the Maul Audio API: the library version, the export and
-// attribute macros, and the result codes every fallible function
-// returns.
+// attribute macros, the result codes every fallible function returns,
+// and the allocator owner objects take.
 
 #ifndef MAUL_AUDIO_BASE_H
 #define MAUL_AUDIO_BASE_H
@@ -57,12 +57,34 @@ extern "C"
     {
         // The call did what was asked.
         maud_success = 0,
+        // There is nothing to return: a queue is drained.
+        maud_empty = 1,
         // An argument is invalid: a null pointer where one is required, a
         // value out of range.
         maud_errorInvalid = -1,
-        // A caller buffer or a named limit is too small for the result.
+        // A caller buffer, a named limit or the allocator is too small for
+        // the result.
         maud_errorCapacity = -2,
+        // An id names an object that no longer exists.
+        maud_errorStale = -3,
+        // This platform, this device or this build cannot do what was
+        // asked.
+        maud_errorUnsupported = -4,
+        // The platform failed a call the library made.
+        maud_errorPlatform = -5,
+        // The call is not allowed in the object's current state.
+        maud_errorState = -6,
     };
+
+    // The allocator an owner object takes in its def and keeps for its
+    // lifetime. Alignment is a power of two. A zeroed allocator means the C
+    // library's allocation functions.
+    typedef struct maudAllocator
+    {
+        void* (*alloc)(size_t size, size_t alignment, void* context);
+        void (*free)(void* memory, size_t size, size_t alignment, void* context);
+        void* context;
+    } maudAllocator;
 
     // A library version: major, minor and patch.
     typedef struct maudVersion

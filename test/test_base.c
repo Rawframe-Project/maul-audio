@@ -20,8 +20,16 @@ static void TestVersionMatchesHeader(void)
 static void TestResultNames(void)
 {
     CHECK(strcmp(maudResultName(maud_success), "maud_success") == 0, "success name");
-    CHECK(strcmp(maudResultName(maud_errorInvalid), "maud_errorInvalid") == 0, "invalid name");
-    CHECK(strcmp(maudResultName(maud_errorCapacity), "maud_errorCapacity") == 0, "capacity name");
+    CHECK(strcmp(maudResultName(maud_empty), "maud_empty") == 0, "empty name");
+    CHECK(strcmp(maudResultName(maud_errorInvalid), "maud_errorInvalid") == 0, "errorInvalid name");
+    CHECK(strcmp(maudResultName(maud_errorCapacity), "maud_errorCapacity") == 0,
+          "errorCapacity name");
+    CHECK(strcmp(maudResultName(maud_errorStale), "maud_errorStale") == 0, "errorStale name");
+    CHECK(strcmp(maudResultName(maud_errorUnsupported), "maud_errorUnsupported") == 0,
+          "errorUnsupported name");
+    CHECK(strcmp(maudResultName(maud_errorPlatform), "maud_errorPlatform") == 0,
+          "errorPlatform name");
+    CHECK(strcmp(maudResultName(maud_errorState), "maud_errorState") == 0, "errorState name");
     CHECK(strcmp(maudResultName(12345), "unknown result") == 0, "unknown name");
 }
 

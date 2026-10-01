@@ -40,12 +40,16 @@ else()
     set(MAUL_LIBRARY_KIND STATIC)
 endif()
 add_library(maul-audio ${MAUL_LIBRARY_KIND}
-    src/base.c)
+    src/base.c
+    src/buffer.c
+    src/layout.c)
 maul_configure_library(maul-audio)
 
 if(MAUL_AUDIO_BUILD_TESTS)
     enable_testing()
     maul_add_test(base)
+    maul_add_test(buffer)
+    maul_add_test(layout)
     maul_add_header_tests()
 endif()
 
