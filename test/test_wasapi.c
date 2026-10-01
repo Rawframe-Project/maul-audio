@@ -538,19 +538,39 @@ static void TestDrainRescans(maudContext* context)
     CHECK(Drain(context, maud_notifyDeviceAdded) == real, "the drain rescans");
 }
 
-// WASAPI has no exclusive mode; this backend does not yet open it: a stream asking for it on
-// the default output device is refused, not shared.
-static void TestExclusiveRefused(maudContext* context)
+// Wine refuses exclusive use of every endpoint; Windows may give it, in
+// which case the stream says so and plays, or refuse it as the device or
+// the user's policy says. It never falls back to shared.
+static void TestExclusive(maudContext* context)
 {
+    Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
-    def.callback = CountBlocks;
     def.share = maud_shareExclusive;
     CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
               maud_success,
           "the default output");
     maudStreamId stream = {0, 0};
-    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
-          "exclusive use is refused");
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    maudResult result = maudCreateStream(context, &def, &stream);
+    if (UnderWine())
+    {
+        CHECK(result == maud_errorUnsupported, "Wine refuses exclusive use");
+        return;
+    }
+    printf("exclusive output: %s\n", maudResultName(result));
+    CHECK(result == maud_success || result == maud_errorUnsupported || result == maud_errorPlatform,
+          "exclusive use is given or refused");
+    if (result == maud_success)
+    {
+        maudStreamStatus status = {0};
+        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.exclusive,
+              "and the stream says so");
+        CHECK(maudStartStream(context, stream) == maud_success &&
+                  WaitForBlocks(context, &blocks, 20),
+              "it plays");
+        CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    }
 }
 
 int main(void)
@@ -574,7 +594,7 @@ int main(void)
     TestInputStream(context);
     TestVoiceInput(context);
     TestUnderrun(context);
-    TestExclusiveRefused(context);
+    TestExclusive(context);
     TestMove(context);
     TestNotifier(context);
     TestDrainRescans(context);

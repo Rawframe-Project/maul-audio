@@ -8,6 +8,7 @@
 
 #include "context_core.h"
 #include "device.h"
+#include "sample_convert.h"
 #include "wasapi_notify.h"
 #include "worker.h"
 
@@ -47,6 +48,13 @@ typedef struct maudWasapiStream
     // on.
     float* zeros;
     size_t zeroBytes;
+    // Whether the client is exclusive, the device's sample format, and,
+    // for an integer format, a buffer of floats the stream renders into
+    // or reads from.
+    bool exclusive;
+    maudSampleKind sampleKind;
+    float* scratch;
+    size_t scratchBytes;
     maudWorker worker;
     bool threadRunning;
     // The thread ended on a failure, as when the endpoint went away.

@@ -214,3 +214,11 @@ format.
   hog mode while it lives and gives it back when it goes; a device held
   by another process, or by another stream, is refused with
   `maud_errorPlatform`.
+- WASAPI exclusive streams: an exclusive stream opens its endpoint in
+  exclusive, event-driven mode in the first format the device takes as
+  is (32-bit float, 32-bit integers with 32 or 24 valid bits, 16-bit
+  integers), converting samples to and from float, with a buffer of its
+  period aligned as the endpoint asks; refused with
+  `maud_errorUnsupported` where the device or the user's policy allows
+  none (as under Wine) and `maud_errorPlatform` when another
+  application holds it.

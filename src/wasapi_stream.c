@@ -15,6 +15,7 @@
 #include "thread.h"
 #include "voice.h"
 #include "wasapi_core.h"
+#include "wasapi_exclusive.h"
 #include "wasapi_format.h"
 #include "wasapi_voice.h"
 #include "xrun.h"
@@ -108,15 +109,17 @@ static int64_t OutputLatency(const maudWasapiStream* entry)
 // Fills the render buffer's free space.
 static HRESULT Fill(maudWasapiStream* entry)
 {
+    // An exclusive client takes a whole buffer at each event.
     UINT32 padding = 0;
-    HRESULT result = IAudioClient_GetCurrentPadding(entry->client, &padding);
+    HRESULT result =
+        entry->exclusive ? S_OK : IAudioClient_GetCurrentPadding(entry->client, &padding);
     UINT32 frames = entry->bufferFrames - padding;
     if (FAILED(result) || frames == 0)
     {
         return result;
     }
     // Empty once playing: the engine played what the stream did not give.
-    if (padding == 0 && entry->written > 0)
+    if (!entry->exclusive && padding == 0 && entry->written > 0)
     {
         maudCountXrun(entry->core);
     }
@@ -126,7 +129,16 @@ static HRESULT Fill(maudWasapiStream* entry)
     {
         return result;
     }
-    Render(entry, (float*)data, nullptr, frames, OutputLatency(entry));
+    if (entry->scratch == nullptr)
+    {
+        Render(entry, (float*)data, nullptr, frames, OutputLatency(entry));
+    }
+    else
+    {
+        Render(entry, entry->scratch, nullptr, frames, OutputLatency(entry));
+        maudFloatToSamples(data, entry->scratch, (size_t)frames * entry->core->period.channelCount,
+                           entry->sampleKind);
+    }
     entry->written += frames;
     return IAudioRenderClient_ReleaseBuffer(entry->render, frames, 0);
 }
@@ -160,10 +172,18 @@ static HRESULT Drain(maudWasapiStream* entry)
         {
             UINT32 chunk =
                 frames - done < entry->bufferFrames ? frames - done : entry->bufferFrames;
-            const float* samples =
-                (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0
-                    ? entry->zeros
-                    : (const float*)data + (size_t)done * entry->core->period.channelCount;
+            size_t channels = entry->core->period.channelCount;
+            const float* samples = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0
+                                       ? entry->zeros
+                                       : (const float*)data + (size_t)done * channels;
+            if (entry->scratch != nullptr && samples != entry->zeros)
+            {
+                const BYTE* source =
+                    data + (size_t)done * channels * maudSampleBytes(entry->sampleKind);
+                maudSamplesToFloat(entry->scratch, source, (size_t)chunk * channels,
+                                   entry->sampleKind);
+                samples = entry->scratch;
+            }
             // The packet's first frame was captured at the performance
             // counter's time, or at least the packet's length ago; later
             // chunks were captured later by what came before them.
@@ -246,6 +266,10 @@ static void Disconnect(maudContext* context, maudWasapiStream* entry)
     {
         maudContextRelease(context, entry->zeros, entry->zeroBytes, alignof(float));
     }
+    if (entry->scratch != nullptr)
+    {
+        maudContextRelease(context, entry->scratch, entry->scratchBytes, alignof(float));
+    }
     maudStreamCore* core = entry->core;
     *entry = (maudWasapiStream){.core = core};
 }
@@ -315,6 +339,34 @@ static maudResult Initialize(maudWasapiStream* entry)
     return SUCCEEDED(result) ? maud_success : maud_errorPlatform;
 }
 
+// A buffer of floats for an integer format, and an input's buffer of
+// silence, each a buffer's worth of frames.
+static maudResult AllocateBuffers(maudContext* context, maudWasapiStream* entry, UINT32 frames,
+                                  bool output)
+{
+    size_t bytes = (size_t)frames * entry->core->period.channelCount * sizeof(float);
+    if (entry->sampleKind != maud_sampleFloat32)
+    {
+        entry->scratchBytes = bytes;
+        entry->scratch = maudContextAllocate(context, bytes, alignof(float));
+        if (entry->scratch == nullptr)
+        {
+            return maud_errorCapacity;
+        }
+    }
+    if (!output)
+    {
+        entry->zeroBytes = bytes;
+        entry->zeros = maudContextAllocate(context, bytes, alignof(float));
+        if (entry->zeros == nullptr)
+        {
+            return maud_errorCapacity;
+        }
+        memset(entry->zeros, 0, bytes);
+    }
+    return maud_success;
+}
+
 // Opens and initializes the client and its service, and the events.
 static maudResult Connect(maudContext* context, maudWasapiStream* entry)
 {
@@ -327,19 +379,33 @@ static maudResult Connect(maudContext* context, maudWasapiStream* entry)
     }
     HRESULT activated =
         IMMDevice_Activate(device, &s_iidAudioClient, CLSCTX_ALL, nullptr, (void**)&entry->client);
-    IMMDevice_Release(device);
     if (FAILED(activated))
     {
+        IMMDevice_Release(device);
         entry->client = nullptr;
         return maud_errorPlatform;
     }
-    maudWasapiAskForVoice(entry->client, entry->core);
-    maudResult result = Initialize(entry);
+    // An exclusive client bypasses the audio engine and its processing.
+    entry->exclusive = entry->core->def.share == maud_shareExclusive;
+    if (!entry->exclusive)
+    {
+        maudWasapiAskForVoice(entry->client, entry->core);
+    }
+    maudResult result =
+        entry->exclusive ? maudWasapiInitializeExclusive(entry, device) : Initialize(entry);
+    IMMDevice_Release(device);
     if (result != maud_success)
     {
         return result;
     }
-    maudWasapiReportVoice(entry->client, entry->core);
+    if (!entry->exclusive)
+    {
+        maudWasapiReportVoice(entry->client, entry->core);
+    }
+    else if (entry->core->def.direction == maud_directionInput)
+    {
+        maudReportVoice(entry->core, maud_voiceNone);
+    }
     entry->bufferEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     entry->stopEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     UINT32 frames = 0;
@@ -368,17 +434,7 @@ static maudResult Connect(maudContext* context, maudWasapiStream* entry)
     {
         entry->clockFrequency = 0;
     }
-    if (!output)
-    {
-        entry->zeroBytes = (size_t)frames * entry->core->period.channelCount * sizeof(float);
-        entry->zeros = maudContextAllocate(context, entry->zeroBytes, alignof(float));
-        if (entry->zeros == nullptr)
-        {
-            return maud_errorCapacity;
-        }
-        memset(entry->zeros, 0, entry->zeroBytes);
-    }
-    return maud_success;
+    return AllocateBuffers(context, entry, frames, output);
 }
 
 // Connects the stream's client if it has a device; a stream without one

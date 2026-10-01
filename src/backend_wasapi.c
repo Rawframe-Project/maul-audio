@@ -289,6 +289,7 @@ static const maudBackend s_wasapi = {
     .closeContext = CloseContext,
     .pump = Pump,
     .openStream = OpenStream,
+    .exclusive = true,
     .attachStream = maudWasapiAttachStream,
     .detachStream = maudWasapiDetachStream,
     .setStreamActive = maudWasapiSetStreamActive,
