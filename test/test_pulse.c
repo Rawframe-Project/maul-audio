@@ -403,6 +403,36 @@ static void TestInputStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// A duplex stream whose input device runs at 44.1 kHz, its output at
+// 48 kHz: the input half cannot be required at the output's rate, so
+// the server converts it, and both arrive in each callback.
+static void TestDuplexConverted(maudContext* context)
+{
+    CHECK(Run("pactl load-module module-null-sink media.class=Audio/Source/Virtual "
+              "sink_name=maud-pulse-slow rate=44100 channels=2 > /dev/null"),
+          "load a 44.1 kHz source");
+    maudDeviceId slow = WaitForKey(context, maud_directionInput, "maud-pulse-slow");
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionDuplex;
+    def.inputDevice = slow;
+    def.periodFrames = 256;
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    blocks.periodFrames = 256;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a duplex across rates");
+    maudStreamFormat format = {0};
+    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+              format.sampleRate == 48000,
+          "at the output's rate");
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 40), "duplex blocks arrive");
+    CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(Run("pactl unload-module module-null-sink"), "unload it");
+}
+
 // A stream opened on a device stays on it and is lost with it.
 static void TestPinnedStream(maudContext* context)
 {
@@ -504,6 +534,7 @@ int main(void)
     TestHotplug(context);
     TestOutputStream(context);
     TestInputStream(context);
+    TestDuplexConverted(context);
     TestPinnedStream(context);
     TestRestart(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

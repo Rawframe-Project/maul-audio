@@ -133,6 +133,19 @@ static void TestBothInOneCallback(void)
     CHECK(Slipped(context, stream) == PERIOD + 2 * PERIOD + 6 * PERIOD,
           "a full ring drops the newest, playback the oldest beyond two periods");
     CHECK(echo.first == (float)(PERIOD + 6 * PERIOD), "and the two periods after them play");
+    uint32_t named = 0;
+    for (uint32_t index = 1; index <= 2; ++index)
+    {
+        for (uint32_t generation = 0; generation < 4; ++generation)
+        {
+            uint64_t ignored = 0;
+            named += maudGetStreamPosition(context, (maudStreamId){index, generation}, &ignored) ==
+                             maud_success
+                         ? 1u
+                         : 0u;
+        }
+    }
+    CHECK(named == 1, "only the duplex stream's id names a stream, not its input half");
     uint64_t position = 0;
     CHECK(maudGetStreamPosition(context, stream, &position) == maud_success &&
               position == 4 * PERIOD,
