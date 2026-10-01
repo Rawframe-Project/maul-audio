@@ -19,7 +19,7 @@ base:
 buffer:
 context: allocator backend context_core invariant thread
 context_core: period
-coreaudio_core: context_core
+coreaudio_core: context_core device
 coreaudio_stream: context context_core coreaudio_core period thread
 device: context context_core follow notify
 follow: backend context context_core notify

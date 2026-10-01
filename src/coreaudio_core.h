@@ -8,6 +8,7 @@
 #define MAUL_AUDIO_SRC_COREAUDIO_CORE_H
 
 #include "context_core.h"
+#include "device.h"
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudio.h>
