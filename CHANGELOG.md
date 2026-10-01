@@ -104,3 +104,8 @@ format.
 - `maudResumeContext` and the suspension `maud_suspendPolicy`: streams
   the browser's autoplay policy holds wait, and resume once a user
   gesture's handler calls it.
+- CoreAudio on macOS: the HAL's devices by UID, with names, nominal
+  rates and the ranges they run at, both roles' defaults, and changes
+  heard on a private dispatch queue; output streams through an AUHAL
+  unit at the device's rate or converted, the callback on the HAL's IO
+  thread; a stream on the default follows it to its new device.
