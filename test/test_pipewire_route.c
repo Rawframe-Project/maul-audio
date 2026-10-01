@@ -69,9 +69,10 @@ static void TestRead(void)
 
 static void TestNodeForm(void)
 {
-    maudPipewireCard card = {.globalId = 40, .routeCount = 2, .used = true};
+    maudPipewireCard card = {.globalId = 40, .routeCount = 3, .used = true};
     card.routes[0] = (maudPipewireRoute){3, maud_directionOutput, maud_formHeadphones};
     card.routes[1] = (maudPipewireRoute){4, maud_directionInput, maud_formUnknown};
+    card.routes[2] = (maudPipewireRoute){5, maud_directionInput, maud_formHeadset};
     maudPipewire pipewire = {.cards = &card, .cardCapacity = 1};
     maudPipewireNode node = {.direction = maud_directionOutput,
                              .factorForm = maud_formSpeakers,
@@ -83,9 +84,10 @@ static void TestNodeForm(void)
     node.profileDevice = 7;
     CHECK(maudPipewireNodeForm(&pipewire, &node) == maud_formSpeakers,
           "another profile device keeps its form factor");
-    node.profileDevice = 4;
+    node.profileDevice = 5;
     CHECK(maudPipewireNodeForm(&pipewire, &node) == maud_formSpeakers,
           "and so does a route of the other direction");
+    node.profileDevice = 4;
     node.direction = maud_directionInput;
     node.factorForm = maud_formMicrophone;
     CHECK(maudPipewireNodeForm(&pipewire, &node) == maud_formMicrophone,
