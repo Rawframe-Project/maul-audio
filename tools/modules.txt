@@ -43,7 +43,8 @@ voice: context_core
 wasapi_core: context_core device wasapi_notify worker
 wasapi_format:
 wasapi_notify:
-wasapi_stream: clock context context_core period thread wasapi_core wasapi_format worker
+wasapi_stream: clock context context_core period thread voice wasapi_core wasapi_format wasapi_voice worker
+wasapi_voice: context_core voice wasapi_core
 web_capture: clock context context_core follow period thread voice web_core
 web_core: context_core
 worker:

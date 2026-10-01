@@ -125,7 +125,8 @@ EM_JS(int, Target, (void), {
 
 // Connects a probe worklet behind the stream's node. While counting, it
 // counts the samples of the first channel that do not continue the
-// ramp; told to stop, it posts the count.
+// ramp, a run of silence (a short quantum) once, since the ramp never
+// holds 0 twice in a row; told to stop, it posts the count.
 EM_JS(void, AttachProbe, (int ramp), {
     const source = [
         "class MaudProbe extends AudioWorkletProcessor {",
@@ -145,7 +146,8 @@ EM_JS(void, AttachProbe, (int ramp), {
         "    const input = inputs[0];",
         "    for (let i = 0; input.length > 0 && i < input[0].length; ++i) {",
         "      const k = Math.round(input[0][i] * " + ramp + ");",
-        "      if (this.counting && this.last >= 0 && k !== (this.last + 1) % " + ramp + ") { this.breaks += 1; }",
+        "      const silent = k === 0 && this.last === 0;",
+        "      if (this.counting && this.last >= 0 && !silent && k !== (this.last + 1) % " + ramp + ") { this.breaks += 1; }",
         "      this.last = k;",
         "    }",
         "    return true;",

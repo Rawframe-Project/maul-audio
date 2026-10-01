@@ -13,8 +13,10 @@
 #include "context.h"
 #include "period.h"
 #include "thread.h"
+#include "voice.h"
 #include "wasapi_core.h"
 #include "wasapi_format.h"
+#include "wasapi_voice.h"
 
 #include <avrt.h>
 #include <mmreg.h>
@@ -303,6 +305,8 @@ static maudResult Initialize(maudWasapiStream* entry)
 // Opens and initializes the client and its service, and the events.
 static maudResult Connect(maudContext* context, maudWasapiStream* entry)
 {
+    // A new client on a new device reports again, if it can.
+    maudResetVoice(entry->core);
     IMMDevice* device = OpenDevice(context, entry->core);
     if (device == nullptr)
     {
@@ -316,11 +320,13 @@ static maudResult Connect(maudContext* context, maudWasapiStream* entry)
         entry->client = nullptr;
         return maud_errorPlatform;
     }
+    maudWasapiAskForVoice(entry->client, entry->core);
     maudResult result = Initialize(entry);
     if (result != maud_success)
     {
         return result;
     }
+    maudWasapiReportVoice(entry->client, entry->core);
     entry->bufferEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     entry->stopEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     UINT32 frames = 0;

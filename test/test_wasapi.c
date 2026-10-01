@@ -316,6 +316,40 @@ static void TestInputStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// Wine's ntdll exports wine_get_version; Windows' does not.
+static bool UnderWine(void)
+{
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    return ntdll != nullptr && GetProcAddress(ntdll, "wine_get_version") != nullptr;
+}
+
+// A capture asking for every part of voice processing runs as a
+// communications stream. Windows 11 reports its effects; Wine has no
+// effects manager, so nothing is reported there.
+static void TestVoiceInput(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionInput;
+    def.voice = maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start a voice capture");
+    CHECK(WaitForBlocks(context, &blocks, 20), "its blocks arrive");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "its status");
+    if (UnderWine())
+    {
+        CHECK(!status.voiceReported && status.voiceActive == maud_voiceNone,
+              "Wine reports no effects");
+    }
+    else
+    {
+        printf("voice processing reported %d, active %u\n", status.voiceReported ? 1 : 0,
+               (unsigned)status.voiceActive);
+    }
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 // A stream on the default moves with it: WASAPI binds it to one
 // endpoint, so it is opened again there and runs on.
 static void TestMove(maudContext* context)
@@ -426,6 +460,7 @@ int main(void)
     TestDevices(context);
     TestOutputStream(context);
     TestInputStream(context);
+    TestVoiceInput(context);
     TestMove(context);
     TestNotifier(context);
     TestDrainRescans(context);

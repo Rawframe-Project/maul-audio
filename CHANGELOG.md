@@ -142,5 +142,9 @@ format.
   control) by input and duplex streams, and reported per part in the
   status (`voiceReported`, `voiceActive`), since platforms may ignore
   a request. The web passes the parts to getUserMedia and reports the
-  track's settings; ALSA and the offline backend report none; the
-  other backends report nothing yet.
+  track's settings; ALSA and the offline backend report none.
+- Voice processing on WASAPI: a stream that asks for it is a
+  communications stream (`AudioCategory_Communications`), and an input
+  that asks for none asks for the raw signal; on Windows 11 the
+  effects manager turns the asked-for parts on and the others off where
+  the stream may choose, and reports what is on.
