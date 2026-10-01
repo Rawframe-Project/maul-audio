@@ -88,6 +88,32 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, maudDeviceI
     return false;
 }
 
+// Drains notifications for up to five seconds until both roles' output
+// default is device.
+static bool WaitForDefaults(maudContext* context, maudDeviceId device)
+{
+    for (int tries = 0; tries < 500; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        maudDeviceId general = {0, 0};
+        maudDeviceId communications = {0, 0};
+        maudResult first =
+            maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general);
+        maudResult second = maudGetDefaultDevice(context, maud_directionOutput,
+                                                 maud_roleCommunications, &communications);
+        if (first == maud_success && second == maud_success && SameDevice(general, device) &&
+            SameDevice(communications, device))
+        {
+            return true;
+        }
+        Sleep(10);
+    }
+    return false;
+}
+
 static bool Run(const char* command)
 {
     return system(command) == 0;
@@ -134,7 +160,10 @@ static void TestHotplug(maudContext* context)
     CHECK(SameDevice(record.deviceId, plugged), "by its name");
     CHECK(Run("pactl set-default-sink maud-pulse-hotplug"), "make it the default");
     CHECK(WaitFor(context, maud_notifyDefaultChanged, plugged, &record), "the default follows");
+    CHECK(WaitForDefaults(context, plugged), "for both roles");
     CHECK(Run("pactl set-default-sink maud-test-sink"), "restore the default");
+    CHECK(WaitForDefaults(context, FindByKey(context, maud_directionOutput, "maud-test-sink")),
+          "and back");
     CHECK(Run("pactl unload-module module-null-sink"), "unload it");
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, plugged, &record), "it is removed");
     CHECK(FindByKey(context, maud_directionOutput, "maud-pulse-hotplug").index1 == 0, "gone");
@@ -168,6 +197,18 @@ static void TestRestart(maudContext* context)
     CHECK(sink.index1 != 0 && SameDevice(current, sink), "the sink and its default come back");
 }
 
+// With no PipeWire daemon to answer, native falls back to PulseAudio.
+static void TestNativeFallback(void)
+{
+    setenv("PIPEWIRE_REMOTE", "maud-no-such-daemon", 1);
+    maudContextDef def = maudDefaultContextDef();
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&def, &context) == maud_success, "native without PipeWire");
+    CHECK(maudGetContextBackend(context) == maud_backendPulse, "is PulseAudio");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    unsetenv("PIPEWIRE_REMOTE");
+}
+
 int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -181,5 +222,6 @@ int main(void)
     TestHotplug(context);
     TestRestart(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    TestNativeFallback();
     return s_failures == 0 ? 0 : 1;
 }
