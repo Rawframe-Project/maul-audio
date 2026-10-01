@@ -280,6 +280,7 @@ static void TestStreamLimitAndStaleIds(void)
     maudStreamId reused = Open(context, &def);
     CHECK(reused.index1 == first.index1 && reused.generation != first.generation,
           "a reused slot gets a new generation");
+    CHECK(maudStartStream(context, first) == maud_errorStale, "the old id stays stale");
     CHECK(maudStartStream(context, (maudStreamId){0, 0}) == maud_errorStale, "null id");
     CHECK(maudStartStream(context, (maudStreamId){99, 1}) == maud_errorStale, "out of range");
     CHECK(maudGetContextMisuse(context) == 0, "stale ids are not misuse");

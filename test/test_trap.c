@@ -48,6 +48,9 @@ int main(void)
     maudStreamSlot* slot = maudFindStream(context, stream);
     atomic_store(&slot->core.renderingThread, maudCurrentThread());
     void* memory = maudContextAllocate(context, 16, 16);
+    // Not trapped: release the claim first, so the release cannot trap
+    // in the allocation's place.
+    atomic_store(&slot->core.renderingThread, 0);
     maudContextRelease(context, memory, 16, 16);
     return 1;
 }
