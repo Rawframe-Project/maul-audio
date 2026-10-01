@@ -53,6 +53,9 @@ struct maudBackend
     // Whether the caller's thread renders the streams (maudRenderStream
     // and maudFeedStream), as on the offline backend.
     bool rendersOnCaller;
+    // Whether the platform has no voice processing, so input streams
+    // report none from the start; otherwise the backend reports.
+    bool hasNoVoice;
 };
 
 // The offline backend.

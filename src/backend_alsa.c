@@ -174,6 +174,7 @@ static const maudBackend s_alsa = {
     .setStreamActive = maudAlsaSetStreamActive,
     .retargetStream = nullptr,
     .rendersOnCaller = false,
+    .hasNoVoice = true,
 };
 
 const maudBackend* maudGetAlsaBackend(void)

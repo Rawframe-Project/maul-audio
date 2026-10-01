@@ -67,6 +67,7 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/stream.c
     src/stream_open.c
     src/duplex.c
+    src/voice.c
     src/clock.c
     src/thread.c)
 maul_configure_library(maul-audio)

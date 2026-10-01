@@ -37,12 +37,13 @@ pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker
 stream: backend clock context context_core duplex follow period stream_open thread
-stream_open: backend clock context context_core follow period
+stream_open: backend clock context context_core follow period voice
 thread:
+voice: context_core
 wasapi_core: context_core device wasapi_notify worker
 wasapi_format:
 wasapi_notify:
 wasapi_stream: clock context context_core period thread wasapi_core wasapi_format worker
-web_capture: clock context context_core follow period thread web_core
+web_capture: clock context context_core follow period thread voice web_core
 web_core: context_core
 worker:

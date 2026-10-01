@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Capture on the web. getUserMedia asks for the microphone with the
-// browser's voice processing off; once the track arrives, its source
+// browser's voice processing as the stream asks, off by default; once the track arrives, its source
 // plays into a capture worklet mixed to the stream's channels. The
 // worklet writes each quantum into a SharedArrayBuffer ring on an
 // isolated page, or posts it elsewhere, and reports; the main thread
@@ -16,6 +16,7 @@
 #include "follow.h"
 #include "period.h"
 #include "thread.h"
+#include "voice.h"
 #include "web_core.h"
 
 #include <emscripten/em_js.h>
@@ -68,11 +69,13 @@ EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
         URL.createObjectURL(new Blob([source], {type: "text/javascript"})));
 });
 
-// Opens the microphone for a stream; the node record waits for the
-// track, then feeds the stream through maudWebCapture and tells the
-// module through maudWebGranted.
+// Opens the microphone for a stream with the voice processing it asks
+// for (maudVoiceProcessing flags); the node record waits for the track,
+// then feeds the stream through maudWebCapture and tells the module,
+// with the parts the track's settings say are on, through
+// maudWebGranted.
 EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int channels, int capacity,
-                                    float* chunk), {
+                                    float* chunk, int voice), {
     const web = globalThis.maudWeb;
     const entry = web.contexts[handle];
     const record = {node: null, source: null, stream: null, closed: false, ring: null, index: null, data: null};
@@ -111,7 +114,11 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
         Atomics.store(record.index, 1, (read + frames) | 0);
         deliver(frames);
     }
-    const constraints = {audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false}};
+    const constraints = {audio: {
+        echoCancellation: (voice & 1) !== 0,
+        noiseSuppression: (voice & 2) !== 0,
+        autoGainControl: (voice & 4) !== 0,
+    }};
     Promise.all([entry.captureWorklet, navigator.mediaDevices.getUserMedia(constraints)]).then(function (results) {
         const stream = results[1];
         if (record.closed) {
@@ -119,7 +126,11 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
             return;
         }
         record.stream = stream;
-        latency = stream.getAudioTracks()[0].getSettings().latency || 0;
+        const settings = stream.getAudioTracks()[0].getSettings();
+        latency = settings.latency || 0;
+        const active = (settings.echoCancellation === true ? 1 : 0) |
+                       (settings.noiseSuppression === true ? 2 : 0) |
+                       (settings.autoGainControl === true ? 4 : 0);
         record.source = entry.context.createMediaStreamSource(stream);
         record.node = new AudioWorkletNode(entry.context, "maud-capture", {
             numberOfInputs: 1,
@@ -131,7 +142,7 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
         });
         record.node.port.onmessage = take;
         record.source.connect(record.node);
-        _maudWebGranted(context, slot);
+        _maudWebGranted(context, slot, active);
     }, function () {
         record.refused = true;
     });
@@ -175,12 +186,15 @@ void maudWebCapture(maudContext* context, int slotIndex, int frames, double late
     atomic_fetch_add_explicit(&core->position, (uint64_t)frames, memory_order_release);
 }
 
-// The browser granted the microphone to a stream's node.
-EMSCRIPTEN_KEEPALIVE void maudWebGranted(maudContext* context, int slotIndex);
+// The browser granted the microphone to a stream's node, with the voice
+// processing parts active.
+EMSCRIPTEN_KEEPALIVE void maudWebGranted(maudContext* context, int slotIndex, int active);
 
-void maudWebGranted(maudContext* context, int slotIndex)
+void maudWebGranted(maudContext* context, int slotIndex, int active)
 {
-    maudAwaitPermission(context, &context->streams.slots[slotIndex], false);
+    maudStreamSlot* slot = &context->streams.slots[slotIndex];
+    maudReportVoice(&slot->core, (maudVoiceProcessing)active);
+    maudAwaitPermission(context, slot, false);
 }
 
 int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, float* chunk)
@@ -188,5 +202,5 @@ int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, f
     int index = (int)(slot - context->streams.slots);
     maudAwaitPermission(context, slot, true);
     return maudWebOpenCaptureNode(handle, context, index, (int)slot->core.period.channelCount,
-                                  (int)MAUD_WEB_CAPACITY, chunk);
+                                  (int)MAUD_WEB_CAPACITY, chunk, (int)slot->core.def.voice);
 }

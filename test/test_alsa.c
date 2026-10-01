@@ -329,6 +329,10 @@ static void TestInputStream(maudContext* context)
     CHECK(Near(MeasureRate(context, stream), 44100.0), "at its rate");
     CHECK(StreamClockIsSound(context, stream, false, true, Sleep),
           "its clock maps frames to host time");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
+              status.voiceActive == maud_voiceNone,
+          "ALSA reports no voice processing");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 

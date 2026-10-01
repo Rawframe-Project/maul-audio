@@ -70,6 +70,7 @@ static const maudBackend s_offline = {
     .setStreamActive = nullptr,
     .retargetStream = nullptr,
     .rendersOnCaller = true,
+    .hasNoVoice = true,
 };
 
 const maudBackend* maudGetOfflineBackend(void)

@@ -34,6 +34,7 @@ maudStreamDef maudDefaultStreamDef(void)
         .periodFrames = 0,
         .device = {0, 0},
         .inputDevice = {0, 0},
+        .voice = maud_voiceNone,
         .role = maud_roleGeneral,
         .callback = nullptr,
         .user = nullptr,
@@ -46,6 +47,13 @@ static bool DefValid(const maudStreamDef* def)
         def->direction > maud_directionDuplex || def->mode > maud_modePull ||
         def->ratePolicy > maud_ratePlatformConverted || def->role > maud_roleCommunications ||
         maudGetLayoutChannelCount(def->layout) == 0)
+    {
+        return false;
+    }
+    const maudVoiceProcessing parts =
+        maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
+    if ((def->voice & ~parts) != 0 ||
+        (def->voice != maud_voiceNone && def->direction == maud_directionOutput))
     {
         return false;
     }
@@ -183,6 +191,8 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
     }
     const maudStreamBinding* binding = &slot->core.binding;
     const maudDuplex* duplex = slot->duplex;
+    // A duplex stream's voice processing is its input half's.
+    const maudStreamCore* captured = duplex != nullptr ? &duplex->input->core : &slot->core;
     *statusOut = (maudStreamStatus){
         .started = binding->started,
         .suspension = binding->suspension,
@@ -191,6 +201,8 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
             duplex == nullptr || SharesClock(context, duplex) ? maud_driftNone : maud_driftSlip,
         .slippedFrames =
             duplex != nullptr ? atomic_load_explicit(&duplex->slipped, memory_order_relaxed) : 0,
+        .voiceReported = atomic_load_explicit(&captured->voiceReported, memory_order_acquire),
+        .voiceActive = atomic_load_explicit(&captured->voiceActive, memory_order_relaxed),
     };
     return maud_success;
 }

@@ -11,6 +11,7 @@
 #include "context.h"
 #include "follow.h"
 #include "period.h"
+#include "voice.h"
 
 #include <stdckdint.h>
 
@@ -75,6 +76,11 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     core->format = format;
     core->sampleBytes = bytes;
     core->duplexGroup = duplexGroup;
+    maudResetVoice(core);
+    if (context->backend->hasNoVoice && def->direction == maud_directionInput)
+    {
+        maudReportVoice(core, maud_voiceNone);
+    }
     maudInitPeriod(&core->period, def, &format, samples);
     atomic_store_explicit(&core->blockRate, format.sampleRate, memory_order_relaxed);
     atomic_store_explicit(&core->position, 0, memory_order_relaxed);

@@ -119,6 +119,10 @@ static void TestBothInOneCallback(void)
     CHECK(maudRenderStream(context, stream, out, PERIOD) == maud_success, "render before input");
     CHECK(echo.bothSeen == 1 && echo.first == 0.0f, "silence before the input arrives");
     CHECK(Slipped(context, stream) == 0, "which is not a slip");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
+              status.voiceActive == maud_voiceNone,
+          "its input half's voice report");
     Feed(context, stream, 0, PERIOD);
     CHECK(maudRenderStream(context, stream, out, PERIOD) == maud_success, "render");
     CHECK(echo.calls == 2 && echo.first == 0.0f && out[2 * (PERIOD - 1)] == (float)(PERIOD - 1),

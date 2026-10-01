@@ -258,10 +258,41 @@ static void TestUnsupportedAndInvalidDefs(void)
     def.cookie = 0;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "no cookie");
     CHECK(stream.index1 == 0 && stream.generation == 0, "null id on failure");
-    CHECK(maudGetContextMisuse(context) == 5, "each invalid def counted");
+    def = PullDef(&recorder);
+    def.voice = maud_voiceEchoCancellation;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid,
+          "voice processing on an output");
+    def = PullDef(&recorder);
+    def.direction = maud_directionInput;
+    def.voice = 8;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "an unknown voice part");
+    CHECK(maudGetContextMisuse(context) == 7, "each invalid def counted");
     def = PullDef(&recorder);
     def.periodFrames = 8193;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorCapacity, "period past limit");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
+// The offline backend has no voice processing and says so: an input
+// stream reports none, whatever it asked for; an output reports nothing.
+static void TestVoiceReport(void)
+{
+    maudContext* context = OfflineContext();
+    Recorder recorder = {0};
+    maudStreamDef def = PullDef(&recorder);
+    def.direction = maud_directionInput;
+    def.voice = maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
+    maudStreamId input = {0, 0};
+    CHECK(maudCreateStream(context, &def, &input) == maud_success, "an input asking for voice");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, input, &status) == maud_success, "its status");
+    CHECK(status.voiceReported && status.voiceActive == maud_voiceNone, "reports none active");
+    def = PullDef(&recorder);
+    maudStreamId output = {0, 0};
+    CHECK(maudCreateStream(context, &def, &output) == maud_success, "an output");
+    CHECK(maudGetStreamStatus(context, output, &status) == maud_success, "its status");
+    CHECK(!status.voiceReported && status.voiceActive == maud_voiceNone, "reports nothing");
+    CHECK(maudDefaultStreamDef().voice == maud_voiceNone, "no voice processing by default");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -355,6 +386,7 @@ int main(void)
     TestInputArrivesInCompletedPeriods();
     TestUnsupportedAndInvalidDefs();
     TestStreamLimitAndStaleIds();
+    TestVoiceReport();
     TestStoppedStreamsDoNotRender();
     TestControlCallsFromTheCallbackAreRefused();
     TestRenderingDoesNotAllocate();

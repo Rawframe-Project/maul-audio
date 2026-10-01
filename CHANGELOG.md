@@ -137,3 +137,10 @@ format.
   CoreAudio runs them on one clock when both are on one device. A
   CoreAudio duplex on two devices needs them at one nominal rate for
   now, since an input unit cannot convert; it slips.
+- Platform voice processing, asked for per part
+  (`maudStreamDef.voice`: echo cancellation, noise suppression, gain
+  control) by input and duplex streams, and reported per part in the
+  status (`voiceReported`, `voiceActive`), since platforms may ignore
+  a request. The web passes the parts to getUserMedia and reports the
+  track's settings; ALSA and the offline backend report none; the
+  other backends report nothing yet.

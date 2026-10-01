@@ -78,6 +78,20 @@ extern "C"
     // from it are refused with maud_errorState.
     typedef void (*maudStreamCallback)(const maudStreamBlock* block, void* user);
 
+    // Parts of the platform's voice processing, as flags: asked for by an
+    // input or duplex stream, and reported as active.
+    typedef uint8_t maudVoiceProcessing;
+
+    enum
+    {
+        maud_voiceNone = 0,
+        // Removes what the speakers play from what the microphone hears.
+        maud_voiceEchoCancellation = 1,
+        maud_voiceNoiseSuppression = 2,
+        // Levels the microphone's signal.
+        maud_voiceGainControl = 4,
+    };
+
     // How a stream is made. Build it with maudDefaultStreamDef.
     typedef struct maudStreamDef
     {
@@ -99,6 +113,10 @@ extern "C"
         // A duplex stream's input device, or the null id to follow the
         // default input of its role. Unused by other streams.
         maudDeviceId inputDevice;
+        // The platform voice processing an input or duplex stream asks for;
+        // maud_voiceNone, the default, asks the platform to leave the
+        // signal alone where it can. Output streams take maud_voiceNone.
+        maudVoiceProcessing voice;
         // The role whose default a stream on the null device follows.
         maudDeviceRole role;
         maudStreamCallback callback;
@@ -166,6 +184,12 @@ extern "C"
         // Input frames a duplex stream has slipped: dropped, or played as
         // silence, under maud_driftSlip.
         uint64_t slippedFrames;
+        // Whether the platform has said which voice processing runs on an
+        // input or duplex stream; false while it has not, or where it
+        // never says. Platforms may ignore a request.
+        bool voiceReported;
+        // The parts it said are active, once reported.
+        maudVoiceProcessing voiceActive;
     } maudStreamStatus;
 
     /// Returns the default stream def: an output stream in callback mode,

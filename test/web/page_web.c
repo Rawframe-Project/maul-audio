@@ -59,6 +59,8 @@ static maudStreamClock s_clock;
 static bool s_clockSound;
 // The capture stream on the browser's (fake) microphone.
 static maudStreamId s_capture;
+// A second capture asking for all of the browser's voice processing.
+static maudStreamId s_voiced;
 static uint32_t s_captured;
 static float s_loudest;
 static maudStreamClock s_captureClock;
@@ -79,6 +81,13 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     s_blocks++;
 }
 
+// The voiced capture's callback: only its report is checked.
+static void IgnoreBlocks(const maudStreamBlock* block, void* user)
+{
+    (void)block;
+    (void)user;
+}
+
 // Counts captured blocks and keeps the loudest sample.
 static void CaptureBlocks(const maudStreamBlock* block, void* user)
 {
@@ -94,7 +103,7 @@ static void CaptureBlocks(const maudStreamBlock* block, void* user)
 
 // clang-format off
 
-// 1 when the playback and the capture node each use a SharedArrayBuffer
+// 1 when the playback and the capture nodes each use a SharedArrayBuffer
 // ring, which they must exactly on a cross-origin isolated page; -1
 // when they do not. Playback records have a fill target.
 EM_JS(int, RingMatchesPage, (void), {
@@ -102,7 +111,7 @@ EM_JS(int, RingMatchesPage, (void), {
     const isolated = globalThis.crossOriginIsolated === true;
     const playback = nodes.filter(function (record) { return record.target !== undefined; });
     const matches = nodes.every(function (record) { return (record.ring !== null) === isolated; });
-    return nodes.length === 2 && playback.length === 1 && matches ? 1 : -1;
+    return nodes.length === 3 && playback.length === 1 && matches ? 1 : -1;
 });
 
 // The stream's quanta played short so far, and its fill target.
@@ -207,6 +216,7 @@ static uint64_t Position(void)
 static void Finish(void)
 {
     CHECK(maudDestroyStream(s_context, s_capture) == maud_success, "destroy the capture");
+    CHECK(maudDestroyStream(s_context, s_voiced) == maud_success, "destroy the voiced one");
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy while running");
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionDuplex;
@@ -231,13 +241,22 @@ static void CheckCapture(uint32_t rate)
 {
     maudStreamStatus status = {0};
     CHECK(maudGetStreamStatus(s_context, s_capture, &status) == maud_success, "capture status");
+    maudStreamStatus voiced = {0};
+    CHECK(maudGetStreamStatus(s_context, s_voiced, &voiced) == maud_success, "voiced status");
     if (s_denied)
     {
         CHECK(status.suspension == maud_suspendPermission && s_captured == 0,
               "a refused capture waits, hearing nothing");
+        CHECK(!status.voiceReported && !voiced.voiceReported, "and nothing is reported");
         return;
     }
     CHECK(status.suspension == maud_suspendNone, "the granted capture runs");
+    CHECK(status.voiceReported && status.voiceActive == maud_voiceNone,
+          "without voice processing, as asked");
+    CHECK(voiced.voiceReported &&
+              voiced.voiceActive ==
+                  (maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl),
+          "and the browser's voice processing on, as asked");
     maudStreamClock capture = {0};
     CHECK(maudGetStreamClock(s_context, s_capture, &capture) == maud_success, "capture clock");
     CHECK(ClockIsSound(&s_captureClock, &capture, false, true, (double)rate,
@@ -445,6 +464,11 @@ int main(void)
     captureDef.callback = CaptureBlocks;
     CHECK(maudCreateStream(s_context, &captureDef, &s_capture) == maud_success, "create a capture");
     CHECK(maudStartStream(s_context, s_capture) == maud_success, "start it");
+    captureDef.callback = IgnoreBlocks;
+    captureDef.voice =
+        maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
+    CHECK(maudCreateStream(s_context, &captureDef, &s_voiced) == maud_success,
+          "a capture with voice processing");
     maudStreamStatus captureStatus;
     CHECK(maudGetStreamStatus(s_context, s_capture, &captureStatus) == maud_success &&
               captureStatus.suspension == maud_suspendPolicy,
