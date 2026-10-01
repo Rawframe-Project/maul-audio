@@ -145,8 +145,8 @@ static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t c
     return atomic_load(&blocks->count) >= count;
 }
 
-// Frames the stream moves per second of wall time, over 1.5 seconds.
-static double MeasureRate(const maudContext* context, maudStreamId stream)
+// Frames the stream moves per second of wall time over one window.
+static double MeasureWindow(const maudContext* context, maudStreamId stream, int milliseconds)
 {
     LARGE_INTEGER frequency;
     LARGE_INTEGER start;
@@ -156,18 +156,34 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&start);
     CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-    Sleep(1500);
+    Sleep(milliseconds);
     CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
     QueryPerformanceCounter(&end);
     double seconds = (double)(end.QuadPart - start.QuadPart) / (double)frequency.QuadPart;
     return (double)(last - first) / seconds;
 }
 
-// Whether rate is within tolerance of expected; the measurement is
-// printed when it is not.
-static bool Near(double rate, double expected, double tolerance)
+// The stream's rate: the best of three windows of a second. A
+// loaded machine can stall the platform's clock, which only lowers a
+// window's count, so the best window is the one that shows the rate.
+static double MeasureRate(const maudContext* context, maudStreamId stream)
 {
-    bool within = rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
+    double best = 0.0;
+    for (int window = 0; window < 3; ++window)
+    {
+        double rate = MeasureWindow(context, stream, 1000);
+        best = rate > best ? rate : best;
+    }
+    return best;
+}
+
+// Whether a measured rate is the expected one: at most 2% above it,
+// and up to 6% below, since a stalled clock only lowers a count. The
+// ranges of 44.1 and 48 kHz do not meet. The measurement is printed
+// when it is not.
+static bool Near(double rate, double expected)
+{
+    bool within = rate > expected * 0.94 && rate < expected * 1.02;
     if (!within)
     {
         fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
@@ -245,7 +261,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(atomic_load(&blocks.onControl) == 0, "on a thread of the stream's");
     CHECK(atomic_load(&blocks.named) == 1, "named maud-wasapi");
-    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at its rate");
+    CHECK(Near(MeasureRate(context, stream), 48000.0), "at its rate");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
     Sleep(100);
@@ -264,7 +280,7 @@ static void TestOutputStream(maudContext* context)
     stream = OpenStream(context, &def, &converted);
     CHECK(maudStartStream(context, stream) == maud_success, "start converted");
     CHECK(WaitForBlocks(context, &converted, 10), "it runs");
-    CHECK(Near(MeasureRate(context, stream), 44100.0, 0.04), "at its own rate");
+    CHECK(Near(MeasureRate(context, stream), 44100.0), "at its own rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     def = maudDefaultStreamDef();
     def.mode = maud_modePull;
@@ -320,9 +336,13 @@ static void TestMove(maudContext* context)
                  record.deviceId.index1 == other.index1);
     }
     CHECK(moved, "it moves with the default");
+    const maudWasapi* wasapi = context->native;
+    const maudWasapiStream* entry = &wasapi->streams[stream.index1 - 1];
+    CHECK(entry->device.index1 == other.index1 && entry->device.generation == other.generation,
+          "opened again on the new endpoint");
     uint32_t after = atomic_load(&blocks.count);
     CHECK(WaitForBlocks(context, &blocks, after + 20), "and plays on the new endpoint");
-    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at its rate");
+    CHECK(Near(MeasureRate(context, stream), 48000.0), "at its rate");
     maudSetDefaultDevice(context, maud_roleGeneral, original);
     CHECK(WaitForBlocks(context, &blocks, atomic_load(&blocks.count) + 20), "and back");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");

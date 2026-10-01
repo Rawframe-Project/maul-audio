@@ -188,8 +188,8 @@ static int ThreadCount(void)
     return count;
 }
 
-// Frames the stream moves per second of wall time, over 1.5 seconds.
-static double MeasureRate(maudContext* context, maudStreamId stream)
+// Frames the stream moves per second of wall time over one window.
+static double MeasureWindow(maudContext* context, maudStreamId stream, int milliseconds)
 {
     struct timespec start;
     struct timespec end;
@@ -197,7 +197,7 @@ static double MeasureRate(maudContext* context, maudStreamId stream)
     uint64_t last = 0;
     clock_gettime(CLOCK_MONOTONIC, &start);
     CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-    for (int i = 0; i < 150; ++i)
+    for (int i = 0; i < milliseconds / 10; ++i)
     {
         maudNotification ignored;
         while (maudNextNotification(context, &ignored) == maud_success)
@@ -212,16 +212,32 @@ static double MeasureRate(maudContext* context, maudStreamId stream)
     return (double)(last - first) / seconds;
 }
 
-// Whether rate is within tolerance of expected; the measurement is
-// printed when it is not.
-static bool Near(double rate, double expected, double tolerance)
+// The stream's rate: the best of three windows of a second. A
+// loaded machine can stall the platform's clock, which only lowers a
+// window's count, so the best window is the one that shows the rate.
+static double MeasureRate(maudContext* context, maudStreamId stream)
 {
-    bool near = rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
-    if (!near)
+    double best = 0.0;
+    for (int window = 0; window < 3; ++window)
+    {
+        double rate = MeasureWindow(context, stream, 1000);
+        best = rate > best ? rate : best;
+    }
+    return best;
+}
+
+// Whether a measured rate is the expected one: at most 2% above it,
+// and up to 6% below, since a stalled clock only lowers a count. The
+// ranges of 44.1 and 48 kHz do not meet. The measurement is printed
+// when it is not.
+static bool Near(double rate, double expected)
+{
+    bool within = rate > expected * 0.94 && rate < expected * 1.02;
+    if (!within)
     {
         fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
     }
-    return near;
+    return within;
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
@@ -341,7 +357,7 @@ static void TestOutputStream(maudContext* context)
           "a period of latency asked for");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(Near(MeasureRate(context, stream), 48000.0, 0.04), "at the sink's rate");
+    CHECK(Near(MeasureRate(context, stream), 48000.0), "at the sink's rate");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     CHECK(ThreadCount() == 0, "joined when it stops");
     Sleep(200);

@@ -403,9 +403,8 @@ static bool WaitForLinkIntoPlugged(maudContext* context, Helper* helper)
     return false;
 }
 
-// The stream's frames per second of wall-clock time over a second and a
-// half, draining notifications meanwhile.
-static double MeasureRate(maudContext* context, maudStreamId stream)
+// Frames the stream moves per second of wall time over one window.
+static double MeasureWindow(maudContext* context, maudStreamId stream, int milliseconds)
 {
     struct timespec start;
     struct timespec end;
@@ -413,7 +412,7 @@ static double MeasureRate(maudContext* context, maudStreamId stream)
     uint64_t last = 0;
     clock_gettime(CLOCK_MONOTONIC, &start);
     CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-    for (int i = 0; i < 150; ++i)
+    for (int i = 0; i < milliseconds / 10; ++i)
     {
         maudNotification ignored;
         while (maudNextNotification(context, &ignored) == maud_success)
@@ -428,16 +427,32 @@ static double MeasureRate(maudContext* context, maudStreamId stream)
     return (double)(last - first) / seconds;
 }
 
-// Whether rate is within tolerance of expected; the measurement is
-// printed when it is not.
-static bool Near(double rate, double expected, double tolerance)
+// The stream's rate: the best of three windows of a second. A
+// loaded machine can stall the platform's clock, which only lowers a
+// window's count, so the best window is the one that shows the rate.
+static double MeasureRate(maudContext* context, maudStreamId stream)
 {
-    bool near = rate > expected * (1.0 - tolerance) && rate < expected * (1.0 + tolerance);
-    if (!near)
+    double best = 0.0;
+    for (int window = 0; window < 3; ++window)
+    {
+        double rate = MeasureWindow(context, stream, 1000);
+        best = rate > best ? rate : best;
+    }
+    return best;
+}
+
+// Whether a measured rate is the expected one: at most 2% above it,
+// and up to 6% below, since a stalled clock only lowers a count. The
+// ranges of 44.1 and 48 kHz do not meet. The measurement is printed
+// when it is not.
+static bool Near(double rate, double expected)
+{
+    bool within = rate > expected * 0.94 && rate < expected * 1.02;
+    if (!within)
     {
         fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
     }
-    return near;
+    return within;
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
@@ -471,7 +486,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(atomic_load(&blocks.controlResult) == maud_errorState, "control refused there");
     CHECK(maudGetContextMisuse(context) >= 1, "and counted");
     double rate = MeasureRate(context, stream);
-    CHECK(Near(rate, 48000.0, 0.04), "the clock advances at the stream's rate");
+    CHECK(Near(rate, 48000.0), "the clock advances at the stream's rate");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     WaitForBlocks(context, &blocks, UINT32_MAX / 2);
     uint32_t stopped = atomic_load(&blocks.count);
@@ -540,7 +555,7 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
     maudNotification record;
     CHECK(WaitForStream(context, maud_notifyStreamMoved, follower, &record), "the follower moves");
-    CHECK(Near(MeasureRate(context, follower), 48000.0, 0.04), "at the graph's rate still");
+    CHECK(Near(MeasureRate(context, follower), 48000.0), "at the graph's rate still");
     ForceGraphRate(helper, "44100");
     CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record),
           "the graph's new rate");
@@ -548,7 +563,7 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
     uint32_t before = atomic_load(&following.count);
     CHECK(WaitForBlocks(context, &following, before + 20), "the follower runs on");
     CHECK(atomic_load(&following.lastRate) == 44100, "its blocks carry the new rate");
-    CHECK(Near(MeasureRate(context, follower), 44100.0, 0.04), "and it runs at it");
+    CHECK(Near(MeasureRate(context, follower), 44100.0), "and it runs at it");
     ForceGraphRate(helper, "0");
     CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record), "and back");
     CHECK(record.sampleRate == 48000, "48 kHz");

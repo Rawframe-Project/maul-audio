@@ -310,8 +310,10 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
     if (result != maud_success)
     {
         Disconnect(context, entry);
+        return result;
     }
-    return result;
+    entry->device = slot->core.binding.current;
+    return maud_success;
 }
 
 static void Start(maudWasapiStream* entry)

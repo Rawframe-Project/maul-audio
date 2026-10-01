@@ -28,6 +28,8 @@ typedef struct maudWasapiEndpoint
 typedef struct maudWasapiStream
 {
     maudStreamCore* core;
+    // The device the client is open on.
+    maudDeviceId device;
     IAudioClient* client;
     IAudioRenderClient* render;
     IAudioCaptureClient* capture;
