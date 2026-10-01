@@ -10,8 +10,10 @@
 #include "backend.h"
 #include "clock.h"
 #include "context.h"
+#include "duplex.h"
 #include "follow.h"
 #include "period.h"
+#include "stream_open.h"
 #include "thread.h"
 
 #include <stdckdint.h>
@@ -31,6 +33,7 @@ maudStreamDef maudDefaultStreamDef(void)
         .sampleRate = 0,
         .periodFrames = 0,
         .device = {0, 0},
+        .inputDevice = {0, 0},
         .role = maud_roleGeneral,
         .callback = nullptr,
         .user = nullptr,
@@ -40,7 +43,7 @@ maudStreamDef maudDefaultStreamDef(void)
 static bool DefValid(const maudStreamDef* def)
 {
     if (def->cookie != STREAM_DEF_COOKIE || def->callback == nullptr ||
-        def->direction > maud_directionInput || def->mode > maud_modePull ||
+        def->direction > maud_directionDuplex || def->mode > maud_modePull ||
         def->ratePolicy > maud_ratePlatformConverted || def->role > maud_roleCommunications ||
         maudGetLayoutChannelCount(def->layout) == 0)
     {
@@ -51,74 +54,6 @@ static bool DefValid(const maudStreamDef* def)
         return def->sampleRate == 0;
     }
     return def->sampleRate >= MIN_RATE && def->sampleRate <= MAX_RATE;
-}
-
-// The device a new stream will start on: its requested device, which
-// must be live and of its direction, or the default it follows, which
-// may be none.
-static maudResult FindStartingDevice(const maudContext* context, const maudStreamDef* def,
-                                     const maudDeviceInfo** deviceOut)
-{
-    maudDeviceId id = def->device;
-    if (id.index1 == 0)
-    {
-        id = context->devices.defaults[def->direction][def->role];
-        if (id.index1 == 0)
-        {
-            *deviceOut = nullptr;
-            return maud_success;
-        }
-    }
-    const maudDeviceSlot* slot = maudFindDevice(context, id);
-    if (slot == nullptr)
-    {
-        return maud_errorStale;
-    }
-    if (slot->info.direction != def->direction)
-    {
-        return maud_errorInvalid;
-    }
-    *deviceOut = &slot->info;
-    return maud_success;
-}
-
-// Opens the stream's format through the backend and allocates its
-// period. The slot is untouched on failure.
-static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
-                           const maudDeviceInfo* device, maudStreamSlot* slot)
-{
-    maudStreamFormat format;
-    maudResult result = context->backend->openStream(context, def, device, &format);
-    if (result != maud_success)
-    {
-        return result;
-    }
-    if (format.periodFrames == 0 || format.periodFrames > context->def.limits.periodFrames)
-    {
-        return maud_errorCapacity;
-    }
-    size_t bytes;
-    if (ckd_mul(&bytes, (size_t)format.periodFrames,
-                (size_t)maudGetLayoutChannelCount(format.layout)) ||
-        ckd_mul(&bytes, bytes, sizeof(float)))
-    {
-        return maud_errorCapacity;
-    }
-    float* samples = maudContextAllocate(context, bytes, alignof(float));
-    if (samples == nullptr)
-    {
-        return maud_errorCapacity;
-    }
-    maudStreamCore* core = &slot->core;
-    core->def = *def;
-    core->format = format;
-    core->sampleBytes = bytes;
-    maudInitPeriod(&core->period, def, &format, samples);
-    atomic_store_explicit(&core->blockRate, format.sampleRate, memory_order_relaxed);
-    atomic_store_explicit(&core->position, 0, memory_order_relaxed);
-    maudResetClock(core);
-    maudBindNewStream(context, slot);
-    return maud_success;
 }
 
 maudResult maudCreateStream(maudContext* context, const maudStreamDef* def,
@@ -142,8 +77,17 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def,
         maudCountMisuse(context);
         return maud_errorInvalid;
     }
-    const maudDeviceInfo* device = nullptr;
-    maudResult result = FindStartingDevice(context, def, &device);
+    if (def->direction == maud_directionDuplex)
+    {
+        maudResult result = maudCreateDuplex(context, def, streamIdOut);
+        if (result == maud_errorInvalid)
+        {
+            maudCountMisuse(context);
+        }
+        return result;
+    }
+    maudStreamSlot* slot = nullptr;
+    maudResult result = maudOpenStream(context, def, &slot);
     if (result == maud_errorInvalid)
     {
         maudCountMisuse(context);
@@ -152,27 +96,6 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def,
     {
         return result;
     }
-    maudStreamSlot* slot = maudFindFreeStreamSlot(context);
-    if (slot == nullptr)
-    {
-        return maud_errorCapacity;
-    }
-    result = OpenCore(context, def, device, slot);
-    if (result != maud_success)
-    {
-        return result;
-    }
-    if (context->backend->attachStream != nullptr)
-    {
-        result = context->backend->attachStream(context, slot);
-        if (result != maud_success)
-        {
-            maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes,
-                               alignof(float));
-            return result;
-        }
-    }
-    slot->live = true;
     *streamIdOut = maudStreamIdOf(context, slot);
     return maud_success;
 }
@@ -221,6 +144,10 @@ static maudResult SetStarted(maudContext* context, maudStreamId stream, bool sta
         return result;
     }
     maudSetStreamStarted(context, slot, started);
+    if (slot->duplex != nullptr)
+    {
+        maudSetStreamStarted(context, slot->duplex->input, started);
+    }
     return maud_success;
 }
 
@@ -247,10 +174,14 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
         return maud_errorStale;
     }
     const maudStreamBinding* binding = &slot->core.binding;
+    const maudDuplex* duplex = slot->duplex;
     *statusOut = (maudStreamStatus){
         .started = binding->started,
         .suspension = binding->suspension,
         .device = binding->current,
+        .drift = duplex != nullptr ? maud_driftSlip : maud_driftNone,
+        .slippedFrames =
+            duplex != nullptr ? atomic_load_explicit(&duplex->slipped, memory_order_relaxed) : 0,
     };
     return maud_success;
 }
@@ -323,6 +254,11 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
     if (slot == nullptr)
     {
         return maud_errorStale;
+    }
+    // A duplex stream is fed through its input half.
+    if (slot->duplex != nullptr && direction == maud_directionInput)
+    {
+        slot = slot->duplex->input;
     }
     maudStreamCore* core = &slot->core;
     size_t samples;

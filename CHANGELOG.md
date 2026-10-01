@@ -126,3 +126,8 @@ format.
   packets' times), CoreAudio (the buffer's host time and the device's
   latencies) and the web (what is buffered ahead plus the context's
   latencies).
+- Duplex streams (`maud_directionDuplex`, `maudStreamDef.inputDevice`):
+  one callback with the input and the output of a period, built from an
+  output and an input of any backend joined by a ring; the input
+  follows the output's clock by slipping, declared and counted in the
+  stream's status (`maudDriftPolicy`, `slippedFrames`).

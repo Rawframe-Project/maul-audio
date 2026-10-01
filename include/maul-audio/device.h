@@ -35,6 +35,9 @@ extern "C"
         maud_directionOutput = 0,
         // From the device to the host: capture.
         maud_directionInput = 1,
+        // Streams only: capture and playback in one callback, on a device
+        // of each direction.
+        maud_directionDuplex = 2,
     };
 
     // What a default device is the default for.

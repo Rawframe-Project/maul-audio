@@ -529,6 +529,33 @@ static void TestInputStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy capture");
 }
 
+// A duplex stream on the default sink and source: both buffers in each
+// callback at the graph's rate. The graph drives both nodes, so once
+// the input has arrived nothing should slip for long.
+static void TestDuplexStream(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamId stream = OpenStream(context, maud_directionDuplex, (maudDeviceId){0, 0}, &blocks);
+    CHECK(WaitForBlocks(context, &blocks, 40), "duplex callbacks");
+    CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
+    CHECK(atomic_load(&blocks.wrongSize) == 0, "every duplex block is one period");
+    CHECK(Near(MeasureRate(context, stream), 48000.0), "at the graph's rate");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.drift == maud_driftSlip,
+          "the slip declared");
+    uint64_t before = status.slippedFrames;
+    Sleep(2000);
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    if (status.slippedFrames - before > 512)
+    {
+        fprintf(stderr, "slipped %llu frames in 2 s\n",
+                (unsigned long long)(status.slippedFrames - before));
+    }
+    CHECK(status.slippedFrames - before <= 512, "and little slips on one graph");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy duplex");
+}
+
 // Drains notifications for up to three seconds until one of kind for
 // stream arrives.
 static bool WaitForStream(maudContext* context, maudNotificationKind kind, maudStreamId stream,
@@ -613,6 +640,7 @@ int main(void)
     TestHotplugAndDefaults(context, &helper);
     TestOutputStream(context);
     TestInputStream(context);
+    TestDuplexStream(context);
     TestStreamsMoveAndAreLost(context, &helper);
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

@@ -94,6 +94,8 @@ static void InitStreams(maudStreamTable* streams)
         maudStreamSlot* slot = &streams->slots[i];
         slot->generation = 1;
         slot->live = false;
+        slot->duplex = nullptr;
+        slot->hidden = false;
         atomic_init(&slot->core.state, maud_streamIdle);
         atomic_init(&slot->core.blockRate, 0);
         atomic_init(&slot->core.renderingThread, 0);
@@ -284,7 +286,8 @@ maudStreamSlot* maudFindStream(const maudContext* context, maudStreamId stream)
         return nullptr;
     }
     maudStreamSlot* slot = &context->streams.slots[stream.index1 - 1];
-    return slot->live && slot->generation == stream.generation ? slot : nullptr;
+    // A duplex stream's input half has no name of its own.
+    return slot->live && !slot->hidden && slot->generation == stream.generation ? slot : nullptr;
 }
 
 maudDeviceSlot* maudFindDevice(const maudContext* context, maudDeviceId device)
@@ -311,21 +314,45 @@ maudStreamSlot* maudFindFreeStreamSlot(const maudContext* context)
 
 maudStreamId maudStreamIdOf(const maudContext* context, const maudStreamSlot* slot)
 {
+    // What happens to a duplex stream's input half happens to the stream.
+    if (slot->hidden)
+    {
+        slot = slot->duplex->output;
+    }
     uint32_t index = (uint32_t)(slot - context->streams.slots);
     return (maudStreamId){index + 1, slot->generation};
 }
 
-void maudReleaseStream(maudContext* context, maudStreamSlot* slot)
+static void ReleaseHalf(maudContext* context, maudStreamSlot* slot)
 {
-    MAUD_ASSERT(slot->live);
     if (context->backend->detachStream != nullptr)
     {
         context->backend->detachStream(context, slot);
     }
     maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes, alignof(float));
     slot->live = false;
+    slot->duplex = nullptr;
+    slot->hidden = false;
     // A generation of 0 never names a stream, so it is skipped on wrap.
     slot->generation = slot->generation == UINT32_MAX ? 1 : slot->generation + 1;
+}
+
+void maudReleaseStream(maudContext* context, maudStreamSlot* slot)
+{
+    MAUD_ASSERT(slot->live);
+    maudDuplex* duplex = slot->duplex;
+    if (duplex == nullptr)
+    {
+        ReleaseHalf(context, slot);
+        return;
+    }
+    // A duplex stream goes whole: its halves, then the joint.
+    ReleaseHalf(context, duplex->output);
+    if (duplex->input->live)
+    {
+        ReleaseHalf(context, duplex->input);
+    }
+    maudContextRelease(context, duplex, duplex->bytes, alignof(maudDuplex));
 }
 
 maudResult maudResumeContext(maudContext* context)

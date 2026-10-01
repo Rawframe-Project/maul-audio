@@ -59,11 +59,12 @@ extern "C"
     // One period of a stream, as its callback sees it.
     typedef struct maudStreamBlock
     {
-        // Output streams: frameCount interleaved frames to fill, cleared to
-        // silence before the call. NULL for input streams.
+        // Output and duplex streams: frameCount interleaved frames to fill,
+        // cleared to silence before the call. NULL for input streams.
         float* output;
-        // Input streams: frameCount interleaved frames captured. NULL for
-        // output streams.
+        // Input and duplex streams: frameCount interleaved frames captured,
+        // a duplex stream's in step with its output. NULL for output
+        // streams.
         const float* input;
         uint32_t frameCount;
         uint32_t sampleRate;
@@ -93,8 +94,11 @@ extern "C"
         // the offline backend.
         uint32_t periodFrames;
         // The device, or the null id to follow the default device of the
-        // stream's direction and role.
+        // stream's direction and role. For a duplex stream, the output.
         maudDeviceId device;
+        // A duplex stream's input device, or the null id to follow the
+        // default input of its role. Unused by other streams.
+        maudDeviceId inputDevice;
         // The role whose default a stream on the null device follows.
         maudDeviceRole role;
         maudStreamCallback callback;
@@ -131,6 +135,19 @@ extern "C"
     };
 
     // Where a stream stands.
+    // How a duplex stream keeps its input in step with its output.
+    typedef uint8_t maudDriftPolicy;
+
+    enum
+    {
+        // One direction, or both on one clock: nothing drifts.
+        maud_driftNone = 0,
+        // Two clocks: the input waits in a ring held near two periods.
+        // When it runs short the missing frames are silence; past four
+        // periods the oldest beyond two are dropped. Each is counted.
+        maud_driftSlip = 1,
+    };
+
     typedef struct maudStreamStatus
     {
         // Whether the host started it.
@@ -138,8 +155,14 @@ extern "C"
         // Why it cannot run, or maud_suspendNone. A started stream that is
         // suspended renders nothing until it resumes.
         maudSuspendReason suspension;
-        // The device it is on; the null id while it has none.
+        // The device it is on; the null id while it has none. For a duplex
+        // stream, the output's.
         maudDeviceId device;
+        // How a duplex stream's input follows its output.
+        maudDriftPolicy drift;
+        // Input frames a duplex stream has slipped: dropped, or played as
+        // silence, under maud_driftSlip.
+        uint64_t slippedFrames;
     } maudStreamStatus;
 
     /// Returns the default stream def: an output stream in callback mode,

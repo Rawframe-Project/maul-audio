@@ -65,6 +65,8 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/offline.c
     src/period.c
     src/stream.c
+    src/stream_open.c
+    src/duplex.c
     src/clock.c
     src/thread.c)
 maul_configure_library(maul-audio)
@@ -160,6 +162,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(stream)
     maul_add_test(device)
     maul_add_test(utf8 WHITEBOX)
+    maul_add_test(duplex)
     # The stamp races a writer thread; Emscripten builds have none.
     if(NOT EMSCRIPTEN)
         maul_add_test(stamp WHITEBOX POSIX)

@@ -66,12 +66,44 @@ typedef struct maudStreamCore
     _Atomic(int64_t) clockLatency;
 } maudStreamCore;
 
-typedef struct maudStreamSlot
+typedef struct maudStreamSlot maudStreamSlot;
+
+// The joint of a duplex stream (duplex.c): its output half, which the
+// host names, and its hidden input half, and the ring between them.
+// One allocation of bytes holds it, the ring and the input block.
+typedef struct maudDuplex
+{
+    maudStreamSlot* output;
+    maudStreamSlot* input;
+    // The host's callback and user, called by the output half.
+    maudStreamCallback callback;
+    void* user;
+    // Frames of channels samples; capacity is a power of two.
+    float* ring;
+    uint32_t capacity;
+    uint32_t channels;
+    uint32_t periodFrames;
+    // Frames written by the input half and read by the output half.
+    _Atomic(uint32_t) written;
+    _Atomic(uint32_t) read;
+    // The input has delivered; shortfalls count from then on.
+    atomic_bool primed;
+    _Atomic(uint64_t) slipped;
+    // The input frames handed to the host with each output period.
+    float* block;
+    size_t bytes;
+} maudDuplex;
+
+struct maudStreamSlot
 {
     maudStreamCore core;
     uint32_t generation;
     bool live;
-} maudStreamSlot;
+    // The duplex joint this slot is a half of, or NULL.
+    maudDuplex* duplex;
+    // The input half of a duplex stream, which the host never names.
+    bool hidden;
+};
 
 typedef struct maudStreamTable
 {
