@@ -47,6 +47,7 @@ static void TestSpeakersFollowTheMaskOrder(void)
 static void TestOutOfRangeChannelsReportNothing(void)
 {
     CHECK(maudGetLayoutSpeaker(maud_layoutStereo, 2) == maud_speakerNone, "past stereo");
+    CHECK(maudGetLayoutSpeaker(maud_layout7Point1Point4, 12) == maud_speakerNone, "past 7.1.4");
     CHECK(maudGetLayoutSpeaker(maud_layoutNone, 0) == maud_speakerNone, "none layout");
     CHECK(maudGetLayoutSpeaker(200, 0) == maud_speakerNone, "unknown layout");
     maudSpeakerPosition position = maudGetLayoutSpeakerPosition(maud_layoutQuad, 4);
