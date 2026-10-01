@@ -1,0 +1,110 @@
+# Continuous integration for Maul Audio.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PREFIX: MAUL_AUDIO
+
+jobs:
+  # The rules no compiler checks: formatting, static analysis and the
+  # family's source, module, documentation and length checks.
+  checks:
+    name: checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q clang-20 clang-tidy-20 ninja-build
+          pip install clang-format==22.1.5 >/dev/null
+      - name: clang-format
+        run: |
+          clang-format --version
+          clang-format --dry-run -Werror $(find include src test tools bench samples -name '*.[ch]' 2>/dev/null)
+      - name: Family checks
+        run: |
+          python3 tools/check_source.py
+          python3 tools/check_modules.py
+          python3 tools/check_docs.py
+          python3 tools/check_lengths.py
+      - name: clang-tidy
+        run: |
+          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          for f in src/*.c; do
+            clang-tidy-20 -p build --quiet --warnings-as-errors='*' "$f" || exit 1
+          done
+
+  # Every cell builds with warnings as errors and runs the whole suite,
+  # the header tests included.
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-gcc-14,        os: ubuntu-24.04, cc: gcc-14,   cxx: g++-14,     config: Release, extra: "" }
+          - { name: linux-clang-20,      os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Release, extra: "" }
+          - { name: linux-clang-20-asan, os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_AUDIO_SANITIZE=ON" }
+          - { name: linux-clang-20-tsan, os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_AUDIO_TSAN=ON" }
+          - { name: linux-shared,        os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Release, extra: "-DMAUL_AUDIO_BUILD_SHARED=ON" }
+          - { name: linux-arm64-gcc-14,  os: ubuntu-24.04-arm, cc: gcc-14, cxx: g++-14,   config: Release, extra: "" }
+          - { name: macos-clang,         os: macos-15,     cc: clang,    cxx: clang++,    config: Release, extra: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compilers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-14 g++-14 clang-20 ninja-build
+      - name: Configure
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.extra }}
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Package
+        if: matrix.name == 'linux-shared'
+        run: cmake --install build --prefix "$PWD/package"
+
+  windows-clang-cl:
+    name: windows-clang-cl
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -T ClangCL -D${PREFIX}_WERROR=ON
+      - name: Build
+        run: cmake --build build --config Release -j 4
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  web:
+    name: web-emscripten
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+      - name: Configure
+        run: emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: |
+          for t in build/test_*.js; do node "$t" || exit 1; done
+      - name: Size
+        # The static library's size, reported, not gated (family record
+        # 0013).
+        run: stat -c '%s bytes' build/libmaul-audio.a

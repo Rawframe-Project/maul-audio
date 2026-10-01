@@ -1,0 +1,4 @@
+# Functions past the 80-line limit and files past the 1000-line limit,
+# checked by tools/check_lengths.py. Format: file function ceiling
+# reason, with "*" as the function for a whole file. The list only
+# shrinks.

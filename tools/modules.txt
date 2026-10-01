@@ -1,0 +1,3 @@
+# The internal module graph (docs/conventions.md, section 6): each module
+# and the modules it may use. tools/check_modules.py enforces it.
+base:

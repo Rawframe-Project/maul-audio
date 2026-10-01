@@ -1,0 +1,2 @@
+# Directories whose files come from outside the project and are kept
+# exactly as published. tools/check_source.py does not check them.
