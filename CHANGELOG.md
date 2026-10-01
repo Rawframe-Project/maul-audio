@@ -222,3 +222,9 @@ format.
   `maud_errorUnsupported` where the device or the user's policy allows
   none (as under Wine) and `maud_errorPlatform` when another
   application holds it.
+- The HRTF format (`docs/hrtf-format.md`): minimum-phase responses with
+  onset delays on 5-degree elevation rings, 16-bit, with the dataset's
+  name and license and a CRC-32; `tools/sofa_to_maudhrtf.py` converts
+  SOFA files into it (numpy and h5py, tool-only); the default set,
+  SADIE II's KU100 at 48 kHz under the Apache License 2.0, generated
+  into `data/hrtf/` with its provenance.

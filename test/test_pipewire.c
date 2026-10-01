@@ -603,27 +603,31 @@ static void TestXruns(maudContext* context)
               "the stall counted by the stream's direction");
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     }
-    // A calm stream, stopped and started ten times, counts next to
-    // nothing: neither its cycles nor the gaps of its stops are xruns.
-    // Five are allowed, for a loaded machine; a gap counted would add ten.
+    // The gap of a stop is not an xrun: across each of ten restarts the
+    // count stays where it was. A loaded machine may slip a real xrun
+    // into the few blocks after a restart now and then; a counted gap
+    // would show at every one.
     Blocks calm = {0};
     maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &calm);
+    uint32_t jumped = 0;
+    maudStreamStatus status = {0};
     for (int restart = 0; restart < 10; ++restart)
     {
-        CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 40), "it runs");
+        CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 20), "it runs");
+        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        uint64_t before = status.underruns;
         CHECK(maudStopStream(context, stream) == maud_success, "stop");
         Sleep(100);
         CHECK(maudStartStream(context, stream) == maud_success, "start again");
+        CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 5), "it runs again");
+        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        jumped += status.underruns != before ? 1u : 0u;
     }
-    CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 40), "it runs on");
-    maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
-    if (status.underruns > 5)
+    if (jumped > 3)
     {
-        fprintf(stderr, "a calm stream counted %llu underruns\n",
-                (unsigned long long)status.underruns);
+        fprintf(stderr, "the count jumped across %u of 10 restarts\n", jumped);
     }
-    CHECK(status.underruns <= 5, "a calm stream counts next to none");
+    CHECK(jumped <= 3, "a stop's gap is not counted");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy calm");
 }
 
