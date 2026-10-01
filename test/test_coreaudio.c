@@ -398,8 +398,9 @@ static maudSuspendReason Suspension(const maudContext* context, maudStreamId str
     return status.suspension;
 }
 
-// A stream bound to a device that goes away is suspended and silent,
-// and runs again when the device comes back under the same UID.
+// A stream bound to a device that goes away is suspended and silent.
+// The device comes back under the same UID as a new id, and the stream
+// stays where it was opened, lost.
 static void TestHotplug(maudContext* context)
 {
     AudioObjectID aggregate = MakeAggregate();
@@ -421,9 +422,13 @@ static void TestHotplug(maudContext* context)
     CHECK(atomic_load(&blocks.count) == lost, "silent while lost");
     aggregate = MakeAggregate();
     CHECK(aggregate != kAudioObjectUnknown, "the device made again");
-    CHECK(WaitFor(context, maud_notifyStreamResumed, stream).index1 != 0, "the stream resumes");
-    CHECK(Suspension(context, stream) == maud_suspendNone, "and runs");
-    CHECK(WaitForBlocks(context, &blocks, lost + 20), "it plays on the new device");
+    maudDeviceId again = WaitFor(context, maud_notifyDeviceAdded, none);
+    CHECK(again.index1 != 0 &&
+              (again.index1 != device.index1 || again.generation != device.generation),
+          "it comes back as a new id");
+    Sleep(200);
+    CHECK(Suspension(context, stream) == maud_suspendDeviceLost, "the stream stays lost");
+    CHECK(atomic_load(&blocks.count) == lost, "and silent");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed again");
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
