@@ -60,6 +60,9 @@ static maudStreamId s_capture;
 static uint32_t s_captured;
 static float s_loudest;
 static maudStreamClock s_captureClock;
+static uint32_t s_capturedAtStop;
+// The browser refuses the microphone on this run.
+static bool s_denied;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
 {
@@ -166,6 +169,11 @@ EM_JS(int, ProbeBreaks, (void), {
     return globalThis.maudWeb.probe.breaks;
 });
 
+// Whether the driver had the browser refuse the microphone.
+EM_JS(int, MicrophoneDenied, (void), {
+    return new URLSearchParams(location.search).get("deny") === "1" ? 1 : 0;
+});
+
 // Keeps the main thread busy, as a long frame of a game would.
 EM_JS(void, Stall, (int milliseconds), {
     const end = performance.now() + milliseconds;
@@ -201,6 +209,32 @@ static void Finish(void)
     CHECK(maudDestroyContext(s_context) == maud_success, "destroy");
     printf("MAUD_TEST_RESULT %s\n", s_failures == 0 ? "pass" : "fail");
     s_step = stepDone;
+}
+
+// Refused, the capture waits for the permission and hears nothing;
+// granted, it captures the fake device's sound with a sound clock.
+static void CheckCapture(uint32_t rate)
+{
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(s_context, s_capture, &status) == maud_success, "capture status");
+    if (s_denied)
+    {
+        CHECK(status.suspension == maud_suspendPermission && s_captured == 0,
+              "a refused capture waits, hearing nothing");
+        return;
+    }
+    CHECK(status.suspension == maud_suspendNone, "the granted capture runs");
+    maudStreamClock capture = {0};
+    CHECK(maudGetStreamClock(s_context, s_capture, &capture) == maud_success, "capture clock");
+    CHECK(ClockIsSound(&s_captureClock, &capture, false, true, (double)rate,
+                       maudGetHostNanoseconds()),
+          "the capture clock maps frames to host time");
+    if (!(s_captured > 100 && s_loudest > 0.1f))
+    {
+        printf("captured %u blocks, loudest %f\n", s_captured, (double)s_loudest);
+    }
+    CHECK(s_captured > 100, "the microphone's blocks arrive");
+    CHECK(s_loudest > 0.1f, "with the fake device's sound");
 }
 
 // Three windows of two seconds, long enough that the browser's bursts
@@ -240,17 +274,7 @@ static void Measure(double now)
     }
     CHECK(s_wrongSize == 0, "in whole stereo periods");
     CHECK(s_clockSound, "its clock maps frames to host time");
-    maudStreamClock capture = {0};
-    CHECK(maudGetStreamClock(s_context, s_capture, &capture) == maud_success, "capture clock");
-    CHECK(ClockIsSound(&s_captureClock, &capture, false, true, (double)format.sampleRate,
-                       maudGetHostNanoseconds()),
-          "the capture clock maps frames to host time");
-    if (!(s_captured > 100 && s_loudest > 0.1f))
-    {
-        printf("captured %u blocks, loudest %f\n", s_captured, (double)s_loudest);
-    }
-    CHECK(s_captured > 100, "the microphone's blocks arrive");
-    CHECK(s_loudest > 0.1f, "with the fake device's sound");
+    CheckCapture(format.sampleRate);
     ProbeCount(0);
     s_step = stepBreaks;
 }
@@ -272,6 +296,8 @@ static void CheckBreaks(void)
     CHECK(breaks <= 2 * shorts, "the ramp plays in order");
     CHECK(Shorts() <= 4, "few short quanta from the start");
     CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
+    CHECK(maudStopStream(s_context, s_capture) == maud_success, "stop the capture");
+    s_capturedAtStop = s_captured;
     s_blocks = 0;
     s_since = emscripten_get_now();
     s_step = stepStopped;
@@ -340,7 +366,9 @@ static void Step_(void* user)
         if (now - s_since > 300.0)
         {
             CHECK(s_blocks == 0, "no callbacks once stopped");
+            CHECK(s_captured == s_capturedAtStop, "nor captured blocks");
             CHECK(maudStartStream(s_context, s_stream) == maud_success, "start again");
+            CHECK(maudStartStream(s_context, s_capture) == maud_success, "capture again");
             s_shortsAtRestart = Shorts();
             s_since = now;
             s_step = stepRestarted;
@@ -397,6 +425,7 @@ int main(void)
     streamDef.callback = CountBlocks;
     CHECK(maudCreateStream(s_context, &streamDef, &s_stream) == maud_success, "create");
     CHECK(maudStartStream(s_context, s_stream) == maud_success, "start");
+    s_denied = MicrophoneDenied() != 0;
     maudStreamDef captureDef = maudDefaultStreamDef();
     captureDef.direction = maud_directionInput;
     captureDef.callback = CaptureBlocks;

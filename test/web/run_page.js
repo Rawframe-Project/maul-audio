@@ -1,15 +1,17 @@
 // Runs a test page in headless Chrome: serves its directory, with the
 // cross-origin isolation headers or without, clicks once the page logs
 // that it waits for a gesture, and exits with the page's result.
-// Usage: node run_page.js <directory> <page> <isolated: 1|0>
+// Usage: node run_page.js <directory> <page> <isolated: 1|0> [deny]
+// With deny, the browser refuses the microphone and the page is told so.
 // Puppeteer comes from MAUD_PUPPETEER, a path to its module.
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require(process.env.MAUD_PUPPETEER || "puppeteer");
 
-const [directory, page, isolatedArgument] = process.argv.slice(2);
+const [directory, page, isolatedArgument, denyArgument] = process.argv.slice(2);
 const isolated = isolatedArgument === "1";
+const deny = denyArgument === "deny";
 const types = {".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm"};
 
 const server = http.createServer((request, response) => {
@@ -37,9 +39,9 @@ server.listen(0, "127.0.0.1", async () => {
     headless: true,
     args: [
       "--no-sandbox",
-      // A fake microphone, granted without asking.
+      // A fake microphone, granted without asking unless denied.
       "--use-fake-device-for-media-stream",
-      "--use-fake-ui-for-media-stream",
+      ...(deny ? [] : ["--use-fake-ui-for-media-stream"]),
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
       "--disable-backgrounding-occluded-windows",
@@ -64,12 +66,12 @@ server.listen(0, "127.0.0.1", async () => {
         }
       });
     });
-    await tab.goto(`http://127.0.0.1:${server.address().port}/${page}`);
+    await tab.goto(`http://127.0.0.1:${server.address().port}/${page}${deny ? "?deny=1" : ""}`);
     result = await Promise.race([done, new Promise((resolve) => setTimeout(() => resolve("timeout"), 60000))]);
   } finally {
     await browser.close();
     server.close();
   }
-  console.log(`${page} (${isolated ? "isolated" : "not isolated"}): ${result}`);
+  console.log(`${page} (${isolated ? "isolated" : "not isolated"}${deny ? ", denied" : ""}): ${result}`);
   process.exit(result === "pass" ? 0 : 1);
 });
