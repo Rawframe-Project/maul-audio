@@ -508,6 +508,57 @@ static void TestCapture(maudContext* context)
           "no converted capture at another rate");
 }
 
+// The other inputs: one at BlackHole's rate runs a duplex with the
+// slip; one at another rate is refused, since CoreAudio's input side
+// cannot convert (A27) and the library never changes a device's rate.
+static void TestDuplexApart(maudContext* context, maudDeviceId output, maudDeviceId blackhole)
+{
+    maudDeviceInfo played = {0};
+    CHECK(maudGetDeviceInfo(context, output, &played) == maud_success, "BlackHole's output");
+    maudDeviceId inputs[32];
+    uint32_t count = 0;
+    CHECK(maudGetDevices(context, maud_directionInput, inputs, 32, &count) == maud_success,
+          "the inputs");
+    uint32_t checked = 0;
+    for (uint32_t i = 0; i < count && i < 32; ++i)
+    {
+        maudDeviceInfo info = {0};
+        if (inputs[i].index1 == blackhole.index1 ||
+            maudGetDeviceInfo(context, inputs[i], &info) != maud_success)
+        {
+            continue;
+        }
+        Blocks apart = {.level = 0.0f};
+        maudStreamDef def = maudDefaultStreamDef();
+        def.direction = maud_directionDuplex;
+        def.device = output;
+        def.inputDevice = inputs[i];
+        def.periodFrames = 256;
+        def.callback = CountBlocks;
+        def.user = &apart;
+        apart.periodFrames = 256;
+        maudStreamId stream = {0, 0};
+        maudResult result = maudCreateStream(context, &def, &stream);
+        if (info.nativeSampleRate != played.nativeSampleRate)
+        {
+            CHECK(result == maud_errorUnsupported, "an input at another rate is refused");
+            checked++;
+            continue;
+        }
+        CHECK(result == maud_success, "a duplex on two devices");
+        maudStreamStatus status = {0};
+        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+                  status.drift == maud_driftSlip,
+              "two devices slip");
+        CHECK(Destroy(context, stream), "destroy it");
+        checked++;
+    }
+    if (checked == 0)
+    {
+        fprintf(stderr, "no second input device; the two-device duplex is not checked\n");
+    }
+}
+
 // A duplex stream on BlackHole, whose output loops into its input: one
 // device, one clock, and what the callback plays it hears back. On
 // BlackHole's output and another device's input, two clocks: the slip.
@@ -533,30 +584,7 @@ static void TestDuplex(maudContext* context)
     }
     CHECK(loudest >= 200, "it hears what it plays");
     CHECK(Destroy(context, stream), "destroy the duplex");
-    maudDeviceId inputs[32];
-    uint32_t count = 0;
-    CHECK(maudGetDevices(context, maud_directionInput, inputs, 32, &count) == maud_success,
-          "the inputs");
-    maudDeviceId other = {0, 0};
-    for (uint32_t i = 0; i < count && i < 32; ++i)
-    {
-        if (inputs[i].index1 != def.inputDevice.index1)
-        {
-            other = inputs[i];
-        }
-    }
-    if (other.index1 == 0)
-    {
-        fprintf(stderr, "no second input device; the two-clock duplex is not checked\n");
-        return;
-    }
-    def.inputDevice = other;
-    Blocks apart = {.level = 0.0f};
-    stream = OpenStream(context, &def, &apart);
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
-              status.drift == maud_driftSlip,
-          "two devices slip");
-    CHECK(Destroy(context, stream), "destroy it");
+    TestDuplexApart(context, def.device, def.inputDevice);
 }
 
 int main(void)

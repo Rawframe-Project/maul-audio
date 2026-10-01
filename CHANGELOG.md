@@ -134,4 +134,6 @@ format.
 - Duplex on one clock where the platform has one, reported as
   `maud_driftNone`: PipeWire schedules both halves under one driver
   (one `node.group`), the web renders both in one AudioContext, and
-  CoreAudio runs them on one clock when both are on one device.
+  CoreAudio runs them on one clock when both are on one device. A
+  CoreAudio duplex on two devices needs them at one nominal rate for
+  now, since an input unit cannot convert; it slips.
