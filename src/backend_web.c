@@ -2,13 +2,15 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The web backend. The context owns an AudioContext, kept by the
-// JavaScript side in a table under a handle. Streams play through a
-// JavaScript AudioWorkletProcessor fed with chunks the main thread
-// renders when the worklet reports one played, so the host's callback
-// runs on the main thread, four chunks of 512 frames ahead of the
-// speaker. The browser's autoplay policy holds a context until a user
-// gesture; the drain reads the AudioContext's state and suspends or
-// resumes the streams.
+// JavaScript side in a table under a handle. Each stream plays through
+// an AudioWorkletProcessor that reports every quantum it plays; the
+// main thread answers by rendering, in steps of 128 frames, up to a
+// fill target. On a cross-origin isolated page the frames go through a
+// SharedArrayBuffer ring, elsewhere as posted chunks. The target starts
+// at the browser's baseLatency plus 256 frames and grows by 128 for
+// each quantum the worklet plays short. The browser's autoplay policy
+// holds a context until a user gesture; the drain reads the
+// AudioContext's state and suspends or resumes the streams.
 
 #include "backend.h"
 #include "context.h"
@@ -21,11 +23,11 @@
 #include <emscripten/emscripten.h>
 #include <string.h>
 
-// Frames in each chunk the main thread renders, and chunks queued.
-#define CHUNK_FRAMES 512u
-#define QUEUE_DEPTH  4u
-// The render quantum of Web Audio.
-#define QUANTUM_FRAMES 128u
+// The most frames a stream keeps ahead of the speaker: its ring's
+// capacity, a power of two, and the frames one render may ask for.
+#define MAUD_WEB_CAPACITY 4096u
+// The render quantum of Web Audio, and the step of every render.
+#define MAUD_WEB_QUANTUM 128u
 
 // clang-format off
 
@@ -59,85 +61,145 @@ EM_JS(void, maudWebClose, (int handle), {
     globalThis.maudWeb.contexts[handle] = null;
 });
 
-// Plays posted chunks of interleaved frames and reports each one
-// played; told to drop its queue, it asks for a new one. The source is
-// plain string literals: EM_JS passes its body through the C
+// The processor plays interleaved frames from a SharedArrayBuffer ring
+// (its write index, read index and short count in the first 12 bytes)
+// or from posted chunks, counts the quanta it plays short, and posts
+// after each quantum. Told to drop, it discards what it holds, counted
+// as played so the main thread refills. The
+// source is plain string literals: EM_JS passes its body through the C
 // preprocessor, which would split arrow functions and template
 // literals.
 EM_JS(void, maudWebAddProcessor, (int handle), {
     const source = [
-        "class MaudQueue extends AudioWorkletProcessor {",
+        "class MaudStream extends AudioWorkletProcessor {",
         "  constructor(options) {",
         "    super();",
-        "    this.channels = options.processorOptions.channels;",
-        "    this.depth = options.processorOptions.depth;",
+        "    const p = options.processorOptions;",
+        "    this.channels = p.channels;",
+        "    this.played = 0;",
+        "    this.short = 0;",
+        "    this.index = p.ring ? new Int32Array(p.ring, 0, 3) : null;",
+        "    this.data = p.ring ? new Float32Array(p.ring, 12) : null;",
+        "    this.mask = p.capacity - 1;",
         "    this.chunks = [];",
         "    this.offset = 0;",
         "    const self = this;",
         "    this.port.onmessage = function (event) {",
-        "      if (event.data === 'drop') {",
-        "        self.chunks = [];",
-        "        self.offset = 0;",
-        "        for (let i = 0; i < self.depth; ++i) { self.port.postMessage(1); }",
-        "      }",
-        "      else { self.chunks.push(event.data); }",
+        "      if (event.data !== 'drop') { self.chunks.push(event.data); return; }",
+        "      if (self.index) { Atomics.store(self.index, 1, Atomics.load(self.index, 0)); }",
+        "      let dropped = -self.offset;",
+        "      for (const chunk of self.chunks) { dropped += chunk.length / self.channels; }",
+        "      self.played += dropped;",
+        "      self.chunks = [];",
+        "      self.offset = 0;",
+        "      self.port.postMessage(self.index ? 0 : [self.played, self.short]);",
         "    };",
+        "  }",
+        "  readRing(out, frames) {",
+        "    const read = Atomics.load(this.index, 1);",
+        "    const count = Math.min(frames, (Atomics.load(this.index, 0) - read) | 0);",
+        "    for (let i = 0; i < count; ++i) {",
+        "      const at = ((read + i) & this.mask) * this.channels;",
+        "      for (let c = 0; c < out.length; ++c) { out[c][i] = this.data[at + c]; }",
+        "    }",
+        "    Atomics.store(this.index, 1, (read + count) | 0);",
+        "    return count;",
+        "  }",
+        "  readChunks(out, frames) {",
+        "    let i = 0;",
+        "    for (; i < frames && this.chunks.length > 0; ++i) {",
+        "      const chunk = this.chunks[0];",
+        "      for (let c = 0; c < out.length; ++c) { out[c][i] = chunk[this.offset * this.channels + c]; }",
+        "      this.offset += 1;",
+        "      if (this.offset * this.channels >= chunk.length) { this.chunks.shift(); this.offset = 0; }",
+        "    }",
+        "    return i;",
         "  }",
         "  process(inputs, outputs) {",
         "    const out = outputs[0];",
         "    const frames = out[0].length;",
-        "    for (let i = 0; i < frames && this.chunks.length > 0; ++i) {",
-        "      const chunk = this.chunks[0];",
-        "      for (let c = 0; c < out.length; ++c) { out[c][i] = chunk[this.offset * this.channels + c]; }",
-        "      this.offset += 1;",
-        "      if (this.offset * this.channels >= chunk.length) {",
-        "        this.chunks.shift();",
-        "        this.offset = 0;",
-        "        this.port.postMessage(1);",
-        "      }",
+        "    const count = this.index ? this.readRing(out, frames) : this.readChunks(out, frames);",
+        "    this.played += count;",
+        "    if (count < frames) {",
+        "      this.short += 1;",
+        "      if (this.index) { Atomics.store(this.index, 2, this.short); }",
         "    }",
+        "    this.port.postMessage(this.index ? 0 : [this.played, this.short]);",
         "    return true;",
         "  }",
         "}",
-        "registerProcessor('maud-queue', MaudQueue);",
+        "registerProcessor('maud-stream', MaudStream);",
     ].join("\n");
     const entry = globalThis.maudWeb.contexts[handle];
     entry.worklet = entry.context.audioWorklet.addModule(
         URL.createObjectURL(new Blob([source], {type: "text/javascript"})));
 });
 
-// Makes a stream's node once the processor is registered and queues its
-// first chunks; returns the node's handle. Each chunk played asks the
-// module for the next.
-EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, int frames,
-                             int depth), {
+// Makes a stream's node once the processor is registered, fills it, and
+// returns the node's handle. Each report from the worklet tops the
+// stream up to its target, rendering through maudWebRender.
+EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, int capacity,
+                             int quantum), {
     const web = globalThis.maudWeb;
     const entry = web.contexts[handle];
-    const record = {node: null, closed: false};
+    const rate = entry.context.sampleRate;
+    const base = Math.ceil(entry.context.baseLatency * rate / quantum) * quantum;
+    const record = {node: null, closed: false, posted: 0, shortSeen: 0, ring: null, index: null, data: null};
+    record.target = Math.min(base + 2 * quantum, capacity);
+    if (typeof SharedArrayBuffer !== "undefined" && globalThis.crossOriginIsolated) {
+        record.ring = new SharedArrayBuffer(12 + capacity * channels * 4);
+        record.index = new Int32Array(record.ring, 0, 3);
+        record.data = new Float32Array(record.ring, 12);
+    }
     web.nodes.push(record);
     const id = web.nodes.length - 1;
-    function send() {
-        const pointer = _maudWebRender(context, slot);
-        const samples = HEAPF32.slice(pointer >> 2, (pointer >> 2) + frames * channels);
-        record.node.port.postMessage(samples, [samples.buffer]);
+    function write(pointer, frames) {
+        const from = pointer >> 2;
+        if (!record.ring) {
+            const samples = HEAPF32.slice(from, from + frames * channels);
+            record.node.port.postMessage(samples, [samples.buffer]);
+            record.posted += frames;
+            return;
+        }
+        const at = Atomics.load(record.index, 0);
+        const start = at & (capacity - 1);
+        const first = Math.min(frames, capacity - start);
+        record.data.set(HEAPF32.subarray(from, from + first * channels), start * channels);
+        record.data.set(HEAPF32.subarray(from + first * channels, from + frames * channels), 0);
+        Atomics.store(record.index, 0, (at + frames) | 0);
+    }
+    function fill(played, short) {
+        if (short > record.shortSeen) {
+            record.target = Math.min(record.target + (short - record.shortSeen) * quantum, capacity);
+            record.shortSeen = short;
+        }
+        const buffered = record.ring ? (Atomics.load(record.index, 0) - Atomics.load(record.index, 1)) | 0
+                                     : record.posted - played;
+        const frames = Math.floor((record.target - buffered) / quantum) * quantum;
+        if (frames > 0) {
+            write(_maudWebRender(context, slot, frames), frames);
+        }
     }
     entry.worklet.then(function () {
         if (record.closed) {
             return;
         }
-        record.node = new AudioWorkletNode(entry.context, "maud-queue", {
+        record.node = new AudioWorkletNode(entry.context, "maud-stream", {
             numberOfInputs: 0,
             outputChannelCount: [channels],
-            processorOptions: {channels: channels, depth: depth},
+            processorOptions: {channels: channels, capacity: capacity, ring: record.ring},
         });
-        record.node.port.onmessage = function () {
-            if (!record.closed) {
-                send();
+        record.node.port.onmessage = function (event) {
+            if (record.closed) {
+                return;
+            }
+            if (record.ring) {
+                fill(0, Atomics.load(record.index, 2));
+            } else {
+                fill(event.data[0], event.data[1]);
             }
         };
-        for (let i = 0; i < depth; ++i) {
-            send();
-        }
+        fill(0, 0);
         record.node.connect(entry.context.destination);
     });
     return id;
@@ -178,11 +240,12 @@ typedef struct maudWeb
     size_t bytes;
 } maudWeb;
 
-// Renders one chunk of a stream on the main thread and returns it; the
-// JavaScript side calls it when the worklet has played a chunk.
-EMSCRIPTEN_KEEPALIVE float* maudWebRender(maudContext* context, int slotIndex);
+// Renders frames of a stream, a multiple of the quantum and at most the
+// capacity, on the main thread and returns them; the JavaScript side
+// calls it to top the stream up.
+EMSCRIPTEN_KEEPALIVE float* maudWebRender(maudContext* context, int slotIndex, int frames);
 
-float* maudWebRender(maudContext* context, int slotIndex)
+float* maudWebRender(maudContext* context, int slotIndex, int frames)
 {
     maudWeb* web = context->native;
     maudStreamCore* core = &context->streams.slots[slotIndex].core;
@@ -192,12 +255,12 @@ float* maudWebRender(maudContext* context, int slotIndex)
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
     if (running)
     {
-        maudPullPeriod(&core->period, chunk, CHUNK_FRAMES);
-        atomic_fetch_add_explicit(&core->position, CHUNK_FRAMES, memory_order_release);
+        maudPullPeriod(&core->period, chunk, (uint32_t)frames);
+        atomic_fetch_add_explicit(&core->position, (uint64_t)frames, memory_order_release);
     }
     else
     {
-        memset(chunk, 0, web->streams[slotIndex].chunkBytes);
+        memset(chunk, 0, (size_t)frames * core->period.channelCount * sizeof(float));
     }
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
     return chunk;
@@ -285,7 +348,7 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
     }
     *formatOut = (maudStreamFormat){
         .sampleRate = rate,
-        .periodFrames = def->periodFrames != 0 ? def->periodFrames : QUANTUM_FRAMES,
+        .periodFrames = def->periodFrames != 0 ? def->periodFrames : MAUD_WEB_QUANTUM,
         .layout = def->layout,
         .ratePolicy = def->ratePolicy,
     };
@@ -303,14 +366,14 @@ static maudResult AttachStream(maudContext* context, maudStreamSlot* slot)
     maudWeb* web = context->native;
     maudWebStream* entry = EntryOf(context, slot);
     uint32_t channels = slot->core.period.channelCount;
-    entry->chunkBytes = (size_t)CHUNK_FRAMES * channels * sizeof(float);
+    entry->chunkBytes = (size_t)MAUD_WEB_CAPACITY * channels * sizeof(float);
     entry->chunk = maudContextAllocate(context, entry->chunkBytes, alignof(float));
     if (entry->chunk == nullptr)
     {
         return maud_errorCapacity;
     }
     entry->node = maudWebOpenNode(web->handle, context, (int)(slot - context->streams.slots),
-                                  (int)channels, (int)CHUNK_FRAMES, (int)QUEUE_DEPTH);
+                                  (int)channels, (int)MAUD_WEB_CAPACITY, (int)MAUD_WEB_QUANTUM);
     return maud_success;
 }
 
@@ -322,7 +385,7 @@ static void DetachStream(maudContext* context, maudStreamSlot* slot)
     *entry = (maudWebStream){0};
 }
 
-// A stopped stream renders silence; what it had queued is dropped.
+// A stopped stream renders silence; what it had buffered is dropped.
 static void SetStreamActive(maudContext* context, maudStreamSlot* slot, bool active)
 {
     if (!active)

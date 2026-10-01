@@ -48,6 +48,18 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     s_blocks++;
 }
 
+// clang-format off
+
+// 1 when the stream's node reads a SharedArrayBuffer ring, which it
+// must exactly on a cross-origin isolated page; -1 when it does not.
+EM_JS(int, RingMatchesPage, (void), {
+    const nodes = globalThis.maudWeb.nodes.filter(function (record) { return record !== null; });
+    const isolated = globalThis.crossOriginIsolated === true;
+    return nodes.length === 1 && (nodes[0].ring !== null) === isolated ? 1 : -1;
+});
+
+// clang-format on
+
 // Makes the page's clicks call TestGesture.
 EM_JS(void, ListenForGesture, (void),
       { document.addEventListener("click", function() { _TestGesture(); }); });
@@ -126,6 +138,7 @@ static void Step_(void* user)
             CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
                       status.suspension == maud_suspendNone,
                   "the stream runs after the gesture");
+            CHECK(RingMatchesPage() == 1, "a ring exactly on an isolated page");
             s_step = stepWaitForBlocks;
         }
         break;
