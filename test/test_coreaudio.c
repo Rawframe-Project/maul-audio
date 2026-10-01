@@ -510,7 +510,7 @@ static void TestCapture(maudContext* context)
 
 // The other inputs: one at BlackHole's rate runs a duplex with the
 // slip; one at another rate is refused, since CoreAudio's input side
-// cannot convert (A27) and the library never changes a device's rate.
+// cannot convert and the library never changes a device's rate.
 static void TestDuplexApart(maudContext* context, maudDeviceId output, maudDeviceId blackhole)
 {
     maudDeviceInfo played = {0};

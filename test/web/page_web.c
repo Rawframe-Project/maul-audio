@@ -43,6 +43,8 @@ typedef enum Step
 static maudContext* s_context;
 static maudStreamId s_stream;
 static Step s_step;
+// The interval that runs Step_, cleared once the context is gone.
+static long s_interval;
 static uint32_t s_blocks;
 static uint32_t s_wrongSize;
 static double s_since;
@@ -216,7 +218,9 @@ static void Finish(void)
               status.drift == maud_driftNone,
           "one AudioContext, one clock");
     CHECK(maudDestroyStream(s_context, duplex) == maud_success, "destroy the duplex");
+    emscripten_clear_interval(s_interval);
     CHECK(maudDestroyContext(s_context) == maud_success, "destroy");
+    s_context = nullptr;
     printf("MAUD_TEST_RESULT %s\n", s_failures == 0 ? "pass" : "fail");
     s_step = stepDone;
 }
@@ -461,6 +465,6 @@ int main(void)
     ListenForGesture();
     printf("MAUD_TEST_WAITING_FOR_GESTURE\n");
     s_step = stepWaitForResume;
-    emscripten_set_interval(Step_, 10.0, nullptr);
+    s_interval = emscripten_set_interval(Step_, 10.0, nullptr);
     return 0;
 }
