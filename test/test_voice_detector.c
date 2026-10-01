@@ -159,6 +159,66 @@ static void TestSpeech(void)
     CHECK(lenient.hit > strict.hit, "aggressiveness asks for more evidence");
 }
 
+// A detector run over signal kinds, scored from 2 s on.
+static Score KindScore(Voicing voicing, double speechDb, double noiseDb, uint8_t aggressiveness)
+{
+    Signal signal = MakeSignal(48000, 10.0);
+    AddNoise(&signal, noiseDb, 5);
+    AddVoicing(&signal, speechDb, 2.0, 10.0, voicing);
+    Run run = Detect(&signal, aggressiveness, 480);
+    Score score = Measure(&signal, &run, 2.0, 25);
+    FreeRun(&run);
+    FreeSignal(&signal);
+    return score;
+}
+
+// A nasal sounds only below 450 Hz, where the bands' mean barely moves:
+// one band's margin finds it. A whisper is noise a little above the
+// noise in every band: only the mean finds it, and the higher
+// aggressiveness asks too much.
+static void TestVoicings(void)
+{
+    Score nasal = KindScore(voicingNasal, -45, -40, 1);
+    CHECK(nasal.hit >= 0.85, "a faint nasal is found by its band");
+    Score whisper = KindScore(voicingWhisper, -38, -40, 1);
+    CHECK(whisper.hit >= 0.85, "a whisper 2 dB over the noise is found");
+    Score strict = KindScore(voicingWhisper, -38, -40, 3);
+    CHECK(strict.hit <= 0.1, "but not at aggressiveness 3");
+}
+
+// A 5 ms click wakes the lenient detector, whose onset is one frame, and
+// not the strict one, whose onset is two.
+static void TestClicks(void)
+{
+    Score lenient = {0};
+    Score strict = {0};
+    for (uint8_t a = 1; a <= 3; a += 2)
+    {
+        Signal signal = MakeSignal(48000, 10.0);
+        AddNoise(&signal, -60, 5);
+        AddClicks(&signal, -40);
+        Run run = Detect(&signal, a, 480);
+        *(a == 1 ? &lenient : &strict) = Measure(&signal, &run, 0.0, 25);
+        FreeRun(&run);
+        FreeSignal(&signal);
+    }
+    CHECK(lenient.falseAlarm > 0.1, "a click passes a one-frame onset");
+    CHECK(strict.falseAlarm == 0.0, "not a two-frame one");
+}
+
+// A 30 Hz rumble swelling to -30 dBFS is not voice: the high-pass takes
+// it out, and the lowest band cannot decide alone.
+static void TestRumble(void)
+{
+    Signal signal = MakeSignal(48000, 10.0);
+    AddNoise(&signal, -70, 5);
+    AddRumble(&signal, 30.0, -30);
+    Run run = Detect(&signal, 1, 480);
+    CHECK(Measure(&signal, &run, 2.0, 25).falseAlarm == 0.0, "rumble is not voice");
+    FreeRun(&run);
+    FreeSignal(&signal);
+}
+
 // Each word turns the detector on within 30 ms, and the last one leaves
 // it on for the hangover and no more than 30 ms past it.
 static void TestOnsetAndHangover(void)
@@ -306,6 +366,9 @@ int main(void)
 {
     TestQuietAndNoise();
     TestSpeech();
+    TestVoicings();
+    TestClicks();
+    TestRumble();
     TestOnsetAndHangover();
     TestNoiseStep();
     TestTone();

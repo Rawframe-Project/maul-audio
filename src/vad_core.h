@@ -20,7 +20,8 @@
 
 typedef struct maudVadCore
 {
-    maudBiquad highPass;
+    // A fourth-order high-pass at 80 Hz, two sections.
+    maudBiquad highPass[2];
     maudBiquad bands[MAUD_VAD_BANDS];
     // The frame being gathered: its samples, and the sums of squares of
     // each band and of the whole (after the high-pass).

@@ -5,9 +5,9 @@
 // six band levels from band-pass filters after a high-pass, each against
 // its own noise floor, the minimum of its smoothed level over 1.5 s. A
 // frame is speech when the weighted mean of the bands' margins over
-// their floors passes the global threshold, or one band's passes the
-// local one; the decision turns on after an onset and stays on for a
-// hangover.
+// their floors passes the global threshold, or one band's above 250 Hz
+// passes the local one (rumble lives below, and voice never only there);
+// the decision turns on after an onset and stays on for a hangover.
 
 #include "vad_core.h"
 
@@ -37,7 +37,8 @@ void maudInitVadCore(maudVadCore* core, uint32_t sampleRate, uint8_t aggressiven
         .hangoverFrames = hangoverFrames,
         .level = MAUD_FLOOR_DBFS,
     };
-    maudDesignHighPass(&core->highPass, 80.0, sampleRate);
+    maudDesignHighPass(&core->highPass[0], 80.0, sampleRate);
+    maudDesignHighPass(&core->highPass[1], 80.0, sampleRate);
     for (uint32_t b = 0; b < MAUD_VAD_BANDS; ++b)
     {
         maudDesignBandPass(&core->bands[b], s_edges[b], s_edges[b + 1], sampleRate);
@@ -97,7 +98,7 @@ static void Decide(maudVadCore* core)
         {
             margin += s_weights[i] * above;
             weights += s_weights[i];
-            widest = above > widest ? above : widest;
+            widest = i > 0 && above > widest ? above : widest;
         }
         else
         {
@@ -125,7 +126,7 @@ static void Decide(maudVadCore* core)
 
 bool maudVadSample(maudVadCore* core, float sample)
 {
-    float passed = maudFilter(&core->highPass, sample);
+    float passed = maudFilter(&core->highPass[1], maudFilter(&core->highPass[0], sample));
     for (uint32_t b = 0; b < MAUD_VAD_BANDS; ++b)
     {
         float band = maudFilter(&core->bands[b], passed);

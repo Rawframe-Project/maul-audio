@@ -95,10 +95,20 @@ static uint32_t s_seed = 0x9E3779B9u;
     return gain + 0.02;
 }
 
+// What a syllable sounds like: a vowel, a nasal (harmonics below
+// 450 Hz only), or a whisper (white noise).
+typedef enum Voicing
+{
+    voicingVowel,
+    voicingNasal,
+    voicingWhisper,
+} Voicing;
+
 // Adds speech from `from` to `to` seconds at an RMS level (while it
 // sounds) in dBFS: words of four 200 ms syllables 50 ms apart, then
 // 600 ms of pause. Marks the frames that sound.
-[[maybe_unused]] static void AddSpeech(Signal* signal, double dbfs, double from, double to)
+[[maybe_unused]] static void AddVoicing(Signal* signal, double dbfs, double from, double to,
+                                        Voicing voicing)
 {
     uint32_t rate = signal->rate;
     uint32_t start = (uint32_t)(from * rate);
@@ -121,10 +131,12 @@ static uint32_t s_seed = 0x9E3779B9u;
         double pitch = 140.0 + 30.0 * sin(2.0 * SIGNAL_PI * 0.7 * t);
         phase = fmod(phase + 2.0 * SIGNAL_PI * pitch / rate, 2.0 * SIGNAL_PI);
         double sample = 0.0;
-        for (int k = 1; k * pitch < 4000.0 && k * pitch < rate / 2.0; ++k)
+        double top = voicing == voicingNasal ? 450.0 : 4000.0;
+        for (int k = 1; voicing != voicingWhisper && k * pitch < top && k * pitch < rate / 2.0; ++k)
         {
             sample += Formants(k * pitch) * sin(k * phase);
         }
+        sample = voicing == voicingWhisper ? (double)Uniform() : sample;
         voice[i] = (float)(envelope * sample);
         energy += (double)voice[i] * (double)voice[i];
         sounding++;
@@ -136,6 +148,41 @@ static uint32_t s_seed = 0x9E3779B9u;
         signal->samples[i] += (float)((double)voice[i] * scale);
     }
     free(voice);
+}
+
+[[maybe_unused]] static void AddSpeech(Signal* signal, double dbfs, double from, double to)
+{
+    AddVoicing(signal, dbfs, from, to, voicingVowel);
+}
+
+// Adds a click: a 5 ms burst of noise at a level, every second from 1 s,
+// in the middle of a 10 ms frame.
+[[maybe_unused]] static void AddClicks(Signal* signal, double dbfs)
+{
+    float scale = (float)(DbToAmplitude(dbfs) * sqrt(3.0));
+    uint32_t frame = signal->rate / 100;
+    for (uint32_t second = 1; (second + 1) * signal->rate <= signal->count; ++second)
+    {
+        uint32_t start = second * signal->rate + frame / 4;
+        for (uint32_t i = start; i < start + frame / 2; ++i)
+        {
+            signal->samples[i] += scale * Uniform();
+        }
+    }
+}
+
+// Adds a low rumble: 400 ms swells of a sine at a frequency and peak
+// RMS level, every second.
+[[maybe_unused]] static void AddRumble(Signal* signal, double frequency, double dbfs)
+{
+    double amplitude = DbToAmplitude(dbfs) * sqrt(2.0);
+    for (uint32_t i = 0; i < signal->count; ++i)
+    {
+        double t = (double)i / signal->rate;
+        double phase = fmod(t, 1.0);
+        double envelope = phase < 0.4 ? sin(SIGNAL_PI * phase / 0.4) : 0.0;
+        signal->samples[i] += (float)(amplitude * envelope * sin(2.0 * SIGNAL_PI * frequency * t));
+    }
 }
 
 // Copies a mono signal to `channels` interleaved channels.
