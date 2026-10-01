@@ -39,7 +39,10 @@ pulse_stream: clock context context_core period pulse_core thread worker
 stream: backend clock context context_core duplex follow period stream_open thread
 stream_open: backend clock context context_core follow period voice
 thread:
+vad_core: voice_dsp
 voice: context_core
+voice_detector: allocator vad_core voice_dsp
+voice_dsp:
 wasapi_core: context_core device wasapi_notify worker
 wasapi_format:
 wasapi_notify:

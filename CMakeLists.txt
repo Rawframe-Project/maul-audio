@@ -68,9 +68,17 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/stream_open.c
     src/duplex.c
     src/voice.c
+    src/voice_dsp.c
+    src/vad_core.c
+    src/voice_detector.c
     src/clock.c
     src/thread.c)
 maul_configure_library(maul-audio)
+# The voice processors use the C math library, a library of its own on
+# POSIX systems other than Darwin; static consumers need it too.
+if(UNIX AND NOT APPLE)
+    target_link_libraries(maul-audio PUBLIC m)
+endif()
 # clock_gettime under a strict C23 build, on POSIX systems other than
 # Darwin, which shows it (and clock_gettime_nsec_np) without the request.
 if(UNIX AND NOT APPLE)
@@ -164,6 +172,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(device)
     maul_add_test(utf8 WHITEBOX)
     maul_add_test(duplex)
+    maul_add_test(voice_detector)
     # The stamp races a writer thread; Emscripten builds have none.
     if(NOT EMSCRIPTEN)
         maul_add_test(stamp WHITEBOX POSIX)

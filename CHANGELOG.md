@@ -154,3 +154,8 @@ format.
   cancellation and noise suppression (the unit has no switch for one
   without the other) and gain control as the unit reads it. An input
   alone runs on the HAL unit and reports no processing.
+- A first-party voice activity detector (`maul-audio/voice.h`,
+  `maudVoiceDetector`), standing apart from contexts and streams: six
+  band levels against noise floors learned over 1.5 s, four
+  aggressiveness levels, a hangover; real-time safe, and its decisions
+  do not depend on how the frames are cut.
