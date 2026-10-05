@@ -27,6 +27,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 else()
     set(MAUL_AUDIO_PIPEWIRE_DEFAULT OFF)
 endif()
+option(MAUL_AUDIO_FUZZ "Build the libFuzzer targets (Clang)" OFF)
 option(MAUL_AUDIO_PIPEWIRE "Build the PipeWire backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 option(MAUL_AUDIO_PULSE "Build the PulseAudio backend, loaded at run time"
@@ -67,6 +68,9 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/stream.c
     src/stream_open.c
     src/sample_convert.c
+    src/hrtf.c
+    src/hrtf_file.c
+    src/hrtf_resample.c
     src/lifecycle.c
     src/form.c
     src/duplex.c
@@ -184,6 +188,11 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)
+        maul_add_test(hrtf WHITEBOX)
+        if(TARGET test_hrtf)
+            target_compile_definitions(test_hrtf PRIVATE
+                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+        endif()
     endif()
     # The stamp races a writer thread; Emscripten builds have none.
     if(NOT EMSCRIPTEN)
@@ -273,6 +282,25 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(trap WHITEBOX POSIX)
     endif()
     maul_add_header_tests()
+endif()
+
+# The fuzz targets: test/fuzz_<area>.c, run as fuzz_<area> <corpus dir>,
+# over the bytes programs load and hand the library; the shipped HRTF
+# file in data/hrtf/, behind a 0x01 byte, is fuzz_hrtf's seed.
+if(MAUL_AUDIO_FUZZ)
+    # The library is instrumented too: its coverage guides libFuzzer, and
+    # the sanitizers watch its code, not only the targets'.
+    target_compile_options(maul-audio PRIVATE -fsanitize=fuzzer-no-link,address,undefined)
+    target_link_options(maul-audio PUBLIC -fsanitize=address,undefined)
+    foreach(area hrtf)
+        add_executable(fuzz_${area} test/fuzz_${area}.c)
+        target_link_libraries(fuzz_${area} PRIVATE maul-audio)
+        # The targets reach the library's own functions.
+        target_include_directories(fuzz_${area} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        maul_apply_flags(fuzz_${area})
+        target_compile_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined)
+        target_link_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined)
+    endforeach()
 endif()
 
 if(MAUL_AUDIO_BUILD_BENCH AND EXISTS ${PROJECT_SOURCE_DIR}/bench/bench_main.c)

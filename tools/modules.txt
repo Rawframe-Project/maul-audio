@@ -28,6 +28,10 @@ device: context context_core follow notify
 duplex: context context_core stream_open
 follow: backend context context_core notify
 form:
+hrtf: allocator hrtf_core hrtf_file hrtf_resample
+hrtf_core:
+hrtf_file:
+hrtf_resample:
 gain_control: allocator vad_core voice_dsp
 invariant:
 layout:

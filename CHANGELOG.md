@@ -228,3 +228,10 @@ format.
   SOFA files into it (numpy and h5py, tool-only); the default set,
   SADIE II's KU100 at 48 kHz under the Apache License 2.0, generated
   into `data/hrtf/` with its provenance.
+- HRTF loading (`maul-audio/hrtf.h`): `maudLoadHrtf` reads a .maudhrtf
+  file's bytes, checking every count, size, ring, text and its CRC-32
+  before trusting anything, with limits on directions and taps in its
+  def, and resamples the set to the renderer's rate (band-limited, the
+  gain kept; a resampled set starts a constant 16 input samples early);
+  `maudGetHrtfInfo` reports the set, its name and license. A libFuzzer
+  target, `fuzz_hrtf`, behind `MAUL_AUDIO_FUZZ`.

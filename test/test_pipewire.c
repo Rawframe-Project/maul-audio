@@ -225,9 +225,9 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, const char*
 
 // Drains notifications for up to ten seconds until device is the
 // default output for both roles.
-static bool WaitForDefault(maudContext* context, maudDeviceId device)
+static bool WaitForDefaultWithin(maudContext* context, maudDeviceId device, int tries)
 {
-    for (int tries = 0; tries < NOTICE_TRIES; ++tries)
+    for (int poll = 0; poll < tries; ++poll)
     {
         maudNotification ignored;
         while (maudNextNotification(context, &ignored) == maud_success)
@@ -247,6 +247,11 @@ static bool WaitForDefault(maudContext* context, maudDeviceId device)
         Sleep(10);
     }
     return false;
+}
+
+static bool WaitForDefault(maudContext* context, maudDeviceId device)
+{
+    return WaitForDefaultWithin(context, device, NOTICE_TRIES);
 }
 
 static bool FindByKey(const maudContext* context, maudDirection direction, const char* key,
@@ -302,6 +307,22 @@ static void ResetDefaults(maudContext* context, Helper* helper)
     CHECK(WaitForDefault(context, sink), "the test sink is the default");
 }
 
+// Writes the effective default output, again each second for ten
+// seconds, until the context follows it.
+static bool SetEffectiveDefault(maudContext* context, Helper* helper, const char* nodeName,
+                                maudDeviceId device)
+{
+    for (int attempt = 0; attempt < 10; ++attempt)
+    {
+        SetDefaultKey(helper, "default.audio.sink", nodeName);
+        if (WaitForDefaultWithin(context, device, 100))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
 {
     ResetDefaults(context, helper);
@@ -315,14 +336,13 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
           "a 44.1 kHz node runs at the graph's rate");
     CHECK(info.form == maud_formHeadphones, "its form factor read as headphones");
     // The effective default, as the session manager writes it. A direct
-    // write stays until the session manager's own choice changes.
-    SetDefaultKey(helper, "default.audio.sink", "maud-test-hotplug");
-    maudDeviceId changed = plugged;
-    CHECK(WaitFor(context, maud_notifyDefaultChanged, nullptr, &changed), "effective default");
+    // write stays until the session manager's own choice changes, which
+    // it may still be making for the sink just plugged in: the write is
+    // made again until it holds.
+    CHECK(SetEffectiveDefault(context, helper, "maud-test-hotplug", plugged), "effective default");
     maudDeviceId sink = {0, 0};
     CHECK(FindByKey(context, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
-    SetDefaultKey(helper, "default.audio.sink", "maud-test-sink");
-    CHECK(WaitForDefault(context, sink), "effective default back");
+    CHECK(SetEffectiveDefault(context, helper, "maud-test-sink", sink), "effective default back");
     // The configured default, as a user's choice writes it; the session
     // manager makes it the effective one.
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
