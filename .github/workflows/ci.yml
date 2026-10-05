@@ -119,13 +119,16 @@ jobs:
           for t in build/test_*.js; do node "$t" || exit 1; done
       - name: Browser
         # The web backend in headless Chrome, on a cross-origin isolated
-        # page and on a plain one, and with the microphone refused.
+        # page and on a plain one, and with the microphone refused. The
+        # page checks timing on a shared runner, so each run gets a second
+        # attempt; a real failure fails both.
         run: |
           npm install --prefix "$RUNNER_TEMP/web" puppeteer@25.12.0
           export MAUD_PUPPETEER="$RUNNER_TEMP/web/node_modules/puppeteer"
-          node test/web/run_page.js build page_web.html 1
-          node test/web/run_page.js build page_web.html 0
-          node test/web/run_page.js build page_web.html 0 deny
+          for mode in "1" "0" "0 deny"; do
+            node test/web/run_page.js build page_web.html $mode ||
+              node test/web/run_page.js build page_web.html $mode || exit 1
+          done
       - name: Size
         # The static library's size, reported, not gated (family record
         # 0013).

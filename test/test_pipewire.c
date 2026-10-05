@@ -194,12 +194,17 @@ static bool KeyIs(const maudContext* context, maudDeviceId device, const char* k
            length == strlen(key) && memcmp(bytes, key, length) == 0;
 }
 
+// Polls of 10 ms a wait for the daemon or the session manager takes at
+// most: ten seconds, since a loaded machine slows WirePlumber well past
+// its usual tens of milliseconds.
+#define NOTICE_TRIES 1000
+
 // Drains notifications for up to three seconds until one of kind
 // arrives whose device has key, or whose device is that one.
 static bool WaitFor(maudContext* context, maudNotificationKind kind, const char* key,
                     maudDeviceId* deviceOut)
 {
-    for (int tries = 0; tries < 300; ++tries)
+    for (int tries = 0; tries < NOTICE_TRIES; ++tries)
     {
         maudNotification record;
         while (maudNextNotification(context, &record) == maud_success)
@@ -218,11 +223,11 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, const char*
     return false;
 }
 
-// Drains notifications for up to three seconds until device is the
+// Drains notifications for up to ten seconds until device is the
 // default output for both roles.
 static bool WaitForDefault(maudContext* context, maudDeviceId device)
 {
-    for (int tries = 0; tries < 300; ++tries)
+    for (int tries = 0; tries < NOTICE_TRIES; ++tries)
     {
         maudNotification ignored;
         while (maudNextNotification(context, &ignored) == maud_success)
