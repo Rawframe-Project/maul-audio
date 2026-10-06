@@ -194,9 +194,12 @@ static void TestChannels(void)
     memcpy(s_out, s_in, sizeof(s_in));
     maudNoiseSuppressor* mono = Make(maud_layoutMono, 100.0f);
     maudNoiseSuppressor* stereo = Make(maud_layoutStereo, 100.0f);
-    CHECK(maudSuppressNoise(mono, s_out, FRAMES, nullptr) == maud_success &&
-              maudSuppressNoise(stereo, s_stereo, FRAMES, nullptr) == maud_success,
+    maudNoiseState one;
+    maudNoiseState two;
+    CHECK(maudSuppressNoise(mono, s_out, FRAMES, &one) == maud_success &&
+              maudSuppressNoise(stereo, s_stereo, FRAMES, &two) == maud_success,
           "both");
+    CHECK(one.noiseDbfs == two.noiseDbfs, "the same noise level: the channels' mean");
     bool same = true;
     for (uint32_t i = 0; i < FRAMES; ++i)
     {
@@ -205,6 +208,29 @@ static void TestChannels(void)
     CHECK(same, "identical channels come out as the mono input does");
     maudDestroyNoiseSuppressor(mono);
     maudDestroyNoiseSuppressor(stereo);
+}
+
+static void TestFloor(void)
+{
+    // At a floor of -6 dB, steady noise comes down no further.
+    for (uint32_t i = 0; i < FRAMES; ++i)
+    {
+        s_in[i] = 0.0316f * Gaussian();
+    }
+    memcpy(s_out, s_in, sizeof(s_in));
+    maudNoiseSuppressorDef def = maudDefaultNoiseSuppressorDef();
+    def.sampleRate = RATE;
+    def.floorDb = -6.0f;
+    def.highPassHz = 0.0f;
+    maudNoiseSuppressor* s = nullptr;
+    CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_success &&
+              maudSuppressNoise(s, s_out, FRAMES, nullptr) == maud_success,
+          "suppressed");
+    double down =
+        LevelDb(s_in, RATE, FRAMES - HOP, 1) - LevelDb(s_out + HOP, RATE, FRAMES - HOP, 1);
+    printf("a -6 dB floor: noise %.2f dB down\n", down);
+    CHECK(down > 5.0 && down < 6.3, "down to the floor and no further");
+    maudDestroyNoiseSuppressor(s);
 }
 
 static void TestHighPass(void)
@@ -274,6 +300,7 @@ int main(void)
     TestBursts();
     TestLatencyAndCuts();
     TestChannels();
+    TestFloor();
     TestHighPass();
     TestRefused();
     TestNoAllocation();
