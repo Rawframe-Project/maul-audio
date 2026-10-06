@@ -6,8 +6,16 @@
 // triangles). Rays of up to 16 m between random points, queried for any
 // hit and for the closest hit directly; then a spatializer's volumetric
 // occlusion and transmission steps through the scene as its hooks; then
-// the level with an instance of a 6,000-triangle object in every room,
-// committed, queried and moved.
+// geometric reflections over the level, simulated and rendered at
+// orders 1 and 3; then the level with an instance of a 6,000-triangle
+// object in every room, committed, queried and moved. Each row is
+// printed beside its recorded baseline.
+
+// fopen reads the baseline; the C runtime's warning that it is unsafe
+// is about the Annex K alternative, which the family does not use.
+#define _CRT_SECURE_NO_WARNINGS
+
+#include "baseline.h"
 
 #include "maul-audio/scene.h"
 #include "maul-audio/spatializer.h"
@@ -194,6 +202,7 @@ static void Steps(maudAcousticScene* scene)
     double elapsed = Seconds() - start;
     printf("spatializer steps, 256 volumetric sources: %.2f ms per step, %.2f M rays/s\n",
            elapsed / 20 * 1e3, (double)s_hookRays / elapsed * 1e-6);
+    Against("steps.volumetric.ms", elapsed / 20 * 1e3, false);
     // One reverberation estimate of the default 2048 rays on one thread.
     s_hookRays = 0;
     start = Seconds();
@@ -209,6 +218,75 @@ static void Steps(maudAcousticScene* scene)
            "%.2f / %.2f / %.2f s\n",
            elapsed * 1e3, (double)s_hookRays * 1e-6, (double)reverb.reverbTime[0],
            (double)reverb.reverbTime[1], (double)reverb.reverbTime[2]);
+    Against("estimate.ms", elapsed * 1e3, false);
+    maudDestroySpatializer(s);
+}
+
+static float s_send[480];
+static float s_out[16][480];
+
+// Geometric reflections at an order: a reverberation estimate with its
+// response (2048 rays, a second at 48 kHz), then the response rendered
+// into the bed, 10 ms at a time.
+static void Reflections(maudAcousticScene* scene, uint32_t order)
+{
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.anyHit = maudSceneAnyHit;
+    def.closestHit = maudSceneClosestHit;
+    def.rayContext = scene;
+    def.reflectionOrder = order;
+    def.reflectionDuration = 1.0f;
+    def.reflectionRate = 48000.0f;
+    maudSpatializer* s = nullptr;
+    maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
+    if (maudCreateSpatializer(&def, &s) != maud_success ||
+        maudSetMaterials(s, &wall, 1) != maud_success)
+    {
+        return;
+    }
+    maudPose listener = {{64.0f, 1.6f, 64.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    double best = 1e9;
+    for (int run = 0; run < 3; ++run)
+    {
+        double start = Seconds();
+        if (maudSimulateReverb(s, &listener) != maud_success)
+        {
+            return;
+        }
+        double e = Seconds() - start;
+        best = e < best ? e : best;
+    }
+    char key[64];
+    printf("reflections, order %u: %.0f ms an estimate with its response\n", order, best * 1e3);
+    snprintf(key, sizeof(key), "reflections.simulate%u.ms", order);
+    Against(key, best * 1e3, false);
+    for (int i = 0; i < 480; ++i)
+    {
+        s_send[i] = Uniform(-0.5f, 0.5f);
+    }
+    float* bed[16];
+    for (int c = 0; c < 16; ++c)
+    {
+        bed[c] = s_out[c];
+    }
+    best = 1e9;
+    for (int run = 0; run < 5; ++run)
+    {
+        double start = Seconds();
+        for (int block = 0; block < 1000; ++block)
+        {
+            if (maudRenderReflections(s, &listener.orientation, s_send, bed, 480) != maud_success)
+            {
+                return;
+            }
+        }
+        double e = Seconds() - start;
+        best = e < best ? e : best;
+    }
+    printf("reflections, order %u: %.1f us per 10 ms block rendered (a second's response)\n", order,
+           best / 1000 * 1e6);
+    snprintf(key, sizeof(key), "reflections.render%u.us", order);
+    Against(key, best / 1000 * 1e6, false);
     maudDestroySpatializer(s);
 }
 
@@ -288,9 +366,13 @@ static void Instanced(const maudMesh* level, maudRayHit* hits)
     }
     double start = Seconds();
     (void)maudCommitAcousticScene(scene);
+    double commit = Seconds() - start;
     printf("instanced:   %u instances of %u triangles, committed in %.3f ms\n", GRID * GRID,
-           object.triangleCount, (Seconds() - start) * 1e3);
-    printf("closest hit: %.2f M rays/s among them\n", RAYS / BestClosest(scene, hits) * 1e-6);
+           object.triangleCount, commit * 1e3);
+    Against("instanced.commit.ms", commit * 1e3, false);
+    double rate = RAYS / BestClosest(scene, hits) * 1e-6;
+    printf("closest hit: %.2f M rays/s among them\n", rate);
+    Against("instanced.closest.mrays", rate, true);
     double moving = 0.0;
     for (int frame = 1; frame <= 10; ++frame)
     {
@@ -305,6 +387,7 @@ static void Instanced(const maudMesh* level, maudRayHit* hits)
     }
     printf("moving:      all %u moved and committed in %.3f ms a frame\n", GRID * GRID,
            moving / 10.0 * 1e3);
+    Against("instanced.moving.ms", moving / 10.0 * 1e3, false);
     maudDestroyAcousticScene(scene);
 }
 
@@ -322,7 +405,9 @@ int main(void)
     {
         return 1;
     }
-    printf("level: %u triangles, built in %.1f ms\n", s_triangleCount, (Seconds() - start) * 1e3);
+    double build = Seconds() - start;
+    printf("level: %u triangles, built in %.1f ms\n", s_triangleCount, build * 1e3);
+    Against("scene.build.ms", build * 1e3, false);
     MakeRays();
     static uint8_t occluded[RAYS];
     static maudRayHit hits[RAYS];
@@ -340,6 +425,7 @@ int main(void)
         hit += occluded[i];
     }
     printf("any hit:     %.2f M rays/s (%.0f %% hit)\n", RAYS / best * 1e-6, 100.0 * hit / RAYS);
+    Against("scene.any.mrays", RAYS / best * 1e-6, true);
     best = 1e9;
     for (int run = 0; run < 3; ++run)
     {
@@ -349,7 +435,10 @@ int main(void)
         best = e < best ? e : best;
     }
     printf("closest hit: %.2f M rays/s\n", RAYS / best * 1e-6);
+    Against("scene.closest.mrays", RAYS / best * 1e-6, true);
     Steps(scene);
+    Reflections(scene, 1);
+    Reflections(scene, 3);
     Instanced(&mesh, hits);
     maudDestroyAcousticScene(scene);
     free(s_vertices);

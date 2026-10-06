@@ -1,0 +1,29 @@
+# Maul Audio's benchmark baseline (bench/baseline.h): a row's key and
+# its figure, times in us or ms (lower is better), rates in M rays a
+# second (higher is better). Recorded 2026-10-06 on an AMD Ryzen 9
+# 5900X under Linux, clang 20, Release, one core of a shared machine:
+# each row the best of four to seven runs at loads from 20 to 160,
+# from the commit that adds this file. Rewrite it when the machine
+# changes or a change means to move a figure, and quote the ratios in
+# that commit.
+binaural.plain.us 10.68
+binaural.still.us 13.23
+binaural.moving.us 17.3
+bed.encode.us 2.408
+bed.decode3.us 122.9
+direct.still.us 7.871
+direct.moving.us 8.267
+reverb.still.us 49.92
+reverb.changing.us 53.22
+scene.build.ms 9.061
+scene.any.mrays 2.065
+scene.closest.mrays 1.617
+steps.volumetric.ms 5.709
+estimate.ms 155.1
+reflections.simulate1.ms 176.9
+reflections.render1.us 406.4
+reflections.simulate3.ms 189.4
+reflections.render3.us 1623
+instanced.commit.ms 0.3531
+instanced.closest.mrays 1.196
+instanced.moving.ms 0.3446

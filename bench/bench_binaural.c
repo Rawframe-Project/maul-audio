@@ -7,9 +7,12 @@
 // changes every block, so that it fades in every block; then a source
 // encoded into a third-order ambisonic bed, and the bed decoded for both
 // ears. Prints the best of five runs as
-// microseconds per block and as sources per millisecond of one core for each 10 ms of audio.
+// microseconds per block and as sources per millisecond of one core for each 10 ms of audio,
+// each row beside its recorded baseline.
 
 #define _CRT_SECURE_NO_WARNINGS
+
+#include "baseline.h"
 
 #include "maul-audio/ambisonics.h"
 #include "maul-audio/binaural.h"
@@ -115,7 +118,9 @@ static void RunBed(const maudHrtf* hrtf)
         decode = end - middle < decode ? end - middle : decode;
     }
     printf("bed, encode a source        %7.2f us per 10 ms block\n", encode / BLOCKS * 1e6);
+    Against("bed.encode.us", encode / BLOCKS * 1e6, false);
     printf("bed, decode order 3          %7.2f us per 10 ms block\n", decode / BLOCKS * 1e6);
+    Against("bed.decode3.us", decode / BLOCKS * 1e6, false);
     maudDestroyBinauralDecoder(decoder);
 }
 
@@ -154,6 +159,7 @@ static void RunDirect(void)
         }
         printf("direct effect, %-14s %7.2f us per 10 ms block\n", moving ? "moving" : "still",
                best / BLOCKS * 1e6);
+        Against(moving ? "direct.moving.us" : "direct.still.us", best / BLOCKS * 1e6, false);
     }
     maudDestroyDirectEffect(effect);
 }
@@ -189,6 +195,8 @@ static void RunReverb(void)
         }
         printf("reverb, %-17s %7.2f us per 10 ms block\n", changing ? "times changing" : "still",
                best / (BLOCKS / 10) * 1e6);
+        Against(changing ? "reverb.changing.us" : "reverb.still.us", best / (BLOCKS / 10) * 1e6,
+                false);
     }
     maudDestroyReverb(reverb);
 }
@@ -217,11 +225,13 @@ int main(void)
         s_in[i] = sinf(0.05f * (float)i);
     }
     const char* names[3] = {"still, no near field", "still", "moving"};
+    const char* keys[3] = {"binaural.plain.us", "binaural.still.us", "binaural.moving.us"};
     for (int row = 0; row < 3; ++row)
     {
         double micro = Run(hrtf, row == 2, row != 0);
         printf("binaural, %-20s %7.2f us per 10 ms block, %6.1f sources per ms of a core\n",
                names[row], micro, micro > 0.0 ? 1000.0 / micro : 0.0);
+        Against(keys[row], micro, false);
     }
     RunBed(hrtf);
     RunDirect();
