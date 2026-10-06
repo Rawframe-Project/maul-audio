@@ -103,6 +103,24 @@ static void TestEnergy(void)
             }
             kept = kept && fabsf(energy - 1.0f) < 1e-5f;
         }
+        // On the edges between ear-level speakers, where the third
+        // corner's gain is zero up to rounding.
+        for (uint32_t c = 0; c < channels; ++c)
+        {
+            maudSpeakerPosition at = maudGetLayoutSpeakerPosition(layout, c);
+            for (int step = 1; step < 40; ++step)
+            {
+                float gains[12];
+                CHECK(maudGetSpeakerGains(panner,
+                                          Towards((double)at.azimuthDegrees + 0.37 * step, 0.0),
+                                          gains) == maud_success,
+                      "gains");
+                for (uint32_t k = 0; k < channels; ++k)
+                {
+                    kept = kept && gains[k] >= 0.0f;
+                }
+            }
+        }
         CHECK(kept, "gains keep the energy, none negative");
         CHECK(silent, "the LFE gets nothing");
         maudDestroySpeakerPanner(panner);
@@ -208,6 +226,58 @@ static void TestPoles(void)
         bottom = bottom && fabsf(gains[c] - (low ? 1.0f / sqrtf(7.0f) : 0.0f)) < 1e-5f;
     }
     CHECK(bottom, "the nadir shared by the seven ear-level speakers");
+    // 60 degrees up ahead: the triangle of the zenith and the two front
+    // top speakers, solved here by Cramer's rule; the zenith's share goes
+    // to the four top speakers equally, then the gains keep the energy.
+    double p[3][3] = {{0.0, 1.0, 0.0}};
+    maudVector3 front[2] = {Towards(45.0, 30.0), Towards(-45.0, 30.0)};
+    for (int i = 0; i < 2; ++i)
+    {
+        p[i + 1][0] = (double)front[i].x;
+        p[i + 1][1] = (double)front[i].y;
+        p[i + 1][2] = (double)front[i].z;
+    }
+    maudVector3 source = Towards(0.0, 60.0);
+    double u[3] = {(double)source.x, (double)source.y, (double)source.z};
+    double det = p[0][0] * (p[1][1] * p[2][2] - p[1][2] * p[2][1]) -
+                 p[1][0] * (p[0][1] * p[2][2] - p[0][2] * p[2][1]) +
+                 p[2][0] * (p[0][1] * p[1][2] - p[0][2] * p[1][1]);
+    double solved[3];
+    for (int k = 0; k < 3; ++k)
+    {
+        double m[3][3];
+        for (int i = 0; i < 3; ++i)
+        {
+            for (int j = 0; j < 3; ++j)
+            {
+                m[i][j] = i == k ? u[j] : p[i][j];
+            }
+        }
+        solved[k] = (m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+                     m[1][0] * (m[0][1] * m[2][2] - m[0][2] * m[2][1]) +
+                     m[2][0] * (m[0][1] * m[1][2] - m[0][2] * m[1][1])) /
+                    det;
+    }
+    double expected[12] = {0.0};
+    double energy = 0.0;
+    for (uint32_t c = 0; c < 12; ++c)
+    {
+        maudSpeakerPosition at = maudGetLayoutSpeakerPosition(maud_layout7Point1Point4, c);
+        if (at.elevationDegrees > 0.0f)
+        {
+            expected[c] = solved[0] / 4.0;
+            expected[c] += at.azimuthDegrees == 45.0f ? solved[1] : 0.0;
+            expected[c] += at.azimuthDegrees == -45.0f ? solved[2] : 0.0;
+        }
+        energy += expected[c] * expected[c];
+    }
+    CHECK(maudGetSpeakerGains(tall, source, gains) == maud_success, "gains");
+    bool shared = true;
+    for (uint32_t c = 0; c < 12; ++c)
+    {
+        shared = shared && fabs((double)gains[c] - expected[c] / sqrt(energy)) < 1e-5;
+    }
+    CHECK(shared, "an imaginary corner's share goes equally to its neighbours");
     maudDestroySpeakerPanner(tall);
     maudSpeakerPanner* flat = Create(maud_layout5Point1);
     CHECK(maudGetSpeakerGains(flat, (maudVector3){0.0f, 1.0f, 0.0f}, gains) == maud_success,
