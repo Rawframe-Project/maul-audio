@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Responses from fields (reflection_response.h). A frame's noise is
-// complex Gaussian, E|g|^2 = 1, so a flat magnitude m over an FFT of n
-// gives samples of variance m^2 / n: m = sqrt(n E / hop) gives power
-// E / hop. The sine window squared and its neighbour's sum to 1 across
-// the overlap, so the power holds between frames.
+// Responses from fields (reflection_response.h). A frame's noise is a
+// unit value at a random phase per FFT bin, so a flat magnitude m over
+// an FFT of n gives samples of mean power m^2 / n: m = sqrt(n E / hop)
+// gives power E / hop. Unit values rather than Gaussian ones fix each
+// frame's energy, which a response whose energy lies in a few bins
+// needs (Gaussian magnitudes left one 10 % off). The sine window squared
+// and its neighbour's sum to 1 across the overlap, so the power holds
+// between frames.
 
 #include "reflection_response.h"
 
@@ -111,11 +114,10 @@ static bool Spectra(const double* energy, uint32_t bin, uint32_t hop, uint32_t n
         Weights(centres, logHz, w);
         double level = exp(w[0] * logs[0] + w[1] * logs[1] + w[2] * logs[2]);
         double magnitude = sqrt((double)n * level / (double)hop);
-        // Box-Muller: a complex Gaussian of E|g|^2 = 1.
-        double radius = sqrt(-log(Uniform(bin, k, 0)));
+        // A unit value at a random phase.
         double angle = 2.0 * PI_D * Uniform(bin, k, 1);
-        double re = magnitude * radius * cos(angle);
-        double im = k == 0 || k == n / 2 ? 0.0 : magnitude * radius * sin(angle);
+        double re = magnitude * cos(angle);
+        double im = k == 0 || k == n / 2 ? 0.0 : magnitude * sin(angle);
         for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
         {
             double* f = frames + (size_t)b * 2 * n;
