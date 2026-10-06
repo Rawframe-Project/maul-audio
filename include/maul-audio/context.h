@@ -77,6 +77,10 @@ extern "C"
         // Unused elsewhere.
         void* androidJavaVm;
         void* androidContext;
+        // On iOS, whether the Ring/Silent switch silences the context's
+        // output while nothing records (the Ambient category); false, the
+        // default, plays through it, as media does. Unused elsewhere.
+        bool iosSilencedBySwitch;
     } maudContextDef;
 
     /// Returns the default context def: 8 streams, periods of at most

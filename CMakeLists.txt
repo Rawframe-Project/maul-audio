@@ -52,9 +52,15 @@ else()
 endif()
 option(MAUL_AUDIO_COREAUDIO "Build the CoreAudio backend" ${MAUL_AUDIO_COREAUDIO_DEFAULT})
 option(MAUL_AUDIO_AAUDIO "Build the AAudio backend" ${ANDROID})
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(MAUL_AUDIO_IOS_DEFAULT ON)
+else()
+    set(MAUL_AUDIO_IOS_DEFAULT OFF)
+endif()
+option(MAUL_AUDIO_IOS "Build the iOS backend" ${MAUL_AUDIO_IOS_DEFAULT})
 # Backends belong to the Device part.
 if(NOT MAUL_AUDIO_DEVICE)
-    foreach(backend PIPEWIRE PULSE ALSA WASAPI COREAUDIO AAUDIO)
+    foreach(backend PIPEWIRE PULSE ALSA WASAPI COREAUDIO AAUDIO IOS)
         set(MAUL_AUDIO_${backend} OFF)
     endforeach()
 endif()
@@ -208,6 +214,10 @@ if(MAUL_AUDIO_COREAUDIO)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_COREAUDIO=1)
     target_link_libraries(maul-audio PRIVATE "-framework CoreAudio" "-framework AudioToolbox"
         "-framework CoreFoundation")
+endif()
+
+if(MAUL_AUDIO_IOS)
+    include(cmake/IOS.cmake)
 endif()
 
 # AAudio, on Android 11 (API 30) and later, through the NDK's library.
@@ -411,6 +421,18 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         target_compile_definitions(test_wasapi PRIVATE _WIN32_WINNT=0x0A00)
         target_link_libraries(test_wasapi PRIVATE ole32)
         set_tests_properties(wasapi PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
+    # The iOS backend in the simulator, in Objective-C to read the
+    # session's category.
+    if(MAUL_AUDIO_IOS)
+        add_executable(test_ios test/test_ios.m)
+        target_link_libraries(test_ios PRIVATE maul-audio "-framework AVFAudio"
+            "-framework Foundation")
+        maul_apply_flags(test_ios)
+        set_target_properties(test_ios PROPERTIES OBJC_STANDARD 23 OBJC_STANDARD_REQUIRED ON
+            OBJC_EXTENSIONS OFF)
+        target_compile_options(test_ios PRIVATE $<$<COMPILE_LANGUAGE:OBJC>:-fno-objc-arc>)
+        add_test(NAME ios COMMAND test_ios)
     endif()
     if(MAUL_AUDIO_AAUDIO)
         maul_add_test(aaudio THREADS)

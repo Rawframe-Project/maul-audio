@@ -66,6 +66,9 @@ static const maudBackend* BackendOfKind(maudBackendKind kind)
 #if defined(MAUD_HAVE_COREAUDIO)
     case maud_backendCoreAudio:
         return maudGetCoreAudioBackend();
+#elif defined(MAUD_HAVE_IOS)
+    case maud_backendCoreAudio:
+        return maudGetIosBackend();
 #endif
 #if defined(MAUD_HAVE_AAUDIO)
     case maud_backendAaudio:

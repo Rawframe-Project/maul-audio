@@ -87,6 +87,9 @@ const maudBackend* maudGetWasapiBackend(void);
 // The CoreAudio backend, in builds with MAUL_AUDIO_COREAUDIO.
 const maudBackend* maudGetCoreAudioBackend(void);
 
+// The iOS backend, in builds with MAUL_AUDIO_IOS.
+const maudBackend* maudGetIosBackend(void);
+
 // The AAudio backend, in builds with MAUL_AUDIO_AAUDIO.
 const maudBackend* maudGetAaudioBackend(void);
 
