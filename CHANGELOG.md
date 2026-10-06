@@ -307,6 +307,12 @@ format.
   crossed surface multiplying its material's transmission per band, up
   to a limit the results report reaching; an occluded path without a
   walk passes nothing.
+- Acoustic scenes (`maul-audio/scene.h`): the library's own geometry
+  and ray tracer, made whole from meshes and read-only afterwards; a
+  bounding volume hierarchy built by binned SAH, the same on every
+  platform, and watertight ray-triangle tests; `maudSceneAnyHit` and
+  `maudSceneClosestHit` plug into a spatializer's hooks. A benchmark
+  gives rays per second on a generated level of rooms.
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.

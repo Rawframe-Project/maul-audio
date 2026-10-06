@@ -24,6 +24,7 @@ binaural_decoder: allocator binaural_dsp hrtf_core magls
 binaural_dsp:
 base:
 buffer:
+bvh: watertight
 clock: context_core
 context: allocator backend context_core invariant thread
 context_core: period
@@ -62,6 +63,7 @@ pipewire_stream: clock context context_core period pipewire_core thread xrun
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
+scene: allocator bvh
 spatializer: allocator direct_step occlusion transmission
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics
@@ -81,6 +83,7 @@ wasapi_format:
 wasapi_notify:
 wasapi_stream: clock context context_core period sample_convert thread voice wasapi_core wasapi_exclusive wasapi_format wasapi_voice worker xrun
 wasapi_voice: context_core voice wasapi_core
+watertight:
 web_capture: clock context context_core follow period thread voice web_core web_devices xrun
 web_devices: context context_core device web_core
 web_core: context_core device

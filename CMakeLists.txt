@@ -100,6 +100,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/ambisonic_rotation.c
     src/ambisonics.c
     src/band_eq.c
+    src/bvh.c
     src/binaural.c
     src/binaural_decoder.c
     src/binaural_dsp.c
@@ -115,11 +116,13 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/near_field.c
     src/near_field_table.c
     src/occlusion.c
+    src/scene.c
     src/spatializer.c
     src/speaker_decoder.c
     src/speaker_panner.c
     src/spherical_harmonics.c
-    src/transmission.c)
+    src/transmission.c
+    src/watertight.c)
 add_library(maul-audio ${MAUL_LIBRARY_KIND} ${MAUL_AUDIO_BASE_SOURCES})
 if(MAUL_AUDIO_DEVICE)
     target_sources(maul-audio PRIVATE ${MAUL_AUDIO_DEVICE_SOURCES})
@@ -229,6 +232,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(direct_effect)
         maul_add_test(spatializer)
         maul_add_test(occlusion)
+        maul_add_test(scene)
         maul_add_test(transmission)
         # The two sides on two threads; Emscripten builds have none.
         if(NOT EMSCRIPTEN)
