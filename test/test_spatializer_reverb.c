@@ -6,7 +6,8 @@
 // 3 % of 0.99 s); a task system running batches last first gives the
 // same times bit for bit; the times wait for the next direct step; before
 // any estimate they are 0.1 s with none counted; without a closest-hit
-// query an estimate gives 0.1 s, and with a host's any-hit query that
+// query an estimate gives 0.1 s; a listener outside the room hears no
+// reverberation, and with a host's any-hit query that
 // blocks every path, which lights nothing, too; a def asking for no
 // estimates refuses
 // them; ray counts out of range and bad air are refused.
@@ -120,6 +121,15 @@ static void TestEstimate(void)
         same = same && viaTasks.reverbTime[b] == result.reverbTime[b];
     }
     CHECK(same, "the same times however the tasks run");
+    // Outside the closed office, rays strike its outer walls and leave:
+    // hardly any decay.
+    maudPose outside = {{20.0f, 2.0f, 1.5f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    CHECK(maudSimulateReverb(plain, &outside) == maud_success &&
+              maudSimulateDirect(plain, &s_listener) == maud_success &&
+              maudLatchResults(plain) == 3 && maudGetReverbResult(plain, &result) == maud_success,
+          "an estimate outside");
+    printf("outside: %.3f s\n", (double)result.reverbTime[1]);
+    CHECK(result.reverbTime[1] < 0.2f, "outside the room, no reverberation");
     maudDestroySpatializer(plain);
     maudDestroySpatializer(tasked);
     maudDestroyAcousticScene(scene);
