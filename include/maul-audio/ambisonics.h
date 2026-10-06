@@ -14,6 +14,7 @@
 
 #include "maul-audio/base.h"
 #include "maul-audio/hrtf.h"
+#include "maul-audio/speakers.h"
 
 #include <stdint.h>
 
@@ -173,6 +174,82 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the decoder is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudResetBinauralDecoder(maudBinauralDecoder* decoder);
+
+    // A speaker decoder: a bed's channels to a speaker layout's.
+    typedef struct maudSpeakerDecoder maudSpeakerDecoder;
+
+    // How to create a speaker decoder. Build it with
+    // maudDefaultSpeakerDecoderDef.
+    typedef struct maudSpeakerDecoderDef
+    {
+        uint32_t cookie;
+        // The layout decoded to.
+        maudChannelLayout layout;
+        // The order decoded, 1 to MAUD_MAX_AMBISONIC_ORDER; a bed's
+        // higher channels are ignored.
+        uint32_t order;
+        maudAllocator allocator;
+    } maudSpeakerDecoderDef;
+
+    /// Returns the default speaker decoder def: stereo, order 3.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_API maudSpeakerDecoderDef maudDefaultSpeakerDecoderDef(void);
+
+    /// Creates a speaker decoder by all-round ambisonic decoding: the bed
+    /// decoded to 240 near-uniform virtual speakers with max-rE weights,
+    /// each panned to the layout as a speaker panner pans, folded into one
+    /// matrix. A source encoded into the bed reaches the speakers with
+    /// unit energy on average over the sphere, as one panned to them
+    /// does; the low-frequency channel gets nothing.
+    ///
+    /// @param def         The def, from maudDefaultSpeakerDecoderDef.
+    /// @param decoderOut  Receives the decoder; NULL on failure.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
+    ///         def without its cookie, an order out of range or a layout
+    ///         the library does not have; `maud_errorCapacity` when the
+    ///         allocator fails.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_NODISCARD MAUD_API maudResult maudCreateSpeakerDecoder(const maudSpeakerDecoderDef* def,
+                                                                maudSpeakerDecoder** decoderOut);
+
+    /// Destroys a speaker decoder. NULL is ignored.
+    ///
+    /// @param decoder  The decoder.
+    /// @par Thread safety
+    /// Safe from any thread; the decoder is used by one thread at a time.
+    MAUD_API void maudDestroySpeakerDecoder(maudSpeakerDecoder* decoder);
+
+    /// Copies the decoder's matrix: the layout's channel count of rows,
+    /// each the order's channel count of weights, row-major. Speaker s
+    /// plays the sum over c of matrix[s][c] times bed channel c.
+    ///
+    /// @param decoder    The decoder.
+    /// @param matrixOut  Receives the matrix.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_NODISCARD MAUD_API maudResult
+    maudGetSpeakerDecoderMatrix(const maudSpeakerDecoder* decoder, float* matrixOut);
+
+    /// Decodes frames of a bed to the layout's channels, written over
+    /// out. The decoder holds no state between calls.
+    ///
+    /// @param decoder  The decoder.
+    /// @param bed      The decoder's order's channel count of channels,
+    ///                 frames each.
+    /// @param out      The layout's channel count of channels, frames each.
+    /// @param frames   The frames; 0 does nothing.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer;
+    ///         nothing is written then.
+    /// @par Thread safety
+    /// Safe from any thread; the output is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudDecodeToSpeakers(const maudSpeakerDecoder* decoder,
+                                                            const float* const* bed,
+                                                            float* const* out, uint32_t frames);
 
 #ifdef __cplusplus
 }

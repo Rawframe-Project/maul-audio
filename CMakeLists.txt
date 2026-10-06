@@ -79,6 +79,7 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/least_squares.c
     src/magls.c
     src/spherical_harmonics.c
+    src/speaker_decoder.c
     src/speaker_panner.c
     src/binaural_dsp.c
     src/hrtf_lookup.c
@@ -203,6 +204,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(sample_convert WHITEBOX)
         maul_add_test(near_field WHITEBOX)
         maul_add_test(ambisonics)
+        maul_add_test(speaker_decoder)
         maul_add_test(speaker_panner)
         maul_add_test(binaural_decoder WHITEBOX)
         if(TARGET test_binaural_decoder)

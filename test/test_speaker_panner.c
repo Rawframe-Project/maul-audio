@@ -195,6 +195,34 @@ static void TestMirror(void)
                 }
             }
         }
+        // On the mirror plane itself, ahead and behind: where 7.1.4's
+        // four back speakers share a plane, both ways of splitting it
+        // hold the direction, and a choice of one would lean.
+        for (int step = -16; step <= 16; ++step)
+        {
+            for (int behind = 0; behind < 2; ++behind)
+            {
+                float gains[12];
+                CHECK(maudGetSpeakerGains(panner, Towards(180.0 * behind, 5.0 * step), gains) ==
+                          maud_success,
+                      "gains");
+                for (uint32_t c = 0; c < channels; ++c)
+                {
+                    maudSpeakerPosition at = maudGetLayoutSpeakerPosition(layout, c);
+                    for (uint32_t k = 0; k < channels; ++k)
+                    {
+                        maudSpeakerPosition there = maudGetLayoutSpeakerPosition(layout, k);
+                        bool lfe = maudGetLayoutSpeaker(layout, c) == maud_speakerLowFrequency ||
+                                   maudGetLayoutSpeaker(layout, k) == maud_speakerLowFrequency;
+                        if (!lfe && there.azimuthDegrees == -at.azimuthDegrees &&
+                            there.elevationDegrees == at.elevationDegrees)
+                        {
+                            mirrored = mirrored && fabsf(gains[c] - gains[k]) < 1e-4f;
+                        }
+                    }
+                }
+            }
+        }
         CHECK(mirrored, "a mirrored source gets mirrored gains");
         maudDestroySpeakerPanner(panner);
     }

@@ -272,8 +272,15 @@ format.
 - Speaker panners (`maul-audio/speakers.h`): one per channel layout,
   made once and shared read-only by any number of sources; VBAP over
   the triangles between the speakers, with imaginary speakers above and
-  below whose share goes to their neighbours; stereo by the side angle,
+  below whose share goes to their neighbours (where four speakers share
+  a plane, both ways of splitting it are summed, so the panner is
+  exactly symmetric); stereo by the side angle,
   the rear folded forward; mono passed through; gains normalized for
   energy, the LFE silent. `maudPanToSpeakers` ramps and adds as
   encoding does. `maudPanSource` (`maul-audio/base.h`) is the source
   both take; it replaces `maudAmbisonicSource`.
+- Speaker decoders for the bed (`maudCreateSpeakerDecoder`,
+  `maudDecodeToSpeakers`): all-round ambisonic decoding, 240 virtual
+  speakers with max-rE weights panned by the speaker panner, folded into
+  one matrix at creation (`maudGetSpeakerDecoderMatrix` hands it out);
+  unit energy on average, the LFE silent.

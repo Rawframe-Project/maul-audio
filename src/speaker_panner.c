@@ -6,8 +6,8 @@
 // speakers, with imaginary ones at the zenith and the nadir, are
 // triangulated once by brute force: every triplet whose plane has all
 // the other points on one side is a face of their convex hull. A
-// direction's gains come from the face whose inverse matrix gives the
-// largest smallest gain; an imaginary speaker's gain is shared equally
+// direction's gains come from the faces whose inverse matrices give no
+// negative gain; an imaginary speaker's gain is shared equally
 // by the real speakers it has faces with; then the gains are normalized
 // for energy.
 
@@ -24,6 +24,9 @@
 #define MAX_POINTS        (MAX_CHANNELS + 2)
 #define MAX_TRIANGLES     64
 #define PI_F              3.14159265f
+// How far below zero a face's least gain may round and the face still
+// hold a direction.
+#define HELD 1e-5f
 
 typedef enum Kind
 {
@@ -275,13 +278,40 @@ static void Stereo(const maudSpeakerPanner* panner, const float* u, float* real)
     real[1] = (l[0] * y - l[1] * x) / det;
 }
 
-// Hull: the face that holds the direction best, its imaginary corners'
-// gains given to their neighbours.
+// Adds a triangle's gains to the real speakers, an imaginary corner's
+// shared equally by its neighbours.
+static void Spread(const maudSpeakerPanner* panner, uint32_t t, const float* g, float* real)
+{
+    for (int v = 0; v < 3; ++v)
+    {
+        uint32_t point = panner->triangles[t][v];
+        float gain = fmaxf(g[v], 0.0f);
+        if (point < panner->realCount)
+        {
+            real[point] += gain;
+            continue;
+        }
+        uint32_t imaginary = point - panner->realCount;
+        uint32_t count = panner->neighbourCount[imaginary];
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            real[panner->neighbours[imaginary][i]] += gain / (float)count;
+        }
+    }
+}
+
+// Hull: the gains of every face that holds the direction, summed. Inside
+// a face only it holds the direction; on an edge or corner the faces
+// there agree; four speakers in one plane (7.1.4's back ones) make two
+// triangulations that both hold it, and summing them keeps a source on
+// the mirror plane balanced where picking one would lean to a diagonal.
+// Rounding can leave no face holding it: then the one nearest to.
 static void Hull(const maudSpeakerPanner* panner, const float* u, float* real)
 {
     uint32_t best = 0;
     float bestLeast = -INFINITY;
     float bestGains[3] = {0.0f, 0.0f, 0.0f};
+    bool held = false;
     for (uint32_t t = 0; t < panner->triangleCount; ++t)
     {
         const float* m = panner->inverses[t];
@@ -291,6 +321,11 @@ static void Hull(const maudSpeakerPanner* panner, const float* u, float* real)
             g[i] = m[3 * i] * u[0] + m[3 * i + 1] * u[1] + m[3 * i + 2] * u[2];
         }
         float least = fminf(g[0], fminf(g[1], g[2]));
+        if (least >= -HELD)
+        {
+            Spread(panner, t, g, real);
+            held = true;
+        }
         if (least > bestLeast)
         {
             bestLeast = least;
@@ -298,21 +333,9 @@ static void Hull(const maudSpeakerPanner* panner, const float* u, float* real)
             memcpy(bestGains, g, sizeof(g));
         }
     }
-    for (int v = 0; v < 3; ++v)
+    if (!held)
     {
-        uint32_t point = panner->triangles[best][v];
-        float g = fmaxf(bestGains[v], 0.0f);
-        if (point < panner->realCount)
-        {
-            real[point] += g;
-            continue;
-        }
-        uint32_t imaginary = point - panner->realCount;
-        uint32_t count = panner->neighbourCount[imaginary];
-        for (uint32_t i = 0; i < count; ++i)
-        {
-            real[panner->neighbours[imaginary][i]] += g / (float)count;
-        }
+        Spread(panner, best, bestGains, real);
     }
 }
 
