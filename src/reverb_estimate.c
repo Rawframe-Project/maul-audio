@@ -495,3 +495,28 @@ void maudSumReverbFields(const maudReverbTrace* trace, maudReverbHistogram* hist
         }
     }
 }
+
+void maudReverbLevels(const maudReverbHistogram* summed, const float* times, float at, float delay,
+                      float* levels)
+{
+    // The reverb's W energy per 10 ms bin at its start, for a unit
+    // impulse (measured, the same for every time and rate).
+    const double start = 0.0144;
+    uint32_t last = (uint32_t)lround((double)at / (double)BIN_SECONDS);
+    last = last < 1 ? 1 : last > MAUD_REVERB_BINS ? MAUD_REVERB_BINS : last;
+    uint32_t first = last > 5 ? last - 5 : 0;
+    double centre = 0.5 * (double)(first + last) * (double)BIN_SECONDS;
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        double mean = 0.0;
+        for (uint32_t i = first; i < last; ++i)
+        {
+            mean += (double)summed->energy[b][i] / (double)(last - first);
+        }
+        double rate = 13.815510557964274 / (double)times[b];
+        double traced = mean * exp(-rate * ((double)at - centre));
+        double reverb = start * exp(-rate * ((double)at - (double)delay));
+        double db = traced > 0.0 ? 10.0 * log10(traced / reverb) : -96.0;
+        levels[b] = (float)fmin(fmax(db, -96.0), 24.0);
+    }
+}

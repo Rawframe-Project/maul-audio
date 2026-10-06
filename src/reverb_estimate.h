@@ -69,6 +69,13 @@ void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
 // decay), and a band whose bins do not decay takes the ceiling.
 void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[MAUD_DIRECT_BANDS]);
 
+// The levels (dB, -96 to 24) that match the reverb, whose W gives 10 ms
+// bins of 0.0144 exp(-13.8 (t - delay) / T60) for a unit impulse, to the
+// traced energy (a summed histogram) at time at: the mean of the bins in
+// the 50 ms before it, carried to it by the fitted times.
+void maudReverbLevels(const maudReverbHistogram* summed, const float* times, float at, float delay,
+                      float* levels);
+
 // Sums count histograms' fields into the first's, in order.
 void maudSumReverbFields(const maudReverbTrace* trace, maudReverbHistogram* histograms,
                          uint32_t count);

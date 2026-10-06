@@ -42,6 +42,11 @@
 #define REVERB_BOUNCES       1024u
 #define NO_REVERB            0.1f
 #define MAX_REFLECTION_ORDER 3u
+// When the reverb's level is matched without reflections, and how long
+// its output stays silent after its input (its shortest delay line).
+#define LEVEL_AT     0.1f
+#define REVERB_ONSET 0.023f
+#define SILENT       (-96.0f)
 
 typedef struct Entry
 {
@@ -105,8 +110,10 @@ struct maudSpatializer
     // the newest estimate.
     maudReverbTrace trace;
     maudReverbHistogram* histograms;
-    // Geometric reflections, if the def asked for them.
+    // Geometric reflections, if the def asked for them, and their
+    // response's length.
     maudReflections* reflections;
+    float reflectionDuration;
     maudReverbResult reverb;
     Buffer buffers[3];
     // The simulation side's buffer and step count.
@@ -314,6 +321,7 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
                   .rays = def->reverbRays,
                   .maxBounces = REVERB_BOUNCES},
         .reverb = {.reverbTime = {NO_REVERB, NO_REVERB, NO_REVERB}},
+        .reflectionDuration = def->reflectionDuration,
     };
     bool all = Allocate(s, def);
     if (!all)
@@ -687,7 +695,9 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
         for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
         {
             s->reverb.reverbTime[b] = NO_REVERB;
+            s->reverb.level[b] = SILENT;
         }
+        s->reverb.delay = 0.0f;
         return maud_success;
     }
     s->trace.closestHit = s->closestHit;
@@ -707,6 +717,10 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
         TraceBatches(0, batches, s);
     }
     maudFitReverb(s->histograms, batches, s->reverb.reverbTime);
+    bool hybrid = s->reflections != nullptr;
+    s->reverb.delay = hybrid ? s->reflectionDuration - REVERB_ONSET : 0.0f;
+    maudReverbLevels(&s->histograms[0], s->reverb.reverbTime,
+                     hybrid ? s->reflectionDuration : LEVEL_AT, s->reverb.delay, s->reverb.level);
     if (s->reflections != nullptr)
     {
         maudPublishReflections(s->reflections, &s->trace, s->histograms, batches);

@@ -178,7 +178,7 @@ static void RunReverb(void)
             for (int block = 0; block < BLOCKS / 10; ++block)
             {
                 float t = changing ? 1.0f + 0.001f * (float)(block % 100) : 1.0f;
-                maudReverbParams params = {{1.5f * t, t, 0.5f * t}};
+                maudReverbParams params = {{1.5f * t, t, 0.5f * t}, {0.0f, 0.0f, 0.0f}, 0.0f};
                 if (maudProcessReverb(reverb, &params, s_in, bed, FRAMES) != maud_success)
                 {
                     return;

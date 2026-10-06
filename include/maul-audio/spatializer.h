@@ -202,6 +202,15 @@ extern "C"
         float reverbTime[MAUD_DIRECT_BANDS];
         // The estimates made before the step; 0 for none.
         uint32_t estimates;
+        // For maudReverbParams: the send's level per band (dB) and delay
+        // (s) that give the reverb the traced energy. Without reflections
+        // it matches at 100 ms with no delay; with them, the tail begins
+        // where the reflections' response ends, at its level (the
+        // reverb's first 23 ms are silent, so the delay is the duration
+        // less 23 ms). 0 dB and no delay before an estimate, -96 dB with
+        // nothing to reflect.
+        float level[MAUD_DIRECT_BANDS];
+        float delay;
     } maudReverbResult;
 
     /// Returns the default spatializer def: 256 sources, up to 64

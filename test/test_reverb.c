@@ -68,14 +68,14 @@ static void Respond(maudReverb* r, const float* before, const float* times)
 {
     memset(s_in, 0, sizeof(s_in));
     memset(s_bed, 0, sizeof(s_bed));
-    maudReverbParams first = {{before[0], before[1], before[2]}};
+    maudReverbParams first = {{before[0], before[1], before[2]}, {0.0f, 0.0f, 0.0f}, 0.0f};
     for (int block = 0; block < 2; ++block)
     {
         float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], s_bed[3]};
         CHECK(maudProcessReverb(r, &first, s_in, bed, 480) == maud_success, "process");
     }
     s_in[0] = 1.0f;
-    maudReverbParams params = {{times[0], times[1], times[2]}};
+    maudReverbParams params = {{times[0], times[1], times[2]}, {0.0f, 0.0f, 0.0f}, 0.0f};
     for (int at = 0; at < LENGTH; at += 480)
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
@@ -244,7 +244,7 @@ static void TestDecay(void)
 static void TestBehaviour(void)
 {
     maudReverb* r = Create();
-    maudReverbParams params = {{1.0f, 0.7f, 0.4f}};
+    maudReverbParams params = {{1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f};
     float in[480] = {0};
     static float bed[4][480];
     float* out[4] = {bed[0], bed[1], bed[2], bed[3]};
@@ -284,7 +284,7 @@ static void TestBehaviour(void)
     CHECK(energy[0] > 0.0 && energy[1] > 0.0 && energy[2] > 0.0 && energy[3] > 0.0,
           "the tail adds into all four channels");
     // A change of times: finite throughout, then the new decay.
-    maudReverbParams longer = {{2.5f, 1.5f, 0.6f}};
+    maudReverbParams longer = {{2.5f, 1.5f, 0.6f}, {0.0f, 0.0f, 0.0f}, 0.0f};
     bool finite = true;
     for (int block = 0; block < 20; ++block)
     {
@@ -306,7 +306,7 @@ static void TestBehaviour(void)
         silent = silent && bed[0][n] == 0.0f;
     }
     CHECK(silent, "a reset silences the tail");
-    maudReverbParams bad = {{0.05f, 1.0f, 1.0f}};
+    maudReverbParams bad = {{0.05f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.0f};
     bed[0][0] = 7.0f;
     in[0] = 1.0f;
     CHECK(maudProcessReverb(r, &bad, in, out, 480) == maud_errorInvalid, "a time too short");
@@ -336,7 +336,7 @@ static void TestBlocks(void)
     static float b[4800];
     static float zero[4][4800];
     in[100] = 1.0f;
-    maudReverbParams params = {{1.0f, 0.7f, 0.4f}};
+    maudReverbParams params = {{1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f};
     for (int at = 0; at < 4800; at += 480)
     {
         float* bed[4] = {a + at, zero[1] + at, zero[2] + at, zero[3] + at};
@@ -371,8 +371,8 @@ static void TestRamp(void)
     static float a[4][480];
     static float b[4][480];
     uint32_t seed = 1;
-    maudReverbParams before = {{1.0f, 0.7f, 0.4f}};
-    maudReverbParams after = {{0.3f, 0.2f, 0.1f}};
+    maudReverbParams before = {{1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams after = {{0.3f, 0.2f, 0.1f}, {0.0f, 0.0f, 0.0f}, 0.0f};
     for (int block = 0; block < 11; ++block)
     {
         for (int n = 0; n < 480; ++n)
@@ -405,11 +405,126 @@ static void TestRamp(void)
     maudDestroyReverb(changed);
 }
 
+// The send's delay and levels: a delayed impulse's tail starts 23 ms
+// after the delay; +6 dB in every band gives four times the energy;
+// -20 dB in the low band alone takes the low octaves down and leaves the
+// middle; values out of range are refused.
+static void TestSend(void)
+{
+    maudReverbDef def = maudDefaultReverbDef();
+    def.maxDelay = 0.2f;
+    maudReverb* r[2] = {nullptr, nullptr};
+    CHECK(maudCreateReverb(&def, &r[0]) == maud_success &&
+              maudCreateReverb(&def, &r[1]) == maud_success,
+          "two reverbs");
+    const float flat[3] = {0.0f, 0.0f, 0.0f};
+    const float louder[3] = {6.0f, 6.0f, 6.0f};
+    static float out[2][4][24000];
+    for (int k = 0; k < 2; ++k)
+    {
+        maudReverbParams p = {{1.0f, 1.0f, 1.0f},
+                              {k == 0 ? flat[0] : louder[0], k == 0 ? flat[1] : louder[1],
+                               k == 0 ? flat[2] : louder[2]},
+                              k == 0 ? 0.0f : 0.1f};
+        static float in[24000];
+        memset(in, 0, sizeof(in));
+        in[0] = 1.0f;
+        for (int at = 0; at < 24000; at += 480)
+        {
+            float* bed[4] = {out[k][0] + at, out[k][1] + at, out[k][2] + at, out[k][3] + at};
+            CHECK(maudProcessReverb(r[k], &p, in + at, bed, 480) == maud_success, "process");
+        }
+    }
+    int onset[2] = {-1, -1};
+    for (int k = 0; k < 2; ++k)
+    {
+        for (int i = 0; i < 24000 && onset[k] < 0; ++i)
+        {
+            onset[k] = out[k][0][i] != 0.0f ? i : -1;
+        }
+    }
+    printf("onsets: %d and %d frames\n", onset[0], onset[1]);
+    CHECK(onset[1] - onset[0] == 4800, "delayed by 100 ms");
+    CHECK(onset[0] > (int)(0.023 * 48000.0) && onset[0] < (int)(0.024 * 48000.0),
+          "silent for its first 23 ms");
+    double plain = 0.0;
+    double loud = 0.0;
+    for (int i = 0; i < 9600; ++i)
+    {
+        plain += (double)out[0][0][onset[0] + i] * (double)out[0][0][onset[0] + i];
+        loud += (double)out[1][0][onset[1] + i] * (double)out[1][0][onset[1] + i];
+    }
+    printf("6 dB: energy ratio %.3f\n", loud / plain);
+    CHECK(fabs(loud / plain / pow(10.0, 0.6) - 1.0) < 0.05, "6 dB louder");
+    maudReverbParams bad = {{1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.21f};
+    CHECK(maudProcessReverb(r[0], &bad, out[0][0],
+                            (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
+                            16) == maud_errorInvalid,
+          "a delay past the longest");
+    bad.delay = 0.0f;
+    bad.level[1] = 25.0f;
+    CHECK(maudProcessReverb(r[0], &bad, out[0][0],
+                            (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
+                            16) == maud_errorInvalid,
+          "a level past 24 dB");
+    bad.level[1] = NAN;
+    CHECK(maudProcessReverb(r[0], &bad, out[0][0],
+                            (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
+                            16) == maud_errorInvalid,
+          "a level not a number");
+    maudDestroyReverb(r[0]);
+    maudDestroyReverb(r[1]);
+    maudReverbDef far = maudDefaultReverbDef();
+    far.maxDelay = 4.5f;
+    maudReverb* none = nullptr;
+    CHECK(maudCreateReverb(&far, &none) == maud_errorInvalid, "a longest delay past 4 s");
+}
+
+// The 125 Hz octave's energy over the 2 kHz octave's, for levels.
+static double LowOverMiddle(const float* levels)
+{
+    maudReverb* r = Create();
+    maudReverbParams p = {{1.0f, 1.0f, 1.0f}, {levels[0], levels[1], levels[2]}, 0.0f};
+    memset(s_in, 0, sizeof(s_in));
+    memset(s_bed, 0, sizeof(s_bed));
+    s_in[0] = 1.0f;
+    for (int at = 0; at < LENGTH; at += 480)
+    {
+        float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
+        CHECK(maudProcessReverb(r, &p, s_in + at, bed, 480) == maud_success, "process");
+    }
+    maudDestroyReverb(r);
+    double energy[2] = {0.0, 0.0};
+    const double centres[2] = {125.0, 2000.0};
+    for (int k = 0; k < 2; ++k)
+    {
+        BandPass(centres[k]);
+        for (int i = 0; i < LENGTH; ++i)
+        {
+            energy[k] += (double)s_band[i] * (double)s_band[i];
+        }
+    }
+    return energy[0] / energy[1];
+}
+
+// -20 dB in the low band alone: the 125 Hz octave falls by about 20 dB
+// against the 2 kHz octave, compared with the same reverb flat.
+static void TestBandLevel(void)
+{
+    const float flat[3] = {0.0f, 0.0f, 0.0f};
+    const float low[3] = {-20.0f, 0.0f, 0.0f};
+    double drop = 10.0 * log10(LowOverMiddle(low) / LowOverMiddle(flat));
+    printf("low band at -20 dB: 125 Hz against 2 kHz, %.1f dB\n", drop);
+    CHECK(drop < -16.0 && drop > -24.0, "the low band down");
+}
+
 int main(void)
 {
     TestBlocks();
     TestRamp();
     TestDecay();
+    TestSend();
+    TestBandLevel();
     TestBehaviour();
     return s_failures == 0 ? 0 : 1;
 }

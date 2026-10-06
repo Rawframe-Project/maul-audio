@@ -9,10 +9,16 @@
 // on time within 1 ms (the convolution's block taken back); the bed is
 // added to; nothing arrives
 // before the first path does; before any response the bed is silent; a
-// new response swaps in without a jump; misuse is refused.
+// new response swaps in without a jump; misuse is refused. In an office
+// (1 s): the reverb at the published level and delay starts where the
+// reflections' response ends and has the energy of a response rendered
+// on past the join (0.35 to 0.6 s, within 15 %; measured 7 %), and
+// without reflections the published level gives the reverb that
+// response's energy at 100 ms (within 25 %).
 
 #include "test_harness.h"
 
+#include "maul-audio/reverb.h"
 #include "maul-audio/scene.h"
 #include "maul-audio/spatializer.h"
 
@@ -25,6 +31,22 @@ enum
 {
     FRAMES = 28800
 };
+
+// A wall 2 m to the listener's right (x = 2) facing away from it.
+static maudAcousticScene* Wall(void)
+{
+    static const maudVector3 v[4] = {
+        {2, -1000, -1000}, {2, 1000, -1000}, {2, -1000, 1000}, {2, 1000, 1000}};
+    static const uint32_t faces[6] = {0, 2, 1, 1, 2, 3};
+    static const uint32_t materials[2] = {0, 0};
+    maudMesh mesh = {v, 4, faces, materials, 2};
+    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    def.meshes = &mesh;
+    def.meshCount = 1;
+    maudAcousticScene* scene = nullptr;
+    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a wall");
+    return scene;
+}
 
 static maudAcousticScene* Floor(void)
 {
@@ -192,6 +214,29 @@ static void TestFloor(void)
     maudDestroyAcousticScene(scene);
 }
 
+// A turn about the vertical: the wall on the right (Y, left, at -0.8)
+// is behind once the listener turns a quarter to the left (X, ahead, at
+// -0.8); turned the other way it would be ahead.
+static void TestTurn(void)
+{
+    maudAcousticScene* scene = Wall();
+    maudSpatializer* s = Create(scene);
+    const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
+    maudPose listener = {{0.0f, 0.3f, 0.2f}, upright};
+    CHECK(maudSimulateReverb(s, &listener) == maud_success, "an estimate");
+    Render(s, upright);
+    printf("wall: Y %.3f X %.3f\n", Along(1), Along(3));
+    CHECK(fabs(Along(1) + 0.8) < 0.05 && fabs(Along(3)) < 0.05, "the wall on the right");
+    // A quarter turn to the left about +y: ahead (-z) becomes -x.
+    const maudQuaternion left = {0.0f, 0.70710678f, 0.0f, 0.70710678f};
+    Render(s, left);
+    Render(s, left);
+    printf("turned: Y %.3f X %.3f\n", Along(1), Along(3));
+    CHECK(fabs(Along(3) + 0.8) < 0.05 && fabs(Along(1)) < 0.05, "turned left, the wall behind");
+    maudDestroySpatializer(s);
+    maudDestroyAcousticScene(scene);
+}
+
 static void TestMisuse(void)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
@@ -234,9 +279,131 @@ static void TestMisuse(void)
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "reflections without rays");
 }
 
+static maudAcousticScene* Office(void)
+{
+    static maudVector3 v[8];
+    static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
+                                       2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
+    static const uint32_t materials[12] = {0};
+    for (int i = 0; i < 8; ++i)
+    {
+        v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 4.0f : 0.0f};
+    }
+    maudMesh mesh = {v, 8, faces, materials, 12};
+    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    def.meshes = &mesh;
+    def.meshCount = 1;
+    maudAcousticScene* scene = nullptr;
+    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an office");
+    return scene;
+}
+
+// A spatializer in the office (reflections of duration seconds, or
+// none), estimated once at its centre.
+static maudSpatializer* InOffice(maudAcousticScene* scene, float duration, maudReverbResult* result)
+{
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.anyHit = maudSceneAnyHit;
+    def.closestHit = maudSceneClosestHit;
+    def.rayContext = scene;
+    def.reverbRays = 2048;
+    def.reflectionOrder = duration > 0.0f ? 1 : 0;
+    def.reflectionDuration = duration > 0.0f ? duration : 1.0f;
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        def.airAbsorption[b] = 0.0f;
+    }
+    maudSpatializer* s = nullptr;
+    CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
+    maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.5f, {0, 0, 0}};
+    maudPose centre = {{2.3f, 1.4f, 1.9f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    CHECK(maudSetMaterials(s, &wall, 1) == maud_success &&
+              maudSimulateReverb(s, &centre) == maud_success &&
+              maudSimulateDirect(s, &centre) == maud_success && maudLatchResults(s) == 1 &&
+              maudGetReverbResult(s, result) == maud_success,
+          "an estimate");
+    return s;
+}
+
+static float s_tail[4][FRAMES];
+
+// The reverb's W for an impulse at a result's times, levels and delay.
+static void Tail(const maudReverbResult* result)
+{
+    maudReverbDef def = maudDefaultReverbDef();
+    def.maxDelay = 0.5f;
+    maudReverb* r = nullptr;
+    CHECK(maudCreateReverb(&def, &r) == maud_success, "a reverb");
+    maudReverbParams p = {{result->reverbTime[0], result->reverbTime[1], result->reverbTime[2]},
+                          {result->level[0], result->level[1], result->level[2]},
+                          result->delay};
+    memset(s_send, 0, sizeof(s_send));
+    memset(s_tail, 0, sizeof(s_tail));
+    s_send[0] = 1.0f;
+    for (int at = 0; at < FRAMES; at += 480)
+    {
+        float* bed[4] = {s_tail[0] + at, s_tail[1] + at, s_tail[2] + at, s_tail[3] + at};
+        CHECK(maudProcessReverb(r, &p, s_send + at, bed, 480) == maud_success, "process");
+    }
+    maudDestroyReverb(r);
+}
+
+static double Energy(const float* w, double from, double to)
+{
+    double e = 0.0;
+    for (int i = (int)(from * 48000.0); i < (int)(to * 48000.0); ++i)
+    {
+        e += (double)w[i] * (double)w[i];
+    }
+    return e;
+}
+
+static void TestHybrid(void)
+{
+    maudAcousticScene* scene = Office();
+    const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
+    // The reference: reflections rendered to 0.8 s.
+    maudReverbResult reference;
+    maudSpatializer* s = InOffice(scene, 0.8f, &reference);
+    Render(s, upright);
+    maudDestroySpatializer(s);
+    static float truth[FRAMES];
+    memcpy(truth, s_bed[0], sizeof(truth));
+    // Hybrid: reflections to 0.3 s, the reverb after.
+    maudReverbResult result;
+    s = InOffice(scene, 0.3f, &result);
+    printf("hybrid: times %.2f s, levels %.1f / %.1f / %.1f dB, delay %.3f s\n",
+           (double)result.reverbTime[1], (double)result.level[0], (double)result.level[1],
+           (double)result.level[2], (double)result.delay);
+    CHECK(fabs((double)result.delay - 0.277) < 1e-6, "the duration less 23 ms");
+    Render(s, upright);
+    maudDestroySpatializer(s);
+    Tail(&result);
+    CHECK(Energy(s_tail[0], 0.0, 0.29) < 1e-6 * Energy(s_tail[0], 0.3, 0.6),
+          "the tail waits for the join");
+    double tail = Energy(s_tail[0], 0.35, 0.6);
+    double room = Energy(truth, 0.35, 0.6);
+    printf("tail 0.35 to 0.6 s: %.4g, the reference %.4g\n", tail, room);
+    CHECK(fabs(tail / room - 1.0) < 0.15, "the tail at the room's level");
+    // Alone, without reflections: the reverb at 100 ms has the
+    // reference's energy there.
+    maudReverbResult alone;
+    s = InOffice(scene, 0.0f, &alone);
+    maudDestroySpatializer(s);
+    CHECK(alone.delay == 0.0f, "no delay alone");
+    Tail(&alone);
+    double reverb = Energy(s_tail[0], 0.075, 0.125);
+    double response = Energy(truth, 0.075, 0.125);
+    printf("alone: the reverb's energy at 100 ms %.3g, the reference's %.3g\n", reverb, response);
+    CHECK(fabs(reverb / response - 1.0) < 0.25, "the room's level");
+    maudDestroyAcousticScene(scene);
+}
+
 int main(void)
 {
     TestFloor();
+    TestTurn();
+    TestHybrid();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
 }

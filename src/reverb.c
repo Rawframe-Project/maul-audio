@@ -16,6 +16,7 @@
 #include "maul-audio/reverb.h"
 
 #include "allocator.h"
+#include "band_eq.h"
 #include "octave_eq.h"
 
 #include <math.h>
@@ -34,6 +35,13 @@
 #define MAX_RATE   384000.0f
 #define MIN_TIME   0.1f
 #define MAX_TIME   20.0f
+#define MAX_DELAY  4.0f
+#define MIN_LEVEL  (-96.0f)
+#define MAX_LEVEL  24.0f
+// Levels are redesigned past this change, in dB.
+#define RELEVEL 0.01f
+// The send is delayed and leveled this many frames at a time.
+#define CHUNK 256u
 // Times are refitted when one moves by more than this share, a tenth of
 // the 5 % that is just noticeable.
 #define REFIT 0.005f
@@ -68,6 +76,20 @@ struct maudReverb
     Bank target;
     float times[MAUD_DIRECT_BANDS];
     bool started;
+    // The send's delay line (the longest delay and one sample), where
+    // the next sample goes, and the delay now.
+    float* delayLine;
+    uint32_t delayLength;
+    uint32_t delayAt;
+    // The send's levels: the equalizer, its filters now and to come, its
+    // state, the levels they meet, whether all are 0 dB.
+    maudBandEqSetup eqSetup;
+    maudBandEqFilters eqCurrent;
+    maudBandEqFilters eqTarget;
+    maudBandEqState eqState;
+    float levels[MAUD_DIRECT_BANDS];
+    bool flat;
+    bool leveling;
 };
 
 maudReverbDef maudDefaultReverbDef(void)
@@ -75,6 +97,7 @@ maudReverbDef maudDefaultReverbDef(void)
     return (maudReverbDef){
         .cookie = REVERB_DEF_COOKIE,
         .sampleRate = 48000.0f,
+        .maxDelay = 0.0f,
         .allocator = {nullptr, nullptr, nullptr},
     };
 }
@@ -134,6 +157,7 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     }
     if (def == nullptr || reverbOut == nullptr || def->cookie != REVERB_DEF_COOKIE ||
         !(def->sampleRate >= MIN_RATE) || !(def->sampleRate <= MAX_RATE) ||
+        !(def->maxDelay >= 0.0f) || !(def->maxDelay <= MAX_DELAY) ||
         !maudIsAllocatorValid(&def->allocator))
     {
         return maud_errorInvalid;
@@ -149,6 +173,8 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     {
         r->memoryFloats += r->lengths[i];
     }
+    r->delayLength = (uint32_t)ceil((double)def->maxDelay * r->rate) + 1;
+    r->memoryFloats += r->delayLength;
     r->memory = maudAllocate(&def->allocator, r->memoryFloats * sizeof(float), alignof(float));
     if (r->memory == nullptr)
     {
@@ -161,7 +187,9 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
         r->lines[i] = r->memory + offset;
         offset += r->lengths[i];
     }
+    r->delayLine = r->memory + offset;
     maudSetupOctaveEq(&r->setup, r->rate);
+    maudSetupBandEq(&r->eqSetup, def->sampleRate);
     Directions(r->encode);
     if (maudResetReverb(r) != maud_success)
     {
@@ -193,6 +221,8 @@ maudResult maudResetReverb(maudReverb* reverb)
     memset(reverb->positions, 0, sizeof(reverb->positions));
     memset(reverb->s1, 0, sizeof(reverb->s1));
     memset(reverb->s2, 0, sizeof(reverb->s2));
+    memset(&reverb->eqState, 0, sizeof(reverb->eqState));
+    reverb->delayAt = 0;
     reverb->started = false;
     return maud_success;
 }
@@ -348,22 +378,102 @@ static void Blend(const Bank* from, const Bank* to, float t, Bank* out)
     }
 }
 
-static bool TimesValid(const maudReverbParams* p)
+static bool ParamsValid(const maudReverb* r, const maudReverbParams* p)
 {
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
-        if (!(p->reverbTime[b] >= MIN_TIME) || !(p->reverbTime[b] <= MAX_TIME))
+        if (!(p->reverbTime[b] >= MIN_TIME) || !(p->reverbTime[b] <= MAX_TIME) ||
+            !(p->level[b] >= MIN_LEVEL) || !(p->level[b] <= MAX_LEVEL))
         {
             return false;
         }
     }
-    return true;
+    return p->delay >= 0.0f && (double)p->delay * r->rate < (double)r->delayLength;
+}
+
+// Takes new times and levels: designs what changed, at once if nothing
+// has run since the reverb was made or reset. Returns whether the bank
+// is to ramp.
+static bool Retarget(maudReverb* r, const maudReverbParams* p)
+{
+    bool changed = !r->started;
+    bool leveled = !r->started;
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        changed = changed || fabsf(p->reverbTime[b] - r->times[b]) > REFIT * r->times[b];
+        leveled = leveled || fabsf(p->level[b] - r->levels[b]) > RELEVEL;
+    }
+    if (changed)
+    {
+        Design(r, p->reverbTime, &r->target);
+        memcpy(r->times, p->reverbTime, sizeof(r->times));
+    }
+    if (leveled)
+    {
+        double targets[MAUD_DIRECT_BANDS];
+        double gains[MAUD_DIRECT_BANDS];
+        r->flat = true;
+        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            targets[b] = (double)p->level[b];
+            r->flat = r->flat && p->level[b] == 0.0f;
+        }
+        maudSolveBandEq(&r->eqSetup, targets, gains);
+        maudDesignBandEq(&r->eqSetup, gains, &r->eqTarget);
+        memcpy(r->levels, p->level, sizeof(r->levels));
+        r->leveling = true;
+    }
+    if (!r->started)
+    {
+        r->current = r->target;
+        r->eqCurrent = r->eqTarget;
+        r->leveling = false;
+        r->started = true;
+        return false;
+    }
+    return changed;
+}
+
+static void BlendEq(const maudBandEqFilters* from, const maudBandEqFilters* to, float t,
+                    maudBandEqFilters* out)
+{
+    const float* a = &from->g[0];
+    const float* b = &to->g[0];
+    float* o = &out->g[0];
+    size_t count = sizeof(maudBandEqFilters) / sizeof(float);
+    for (size_t i = 0; i < count; ++i)
+    {
+        o[i] = a[i] + t * (b[i] - a[i]);
+    }
+}
+
+// The send's frames [done, done + count) of frames, delayed by delay
+// samples and leveled (the levels moving across the call), into x.
+static void Feed(maudReverb* r, const float* in, uint32_t delay, uint32_t done, uint32_t count,
+                 uint32_t frames, float* x)
+{
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        r->delayLine[r->delayAt] = in[i];
+        uint32_t from = r->delayAt + r->delayLength - delay;
+        x[i] = r->delayLine[from >= r->delayLength ? from - r->delayLength : from];
+        r->delayAt = r->delayAt + 1 == r->delayLength ? 0 : r->delayAt + 1;
+    }
+    if (r->flat && !r->leveling)
+    {
+        return;
+    }
+    maudBandEqFilters from;
+    maudBandEqFilters to;
+    BlendEq(&r->eqCurrent, &r->eqTarget, (float)done / (float)frames, &from);
+    BlendEq(&r->eqCurrent, &r->eqTarget, (float)(done + count) / (float)frames, &to);
+    maudRunBandEq(&r->eqState, &from, &to, x, x, count);
 }
 
 maudResult maudProcessReverb(maudReverb* reverb, const maudReverbParams* params, const float* in,
                              float* const* bed, uint32_t frames)
 {
-    if (reverb == nullptr || params == nullptr || !TimesValid(params) ||
+    if (reverb == nullptr || params == nullptr || !ParamsValid(reverb, params) ||
         (frames > 0 && (in == nullptr || bed == nullptr || bed[0] == nullptr || bed[1] == nullptr ||
                         bed[2] == nullptr || bed[3] == nullptr)))
     {
@@ -373,36 +483,31 @@ maudResult maudProcessReverb(maudReverb* reverb, const maudReverbParams* params,
     {
         return maud_success;
     }
-    bool changed = !reverb->started;
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    bool ramp = Retarget(reverb, params);
+    uint32_t delay = (uint32_t)lround((double)params->delay * reverb->rate);
+    float x[CHUNK];
+    for (uint32_t done = 0; done < frames; done += CHUNK)
     {
-        changed =
-            changed || fabsf(params->reverbTime[b] - reverb->times[b]) > REFIT * reverb->times[b];
-    }
-    if (changed)
-    {
-        Design(reverb, params->reverbTime, &reverb->target);
-        memcpy(reverb->times, params->reverbTime, sizeof(reverb->times));
-        if (!reverb->started)
+        uint32_t count = frames - done < CHUNK ? frames - done : CHUNK;
+        Feed(reverb, in + done, delay, done, count, frames, x);
+        for (uint32_t start = 0; start < count; start += RAMP_FRAMES)
         {
-            reverb->current = reverb->target;
-            reverb->started = true;
-            changed = false;
+            uint32_t n = count - start < RAMP_FRAMES ? count - start : RAMP_FRAMES;
+            float* const segment[4] = {bed[0] + done + start, bed[1] + done + start,
+                                       bed[2] + done + start, bed[3] + done + start};
+            if (!ramp)
+            {
+                Run(reverb, &reverb->current, x + start, segment, n);
+                continue;
+            }
+            Bank at;
+            Blend(&reverb->current, &reverb->target, (float)(done + start + n) / (float)frames,
+                  &at);
+            Run(reverb, &at, x + start, segment, n);
         }
     }
-    if (!changed)
-    {
-        Run(reverb, &reverb->current, in, bed, frames);
-        return maud_success;
-    }
-    for (uint32_t start = 0; start < frames; start += RAMP_FRAMES)
-    {
-        uint32_t count = frames - start < RAMP_FRAMES ? frames - start : RAMP_FRAMES;
-        Bank at;
-        Blend(&reverb->current, &reverb->target, (float)(start + count) / (float)frames, &at);
-        float* const segment[4] = {bed[0] + start, bed[1] + start, bed[2] + start, bed[3] + start};
-        Run(reverb, &at, in + start, segment, count);
-    }
     reverb->current = reverb->target;
+    reverb->eqCurrent = reverb->eqTarget;
+    reverb->leveling = false;
     return maud_success;
 }

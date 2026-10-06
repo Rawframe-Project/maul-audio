@@ -68,7 +68,7 @@ pulse_stream: clock context context_core period pulse_core thread worker xrun
 real_fft:
 reflection_response: fft
 reflections: allocator ambisonics partitioned reflection_response reverb_estimate
-reverb: allocator octave_eq
+reverb: allocator band_eq octave_eq
 reverb_estimate: spherical_harmonics
 scene: allocator bvh
 spatializer: air_absorption allocator direct_step occlusion reflections reverb_estimate transmission
