@@ -104,6 +104,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/binaural_decoder.c
     src/binaural_dsp.c
     src/direct_effect.c
+    src/direct_step.c
     src/fft.c
     src/hrtf.c
     src/hrtf_file.c
@@ -113,6 +114,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/magls.c
     src/near_field.c
     src/near_field_table.c
+    src/spatializer.c
     src/speaker_decoder.c
     src/speaker_panner.c
     src/spherical_harmonics.c)
@@ -223,6 +225,11 @@ if(MAUL_AUDIO_BUILD_TESTS)
     if(MAUL_AUDIO_SPATIAL)
         maul_add_test(ambisonics)
         maul_add_test(direct_effect)
+        maul_add_test(spatializer)
+        # The two sides on two threads; Emscripten builds have none.
+        if(NOT EMSCRIPTEN)
+            maul_add_test(spatializer_threads POSIX)
+        endif()
         maul_add_test(speaker_decoder)
         maul_add_test(speaker_panner)
     endif()

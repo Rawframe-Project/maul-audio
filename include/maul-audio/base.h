@@ -107,6 +107,16 @@ extern "C"
         float z;
     } maudVector3;
 
+    // A rotation as a quaternion, (x, y, z) its vector part and w its
+    // scalar part; any nonzero length is normalized where one is taken.
+    typedef struct maudQuaternion
+    {
+        float x;
+        float y;
+        float z;
+        float w;
+    } maudQuaternion;
+
     // A source as a panner hears it, for encoding into an ambisonic bed or
     // panning to speakers: where it is (only the direction counts; a zero
     // vector is straight ahead) and its gain.

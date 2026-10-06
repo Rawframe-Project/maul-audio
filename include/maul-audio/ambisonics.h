@@ -27,17 +27,6 @@ extern "C"
 #define MAUD_MAX_AMBISONIC_ORDER    3
 #define MAUD_MAX_AMBISONIC_CHANNELS 16
 
-    // A rotation as a unit quaternion in the listener's frame: a sound
-    // from direction d comes out from the rotated d. Any nonzero length is
-    // normalized.
-    typedef struct maudQuaternion
-    {
-        float x;
-        float y;
-        float z;
-        float w;
-    } maudQuaternion;
-
     /// Returns the channels a bed of an order takes.
     ///
     /// @param order  1 to MAUD_MAX_AMBISONIC_ORDER.
@@ -82,7 +71,9 @@ extern "C"
 
     /// Rotates a bed in place, the rotation moving linearly from `from`
     /// to `to` across the call (a crossfade of the two rotated fields; a
-    /// large change within one call blends rather than turns).
+    /// large change within one call blends rather than turns). A rotation
+    /// turns the field in the listener's frame: a sound from direction d
+    /// comes out from the rotated d.
     ///
     /// @param order   The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER.
     /// @param from    The rotation at the previous call's end.

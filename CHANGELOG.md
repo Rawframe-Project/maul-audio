@@ -290,6 +290,12 @@ format.
   dipole per band), occlusion and transmission, after the host's own
   gain; band gains are met within 0.2 dB by filters whose gains are
   solved from the bands, and every change ramps across a call.
+- Spatializers (`maul-audio/spatializer.h`), the Spatial part's root:
+  sources named by ids with generations, poses, and a direct step on
+  the simulation side giving each source's distance, direction in the
+  listener's frame and directivity; the rendering side latches the
+  newest step and reads results without allocating, locking or
+  waiting, never torn. `maudQuaternion` moves to `maul-audio/base.h`.
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.

@@ -33,6 +33,7 @@ coreaudio_form: coreaudio_core
 coreaudio_stream: clock context context_core coreaudio_core coreaudio_hog period thread voice xrun
 device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq
+direct_step:
 duplex: context context_core stream_open
 fft:
 follow: backend context context_core notify
@@ -60,6 +61,7 @@ pipewire_stream: clock context context_core period pipewire_core thread xrun
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
+spatializer: allocator direct_step
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics
 spherical_harmonics:
