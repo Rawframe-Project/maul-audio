@@ -18,7 +18,9 @@ void maudIosDetachStream(maudContext* context, maudStreamSlot* slot);
 // Starts or stops the stream's unit, setting the session for what runs.
 void maudIosSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active);
 
-// Sets the session for the streams that run; false when it refuses.
-bool maudIosUpdateSession(maudContext* context);
+// Sets the session for the streams there are and those that run, and
+// keeps it active while making a unit (preparing), as iOS initializes an
+// input unit only in an active session; false when it refuses.
+bool maudIosUpdateSession(maudContext* context, bool preparing);
 
 #endif // MAUL_AUDIO_SRC_IOS_STREAM_H

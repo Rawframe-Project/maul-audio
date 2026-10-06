@@ -197,7 +197,7 @@ static maudResult RequestFocus(maudContext* context, maudFocusRequest request, m
     maudIos* ios = context->native;
     maudFocusRequest previous = ios->session.focus;
     ios->session.focus = request;
-    if (!maudIosUpdateSession(context))
+    if (!maudIosUpdateSession(context, false))
     {
         ios->session.focus = previous;
         return maud_errorPlatform;

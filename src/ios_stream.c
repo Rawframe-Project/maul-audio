@@ -243,8 +243,13 @@ static maudResult Connect(maudContext* context, maudIosStream* entry)
     }
     // The session takes the stream's direction before its unit
     // initializes.
-    if (!Configure(entry) || !maudIosUpdateSession(context) ||
-        AudioUnitInitialize(entry->unit) != noErr)
+    bool initialized = Configure(entry) && maudIosUpdateSession(context, true) &&
+                       AudioUnitInitialize(entry->unit) == noErr;
+    // Back to what runs: an initialized unit outlives the session's
+    // deactivation, as it does an interruption's.
+    bool settled = maudIosUpdateSession(context, false);
+    (void)settled;
+    if (!initialized)
     {
         return maud_errorPlatform;
     }
@@ -274,14 +279,15 @@ maudResult maudIosAttachStream(maudContext* context, maudStreamSlot* slot)
 void maudIosDetachStream(maudContext* context, maudStreamSlot* slot)
 {
     Disconnect(context, EntryOf(context, slot));
-    bool updated = maudIosUpdateSession(context);
+    bool updated = maudIosUpdateSession(context, false);
     (void)updated;
 }
 
 // The category follows every stream that has a unit, including one
 // being attached (its slot goes live after); activation, the streams
-// that play. A unit exists only between attach and detach.
-bool maudIosUpdateSession(maudContext* context)
+// that play, and the unit being made. A unit exists only between attach
+// and detach.
+bool maudIosUpdateSession(maudContext* context, bool preparing)
 {
     bool outputs = false;
     bool inputs = false;
@@ -298,7 +304,7 @@ bool maudIosUpdateSession(maudContext* context)
             running = running || entry->playing;
         }
     }
-    return maudIosSessionUpdate(context->native, outputs, inputs, running);
+    return maudIosSessionUpdate(context->native, outputs, inputs, running || preparing);
 }
 
 void maudIosSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active)
@@ -313,12 +319,13 @@ void maudIosSetStreamActive(maudContext* context, maudStreamSlot* slot, bool act
         OSStatus stopped = AudioOutputUnitStop(entry->unit);
         (void)stopped;
         entry->playing = false;
-        bool updated = maudIosUpdateSession(context);
+        bool updated = maudIosUpdateSession(context, false);
         (void)updated;
         return;
     }
     // The session takes the stream's direction before the unit starts.
     entry->playing = true;
     entry->nextSampleTime = -1.0;
-    entry->playing = maudIosUpdateSession(context) && AudioOutputUnitStart(entry->unit) == noErr;
+    entry->playing =
+        maudIosUpdateSession(context, false) && AudioOutputUnitStart(entry->unit) == noErr;
 }
