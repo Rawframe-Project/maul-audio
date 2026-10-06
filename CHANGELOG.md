@@ -313,6 +313,44 @@ format.
   platform, and watertight ray-triangle tests; `maudSceneAnyHit` and
   `maudSceneClosestHit` plug into a spatializer's hooks. A benchmark
   gives rays per second on a generated level of rooms.
+- A parametric reverb (`maul-audio/reverb.h`): a 16-line feedback
+  delay network whose decay follows reverberation times in three
+  bands, its tail added into a first-order bed; times, a level per band
+  and a delay move across a call without allocating.
+- Reverberation estimates from geometry (`maudSimulateReverb`,
+  `maudGetReverbResult`): rays from the listener, each hit lit back
+  through the any-hit query, energy per band in 10 ms bins and a fit of
+  the decay, the same however the task hooks split the rays; with the
+  levels to set the reverb from.
+- Geometric reflections (`maudRenderReflections`): the same rays'
+  energy on spherical harmonics becomes a response of the def's order
+  and length, convolved with the host's send by uniformly partitioned
+  convolution on the audio thread and crossfaded to each new response;
+  a hybrid tail hands over from the reflections to the reverb.
+- Probe sets for pathing (`maudCreateProbeSet`, `maudDestroyProbeSet`,
+  `maudGetProbeSet`): the host's points or probes generated over a box
+  on its floors, linked where they see each other within range.
+- Pathing (`maudSetPathing`): an occluded source that asks finds the
+  shortest path over the probe set in use, refines it around the
+  corners and takes its sound around them by diffraction, through the
+  direct result (`pathed`).
+- Baking (`maudBakeProbeSet`, `maudUseBakedReverb`): a probe set bakes
+  the reverberation estimate at every probe, the same bytes on every
+  platform, and a baked set in use blends the nearest probes in sight
+  instead of tracing.
+- Bake files (`maudSaveProbeSet`, `maudLoadProbeSet`): the `.maudbake`
+  format of `docs/bake-format.md`, loaded as hostile input with typed
+  errors and a fuzz target.
+- Instanced meshes in acoustic scenes (`maudCreateSceneInstance`,
+  `maudMoveSceneInstance`, `maudDestroySceneInstance`,
+  `maudCommitAcousticScene`): meshes built once and placed any number
+  of times with a position, orientation and scale, moved between
+  commits; named limits on instances and triangles.
+- Golden renders through the offline backend (an HRTF sweep, an
+  ambisonic rotation, an occlusion walk and a reverb tail) against
+  16-bit WAV references in `data/golden`, and the benchmarks' rows
+  printed beside a recorded baseline (`bench/baseline.txt`), with rows
+  for the reflections' simulation and convolution.
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.
