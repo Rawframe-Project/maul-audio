@@ -140,6 +140,75 @@ static void TestGeometry(void)
     maudDestroySpatializer(s);
 }
 
+// v turned by the unit quaternion q, through its rotation matrix.
+static maudVector3 Rotate(maudQuaternion q, maudVector3 v)
+{
+    double x = (double)q.x;
+    double y = (double)q.y;
+    double z = (double)q.z;
+    double w = (double)q.w;
+    double m[3][3] = {
+        {1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)},
+        {2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)},
+        {2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)},
+    };
+    double in[3] = {(double)v.x, (double)v.y, (double)v.z};
+    double out[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        out[i] = m[i][0] * in[0] + m[i][1] * in[1] + m[i][2] * in[2];
+    }
+    return (maudVector3){(float)out[0], (float)out[1], (float)out[2]};
+}
+
+// For listeners turned every way: a source placed along a direction d
+// in the listener's frame (turned into the world by the listener's
+// orientation) is reported along d.
+static void TestOrientations(void)
+{
+    maudSpatializer* s = Create(2);
+    maudSourceId id = Source(s);
+    uint32_t seed = 21;
+    double worst = 0.0;
+    for (int trial = 0; trial < 200; ++trial)
+    {
+        double v[7];
+        for (int i = 0; i < 7; ++i)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            v[i] = (double)(seed >> 8) / 8388608.0 - 1.0;
+        }
+        double n = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+        maudQuaternion q = {(float)(v[0] / n), (float)(v[1] / n), (float)(v[2] / n),
+                            (float)(v[3] / n)};
+        double m = sqrt(v[4] * v[4] + v[5] * v[5] + v[6] * v[6]);
+        maudVector3 d = {(float)(v[4] / m), (float)(v[5] / m), (float)(v[6] / m)};
+        maudVector3 w = Rotate(q, d);
+        maudPose listener = {{1.0f, -2.0f, 3.0f}, q};
+        maudPose source = {{1.0f + 4.0f * w.x, -2.0f + 4.0f * w.y, 3.0f + 4.0f * w.z},
+                           {0.0f, 0.0f, 0.0f, 1.0f}};
+        // An unnormalized orientation means the same turn.
+        listener.orientation.x *= 3.0f;
+        listener.orientation.y *= 3.0f;
+        listener.orientation.z *= 3.0f;
+        listener.orientation.w *= 3.0f;
+        maudDirectResult r;
+        CHECK(maudSetSourcePose(s, id, &source) == maud_success &&
+                  maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) > 0 &&
+                  maudGetDirectResult(s, id, &r) == maud_success,
+              "a result");
+        worst =
+            fmax(worst, fabs((double)(r.direction.x - d.x)) + fabs((double)(r.direction.y - d.y)) +
+                            fabs((double)(r.direction.z - d.z)));
+    }
+    CHECK(worst < 1e-4, "directions come back in the listener's frame");
+    // An id for a slot never used is stale, not a source.
+    maudPose pose = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    CHECK(maudSetSourcePose(s, (maudSourceId){2, 1}, &pose) == maud_errorStale,
+          "a slot never used holds no source");
+    maudDestroySpatializer(s);
+}
+
 static void TestLatch(void)
 {
     maudSpatializer* s = Create(4);
@@ -204,6 +273,7 @@ int main(void)
 {
     TestIds();
     TestGeometry();
+    TestOrientations();
     TestLatch();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
