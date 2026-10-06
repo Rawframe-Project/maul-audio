@@ -241,7 +241,10 @@ static maudResult Connect(maudContext* context, maudIosStream* entry)
     {
         return maud_errorCapacity;
     }
-    if (!Configure(entry) || AudioUnitInitialize(entry->unit) != noErr)
+    // The session takes the stream's direction before its unit
+    // initializes.
+    if (!Configure(entry) || !maudIosUpdateSession(context) ||
+        AudioUnitInitialize(entry->unit) != noErr)
     {
         return maud_errorPlatform;
     }
@@ -275,21 +278,27 @@ void maudIosDetachStream(maudContext* context, maudStreamSlot* slot)
     (void)updated;
 }
 
+// The category follows every stream that has a unit, including one
+// being attached (its slot goes live after); activation, the streams
+// that play. A unit exists only between attach and detach.
 bool maudIosUpdateSession(maudContext* context)
 {
     bool outputs = false;
     bool inputs = false;
+    bool running = false;
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
-        if (slot->live && EntryOf(context, slot)->playing)
+        const maudIosStream* entry = EntryOf(context, slot);
+        if (entry->unit != nullptr)
         {
             bool input = slot->core.def.direction == maud_directionInput;
             inputs = inputs || input;
             outputs = outputs || !input;
+            running = running || entry->playing;
         }
     }
-    return maudIosSessionUpdate(context->native, outputs, inputs);
+    return maudIosSessionUpdate(context->native, outputs, inputs, running);
 }
 
 void maudIosSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active)

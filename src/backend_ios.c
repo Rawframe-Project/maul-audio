@@ -100,7 +100,7 @@ static void CloseContext(maudContext* context)
     maudIosSessionUnobserve(ios->observer);
     // No stream runs: the session is deactivated, letting others resume.
     ios->session.focus = maud_focusRelease;
-    bool updated = maudIosSessionUpdate(ios, false, false);
+    bool updated = maudIosSessionUpdate(ios, false, false, false);
     (void)updated;
     maudContextRelease(context, ios, ios->bytes, alignof(maudIos));
     context->native = nullptr;

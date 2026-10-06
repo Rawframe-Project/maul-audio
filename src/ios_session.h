@@ -25,9 +25,11 @@ void maudIosSessionUnobserve(void* observer);
 // The forms the session's current route leads to, output and input.
 void maudIosSessionRoute(maudDeviceForm* output, maudDeviceForm* input);
 
-// Sets the category for what runs and activates the session while
-// anything runs or focus is asked for, deactivating it, so that others
-// resume, otherwise. false when the session refuses.
-bool maudIosSessionUpdate(maudIos* ios, bool outputs, bool inputs);
+// Sets the category for the streams there are, outputs and inputs (iOS
+// lets an input unit initialize only under a category that records),
+// and activates the session while one runs or focus is asked for,
+// deactivating it, so that others resume, otherwise. false when the
+// session refuses.
+bool maudIosSessionUpdate(maudIos* ios, bool outputs, bool inputs, bool running);
 
 #endif // MAUL_AUDIO_SRC_IOS_SESSION_H

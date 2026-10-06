@@ -223,13 +223,13 @@ static AVAudioSessionCategory CategoryOf(const maudIos* ios, AVAudioSessionCateg
     return AVAudioSessionCategoryPlayback;
 }
 
-bool maudIosSessionUpdate(maudIos* ios, bool outputs, bool inputs)
+bool maudIosSessionUpdate(maudIos* ios, bool outputs, bool inputs, bool running)
 {
     @autoreleasepool
     {
         maudIosSession* state = &ios->session;
         AVAudioSession* session = [AVAudioSession sharedInstance];
-        bool wanted = outputs || inputs || state->focus != maud_focusRelease;
+        bool wanted = running || state->focus != maud_focusRelease;
         bool changed = !state->configured || state->outputs != outputs || state->inputs != inputs;
         state->outputs = outputs;
         state->inputs = inputs;
