@@ -243,13 +243,13 @@ static AVAudioSessionCategory CategoryOf(const maudIos* ios, AVAudioSessionCateg
     {
         *options |= AVAudioSessionCategoryOptionDuckOthers;
     }
-    if (state->inputs && state->outputs)
+    if (state->use.voiced || (state->use.inputs && state->use.outputs))
     {
         *options |= AVAudioSessionCategoryOptionDefaultToSpeaker | ALLOW_BLUETOOTH_HFP |
                     AVAudioSessionCategoryOptionAllowBluetoothA2DP;
         return AVAudioSessionCategoryPlayAndRecord;
     }
-    if (state->inputs)
+    if (state->use.inputs)
     {
         // Record takes no mixing options (only PlayAndRecord, Playback and
         // MultiRoute do): a session that only records never mixes.
@@ -267,25 +267,26 @@ static AVAudioSessionCategory CategoryOf(const maudIos* ios, AVAudioSessionCateg
     return AVAudioSessionCategoryPlayback;
 }
 
-bool maudIosSessionUpdate(maudIos* ios, bool outputs, bool inputs, bool running)
+bool maudIosSessionUpdate(maudIos* ios, maudIosUse use)
 {
     @autoreleasepool
     {
         maudIosSession* state = &ios->session;
         AVAudioSession* session = [AVAudioSession sharedInstance];
-        bool wanted = running || state->focus != maud_focusRelease;
-        bool changed = !state->configured || state->outputs != outputs || state->inputs != inputs;
-        state->outputs = outputs;
-        state->inputs = inputs;
+        bool wanted = use.running || state->focus != maud_focusRelease;
+        bool changed = !state->configured || state->use.outputs != use.outputs ||
+                       state->use.inputs != use.inputs || state->use.voiced != use.voiced;
+        state->use = use;
+        // A voiced duplex stream's unit cancels the echo of what it plays,
+        // in the session's voice chat mode.
+        AVAudioSessionMode mode =
+            use.voiced ? AVAudioSessionModeVoiceChat : AVAudioSessionModeDefault;
         AVAudioSessionCategoryOptions options = 0;
         AVAudioSessionCategory category = CategoryOf(ios, &options);
         if (changed || ![session.category isEqualToString:category] ||
-            session.categoryOptions != options)
+            ![session.mode isEqualToString:mode] || session.categoryOptions != options)
         {
-            if (![session setCategory:category
-                                 mode:AVAudioSessionModeDefault
-                              options:options
-                                error:nil])
+            if (![session setCategory:category mode:mode options:options error:nil])
             {
                 return false;
             }

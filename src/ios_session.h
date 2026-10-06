@@ -38,6 +38,6 @@ void maudIosSessionRoute(maudDeviceForm* output, maudDeviceForm* input);
 // and activates the session while one runs or focus is asked for,
 // deactivating it, so that others resume, otherwise. false when the
 // session refuses.
-bool maudIosSessionUpdate(maudIos* ios, bool outputs, bool inputs, bool running);
+bool maudIosSessionUpdate(maudIos* ios, maudIosUse use);
 
 #endif // MAUL_AUDIO_SRC_IOS_SESSION_H

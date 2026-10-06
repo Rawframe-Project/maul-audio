@@ -41,10 +41,29 @@ typedef struct maudIosStream
     size_t capturedBytes;
     // The context, for the host time base.
     const struct maudIos* owner;
+    // The channels the unit captures when fewer than the stream's: the
+    // voice-processing unit captures one, spread to every channel. 0 for
+    // the stream's own.
+    uint32_t unitChannels;
+    // A voiced duplex stream's halves share the input half's
+    // voice-processing unit and point at each other; the output half has
+    // no unit of its own.
+    struct maudIosStream* voicePartner;
     // The sample time the next IO cycle should start at, or a negative
     // value before the first: a later start skipped cycles.
     Float64 nextSampleTime;
 } maudIosStream;
+
+// What the context's streams need of the session: outputs and inputs
+// with units, a voiced duplex stream's (Voice-Processing I/O), and
+// whether one plays or a unit is being made.
+typedef struct maudIosUse
+{
+    bool outputs;
+    bool inputs;
+    bool voiced;
+    bool running;
+} maudIosUse;
 
 // The session as the context last set it (ios_session.m).
 typedef struct maudIosSession
@@ -56,9 +75,8 @@ typedef struct maudIosSession
     // The focus the host asked for, which decides whether the
     // session mixes with others.
     maudFocusRequest focus;
-    // The category's inputs: whether input and output streams run.
-    bool inputs;
-    bool outputs;
+    // What the category was set for.
+    maudIosUse use;
 } maudIosSession;
 
 // What the session reports on the main thread, for the drain: whether

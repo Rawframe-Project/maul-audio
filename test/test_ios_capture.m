@@ -5,7 +5,8 @@
 // (tools/run_ios_app.sh, which grants it the microphone): an input
 // stream runs at its rate on the IO thread with a sound clock, under
 // the Record category, which takes no mixing option; the session's
-// available inputs are listed and a stream pinned to one runs. It also prints what the simulator
+// available inputs are listed and a stream pinned to one runs; a voiced
+// duplex stream runs on one Voice-Processing I/O unit. It also prints what the simulator
 // offers beyond the default input and whether a Voice-Processing I/O unit initializes there. The
 // tests run on a thread of their own once the application has launched; the scene delegate keeps
 // UIKit content.
@@ -239,6 +240,69 @@ static void TestPinnedInput(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+typedef struct Duplex
+{
+    atomic_uint count;
+    atomic_uint withInput;
+} Duplex;
+
+static void CountDuplex(const maudStreamBlock* block, void* user)
+{
+    Duplex* duplex = user;
+    if (block->output != nullptr)
+    {
+        memset(block->output, 0, (size_t)block->frameCount * 2 * sizeof(float));
+    }
+    if (block->input != nullptr)
+    {
+        atomic_fetch_add(&duplex->withInput, 1);
+    }
+    atomic_fetch_add(&duplex->count, 1);
+}
+
+// A duplex stream asking for echo cancellation and noise suppression
+// runs both halves on one Voice-Processing I/O unit, in the session's
+// voice chat mode, and reports what the unit applies.
+static void TestVoicedDuplex(maudContext* context)
+{
+    Duplex duplex = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionDuplex;
+    def.voice = maud_voiceEchoCancellation | maud_voiceNoiseSuppression;
+    def.callback = CountDuplex;
+    def.user = &duplex;
+    maudStreamId stream = {0, 0};
+    maudResult result = maudCreateStream(context, &def, &stream);
+    printf("voiced duplex: %s\n", maudResultName(result));
+    CHECK(result == maud_success, "a voiced duplex stream");
+    if (result != maud_success)
+    {
+        return;
+    }
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
+              (status.voiceActive & def.voice) == def.voice,
+          "echo cancellation and noise suppression reported");
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    for (int tries = 0; tries < 500 && atomic_load(&duplex.withInput) < 20; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    printf("voiced duplex: %u blocks, %u with input\n", atomic_load(&duplex.count),
+           atomic_load(&duplex.withInput));
+    CHECK(atomic_load(&duplex.withInput) >= 20, "blocks with captured input");
+    AVAudioSession* session = [AVAudioSession sharedInstance];
+    printf("category %s, mode %s\n", session.category.UTF8String, session.mode.UTF8String);
+    CHECK([session.category isEqualToString:AVAudioSessionCategoryPlayAndRecord] &&
+              [session.mode isEqualToString:AVAudioSessionModeVoiceChat],
+          "PlayAndRecord in voice chat mode");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void* Run(void* unused)
 {
     (void)unused;
@@ -256,6 +320,7 @@ static void* Run(void* unused)
     {
         TestCapture(context);
         TestPinnedInput(context);
+        TestVoicedDuplex(context);
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
     }
     printf("result: %d failures\n", s_failures);
