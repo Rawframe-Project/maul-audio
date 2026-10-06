@@ -4,9 +4,11 @@
 // Binaural effects. On a small crafted set with whole-sample delays: an
 // impulse from a measured direction comes out as that direction's
 // responses at their delays; between two directions, as their blend; a
-// change of direction fades into exactly what an effect started there
-// renders, the latest of several changes winning; the gain ramps; one
-// call or many give the same samples; a reset forgets. On the shipped
+// change of direction crossfades sample by sample, without a click,
+// into exactly what an effect started there renders, the latest of
+// several changes waiting for the fade under way; only the direction
+// counts; the gain ramps; one call or many give the same samples; a
+// reset forgets. On the shipped
 // SADIE II set: a source on the right reaches the right ear first and
 // louder, and the left one the left. Bad calls write nothing, and
 // processing never allocates.
@@ -15,6 +17,7 @@
 // is about the Annex K alternative, which the family does not use.
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "binaural_dsp.h"
 #include "hrtf_core.h"
 #include "test_harness.h"
 
@@ -50,9 +53,9 @@ static void CountedFree(void* memory, size_t size, size_t alignment, void* conte
 }
 
 // The crafted set: rings at -90 (one azimuth), 0 (four: ahead, left,
-// behind, right) and 90 (one); 8 taps at 48 kHz; delays of 2 samples
-// left and 3 right; direction d's ear e responds with tap d + e at
-// (1 + d + 8 e) / 64.
+// behind, right) and 90 (one); 8 taps at 48 kHz; direction d delays the
+// left ear 2 + d samples and the right 3; its ear e responds with tap
+// d + e at (1 + d + 8 e) / 64.
 enum
 {
     DIRECTIONS = 6,
@@ -121,7 +124,7 @@ static void Craft(void)
     }
     for (int d = 0; d < DIRECTIONS; ++d, at += 4)
     {
-        Put(at, 2 * 256, 2);
+        Put(at, (uint32_t)(2 + d) * 256u, 2);
         Put(at + 2, 3 * 256, 2);
     }
     for (int d = 0; d < DIRECTIONS; ++d)
@@ -180,38 +183,6 @@ static maudResult Process(maudBinaural* effect, maudBinauralParams params, const
     return maudProcessBinaural(effect, &params, in, out, frames);
 }
 
-// An impulse from the left (direction 2), then from between ahead and
-// left (directions 1 and 2, half each).
-static void TestExact(const maudHrtf* hrtf)
-{
-    maudBinaural* effect = Create(hrtf, FRAMES);
-    memset(s_in, 0, sizeof(s_in));
-    s_in[0] = 1.0f;
-    CHECK(Process(effect, At(-1.0f, 0.0f, 0.0f), s_in, s_left, s_right, FRAMES) == maud_success,
-          "process");
-    // Delay 2 + the base sample, then tap d + e.
-    bool exact = true;
-    for (int n = 0; n < FRAMES; ++n)
-    {
-        float left = n == 3 + 2 ? Expected(2, 0) : 0.0f;
-        float right = n == 4 + 3 ? Expected(2, 1) : 0.0f;
-        exact = exact && fabsf(s_left[n] - left) < 1e-5f && fabsf(s_right[n] - right) < 1e-5f;
-    }
-    CHECK(exact, "a measured direction's responses at their delays");
-    maudDestroyBinaural(effect);
-
-    effect = Create(hrtf, FRAMES);
-    float half = sqrtf(0.5f);
-    CHECK(Process(effect, At(-half, 0.0f, -half), s_in, s_left, s_right, FRAMES) == maud_success,
-          "process");
-    bool blended = fabsf(s_left[3 + 1] - 0.5f * Expected(1, 0)) < 1e-5f &&
-                   fabsf(s_left[3 + 2] - 0.5f * Expected(2, 0)) < 1e-5f &&
-                   fabsf(s_right[4 + 1 + 1] - 0.5f * Expected(1, 1)) < 1e-5f &&
-                   fabsf(s_right[4 + 2 + 1] - 0.5f * Expected(2, 1)) < 1e-5f;
-    CHECK(blended, "between two directions, half of each");
-    maudDestroyBinaural(effect);
-}
-
 static void Noise(float* samples, uint32_t count, uint32_t seed)
 {
     for (uint32_t i = 0; i < count; ++i)
@@ -219,6 +190,108 @@ static void Noise(float* samples, uint32_t count, uint32_t seed)
         seed = seed * 1664525u + 1013904223u;
         samples[i] = (float)(int32_t)(seed >> 8) / 8388608.0f - 1.0f;
     }
+}
+
+// An impulse from three measured directions comes out as their
+// responses at their delays (the base sample, the delay, the tap); from
+// 30 degrees left of ahead, as two thirds of ahead and a third of left
+// (shown on the right ear, whose delays are all alike).
+static void TestExact(const maudHrtf* hrtf)
+{
+    memset(s_in, 0, sizeof(s_in));
+    s_in[0] = 1.0f;
+    maudBinauralParams where[3] = {At(-1.0f, 0.0f, 0.0f), At(1.0f, 0.0f, 0.0f),
+                                   At(0.0f, 1.0f, 0.0f)};
+    int directions[3] = {2, 4, 5};
+    for (int i = 0; i < 3; ++i)
+    {
+        maudBinaural* effect = Create(hrtf, FRAMES);
+        CHECK(Process(effect, where[i], s_in, s_left, s_right, FRAMES) == maud_success, "process");
+        int d = directions[i];
+        bool exact = true;
+        for (int n = 0; n < FRAMES; ++n)
+        {
+            float left = n == 1 + (2 + d) + d ? Expected(d, 0) : 0.0f;
+            float right = n == 1 + 3 + d + 1 ? Expected(d, 1) : 0.0f;
+            exact = exact && fabsf(s_left[n] - left) < 1e-5f && fabsf(s_right[n] - right) < 1e-5f;
+        }
+        CHECK(exact, "a measured direction's responses at their delays");
+        maudDestroyBinaural(effect);
+    }
+    maudBinaural* effect = Create(hrtf, FRAMES);
+    CHECK(Process(effect, At(-0.5f, 0.0f, -sqrtf(0.75f)), s_in, s_left, s_right, FRAMES) ==
+              maud_success,
+          "process");
+    bool blended = true;
+    for (int n = 0; n < FRAMES; ++n)
+    {
+        float right = n == 6 ? Expected(1, 1) * 2.0f / 3.0f : n == 7 ? Expected(2, 1) / 3.0f : 0.0f;
+        blended = blended && fabsf(s_right[n] - right) < 1e-5f;
+    }
+    CHECK(blended, "two thirds of one direction and a third of the next");
+    maudDestroyBinaural(effect);
+    // 30 degrees up from ahead: two thirds of the horizontal ring's ahead
+    // (direction 1), a third of the top (direction 5).
+    effect = Create(hrtf, FRAMES);
+    CHECK(Process(effect, At(0.0f, 0.5f, -sqrtf(0.75f)), s_in, s_left, s_right, FRAMES) ==
+              maud_success,
+          "process");
+    bool rings = true;
+    for (int n = 0; n < FRAMES; ++n)
+    {
+        float right = n == 6    ? Expected(1, 1) * 2.0f / 3.0f
+                      : n == 10 ? Expected(5, 1) / 3.0f
+                                : 0.0f;
+        rings = rings && fabsf(s_right[n] - right) < 1e-5f;
+    }
+    CHECK(rings, "between two rings, in proportion");
+    maudDestroyBinaural(effect);
+}
+
+// The sample loops alone. Cubic Lagrange interpolation is exact for a
+// cubic: reading n^3 (scaled) at a delay gives (n - delay)^3, still or
+// ramping. The FIR matches a plain sum, its last tap included.
+static void TestKernels(void)
+{
+    static float x[64 + 16];
+    float* now = x + 16;
+    for (int n = -16; n < 64; ++n)
+    {
+        float t = (float)n / 16.0f;
+        now[n] = t * t * t;
+    }
+    float out[64];
+    maudReadDelayed(now, 2.375f, 0.0f, out, 64);
+    bool still = true;
+    for (int n = 0; n < 64; ++n)
+    {
+        float t = ((float)n - 2.375f) / 16.0f;
+        still = still && fabsf(out[n] - t * t * t) < 1e-5f;
+    }
+    CHECK(still, "a still fractional delay, exact for a cubic");
+    maudReadDelayed(now, 1.5f, 0.125f, out, 64);
+    bool ramped = true;
+    for (int n = 0; n < 64; ++n)
+    {
+        float t = ((float)n - (1.5f + 0.125f * (float)n)) / 16.0f;
+        ramped = ramped && fabsf(out[n] - t * t * t) < 1e-5f;
+    }
+    CHECK(ramped, "a ramping delay, exact for a cubic");
+    float h[9];
+    Noise(h, 9, 23);
+    Noise(x, 64 + 16, 29);
+    maudFir(now, h, 9, out, 64);
+    bool sums = true;
+    for (int n = 0; n < 64; ++n)
+    {
+        double sum = 0.0;
+        for (int k = 0; k < 9; ++k)
+        {
+            sum += (double)h[k] * (double)now[n - k];
+        }
+        sums = sums && fabs((double)out[n] - sum) < 1e-5;
+    }
+    CHECK(sums, "the FIR, every tap");
 }
 
 // Renders 1,024 frames in calls of blocks frames, the direction moving to
@@ -271,15 +344,95 @@ static void TestFade(const maudHrtf* hrtf)
                   maud_success,
               "process");
     }
-    RenderMoving(settled, 1024, At(0.0f, 1.0f, 0.0f), At(0.0f, 1.0f, 0.0f), 0, s_left2, s_right2);
-    same = true;
-    for (int n = 256 + 2 * 128 + TAPS; n < 1024; ++n)
+    // The fade to the left runs to its end at 384; only then does the
+    // latest direction, up, start: as for an effect told up at 384.
+    for (uint32_t done = 0; done < 1024; done += 32)
     {
-        same = same && s_left[n] == s_left2[n] && s_right[n] == s_right2[n];
+        maudBinauralParams params = done < 256   ? At(0.0f, 0.0f, -1.0f)
+                                    : done < 384 ? At(-1.0f, 0.0f, 0.0f)
+                                                 : At(0.0f, 1.0f, 0.0f);
+        CHECK(Process(settled, params, s_in + done, s_left2 + done, s_right2 + done, 32) ==
+                  maud_success,
+              "process");
     }
-    CHECK(same, "the latest change wins, after the fade under way");
+    CHECK(memcmp(s_left, s_left2, 1024 * sizeof(float)) == 0 &&
+              memcmp(s_right, s_right2, 1024 * sizeof(float)) == 0,
+          "the latest change waits for the fade under way, the ones between dropped");
     maudDestroyBinaural(moving);
     maudDestroyBinaural(settled);
+}
+
+// The right ear's delays are all alike, so across a change from ahead
+// (direction 1) to the right (direction 4) at frame 256 it hears
+// (1 - s) of the old response and s of the new, s rising by 1 / 128 a
+// frame from 1 / 128.
+static void TestCrossfade(const maudHrtf* hrtf)
+{
+    Noise(s_in, 1024, 13);
+    maudBinaural* effect = Create(hrtf, 1024);
+    RenderMoving(effect, 64, At(0.0f, 0.0f, -1.0f), At(1.0f, 0.0f, 0.0f), 256, s_left, s_right);
+    bool exact = true;
+    for (int n = 200; n < 500; ++n)
+    {
+        float share = n < 256 ? 0.0f : n >= 256 + 127 ? 1.0f : (float)(n - 256 + 1) / 128.0f;
+        float old = Expected(1, 1) * s_in[n - 4 - 2];
+        float now = Expected(4, 1) * s_in[n - 4 - 5];
+        exact = exact && fabsf(s_right[n] - (old + share * (now - old))) < 1e-5f;
+    }
+    CHECK(exact, "the crossfade, sample by sample");
+    maudDestroyBinaural(effect);
+}
+
+// A slow sine through a change from ahead to the right: the left ear's
+// delay grows by 3 samples and its response moves by 3 taps, yet no
+// step between samples outgrows the steady signal's by more than 60%
+// (measured: none outgrows it; a jump of 3 samples doubles it at the
+// worst of the phases).
+static void TestNoClick(const maudHrtf* hrtf)
+{
+    // At eight starting phases, so that a jump cannot hide where the
+    // sine is flat.
+    float worst = 0.0f;
+    for (int phase = 0; phase < 8; ++phase)
+    {
+        for (int n = 0; n < 1024; ++n)
+        {
+            s_in[n] = sinf(2.0f * 3.14159265f * 300.0f * (float)n / 48000.0f +
+                           0.39269908f * (float)phase);
+        }
+        maudBinaural* effect = Create(hrtf, 1024);
+        RenderMoving(effect, 64, At(0.0f, 0.0f, -1.0f), At(1.0f, 0.0f, 0.0f), 256, s_left, s_right);
+        maudDestroyBinaural(effect);
+        float steady = 0.0f;
+        float moving = 0.0f;
+        for (int n = 100; n < 1024; ++n)
+        {
+            float step = fabsf(s_left[n] - s_left[n - 1]);
+            if (n >= 600)
+            {
+                steady = step > steady ? step : steady;
+            }
+            moving = step > moving ? step : moving;
+        }
+        worst = moving / steady > worst ? moving / steady : worst;
+    }
+    printf("largest step %.2f times the steady one\n", (double)worst);
+    CHECK(worst < 1.6f, "no click on a change");
+}
+
+// Only the direction counts, not the vector's length.
+static void TestDirectionOnly(const maudHrtf* hrtf)
+{
+    Noise(s_in, 256, 17);
+    maudBinaural* near = Create(hrtf, 256);
+    maudBinaural* far = Create(hrtf, 256);
+    CHECK(Process(near, At(0.0f, 0.5f, -0.5f), s_in, s_left, s_right, 256) == maud_success,
+          "process");
+    CHECK(Process(far, At(0.0f, 5.0f, -5.0f), s_in, s_left2, s_right2, 256) == maud_success,
+          "process");
+    CHECK(memcmp(s_left, s_left2, 256 * sizeof(float)) == 0, "a direction of any length");
+    maudDestroyBinaural(near);
+    maudDestroyBinaural(far);
 }
 
 // One call of 1,000 frames and calls of 1, 7, 100 and 892 give the same
@@ -307,6 +460,16 @@ static void TestBlocks(const maudHrtf* hrtf)
     CHECK(maudResetBinaural(parts) == maud_success, "reset");
     CHECK(Process(parts, params, s_in, s_left2, s_right2, 1000) == maud_success, "process");
     CHECK(memcmp(s_left, s_left2, 1000 * sizeof(float)) == 0, "a reset effect starts afresh");
+    // Even at another direction: no fade from the one before the reset.
+    maudBinaural* fresh = Create(hrtf, 1024);
+    CHECK(maudResetBinaural(parts) == maud_success, "reset");
+    CHECK(Process(parts, At(1.0f, 0.0f, 0.0f), s_in, s_left, s_right, 1000) == maud_success,
+          "process");
+    CHECK(Process(fresh, At(1.0f, 0.0f, 0.0f), s_in, s_left2, s_right2, 1000) == maud_success,
+          "process");
+    CHECK(memcmp(s_left, s_left2, 1000 * sizeof(float)) == 0,
+          "a reset starts at the new direction");
+    maudDestroyBinaural(fresh);
     maudDestroyBinaural(whole);
     maudDestroyBinaural(parts);
 }
@@ -489,6 +652,10 @@ int main(void)
     {
         TestExact(hrtf);
         TestFade(hrtf);
+        TestCrossfade(hrtf);
+        TestNoClick(hrtf);
+        TestDirectionOnly(hrtf);
+        TestKernels();
         TestBlocks(hrtf);
         TestGain(hrtf);
         TestMisuse(hrtf);
