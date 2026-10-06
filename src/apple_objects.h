@@ -31,13 +31,17 @@ typedef struct maudAppleObjects
 {
     AudioUnit mixer;
     maudStreamCore* core;
-    // One block from the context: the bed's frames, each object's frames
-    // (a slice each), the records the period fills, and the buses.
+    // One block from the context: the records the period fills, the
+    // buses, the list the mixer renders into, the bed's frames
+    // (interleaved), each object's frames, and the mixer's output (one
+    // slice per channel, as the mixer takes no interleaved frames).
     void* storage;
     size_t storageBytes;
-    float* bed;
     maudStreamObject* records;
     maudAppleObjectBus* buses;
+    AudioBufferList* mixedList;
+    float* bed;
+    float* mixed;
     // The frames of the render in progress.
     UInt32 frames;
 } maudAppleObjects;

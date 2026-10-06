@@ -907,9 +907,7 @@ static double RightOverLeft(maudContext* context, float x)
     def.callback = PlaceTone;
     def.user = &placed;
     maudStreamId player = {0, 0};
-    maudResult created = maudCreateStream(context, &def, &player);
-    printf("probe: object stream %s\n", maudResultName(created));
-    CHECK(created == maud_success, "an object stream");
+    CHECK(maudCreateStream(context, &def, &player) == maud_success, "an object stream");
     Sides sides = {.from = 48000};
     maudStreamDef heard = maudDefaultStreamDef();
     heard.direction = maud_directionInput;

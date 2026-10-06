@@ -6,14 +6,15 @@
 // stream's bed and objects into the staging block, sets each object's
 // bus from its record (enabled while active, its direction and distance
 // from its position, its gain in decibels), then renders the mixer,
-// whose input callbacks copy from the staging block.
+// whose input callbacks copy from the staging block, and interleaves
+// what it rendered for the output unit. The mixer takes only
+// non-interleaved frames.
 
 #include "apple_objects.h"
 
 #include "context.h"
 
 #include <math.h>
-#include <stdio.h>
 #include <string.h>
 
 #define DEGREES_PER_RADIAN 57.29577951308232f
@@ -43,7 +44,7 @@ static OSStatus ObjectInput(void* user, AudioUnitRenderActionFlags* flags,
     return noErr;
 }
 
-// The bed's bus: copies the slice's interleaved frames.
+// The bed's bus: the slice's interleaved frames, a buffer per channel.
 static OSStatus BedInput(void* user, AudioUnitRenderActionFlags* flags, const AudioTimeStamp* time,
                          UInt32 bus, UInt32 frames, AudioBufferList* data)
 {
@@ -52,25 +53,32 @@ static OSStatus BedInput(void* user, AudioUnitRenderActionFlags* flags, const Au
     (void)bus;
     const maudAppleObjectBus* source = user;
     const maudAppleObjects* objects = source->objects;
-    size_t channels = objects->core->period.channelCount;
-    float* out = data->mBuffers[0].mData;
+    UInt32 channels = objects->core->period.channelCount;
     UInt32 copied = frames < objects->frames ? frames : objects->frames;
-    memcpy(out, objects->bed, (size_t)copied * channels * sizeof(float));
-    memset(out + (size_t)copied * channels, 0,
-           (size_t)(frames - copied) * channels * sizeof(float));
+    for (UInt32 c = 0; c < channels && c < data->mNumberBuffers; ++c)
+    {
+        float* out = data->mBuffers[c].mData;
+        for (UInt32 i = 0; i < copied; ++i)
+        {
+            out[i] = objects->bed[(size_t)i * channels + c];
+        }
+        memset(out + copied, 0, (size_t)(frames - copied) * sizeof(float));
+    }
     return noErr;
 }
 
-// 32-bit float interleaved frames of channels at the stream's rate.
+// 32-bit float frames of channels at the stream's rate, a buffer per
+// channel.
 static AudioStreamBasicDescription Format(const maudStreamCore* core, UInt32 channels)
 {
     return (AudioStreamBasicDescription){
         .mSampleRate = core->format.sampleRate,
         .mFormatID = kAudioFormatLinearPCM,
-        .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-        .mBytesPerPacket = channels * (UInt32)sizeof(float),
+        .mFormatFlags =
+            kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved,
+        .mBytesPerPacket = (UInt32)sizeof(float),
         .mFramesPerPacket = 1,
-        .mBytesPerFrame = channels * (UInt32)sizeof(float),
+        .mBytesPerFrame = (UInt32)sizeof(float),
         .mChannelsPerFrame = channels,
         .mBitsPerChannel = 32,
     };
@@ -94,13 +102,7 @@ static UInt32 OutputType(maudDeviceForm form)
 static bool SetProperty(AudioUnit mixer, AudioUnitPropertyID property, AudioUnitScope scope,
                         AudioUnitElement element, const void* value, UInt32 size)
 {
-    OSStatus status = AudioUnitSetProperty(mixer, property, scope, element, value, size);
-    if (status != noErr)
-    {
-        fprintf(stderr, "probe: property %u scope %u element %u: %d\n", (unsigned)property,
-                (unsigned)scope, (unsigned)element, (int)status);
-    }
-    return status == noErr;
+    return AudioUnitSetProperty(mixer, property, scope, element, value, size) == noErr;
 }
 
 // One input bus: its format, its callback, its source mode and no
@@ -171,16 +173,20 @@ static bool Configure(maudAppleObjects* objects, maudDeviceForm form)
     return true;
 }
 
-// The staging block: the bed's slice, each object's slice, the records
-// and the buses.
+// The list a mixer of up to two channels renders into: its header and
+// two buffers.
+#define MIXED_LIST_BYTES (sizeof(AudioBufferList) + sizeof(AudioBuffer))
+
+// The staging block: the records, the buses, the mixer's list, then the
+// bed's slice, each object's slice and the mixer's slices.
 static bool Allocate(maudContext* context, maudAppleObjects* objects)
 {
     uint32_t count = objects->core->period.objectCount;
     size_t channels = objects->core->period.channelCount;
-    size_t floats = (size_t)MAUD_APPLE_OBJECT_SLICE * (channels + count);
+    size_t floats = (size_t)MAUD_APPLE_OBJECT_SLICE * (2 * channels + count);
     size_t records = (size_t)count * sizeof(maudStreamObject);
     size_t buses = (size_t)(count + 1) * sizeof(maudAppleObjectBus);
-    objects->storageBytes = records + buses + floats * sizeof(float);
+    objects->storageBytes = records + buses + MIXED_LIST_BYTES + floats * sizeof(float);
     objects->storage =
         maudContextAllocate(context, objects->storageBytes, alignof(maudStreamObject));
     if (objects->storage == nullptr)
@@ -189,8 +195,10 @@ static bool Allocate(maudContext* context, maudAppleObjects* objects)
     }
     objects->records = objects->storage;
     objects->buses = (maudAppleObjectBus*)(objects->records + count);
-    objects->bed = (float*)(objects->buses + count + 1);
-    float* frames = objects->bed + (size_t)MAUD_APPLE_OBJECT_SLICE * channels;
+    objects->mixedList = (AudioBufferList*)(objects->buses + count + 1);
+    objects->bed = (float*)((char*)objects->mixedList + MIXED_LIST_BYTES);
+    objects->mixed = objects->bed + (size_t)MAUD_APPLE_OBJECT_SLICE * channels;
+    float* frames = objects->mixed + (size_t)MAUD_APPLE_OBJECT_SLICE * channels;
     for (uint32_t i = 0; i < count; ++i)
     {
         objects->records[i] =
@@ -229,10 +237,7 @@ maudResult maudOpenAppleObjects(maudContext* context, maudStreamCore* core, maud
         maudCloseAppleObjects(context, objects);
         return maud_errorPlatform;
     }
-    bool configured = Configure(objects, form);
-    OSStatus initialized = configured ? AudioUnitInitialize(objects->mixer) : -1;
-    fprintf(stderr, "probe: configured %d, initialize %d\n", configured, (int)initialized);
-    if (!configured || initialized != noErr)
+    if (!Configure(objects, form) || AudioUnitInitialize(objects->mixer) != noErr)
     {
         maudCloseAppleObjects(context, objects);
         return maud_errorPlatform;
@@ -300,5 +305,30 @@ OSStatus maudRenderAppleObjects(maudAppleObjects* objects, AudioUnitRenderAction
     {
         Place(objects->mixer, i, &objects->records[i]);
     }
-    return AudioUnitRender(objects->mixer, flags, time, 0, frames, out);
+    UInt32 channels = period->channelCount;
+    AudioBufferList* list = objects->mixedList;
+    list->mNumberBuffers = channels;
+    for (UInt32 c = 0; c < channels; ++c)
+    {
+        list->mBuffers[c] = (AudioBuffer){
+            .mNumberChannels = 1,
+            .mDataByteSize = frames * (UInt32)sizeof(float),
+            .mData = objects->mixed + (size_t)c * MAUD_APPLE_OBJECT_SLICE,
+        };
+    }
+    OSStatus status = AudioUnitRender(objects->mixer, flags, time, 0, frames, list);
+    if (status != noErr)
+    {
+        return status;
+    }
+    float* interleaved = out->mBuffers[0].mData;
+    for (UInt32 c = 0; c < channels; ++c)
+    {
+        const float* mixed = list->mBuffers[c].mData;
+        for (UInt32 i = 0; i < frames; ++i)
+        {
+            interleaved[(size_t)i * channels + c] = mixed[i];
+        }
+    }
+    return noErr;
 }
