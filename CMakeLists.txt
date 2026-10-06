@@ -116,6 +116,8 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/near_field.c
     src/near_field_table.c
     src/occlusion.c
+    src/octave_eq.c
+    src/reverb.c
     src/scene.c
     src/spatializer.c
     src/speaker_decoder.c
@@ -233,6 +235,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(spatializer)
         maul_add_test(occlusion)
         maul_add_test(scene)
+        maul_add_test(reverb)
         maul_add_test(transmission)
         # The two sides on two threads; Emscripten builds have none.
         if(NOT EMSCRIPTEN)

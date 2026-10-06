@@ -14,6 +14,7 @@
 #include "maul-audio/ambisonics.h"
 #include "maul-audio/binaural.h"
 #include "maul-audio/direct.h"
+#include "maul-audio/reverb.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -157,6 +158,41 @@ static void RunDirect(void)
     maudDestroyDirectEffect(effect);
 }
 
+// The reverb per 10 ms block, still and with its times changing every
+// block (a refit and a ramp each time).
+static void RunReverb(void)
+{
+    maudReverbDef def = maudDefaultReverbDef();
+    maudReverb* reverb = nullptr;
+    if (maudCreateReverb(&def, &reverb) != maud_success)
+    {
+        return;
+    }
+    float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], s_bed[3]};
+    for (int changing = 0; changing < 2; ++changing)
+    {
+        double best = 1e9;
+        for (int run = 0; run < 3; ++run)
+        {
+            double start = Seconds();
+            for (int block = 0; block < BLOCKS / 10; ++block)
+            {
+                float t = changing ? 1.0f + 0.001f * (float)(block % 100) : 1.0f;
+                maudReverbParams params = {{1.5f * t, t, 0.5f * t}};
+                if (maudProcessReverb(reverb, &params, s_in, bed, FRAMES) != maud_success)
+                {
+                    return;
+                }
+            }
+            double elapsed = Seconds() - start;
+            best = elapsed < best ? elapsed : best;
+        }
+        printf("reverb, %-17s %7.2f us per 10 ms block\n", changing ? "times changing" : "still",
+               best / (BLOCKS / 10) * 1e6);
+    }
+    maudDestroyReverb(reverb);
+}
+
 int main(void)
 {
     FILE* file = fopen(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", "rb");
@@ -189,6 +225,7 @@ int main(void)
     }
     RunBed(hrtf);
     RunDirect();
+    RunReverb();
     maudDestroyHrtf(hrtf);
     return 0;
 }
