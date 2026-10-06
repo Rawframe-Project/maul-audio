@@ -13,9 +13,11 @@
 
 #include "maul-audio/spatializer.h"
 
+#include "air_absorption.h"
 #include "allocator.h"
 #include "direct_step.h"
 #include "occlusion.h"
+#include "reverb_estimate.h"
 #include "transmission.h"
 
 #include <math.h>
@@ -30,8 +32,14 @@
 #define MAX_SURFACES           16u
 #define MAX_MATERIALS          65536u
 // Rays per round of queries, and per query.
-#define ROUND 4096u
-#define BATCH 64u
+#define ROUND           4096u
+#define BATCH           64u
+#define MIN_REVERB_RAYS 64u
+#define MAX_REVERB_RAYS 16384u
+// A reverberation ray's bounces at most; past them the decay is filled
+// in at its rate.
+#define REVERB_BOUNCES 1024u
+#define NO_REVERB      0.1f
 
 typedef struct Entry
 {
@@ -44,6 +52,7 @@ typedef struct Buffer
 {
     uint64_t step;
     Entry* entries;
+    maudReverbResult reverb;
 } Buffer;
 
 typedef struct Slot
@@ -90,6 +99,11 @@ struct maudSpatializer
     uint8_t* occluded;
     uint32_t* offsets;
     uint32_t roundRays;
+    // The reverberation estimate's trace, its batches' histograms and
+    // the newest estimate.
+    maudReverbTrace trace;
+    maudReverbHistogram* histograms;
+    maudReverbResult reverb;
     Buffer buffers[3];
     // The simulation side's buffer and step count.
     uint32_t back;
@@ -101,7 +115,7 @@ struct maudSpatializer
 
 maudSpatializerDef maudDefaultSpatializerDef(void)
 {
-    return (maudSpatializerDef){
+    maudSpatializerDef def = {
         .cookie = SPATIALIZER_DEF_COOKIE,
         .sourceCapacity = 256,
         .maxOcclusionSamples = 64,
@@ -110,11 +124,14 @@ maudSpatializerDef maudDefaultSpatializerDef(void)
         .rayContext = nullptr,
         .maxSurfaces = 4,
         .materialCapacity = 64,
+        .reverbRays = 2048,
         .enqueueTask = nullptr,
         .finishTask = nullptr,
         .userTaskContext = nullptr,
         .allocator = {nullptr, nullptr, nullptr},
     };
+    maudAirAbsorptionOf(20.0, 50.0, def.airAbsorption);
+    return def;
 }
 
 maudSourceDef maudDefaultSourceDef(void)
@@ -164,6 +181,9 @@ static void Release(maudSpatializer* s)
     Free(&allocator, s->hits, ROUND * sizeof(maudRayHit), alignof(maudRayHit));
     Free(&allocator, s->walkers, FreeBytes(s->capacity), alignof(uint32_t));
     Free(&allocator, s->walked, (size_t)s->capacity * sizeof(float), alignof(float));
+    Free(&allocator, s->histograms,
+         (size_t)maudReverbBatches(s->trace.rays) * sizeof(maudReverbHistogram),
+         alignof(maudReverbHistogram));
     for (int b = 0; b < 3; ++b)
     {
         if (s->buffers[b].entries != nullptr)
@@ -182,6 +202,56 @@ static void Release(maudSpatializer* s)
     maudRelease(&allocator, s, sizeof(maudSpatializer), alignof(maudSpatializer));
 }
 
+static bool ReverbValid(const maudSpatializerDef* def)
+{
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        if (!(def->airAbsorption[b] >= 0.0f) || !isfinite(def->airAbsorption[b]))
+        {
+            return false;
+        }
+    }
+    return def->reverbRays == 0 ||
+           (def->reverbRays >= MIN_REVERB_RAYS && def->reverbRays <= MAX_REVERB_RAYS);
+}
+
+// Allocates everything a spatializer holds but itself; false if any
+// allocation failed (Release frees what was made).
+static bool Allocate(maudSpatializer* s, const maudSpatializerDef* def)
+{
+    s->points = maudAllocate(&def->allocator, (size_t)s->maxSamples * sizeof(maudVector3),
+                             alignof(maudVector3));
+    s->rays = maudAllocate(&def->allocator, ROUND * sizeof(maudRay), alignof(maudRay));
+    s->occluded = maudAllocate(&def->allocator, ROUND, 1);
+    s->offsets = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
+    s->materials =
+        maudAllocate(&def->allocator, (size_t)s->materialCapacity * sizeof(maudAcousticMaterial),
+                     alignof(maudAcousticMaterial));
+    s->hits = maudAllocate(&def->allocator, ROUND * sizeof(maudRayHit), alignof(maudRayHit));
+    s->walkers = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
+    s->walked = maudAllocate(&def->allocator, (size_t)s->capacity * sizeof(float), alignof(float));
+    if (def->reverbRays > 0)
+    {
+        s->histograms =
+            maudAllocate(&def->allocator,
+                         (size_t)maudReverbBatches(def->reverbRays) * sizeof(maudReverbHistogram),
+                         alignof(maudReverbHistogram));
+    }
+    s->slots = maudAllocate(&def->allocator, SlotBytes(s->capacity), alignof(Slot));
+    s->free = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
+    bool all = s->slots != nullptr && s->free != nullptr && s->points != nullptr &&
+               s->rays != nullptr && s->occluded != nullptr && s->offsets != nullptr &&
+               s->materials != nullptr && s->hits != nullptr && s->walkers != nullptr &&
+               s->walked != nullptr && (def->reverbRays == 0 || s->histograms != nullptr);
+    for (int b = 0; b < 3; ++b)
+    {
+        s->buffers[b].entries =
+            maudAllocate(&def->allocator, EntryBytes(s->capacity), alignof(Entry));
+        all = all && s->buffers[b].entries != nullptr;
+    }
+    return all;
+}
+
 maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer** spatializerOut)
 {
     if (spatializerOut != nullptr)
@@ -193,7 +263,7 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
         def->maxOcclusionSamples == 0 || def->maxOcclusionSamples > MAX_SAMPLES ||
         def->maxSurfaces == 0 || def->maxSurfaces > MAX_SURFACES || def->materialCapacity == 0 ||
         def->materialCapacity > MAX_MATERIALS ||
-        (def->enqueueTask == nullptr) != (def->finishTask == nullptr) ||
+        (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || !ReverbValid(def) ||
         !maudIsAllocatorValid(&def->allocator))
     {
         return maud_errorInvalid;
@@ -216,30 +286,12 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
         .enqueueTask = def->enqueueTask,
         .finishTask = def->finishTask,
         .userTaskContext = def->userTaskContext,
+        .trace = {.air = {def->airAbsorption[0], def->airAbsorption[1], def->airAbsorption[2]},
+                  .rays = def->reverbRays,
+                  .maxBounces = REVERB_BOUNCES},
+        .reverb = {.reverbTime = {NO_REVERB, NO_REVERB, NO_REVERB}},
     };
-    s->points = maudAllocate(&def->allocator, (size_t)s->maxSamples * sizeof(maudVector3),
-                             alignof(maudVector3));
-    s->rays = maudAllocate(&def->allocator, ROUND * sizeof(maudRay), alignof(maudRay));
-    s->occluded = maudAllocate(&def->allocator, ROUND, 1);
-    s->offsets = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
-    s->materials =
-        maudAllocate(&def->allocator, (size_t)s->materialCapacity * sizeof(maudAcousticMaterial),
-                     alignof(maudAcousticMaterial));
-    s->hits = maudAllocate(&def->allocator, ROUND * sizeof(maudRayHit), alignof(maudRayHit));
-    s->walkers = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
-    s->walked = maudAllocate(&def->allocator, (size_t)s->capacity * sizeof(float), alignof(float));
-    s->slots = maudAllocate(&def->allocator, SlotBytes(s->capacity), alignof(Slot));
-    s->free = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
-    bool all = s->slots != nullptr && s->free != nullptr && s->points != nullptr &&
-               s->rays != nullptr && s->occluded != nullptr && s->offsets != nullptr &&
-               s->materials != nullptr && s->hits != nullptr && s->walkers != nullptr &&
-               s->walked != nullptr;
-    for (int b = 0; b < 3; ++b)
-    {
-        s->buffers[b].entries =
-            maudAllocate(&def->allocator, EntryBytes(s->capacity), alignof(Entry));
-        all = all && s->buffers[b].entries != nullptr;
-    }
+    bool all = Allocate(s, def);
     if (!all)
     {
         Release(s);
@@ -256,6 +308,7 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     for (int b = 0; b < 3; ++b)
     {
         memset(s->buffers[b].entries, 0, EntryBytes(s->capacity));
+        s->buffers[b].reverb = s->reverb;
     }
     s->back = 0;
     s->front = 1;
@@ -565,12 +618,71 @@ maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* list
     }
     Occlude(spatializer, listener, buffer->entries);
     Transmit(spatializer, listener, buffer->entries);
+    buffer->reverb = spatializer->reverb;
     buffer->step = ++spatializer->steps;
     // Publish: the written buffer waits, marked newer; the one that was
     // waiting becomes the next to write.
     uint32_t old = atomic_exchange_explicit(&spatializer->shared, spatializer->back | FRESH,
                                             memory_order_acq_rel);
     spatializer->back = old & (FRESH - 1);
+    return maud_success;
+}
+
+// Traces batches [start, end) of a reverberation estimate.
+static void TraceBatches(uint32_t start, uint32_t end, void* context)
+{
+    maudSpatializer* s = context;
+    for (uint32_t b = start; b < end; ++b)
+    {
+        maudTraceReverbBatch(&s->trace, b, &s->histograms[b]);
+    }
+}
+
+// The any-hit query for a host without one: every path clear.
+static void Clear(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
+{
+    (void)rays;
+    (void)context;
+    memset(occluded, 0, count);
+}
+
+maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* listener)
+{
+    if (spatializer == nullptr || listener == nullptr || !maudPoseValid(listener))
+    {
+        return maud_errorInvalid;
+    }
+    maudSpatializer* s = spatializer;
+    if (s->trace.rays == 0)
+    {
+        return maud_errorState;
+    }
+    s->reverb.estimates += 1;
+    if (s->closestHit == nullptr)
+    {
+        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            s->reverb.reverbTime[b] = NO_REVERB;
+        }
+        return maud_success;
+    }
+    s->trace.closestHit = s->closestHit;
+    s->trace.anyHit = s->anyHit != nullptr ? s->anyHit : Clear;
+    s->trace.context = s->rayContext;
+    s->trace.materials = s->materials;
+    s->trace.materialCount = s->materialCount;
+    s->trace.listener = listener->position;
+    uint32_t batches = maudReverbBatches(s->trace.rays);
+    if (s->enqueueTask != nullptr)
+    {
+        void* task = s->enqueueTask(TraceBatches, batches, 1, s, s->userTaskContext);
+        s->finishTask(task, s->userTaskContext);
+    }
+    else
+    {
+        TraceBatches(0, batches, s);
+    }
+    maudFitReverb(s->histograms, batches, s->reverb.reverbTime);
     return maud_success;
 }
 
@@ -608,5 +720,20 @@ maudResult maudGetDirectResult(const maudSpatializer* spatializer, maudSourceId 
         return maud_errorStale;
     }
     *resultOut = entry->result;
+    return maud_success;
+}
+
+maudResult maudGetReverbResult(const maudSpatializer* spatializer, maudReverbResult* resultOut)
+{
+    if (spatializer == nullptr || resultOut == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    const Buffer* buffer = &spatializer->buffers[spatializer->front];
+    if (buffer->step == 0)
+    {
+        return maud_errorInvalid;
+    }
+    *resultOut = buffer->reverb;
     return maud_success;
 }

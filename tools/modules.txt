@@ -67,7 +67,7 @@ pulse_stream: clock context context_core period pulse_core thread worker xrun
 reverb: allocator octave_eq
 reverb_estimate:
 scene: allocator bvh
-spatializer: allocator direct_step occlusion transmission
+spatializer: air_absorption allocator direct_step occlusion reverb_estimate transmission
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics
 spherical_harmonics:

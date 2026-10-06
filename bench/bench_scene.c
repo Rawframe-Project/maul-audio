@@ -192,6 +192,21 @@ static void Steps(maudAcousticScene* scene)
     double elapsed = Seconds() - start;
     printf("spatializer steps, 256 volumetric sources: %.2f ms per step, %.2f M rays/s\n",
            elapsed / 20 * 1e3, (double)s_hookRays / elapsed * 1e-6);
+    // One reverberation estimate of the default 2048 rays on one thread.
+    s_hookRays = 0;
+    start = Seconds();
+    maudReverbResult reverb;
+    if (maudSimulateReverb(s, &listener) != maud_success ||
+        maudSimulateDirect(s, &listener) != maud_success || maudLatchResults(s) == 0 ||
+        maudGetReverbResult(s, &reverb) != maud_success)
+    {
+        return;
+    }
+    elapsed = Seconds() - start;
+    printf("reverberation estimate, 2048 rays: %.0f ms with a step, %.2f M ray queries, "
+           "%.2f / %.2f / %.2f s\n",
+           elapsed * 1e3, (double)s_hookRays * 1e-6, (double)reverb.reverbTime[0],
+           (double)reverb.reverbTime[1], (double)reverb.reverbTime[2]);
     maudDestroySpatializer(s);
 }
 

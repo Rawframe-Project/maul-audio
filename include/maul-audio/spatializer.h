@@ -134,6 +134,13 @@ extern "C"
         uint32_t maxSurfaces;
         // The material table's capacity, 1 to 65,536.
         uint32_t materialCapacity;
+        // The rays a reverberation estimate traces, 64 to 16,384, or 0
+        // for no estimates. Diffuse rooms are within 2 % at 1024; a
+        // smooth room with one absorbent surface needs about 8000.
+        uint32_t reverbRays;
+        // The air's amplitude exponent per metre and band, for the
+        // estimate (as the direct effect's def).
+        float airAbsorption[MAUD_DIRECT_BANDS];
         // The task hooks; both NULL runs queries on the step's thread.
         maudEnqueueTaskFn* enqueueTask;
         maudFinishTaskFn* finishTask;
@@ -179,9 +186,20 @@ extern "C"
         uint32_t surfaces;
     } maudDirectResult;
 
+    // A reverberation estimate as a step published it.
+    typedef struct maudReverbResult
+    {
+        // The time to decay by 60 dB per band, 0.1 to 20 s, for
+        // maudReverbParams; 0.1 s before the first estimate.
+        float reverbTime[MAUD_DIRECT_BANDS];
+        // The estimates made before the step; 0 for none.
+        uint32_t estimates;
+    } maudReverbResult;
+
     /// Returns the default spatializer def: 256 sources, up to 64
     /// occlusion points each, transmission paths of up to 4 surfaces, 64
-    /// materials, no ray queries, no task hooks.
+    /// materials, reverberation estimates of 2048 rays through air at
+    /// 20 degrees and 50 % humidity, no ray queries, no task hooks.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -202,7 +220,8 @@ extern "C"
     /// @param def             The def, from maudDefaultSpatializerDef.
     /// @param spatializerOut  Receives the spatializer; NULL on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
-    ///         def without its cookie, a capacity out of range or one task
+    ///         def without its cookie, a capacity or ray count out of
+    ///         range, an air absorption below 0 or not finite, or one task
     ///         hook without the other; `maud_errorCapacity` when the
     ///         allocator fails.
     /// @par Thread safety
@@ -300,6 +319,26 @@ extern "C"
                                                         const maudAcousticMaterial* materials,
                                                         uint32_t count);
 
+    /// Estimates the reverberation times at the listener's position from
+    /// the scene: rays from the listener in batches of 64, each hit lit
+    /// back toward it through the any-hit query, energy per band in 10 ms
+    /// bins, a fit of the decay from -5 to -25 dB. The batches go through
+    /// the task hooks if set; the times do not depend on how the tasks
+    /// split them. Without a closest-hit query there is nothing to
+    /// reflect and the times are 0.1 s. The next direct step publishes
+    /// the times with its results.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param listener     The listener's pose.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
+    ///         value that is not finite or a zero orientation;
+    ///         `maud_errorState` when the def asked for no estimates.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSimulateReverb(maudSpatializer* spatializer,
+                                                          const maudPose* listener);
+
     /// Latches the newest published step for the rendering side; until
     /// the next latch, results come from it.
     ///
@@ -326,6 +365,18 @@ extern "C"
     MAUD_NODISCARD MAUD_API maudResult maudGetDirectResult(const maudSpatializer* spatializer,
                                                            maudSourceId source,
                                                            maudDirectResult* resultOut);
+
+    /// Reads the reverberation estimate the latched step published.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param resultOut    Receives the result.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
+    ///         no latched step.
+    /// @par Thread safety
+    /// Real-time safe: no allocation, lock or wait. The rendering side is
+    /// used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudGetReverbResult(const maudSpatializer* spatializer,
+                                                           maudReverbResult* resultOut);
 
 #ifdef __cplusplus
 }
