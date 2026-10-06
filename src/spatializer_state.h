@@ -19,6 +19,10 @@
 
 // The flag on `shared` marking the waiting buffer newer.
 #define FRESH 4u
+// When the reverb's level is matched without reflections, and how long
+// its output stays silent after its input (its shortest delay line).
+#define LEVEL_AT     0.1f
+#define REVERB_ONSET 0.023f
 
 typedef struct Entry
 {
@@ -95,6 +99,8 @@ struct maudSpatializer
     // sources a step paths.
     maudPathing* pathing;
     maudProbeSetId pathSet;
+    // The baked set reverberation comes from.
+    maudProbeSetId bakedSet;
     uint32_t maxPaths;
     maudReverbResult reverb;
     Buffer buffers[3];
@@ -108,6 +114,16 @@ struct maudSpatializer
 
 // The host's queries and tasks, and the probe limits, for probe work.
 maudProbeQueries maudSpatializerQueries(const maudSpatializer* s);
+
+// Traces a reverberation estimate from a position into the histograms
+// (fields not summed) and result's times, levels and delay; returns the
+// batches traced. Needs the closest-hit query and reverberation rays.
+uint32_t maudTraceFrom(maudSpatializer* s, maudVector3 position, maudReverbResult* result);
+
+// An estimate from the baked set in use at a position, into the
+// spatializer's reverberation result and, with reflections, published;
+// false without a set in use or a probe in sight.
+bool maudBakedReverb(maudSpatializer* s, maudVector3 position);
 
 // A direct step's pathing: paths for the occluded sources that ask, up
 // to maxPaths in slot order, over the set in use.

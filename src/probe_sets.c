@@ -13,6 +13,7 @@ typedef struct Slot
     uint32_t generation;
     bool live;
     maudProbeGraph graph;
+    maudProbeBake bake;
 } Slot;
 
 struct maudProbeSets
@@ -57,6 +58,7 @@ void maudDestroyProbeSets(maudProbeSets* sets)
     for (uint32_t i = 0; i < sets->capacity; ++i)
     {
         maudReleaseProbeGraph(&sets->allocator, &sets->slots[i].graph);
+        maudReleaseProbeBake(&sets->allocator, &sets->slots[i].bake);
     }
     maudAllocator allocator = sets->allocator;
     maudRelease(&allocator, sets, Bytes(sets->capacity), alignof(maudProbeSets));
@@ -106,10 +108,24 @@ maudResult maudRemoveProbeSet(maudProbeSets* sets, maudProbeSetId set)
         return result;
     }
     maudReleaseProbeGraph(&sets->allocator, &slot->graph);
+    maudReleaseProbeBake(&sets->allocator, &slot->bake);
     slot->live = false;
     slot->generation = slot->generation == UINT32_MAX ? 1 : slot->generation + 1;
     sets->free[sets->freeCount++] = set.index1 - 1;
     return maud_success;
+}
+
+maudResult maudFindProbeBake(maudProbeSets* sets, maudProbeSetId set,
+                             const maudProbeGraph** graphOut, maudProbeBake** bakeOut)
+{
+    Slot* slot = nullptr;
+    maudResult result = Find(sets, set, &slot);
+    if (result == maud_success)
+    {
+        *graphOut = &slot->graph;
+        *bakeOut = &slot->bake;
+    }
+    return result;
 }
 
 maudResult maudFindProbeSet(const maudProbeSets* sets, maudProbeSetId set,

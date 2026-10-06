@@ -48,11 +48,7 @@
 #define MAX_PROBES           65536u
 #define MAX_PROBE_PAIRS      16777216u
 #define MAX_PATHS            4096u
-// When the reverb's level is matched without reflections, and how long
-// its output stays silent after its input (its shortest delay line).
-#define LEVEL_AT     0.1f
-#define REVERB_ONSET 0.023f
-#define SILENT       (-96.0f)
+#define SILENT               (-96.0f)
 
 maudSpatializerDef maudDefaultSpatializerDef(void)
 {
@@ -649,6 +645,10 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
         return maud_errorState;
     }
     s->reverb.estimates += 1;
+    if (maudBakedReverb(s, listener->position))
+    {
+        return maud_success;
+    }
     if (s->closestHit == nullptr)
     {
         for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
@@ -659,12 +659,22 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
         s->reverb.delay = 0.0f;
         return maud_success;
     }
+    uint32_t batches = maudTraceFrom(s, listener->position, &s->reverb);
+    if (s->reflections != nullptr)
+    {
+        maudPublishReflections(s->reflections, &s->trace, s->histograms, batches);
+    }
+    return maud_success;
+}
+
+uint32_t maudTraceFrom(maudSpatializer* s, maudVector3 position, maudReverbResult* result)
+{
     s->trace.closestHit = s->closestHit;
     s->trace.anyHit = s->anyHit != nullptr ? s->anyHit : Clear;
     s->trace.context = s->rayContext;
     s->trace.materials = s->materials;
     s->trace.materialCount = s->materialCount;
-    s->trace.listener = listener->position;
+    s->trace.listener = position;
     uint32_t batches = maudReverbBatches(s->trace.rays);
     if (s->enqueueTask != nullptr)
     {
@@ -675,16 +685,12 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
     {
         TraceBatches(0, batches, s);
     }
-    maudFitReverb(s->histograms, batches, s->reverb.reverbTime);
+    maudFitReverb(s->histograms, batches, result->reverbTime);
     bool hybrid = s->reflections != nullptr;
-    s->reverb.delay = hybrid ? s->reflectionDuration - REVERB_ONSET : 0.0f;
-    maudReverbLevels(&s->histograms[0], s->reverb.reverbTime,
-                     hybrid ? s->reflectionDuration : LEVEL_AT, s->reverb.delay, s->reverb.level);
-    if (s->reflections != nullptr)
-    {
-        maudPublishReflections(s->reflections, &s->trace, s->histograms, batches);
-    }
-    return maud_success;
+    result->delay = hybrid ? s->reflectionDuration - REVERB_ONSET : 0.0f;
+    maudReverbLevels(&s->histograms[0], result->reverbTime,
+                     hybrid ? s->reflectionDuration : LEVEL_AT, result->delay, result->level);
+    return batches;
 }
 
 uint64_t maudLatchResults(maudSpatializer* spatializer)

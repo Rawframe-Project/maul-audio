@@ -72,7 +72,7 @@ static void TestPoints(maudSpatializer* s)
     def.range = 10.0f;
     maudProbeSetId set = {0, 0};
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_success && set.index1 == 1, "a set");
-    maudProbeSetInfo info = {0, 0};
+    maudProbeSetInfo info = {0};
     maudVector3 copied[2];
     CHECK(maudGetProbeSet(s, set, &info, 1, 2, copied) == maud_success, "its info");
     printf("points: %u probes, %u links\n", info.probes, info.links);
@@ -107,7 +107,7 @@ static void TestGenerated(maudSpatializer* s)
     def.spacing = 2.5f;
     maudProbeSetId set = {0, 0};
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_success, "generated");
-    maudProbeSetInfo info = {0, 0};
+    maudProbeSetInfo info = {0};
     maudVector3 points[16];
     CHECK(maudGetProbeSet(s, set, &info, 0, 16, points) == maud_success, "its probes");
     bool floor = info.probes == 16;

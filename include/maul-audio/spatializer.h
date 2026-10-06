@@ -224,6 +224,8 @@ extern "C"
     {
         uint32_t probes;
         uint32_t links;
+        // Whether it holds a bake.
+        bool baked;
     } maudProbeSetInfo;
 
     // What a step found for a source.
@@ -563,6 +565,45 @@ extern "C"
     /// a time.
     MAUD_NODISCARD MAUD_API maudResult maudSetPathing(maudSpatializer* spatializer,
                                                       maudProbeSetId set);
+
+    /// Bakes a probe set: a reverberation estimate at every probe, as
+    /// maudSimulateReverb makes one there, with the energy field when the
+    /// spatializer renders reflections; it replaces an earlier bake. The
+    /// rays go through the task hooks, and the bake's values are the same
+    /// bits on every platform and however the tasks run. Its memory: 24
+    /// bytes a probe, and with reflections 12 times the bed's channels
+    /// times the response's 10 ms bins in bytes more.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param set          The set.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
+    ///         or a 0 or unknown id; `maud_errorStale` for a destroyed
+    ///         set's id; `maud_errorState` without reverberation rays or
+    ///         a closest-hit query; `maud_errorCapacity` when memory runs
+    ///         out (an earlier bake is then gone).
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudBakeProbeSet(maudSpatializer* spatializer,
+                                                        maudProbeSetId set);
+
+    /// Sets the baked probe set reverberation estimates come from, from
+    /// the next maudSimulateReverb on; 0 for none. An estimate then blends
+    /// the 4 nearest probes the listener sees within the set's range
+    /// (Shepard's weights, cut off at the fifth nearest, so moving is
+    /// smooth) and traces nothing; with no probe in sight it traces.
+    /// Destroying the set ends its use.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param set          The set, or 0.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
+    ///         or an unknown id; `maud_errorStale` for a destroyed set's
+    ///         id; `maud_errorState` for a set without a bake.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudUseBakedReverb(maudSpatializer* spatializer,
+                                                          maudProbeSetId set);
 
 #ifdef __cplusplus
 }

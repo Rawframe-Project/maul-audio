@@ -123,6 +123,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/path_search.c
     src/pathing.c
     src/portable_math.c
+    src/probe_bake.c
     src/probe_graph.c
     src/probe_sets.c
     src/real_fft.c
@@ -271,6 +272,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(spatializer_reflections)
         maul_add_test(spatializer_probes)
         maul_add_test(spatializer_pathing)
+        maul_add_test(spatializer_bake)
         maul_add_test(near_field WHITEBOX)
         maul_add_test(bvh WHITEBOX)
         maul_add_test(watertight WHITEBOX)

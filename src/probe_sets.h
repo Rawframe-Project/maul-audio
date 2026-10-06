@@ -7,6 +7,7 @@
 #ifndef MAUL_AUDIO_SRC_PROBE_SETS_H
 #define MAUL_AUDIO_SRC_PROBE_SETS_H
 
+#include "probe_bake.h"
 #include "probe_graph.h"
 
 #include <stdint.h>
@@ -27,6 +28,11 @@ maudResult maudAddProbeSet(maudProbeSets* sets, const maudProbeQueries* queries,
 // Releases a set: maud_errorInvalid for a 0 or unknown id,
 // maud_errorStale for a released one.
 maudResult maudRemoveProbeSet(maudProbeSets* sets, maudProbeSetId set);
+
+// Finds a set's graph and bake (count 0 when it has none), with the
+// errors of maudRemoveProbeSet.
+maudResult maudFindProbeBake(maudProbeSets* sets, maudProbeSetId set,
+                             const maudProbeGraph** graphOut, maudProbeBake** bakeOut);
 
 // Finds a set, with the errors of maudRemoveProbeSet.
 maudResult maudFindProbeSet(const maudProbeSets* sets, maudProbeSetId set,
