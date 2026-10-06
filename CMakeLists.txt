@@ -98,6 +98,7 @@ set(MAUL_AUDIO_DEVICE_SOURCES
 set(MAUL_AUDIO_SPATIAL_SOURCES
     src/ambisonic_rotation.c
     src/ambisonics.c
+    src/band_eq.c
     src/binaural.c
     src/binaural_decoder.c
     src/binaural_dsp.c
@@ -223,6 +224,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(speaker_panner)
     endif()
     if(MAUL_AUDIO_SPATIAL AND NOT MAUL_AUDIO_BUILD_SHARED)
+        maul_add_test(band_eq WHITEBOX)
         maul_add_test(near_field WHITEBOX)
         foreach(area binaural binaural_decoder hrtf)
             maul_add_test(${area} WHITEBOX)
