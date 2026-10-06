@@ -15,6 +15,7 @@
 
 #include "allocator.h"
 #include "fft.h"
+#include "least_squares.h"
 #include "spherical_harmonics.h"
 
 #include <math.h>
@@ -68,10 +69,7 @@ static Parts LayOut(uint32_t directions, uint32_t channels, uint32_t bins, uint3
     return parts;
 }
 
-// The harmonics of every direction, and each one's share of the sphere:
-// its ring's band (to the midpoints of the neighbouring rings) over the
-// ring's azimuths.
-static void Directions(const maudHrtf* hrtf, Work* work)
+void maudRingWeights(const maudHrtf* hrtf, double* weights)
 {
     uint32_t d = 0;
     double total = 0.0;
@@ -86,111 +84,46 @@ static void Directions(const maudHrtf* hrtf, Work* work)
         double share = (sin(high * DEGREES) - sin(low * DEGREES)) / (double)count;
         for (uint32_t i = 0; i < count; ++i, ++d)
         {
-            double azimuth = 360.0 * (double)i / (double)count * DEGREES;
+            weights[d] = share;
+            total += share;
+        }
+    }
+    for (uint32_t i = 0; i < d; ++i)
+    {
+        weights[i] /= total;
+    }
+}
+
+// The harmonics of every direction, and the weights.
+static void Directions(const maudHrtf* hrtf, Work* work)
+{
+    uint32_t d = 0;
+    for (uint32_t ring = 0; ring < hrtf->ringCount; ++ring)
+    {
+        double elevation = (double)hrtf->elevations[ring] * DEGREES;
+        uint32_t count = hrtf->azimuths[ring];
+        for (uint32_t i = 0; i < count; ++i, ++d)
+        {
+            double azimuth = 2.0 * PI_D * (double)i / (double)count;
             float g[16];
-            maudSphericalHarmonics(work->order, (float)(cos(elevation * DEGREES) * cos(azimuth)),
-                                   (float)(cos(elevation * DEGREES) * sin(azimuth)),
-                                   (float)sin(elevation * DEGREES), g);
+            maudSphericalHarmonics(work->order, (float)(cos(elevation) * cos(azimuth)),
+                                   (float)(cos(elevation) * sin(azimuth)), (float)sin(elevation),
+                                   g);
             for (uint32_t c = 0; c < work->channels; ++c)
             {
                 work->harmonics[(size_t)d * work->channels + c] = (double)g[c];
             }
-            work->weights[d] = share;
-            total += share;
         }
     }
-    for (uint32_t i = 0; i < work->directions; ++i)
-    {
-        work->weights[i] /= total;
-    }
+    maudRingWeights(hrtf, work->weights);
 }
 
-// The normal matrix Y^T W Y.
-static void Normal(const Work* work, double g[16][16])
-{
-    uint32_t k = work->channels;
-    for (uint32_t d = 0; d < work->directions; ++d)
-    {
-        const double* y = work->harmonics + (size_t)d * k;
-        for (uint32_t i = 0; i < k; ++i)
-        {
-            for (uint32_t j = 0; j < k; ++j)
-            {
-                g[i][j] += work->weights[d] * y[i] * y[j];
-            }
-        }
-    }
-}
-
-// g = L L^T in place, L in the lower triangle; false if g is not
-// positive definite.
-static bool Cholesky(double g[16][16], uint32_t k)
-{
-    for (uint32_t j = 0; j < k; ++j)
-    {
-        for (uint32_t i = j; i < k; ++i)
-        {
-            double sum = g[i][j];
-            for (uint32_t p = 0; p < j; ++p)
-            {
-                sum -= g[i][p] * g[j][p];
-            }
-            if (i == j && sum <= 0.0)
-            {
-                return false;
-            }
-            g[i][j] = i == j ? sqrt(sum) : sum / g[j][j];
-        }
-    }
-    return true;
-}
-
-// x = (L L^T)^-1 b, by forward and back substitution.
-static void Substitute(const double l[16][16], uint32_t k, double* x)
-{
-    for (uint32_t i = 0; i < k; ++i)
-    {
-        for (uint32_t p = 0; p < i; ++p)
-        {
-            x[i] -= l[i][p] * x[p];
-        }
-        x[i] /= l[i][i];
-    }
-    for (uint32_t i = k; i-- > 0;)
-    {
-        for (uint32_t p = i + 1; p < k; ++p)
-        {
-            x[i] -= l[p][i] * x[p];
-        }
-        x[i] /= l[i][i];
-    }
-}
-
-// The weighted pseudo-inverse (Y^T W Y)^-1 Y^T W, by Cholesky. false if
-// the normal matrix is not positive definite (a grid too sparse).
+// The weighted pseudo-inverse of the harmonics; false if the set's
+// directions cannot carry the order.
 static bool Solve(Work* work)
 {
-    uint32_t k = work->channels;
-    double g[16][16] = {{0.0}};
-    Normal(work, g);
-    if (!Cholesky(g, k))
-    {
-        return false;
-    }
-    for (uint32_t d = 0; d < work->directions; ++d)
-    {
-        double x[16];
-        for (uint32_t i = 0; i < k; ++i)
-        {
-            x[i] = work->weights[d] * work->harmonics[(size_t)d * k + i];
-        }
-        Substitute(g, k, x);
-        for (uint32_t i = 0; i < k; ++i)
-        {
-            work->solve[(size_t)i * work->directions + d] = x[i];
-        }
-    }
-    return true;
+    return maudWeightedPseudoInverse(work->harmonics, work->weights, work->directions,
+                                     work->channels, work->solve);
 }
 
 // Each response's spectrum with its delay and the group delay as linear

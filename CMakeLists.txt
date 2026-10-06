@@ -76,6 +76,7 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/binaural.c
     src/binaural_decoder.c
     src/fft.c
+    src/least_squares.c
     src/magls.c
     src/spherical_harmonics.c
     src/binaural_dsp.c

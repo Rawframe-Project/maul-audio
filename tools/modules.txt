@@ -42,8 +42,9 @@ hrtf_resample:
 gain_control: allocator vad_core voice_dsp
 invariant:
 layout:
+least_squares:
 lifecycle: backend context context_core follow
-magls: allocator fft hrtf_core spherical_harmonics
+magls: allocator fft hrtf_core least_squares spherical_harmonics
 near_field: near_field_table
 near_field_table:
 notify: backend context context_core invariant

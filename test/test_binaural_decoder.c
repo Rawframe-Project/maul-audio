@@ -8,11 +8,17 @@
 // every direction); a source on the left is louder on the left and
 // ahead there at low frequencies; one
 // call or many decode the same samples; decoding never allocates, and
-// the set may go once the decoder exists; bad calls write nothing.
+// the set may go once the decoder exists; bad calls write nothing. The
+// build's parts alone: the FFT against a direct DFT, the weighted least
+// squares by its defining properties, the directions' weights by the
+// area of their bands.
 
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "fft.h"
 #include "hrtf_core.h"
+#include "least_squares.h"
+#include "magls.h"
 #include "test_harness.h"
 
 #include "maul-audio/ambisonics.h"
@@ -287,8 +293,146 @@ static void TestMisuse(const maudHrtf* hrtf)
     maudDestroyBinauralDecoder(nullptr);
 }
 
+static double Uniform(uint32_t* seed)
+{
+    *seed = *seed * 1664525u + 1013904223u;
+    return (double)(*seed >> 8) / 16777216.0;
+}
+
+static void TestFft(void)
+{
+    double values[128];
+    double copy[128];
+    uint32_t seed = 41;
+    for (int i = 0; i < 128; ++i)
+    {
+        values[i] = 2.0 * Uniform(&seed) - 1.0;
+        copy[i] = values[i];
+    }
+    maudFft(values, 64, false);
+    double worst = 0.0;
+    for (int k = 0; k < 64; ++k)
+    {
+        double re = 0.0;
+        double im = 0.0;
+        for (int n = 0; n < 64; ++n)
+        {
+            double angle = -2.0 * PI * k * n / 64.0;
+            re += copy[2 * n] * cos(angle) - copy[2 * n + 1] * sin(angle);
+            im += copy[2 * n] * sin(angle) + copy[2 * n + 1] * cos(angle);
+        }
+        worst = fmax(worst, fmax(fabs(values[2 * k] - re), fabs(values[2 * k + 1] - im)));
+    }
+    CHECK(worst < 1e-12, "the FFT is the DFT");
+    maudFft(values, 64, true);
+    worst = 0.0;
+    for (int i = 0; i < 128; ++i)
+    {
+        worst = fmax(worst, fabs(values[i] - copy[i]));
+    }
+    CHECK(worst < 1e-14, "and its inverse undoes it");
+}
+
+// The weighted pseudo-inverse of random rows: a left inverse, and its
+// solution's residual orthogonal to the rows under the weights (which
+// makes it the weighted least-squares one among the left inverses).
+static void TestLeastSquares(void)
+{
+    enum
+    {
+        COUNT = 40,
+        K = 9
+    };
+    static double rows[COUNT * K];
+    static double weights[COUNT];
+    static double solve[K * COUNT];
+    uint32_t seed = 43;
+    for (int i = 0; i < COUNT * K; ++i)
+    {
+        rows[i] = 2.0 * Uniform(&seed) - 1.0;
+    }
+    for (int d = 0; d < COUNT; ++d)
+    {
+        weights[d] = 0.1 + Uniform(&seed);
+    }
+    CHECK(maudWeightedPseudoInverse(rows, weights, COUNT, K, solve), "solved");
+    double identity = 0.0;
+    for (int i = 0; i < K; ++i)
+    {
+        for (int j = 0; j < K; ++j)
+        {
+            double sum = 0.0;
+            for (int d = 0; d < COUNT; ++d)
+            {
+                sum += solve[i * COUNT + d] * rows[d * K + j];
+            }
+            identity = fmax(identity, fabs(sum - (i == j ? 1.0 : 0.0)));
+        }
+    }
+    CHECK(identity < 1e-10, "a left inverse");
+    double b[COUNT];
+    double x[K];
+    for (int d = 0; d < COUNT; ++d)
+    {
+        b[d] = 2.0 * Uniform(&seed) - 1.0;
+    }
+    for (int i = 0; i < K; ++i)
+    {
+        x[i] = 0.0;
+        for (int d = 0; d < COUNT; ++d)
+        {
+            x[i] += solve[i * COUNT + d] * b[d];
+        }
+    }
+    double orthogonal = 0.0;
+    for (int j = 0; j < K; ++j)
+    {
+        double sum = 0.0;
+        for (int d = 0; d < COUNT; ++d)
+        {
+            double fit = 0.0;
+            for (int i = 0; i < K; ++i)
+            {
+                fit += rows[d * K + i] * x[i];
+            }
+            sum += rows[d * K + j] * weights[d] * (b[d] - fit);
+        }
+        orthogonal = fmax(orthogonal, fabs(sum));
+    }
+    CHECK(orthogonal < 1e-10, "the weighted residual is orthogonal to the rows");
+    static double flat[COUNT * K];
+    CHECK(!maudWeightedPseudoInverse(flat, weights, COUNT, K, solve), "a singular system refused");
+}
+
+// Each direction's weight is its band's area over its ring's azimuths:
+// the shipped set's equator against its ring at 60 degrees.
+static void TestWeights(const maudHrtf* hrtf)
+{
+    static double weights[2000];
+    maudRingWeights(hrtf, weights);
+    double total = 0.0;
+    for (uint32_t d = 0; d < hrtf->directionCount; ++d)
+    {
+        total += weights[d];
+    }
+    CHECK(fabs(total - 1.0) < 1e-12, "the weights add up to 1");
+    uint32_t equator = 0;
+    uint32_t sixty = 0;
+    for (uint32_t ring = 0; ring < hrtf->ringCount; ++ring)
+    {
+        equator = hrtf->elevations[ring] == 0.0f ? ring : equator;
+        sixty = hrtf->elevations[ring] == 60.0f ? ring : sixty;
+    }
+    double band0 = (sin(2.5 * PI / 180.0) - sin(-2.5 * PI / 180.0)) / hrtf->azimuths[equator];
+    double band60 = (sin(62.5 * PI / 180.0) - sin(57.5 * PI / 180.0)) / hrtf->azimuths[sixty];
+    double ratio = weights[hrtf->firstDirection[equator]] / weights[hrtf->firstDirection[sixty]];
+    CHECK(fabs(ratio - band0 / band60) < 1e-9, "a direction's weight is its band's area");
+}
+
 int main(void)
 {
+    TestFft();
+    TestLeastSquares();
     FILE* file = fopen(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", "rb");
     CHECK(file != nullptr, "the shipped set");
     if (file == nullptr)
@@ -307,6 +451,7 @@ int main(void)
     {
         return 1;
     }
+    TestWeights(hrtf);
     TestAccuracy(hrtf);
     TestEars(hrtf);
     TestBlocks(hrtf);

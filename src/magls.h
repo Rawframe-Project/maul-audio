@@ -20,6 +20,11 @@
 // 48 kHz (in proportion).
 uint32_t maudMagLsSize(const maudHrtf* hrtf, uint32_t taps, double groupDelay);
 
+// Each direction's share of the sphere, in the set's order: its ring's
+// band, from the midpoints to the neighbouring rings (or the pole), over
+// the ring's azimuths; the shares add up to 1.
+void maudRingWeights(const maudHrtf* hrtf, double* weights);
+
 // Fills filters, 2 ears x (order + 1)^2 channels x taps (ear-major),
 // with the decoder of an order, 1 to 3, for a set at its rate; the last
 // fadeTaps of each fade out. maud_errorCapacity when the allocator
