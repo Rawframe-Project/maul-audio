@@ -57,6 +57,11 @@ static void Grow(Box* box, const float* p)
 
 static void Merge(Box* box, const Box* other)
 {
+    // An empty box's corners are infinite: it adds nothing.
+    if (other->min[0] > other->max[0])
+    {
+        return;
+    }
     Grow(box, other->min);
     Grow(box, other->max);
 }

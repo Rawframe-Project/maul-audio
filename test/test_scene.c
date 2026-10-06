@@ -230,6 +230,38 @@ static void TestTiesAndNormals(void)
     maudSceneClosestHit(&ray, 1, &h, scene);
     CHECK(h.material == 100, "a tie across leaves: the first listed");
     maudDestroyAcousticScene(scene);
+    // A strip of unit squares along x, the square from x = 4 listed
+    // first: a ray down the line x = 4 meets that square and the one
+    // before it at the same distance, in leaves on either side of the
+    // split; the first listed wins though its leaf comes second.
+    static maudVector3 strip[18];
+    static uint32_t cells[48];
+    static uint32_t owner[16];
+    for (uint32_t i = 0; i <= 8; ++i)
+    {
+        strip[2 * i] = (maudVector3){(float)i, 0.0f, 0.0f};
+        strip[2 * i + 1] = (maudVector3){(float)i, 1.0f, 0.0f};
+    }
+    for (uint32_t n = 0; n < 8; ++n)
+    {
+        uint32_t k = (n + 4) % 8;
+        uint32_t base = 2 * k;
+        uint32_t* t = &cells[6 * n];
+        t[0] = base;
+        t[1] = base + 2;
+        t[2] = base + 3;
+        t[3] = base;
+        t[4] = base + 3;
+        t[5] = base + 1;
+        owner[2 * n] = k;
+        owner[2 * n + 1] = k;
+    }
+    maudMesh line = {strip, 18, cells, owner, 16};
+    scene = Build(&line, 1);
+    maudRay seam = {{4.0f, 0.5f, 1.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 5.0f};
+    maudSceneClosestHit(&seam, 1, &h, scene);
+    CHECK(h.distance == 1.0f && h.material == 4, "a tie on a seam between leaves");
+    maudDestroyAcousticScene(scene);
     maudMesh one = {v, 3, up, first, 1};
     scene = Build(&one, 1);
     maudSceneClosestHit(&ray, 1, &h, scene);
