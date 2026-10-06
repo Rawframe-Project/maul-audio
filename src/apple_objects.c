@@ -13,6 +13,7 @@
 #include "context.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #define DEGREES_PER_RADIAN 57.29577951308232f
@@ -93,7 +94,13 @@ static UInt32 OutputType(maudDeviceForm form)
 static bool SetProperty(AudioUnit mixer, AudioUnitPropertyID property, AudioUnitScope scope,
                         AudioUnitElement element, const void* value, UInt32 size)
 {
-    return AudioUnitSetProperty(mixer, property, scope, element, value, size) == noErr;
+    OSStatus status = AudioUnitSetProperty(mixer, property, scope, element, value, size);
+    if (status != noErr)
+    {
+        fprintf(stderr, "probe: property %u scope %u element %u: %d\n", (unsigned)property,
+                (unsigned)scope, (unsigned)element, (int)status);
+    }
+    return status == noErr;
 }
 
 // One input bus: its format, its callback, its source mode and no
@@ -222,7 +229,10 @@ maudResult maudOpenAppleObjects(maudContext* context, maudStreamCore* core, maud
         maudCloseAppleObjects(context, objects);
         return maud_errorPlatform;
     }
-    if (!Configure(objects, form) || AudioUnitInitialize(objects->mixer) != noErr)
+    bool configured = Configure(objects, form);
+    OSStatus initialized = configured ? AudioUnitInitialize(objects->mixer) : -1;
+    fprintf(stderr, "probe: configured %d, initialize %d\n", configured, (int)initialized);
+    if (!configured || initialized != noErr)
     {
         maudCloseAppleObjects(context, objects);
         return maud_errorPlatform;
