@@ -15,7 +15,9 @@
 
 #include "allocator.h"
 #include "direct_step.h"
+#include "occlusion.h"
 
+#include <math.h>
 #include <stdatomic.h>
 #include <string.h>
 
@@ -23,6 +25,10 @@
 #define SOURCE_DEF_COOKIE      0x6D61736Fu
 #define MAX_SOURCES            65536u
 #define FRESH                  4u
+#define MAX_SAMPLES            1024u
+// Rays per round of queries, and per query.
+#define ROUND 4096u
+#define BATCH 64u
 
 typedef struct Entry
 {
@@ -43,6 +49,9 @@ typedef struct Slot
     bool live;
     maudPose pose;
     maudDirectivityPattern directivity;
+    maudOcclusionMethod occlusion;
+    float radius;
+    uint32_t samples;
 } Slot;
 
 struct maudSpatializer
@@ -53,6 +62,19 @@ struct maudSpatializer
     // Free slots' indices, the next one taken from the end.
     uint32_t* free;
     uint32_t freeCount;
+    uint32_t maxSamples;
+    maudAnyHitFn* anyHit;
+    void* rayContext;
+    maudEnqueueTaskFn* enqueueTask;
+    maudFinishTaskFn* finishTask;
+    void* userTaskContext;
+    // The unit ball's points, a round's rays and answers, and where each
+    // source's rays start in the round.
+    maudVector3* points;
+    maudRay* rays;
+    uint8_t* occluded;
+    uint32_t* offsets;
+    uint32_t roundRays;
     Buffer buffers[3];
     // The simulation side's buffer and step count.
     uint32_t back;
@@ -67,6 +89,12 @@ maudSpatializerDef maudDefaultSpatializerDef(void)
     return (maudSpatializerDef){
         .cookie = SPATIALIZER_DEF_COOKIE,
         .sourceCapacity = 256,
+        .maxOcclusionSamples = 64,
+        .anyHit = nullptr,
+        .rayContext = nullptr,
+        .enqueueTask = nullptr,
+        .finishTask = nullptr,
+        .userTaskContext = nullptr,
         .allocator = {nullptr, nullptr, nullptr},
     };
 }
@@ -76,6 +104,9 @@ maudSourceDef maudDefaultSourceDef(void)
     return (maudSourceDef){
         .cookie = SOURCE_DEF_COOKIE,
         .directivity = {{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+        .occlusion = maud_occlusionRay,
+        .occlusionRadius = 1.0f,
+        .occlusionSamples = 32,
     };
 }
 
@@ -94,9 +125,21 @@ static size_t EntryBytes(uint32_t capacity)
     return (size_t)capacity * sizeof(Entry);
 }
 
+static void Free(maudAllocator* allocator, void* memory, size_t bytes, size_t alignment)
+{
+    if (memory != nullptr)
+    {
+        maudRelease(allocator, memory, bytes, alignment);
+    }
+}
+
 static void Release(maudSpatializer* s)
 {
     maudAllocator allocator = s->allocator;
+    Free(&allocator, s->points, (size_t)s->maxSamples * sizeof(maudVector3), alignof(maudVector3));
+    Free(&allocator, s->rays, ROUND * sizeof(maudRay), alignof(maudRay));
+    Free(&allocator, s->occluded, ROUND, 1);
+    Free(&allocator, s->offsets, FreeBytes(s->capacity), alignof(uint32_t));
     for (int b = 0; b < 3; ++b)
     {
         if (s->buffers[b].entries != nullptr)
@@ -123,6 +166,8 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     }
     if (def == nullptr || spatializerOut == nullptr || def->cookie != SPATIALIZER_DEF_COOKIE ||
         def->sourceCapacity == 0 || def->sourceCapacity > MAX_SOURCES ||
+        def->maxOcclusionSamples == 0 || def->maxOcclusionSamples > MAX_SAMPLES ||
+        (def->enqueueTask == nullptr) != (def->finishTask == nullptr) ||
         !maudIsAllocatorValid(&def->allocator))
     {
         return maud_errorInvalid;
@@ -133,10 +178,25 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     {
         return maud_errorCapacity;
     }
-    *s = (maudSpatializer){.allocator = def->allocator, .capacity = def->sourceCapacity};
+    *s = (maudSpatializer){
+        .allocator = def->allocator,
+        .capacity = def->sourceCapacity,
+        .maxSamples = def->maxOcclusionSamples,
+        .anyHit = def->anyHit,
+        .rayContext = def->rayContext,
+        .enqueueTask = def->enqueueTask,
+        .finishTask = def->finishTask,
+        .userTaskContext = def->userTaskContext,
+    };
+    s->points = maudAllocate(&def->allocator, (size_t)s->maxSamples * sizeof(maudVector3),
+                             alignof(maudVector3));
+    s->rays = maudAllocate(&def->allocator, ROUND * sizeof(maudRay), alignof(maudRay));
+    s->occluded = maudAllocate(&def->allocator, ROUND, 1);
+    s->offsets = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
     s->slots = maudAllocate(&def->allocator, SlotBytes(s->capacity), alignof(Slot));
     s->free = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
-    bool all = s->slots != nullptr && s->free != nullptr;
+    bool all = s->slots != nullptr && s->free != nullptr && s->points != nullptr &&
+               s->rays != nullptr && s->occluded != nullptr && s->offsets != nullptr;
     for (int b = 0; b < 3; ++b)
     {
         s->buffers[b].entries =
@@ -155,6 +215,7 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
         s->free[i] = s->capacity - 1 - i;
     }
     s->freeCount = s->capacity;
+    maudBallPoints(s->maxSamples, s->points);
     for (int b = 0; b < 3; ++b)
     {
         memset(s->buffers[b].entries, 0, EntryBytes(s->capacity));
@@ -188,7 +249,11 @@ maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* d
         *sourceOut = (maudSourceId){0, 0};
     }
     if (spatializer == nullptr || def == nullptr || sourceOut == nullptr ||
-        def->cookie != SOURCE_DEF_COOKIE || !PatternValid(&def->directivity))
+        def->cookie != SOURCE_DEF_COOKIE || !PatternValid(&def->directivity) ||
+        def->occlusion > maud_occlusionVolumetric ||
+        (def->occlusion == maud_occlusionVolumetric &&
+         (!(def->occlusionRadius > 0.0f) || !isfinite(def->occlusionRadius) ||
+          def->occlusionSamples == 0 || def->occlusionSamples > spatializer->maxSamples)))
     {
         return maud_errorInvalid;
     }
@@ -201,6 +266,9 @@ maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* d
     slot->live = true;
     slot->pose = (maudPose){{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     slot->directivity = def->directivity;
+    slot->occlusion = def->occlusion;
+    slot->radius = def->occlusionRadius;
+    slot->samples = def->occlusionSamples;
     *sourceOut = (maudSourceId){index + 1, slot->generation};
     return maud_success;
 }
@@ -253,6 +321,81 @@ maudResult maudSetSourcePose(maudSpatializer* spatializer, maudSourceId source,
     return maud_success;
 }
 
+// Queries batches [start, end) of the round's rays.
+static void QueryBatches(uint32_t start, uint32_t end, void* context)
+{
+    maudSpatializer* s = context;
+    for (uint32_t b = start; b < end; ++b)
+    {
+        uint32_t first = b * BATCH;
+        uint32_t count = s->roundRays - first < BATCH ? s->roundRays - first : BATCH;
+        s->anyHit(s->rays + first, count, s->occluded + first, s->rayContext);
+    }
+}
+
+static void Query(maudSpatializer* s)
+{
+    uint32_t batches = (s->roundRays + BATCH - 1) / BATCH;
+    if (batches == 0)
+    {
+        return;
+    }
+    if (s->enqueueTask != nullptr)
+    {
+        void* task = s->enqueueTask(QueryBatches, batches, 1, s, s->userTaskContext);
+        s->finishTask(task, s->userTaskContext);
+    }
+    else
+    {
+        QueryBatches(0, batches, s);
+    }
+}
+
+static uint32_t RaysOf(const maudSpatializer* s, const Slot* slot)
+{
+    return slot->live && s->anyHit != nullptr
+               ? maudOcclusionRayCount(slot->occlusion, slot->samples)
+               : 0;
+}
+
+// The occlusion of every source: rounds of whole sources' rays, in slot
+// order, each queried and then reduced into the buffer's entries.
+static void Occlude(maudSpatializer* s, const maudPose* listener, Entry* entries)
+{
+    uint32_t next = 0;
+    while (next < s->capacity)
+    {
+        uint32_t first = next;
+        s->roundRays = 0;
+        for (; next < s->capacity; ++next)
+        {
+            const Slot* slot = &s->slots[next];
+            uint32_t count = RaysOf(s, slot);
+            if (s->roundRays + count > ROUND)
+            {
+                break;
+            }
+            s->offsets[next] = s->roundRays;
+            if (count > 0)
+            {
+                maudOcclusionRays(listener, &slot->pose, slot->occlusion, slot->radius,
+                                  slot->samples, s->points, s->rays + s->roundRays);
+            }
+            s->roundRays += count;
+        }
+        Query(s);
+        for (uint32_t i = first; i < next; ++i)
+        {
+            const Slot* slot = &s->slots[i];
+            if (RaysOf(s, slot) > 0)
+            {
+                entries[i].result.occlusion =
+                    maudOcclusionOf(slot->occlusion, slot->samples, s->occluded + s->offsets[i]);
+            }
+        }
+    }
+}
+
 maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* listener)
 {
     if (spatializer == nullptr || listener == nullptr || !maudPoseValid(listener))
@@ -272,6 +415,7 @@ maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* list
         entry->generation = slot->generation;
         maudDirectGeometry(listener, &slot->pose, &slot->directivity, &entry->result);
     }
+    Occlude(spatializer, listener, buffer->entries);
     buffer->step = ++spatializer->steps;
     // Publish: the written buffer waits, marked newer; the one that was
     // waiting becomes the next to write.

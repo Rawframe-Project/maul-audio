@@ -296,6 +296,11 @@ format.
   listener's frame and directivity; the rendering side latches the
   newest step and reads results without allocating, locking or
   waiting, never torn. `maudQuaternion` moves to `maul-audio/base.h`.
+  Occlusion through the host's any-hit query (`maudAnyHitFn`): by one
+  ray or volumetric (points of a sphere around the source, of those the
+  source sees the share the listener does not), queried in batches of
+  at most 64 through the task hooks if set, with results that do not
+  depend on how the tasks split the work.
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.

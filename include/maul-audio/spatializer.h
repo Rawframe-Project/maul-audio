@@ -45,6 +45,46 @@ extern "C"
         maudQuaternion orientation;
     } maudPose;
 
+    // How a source's occlusion is found.
+    typedef uint8_t maudOcclusionMethod;
+    enum
+    {
+        // Not at all: the path is clear.
+        maud_occlusionNone = 0,
+        // By one ray from the listener to the source: 0 or 1.
+        maud_occlusionRay = 1,
+        // By points in a sphere around the source: of the points the
+        // source sees, the share the listener does not.
+        maud_occlusionVolumetric = 2,
+    };
+
+    // A ray the spatializer asks about: from origin along a unit
+    // direction, between minDistance and maxDistance.
+    typedef struct maudRay
+    {
+        maudVector3 origin;
+        maudVector3 direction;
+        float minDistance;
+        float maxDistance;
+    } maudRay;
+
+    // Answers whether each of count rays hits anything within its
+    // distances, writing 1 or 0 to occluded[i]. A ray's answer must
+    // depend only on the ray and the host's geometry. Called from inside
+    // a step, on its thread or on the host's tasks, never on the audio
+    // thread, with at most 64 rays at a time.
+    typedef void maudAnyHitFn(const maudRay* rays, uint32_t count, uint8_t* occluded,
+                              void* context);
+
+    // The task hooks: enqueueTask has the host run task over [0,
+    // itemCount) in ranges of at least minRange items, each exactly once,
+    // on any threads in any order, and returns a handle that finishTask
+    // waits on. Results do not depend on the split.
+    typedef void maudTaskFn(uint32_t start, uint32_t end, void* taskContext);
+    typedef void* maudEnqueueTaskFn(maudTaskFn* task, uint32_t itemCount, uint32_t minRange,
+                                    void* taskContext, void* userContext);
+    typedef void maudFinishTaskFn(void* userTask, void* userContext);
+
     // How to create a spatializer. Build it with
     // maudDefaultSpatializerDef.
     typedef struct maudSpatializerDef
@@ -52,6 +92,16 @@ extern "C"
         uint32_t cookie;
         // The most sources at once, 1 to 65,536.
         uint32_t sourceCapacity;
+        // The most occlusion points a volumetric source may have, 1 to
+        // 1,024.
+        uint32_t maxOcclusionSamples;
+        // The host's any-hit query; NULL leaves every path clear.
+        maudAnyHitFn* anyHit;
+        void* rayContext;
+        // The task hooks; both NULL runs queries on the step's thread.
+        maudEnqueueTaskFn* enqueueTask;
+        maudFinishTaskFn* finishTask;
+        void* userTaskContext;
         maudAllocator allocator;
     } maudSpatializerDef;
 
@@ -61,6 +111,12 @@ extern "C"
         uint32_t cookie;
         // The source's directivity.
         maudDirectivityPattern directivity;
+        // How its occlusion is found.
+        maudOcclusionMethod occlusion;
+        // For volumetric occlusion: the sphere's radius in metres, above
+        // 0, and its points, 1 to the spatializer's maxOcclusionSamples.
+        float occlusionRadius;
+        uint32_t occlusionSamples;
     } maudSourceDef;
 
     // What a step found for a source.
@@ -79,14 +135,16 @@ extern "C"
         float transmission[MAUD_DIRECT_BANDS];
     } maudDirectResult;
 
-    /// Returns the default spatializer def: 256 sources.
+    /// Returns the default spatializer def: 256 sources, up to 64
+    /// occlusion points each, no ray query, no task hooks.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_API maudSpatializerDef maudDefaultSpatializerDef(void);
 
-    /// Returns the default source def: omnidirectional.
+    /// Returns the default source def: omnidirectional, occlusion by one
+    /// ray, and for volumetric occlusion a sphere of 1 m with 32 points.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -98,8 +156,9 @@ extern "C"
     /// @param def             The def, from maudDefaultSpatializerDef.
     /// @param spatializerOut  Receives the spatializer; NULL on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
-    ///         def without its cookie or a capacity out of range;
-    ///         `maud_errorCapacity` when the allocator fails.
+    ///         def without its cookie, a capacity out of range or one task
+    ///         hook without the other; `maud_errorCapacity` when the
+    ///         allocator fails.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_NODISCARD MAUD_API maudResult maudCreateSpatializer(const maudSpatializerDef* def,
@@ -121,7 +180,9 @@ extern "C"
     /// @param def          The def, from maudDefaultSourceDef.
     /// @param sourceOut    Receives the source; 0 on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
-    ///         def without its cookie or an invalid directivity pattern;
+    ///         def without its cookie, an invalid directivity pattern, an
+    ///         unknown occlusion method, or a volumetric radius or point
+    ///         count out of range;
     ///         `maud_errorCapacity` when the spatializer has its capacity
     ///         of sources.
     /// @par Thread safety
@@ -160,7 +221,10 @@ extern "C"
     MAUD_NODISCARD MAUD_API maudResult maudSetSourcePose(maudSpatializer* spatializer,
                                                          maudSourceId source, const maudPose* pose);
 
-    /// Runs a direct step for a listener and publishes its results.
+    /// Runs a direct step for a listener and publishes its results. Its
+    /// occlusion rays go to the any-hit query in a fixed order and in
+    /// batches of at most 64, through the task hooks if set; no result
+    /// depends on how the tasks split the work.
     ///
     /// @param spatializer  The spatializer.
     /// @param listener     The listener's pose.
