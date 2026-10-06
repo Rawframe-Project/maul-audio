@@ -118,6 +118,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/occlusion.c
     src/octave_eq.c
     src/reverb.c
+    src/partitioned.c
     src/real_fft.c
     src/reflection_response.c
     src/reverb_estimate.c
@@ -250,6 +251,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     if(MAUL_AUDIO_SPATIAL AND NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(band_eq WHITEBOX)
         maul_add_test(octave_eq WHITEBOX)
+        maul_add_test(partitioned WHITEBOX)
         maul_add_test(real_fft WHITEBOX)
         maul_add_test(reflection_response WHITEBOX)
         maul_add_test(reverb_estimate WHITEBOX)

@@ -56,6 +56,7 @@ notify: backend context context_core invariant
 occlusion:
 octave_eq: least_squares
 offline: context context_core device
+partitioned: real_fft
 period:
 pipewire_api:
 pipewire_card: context context_core device form pipewire_core
