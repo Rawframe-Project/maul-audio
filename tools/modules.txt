@@ -36,6 +36,8 @@ gain_control: allocator vad_core voice_dsp
 invariant:
 layout:
 lifecycle: backend context context_core follow
+near_field: near_field_table
+near_field_table:
 notify: backend context context_core invariant
 offline: context context_core device
 period:

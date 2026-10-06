@@ -16,3 +16,4 @@ that need outside packages; none of it is linked into the library.
 |---|---|---|
 | `tools/sofa_to_maudhrtf.py` | numpy | BSD 3-Clause |
 | `tools/sofa_to_maudhrtf.py` | h5py | BSD 3-Clause |
+| `tools/near_field_table.py` | numpy | BSD 3-Clause |

@@ -71,6 +71,8 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/hrtf.c
     src/hrtf_file.c
     src/hrtf_resample.c
+    src/near_field.c
+    src/near_field_table.c
     src/lifecycle.c
     src/form.c
     src/duplex.c
@@ -188,6 +190,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)
+        maul_add_test(near_field WHITEBOX)
         maul_add_test(hrtf WHITEBOX)
         if(TARGET test_hrtf)
             target_compile_definitions(test_hrtf PRIVATE
