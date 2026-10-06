@@ -10,7 +10,7 @@
 // MMSE-based noise power estimation with low complexity and low
 // tracking delay", IEEE Trans. ASLP 20(4), 2012), which follows changing
 // noise within tens of milliseconds where a minimum search takes a
-// second (research 37). Each frequency's gain is Cohen's optimally
+// second. Each frequency's gain is Cohen's optimally
 // modified log-spectral amplitude estimate under that probability
 // ("Optimal speech enhancement under signal presence uncertainty using
 // log-spectral amplitude estimator", IEEE SPL 9(4), 2002). The channels'
@@ -36,7 +36,7 @@
 // OM-LSA's decision-directed weight and a priori SNR floor (Cohen
 // 2002); the noise estimate's a priori SNR under speech (15 dB), its
 // smoothing per 10 ms and its stagnation guard (Gerkmann and Hendriks
-// 2012; the smoothing measured for 10 ms hops in research 37).
+// 2012; the smoothing measured for 10 ms hops).
 #define ALPHA_XI    0.92
 #define XI_MIN      0.003162
 #define XI_SPEECH   31.622776601683793

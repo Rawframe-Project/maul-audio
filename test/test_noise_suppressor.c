@@ -8,7 +8,7 @@
 // lagging by exactly 10 ms and independent of how the frames are cut;
 // stereo channels sharing one gain; the high-pass filter; refusals; and
 // no allocation while processing. (Its quality on recorded speech and
-// noise is measured outside the tests, research 37.)
+// noise is measured outside the tests.)
 
 #include "test_harness.h"
 

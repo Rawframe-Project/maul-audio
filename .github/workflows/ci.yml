@@ -113,6 +113,57 @@ jobs:
           cmake -S cmake/HeaderCheck -B build-headers
           cmake --build build-headers --config Release
 
+  android:
+    # The AAudio backend in the emulator, Android 11 (the oldest the
+    # backend takes) on x86_64 with KVM: every test through adb
+    # (tools/run_android.sh). The emulator plays without a host audio
+    # connection and refuses the shell's recording, so capture is tested
+    # to its refusal. The runner carries the SDK and NDK r28; the
+    # emulator and its image are installed here.
+    name: android-emulator
+    runs-on: ubuntu-24.04
+    env:
+      ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
+      ANDROID_SERIAL: emulator-5554
+      ANDROID_AVD_HOME: /home/runner/.android/avd
+      MAUD_REQUIRE_AAUDIO: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot the emulator
+        timeout-minutes: 15
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          tools="$ANDROID_HOME/cmdline-tools/latest/bin"
+          yes | "$tools/sdkmanager" --licenses >/dev/null 2>&1 || true
+          # Runner images move to newer NDKs: the pinned one is installed when
+          # the image lacks it.
+          [ -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ] ||
+            "$tools/sdkmanager" --install "ndk;${ANDROID_NDK_HOME##*/}" >/dev/null
+          mkdir -p "$ANDROID_AVD_HOME"
+          "$tools/sdkmanager" --install emulator "system-images;android-30;google_apis;x86_64" >/dev/null
+          echo no | "$tools/avdmanager" create avd -n maud30 -k "system-images;android-30;google_apis;x86_64" -d pixel_5 >/dev/null
+          nohup "$ANDROID_HOME/emulator/emulator" -avd maud30 -no-window -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect -port 5554 > emulator.log 2>&1 &
+          emulator=$!
+          adb="$ANDROID_HOME/platform-tools/adb"
+          for i in $(seq 1 90); do
+            [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break
+            kill -0 "$emulator" 2>/dev/null || break
+            sleep 5
+          done
+          "$adb" shell getprop sys.boot_completed | grep -q 1 || { tail -50 emulator.log; exit 1; }
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+      - name: Configure
+        run: >
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/android-emulator.cmake
+          -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 300
+
   web:
     name: web-emscripten
     runs-on: ubuntu-24.04

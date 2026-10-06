@@ -350,13 +350,20 @@ format.
   `maudSuppressNoise`): a high-pass filter, then a noise spectrum that
   follows changing noise in tens of milliseconds and a log-spectral
   gain per frequency, one gain for all channels, 10 ms of latency;
-  measured on public recordings against the processors PipeWire uses
-  (research 37). The FFT moves to the base, for both parts.
+  measured on public recordings against the processors PipeWire uses.
+  The FFT moves to the base, for both parts.
 - Golden renders through the offline backend (an HRTF sweep, an
   ambisonic rotation, an occlusion walk and a reverb tail) against
   16-bit WAV references in `data/golden`, and the benchmarks' rows
   printed beside a recorded baseline (`bench/baseline.txt`), with rows
   for the reflections' simulation and convolution.
+- The AAudio backend, on Android 11 (API 30) and later: the platform's
+  default output and input, which streams follow as Android moves
+  them; float streams at the device's rate or one AAudio converts to;
+  low-latency mode; exclusive streams where AAudio grants the device
+  alone; host times from AAudio's timestamps and its xrun counts;
+  voice streams through the voice-communication preset and usage.
+  Tests run in an API 30 emulator (`cmake/android-emulator.cmake`).
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.
