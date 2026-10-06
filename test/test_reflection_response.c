@@ -6,7 +6,8 @@
 // decaying at 1.6, 1.0 and 0.4 s give every octave from 125 Hz to 16 kHz
 // its interpolated time within 8 % (eighth-order Butterworth octaves, as
 // the reverb's tests); a field from one direction gives every channel W
-// times that direction's harmonic, sample for sample; the same field
+// times that direction's harmonic, sample for sample, a silent band
+// included; the same field
 // gives the same response; a silent field a silent one.
 
 #include "reflection_response.h"
@@ -192,6 +193,24 @@ static void TestDirection(void)
         }
     }
     CHECK(scale > 0.0 && worst < 1e-5 * scale, "each channel W times its harmonic");
+    // The top band silent: its share stays out of every channel alike.
+    for (uint32_t c = 0; c < 16; ++c)
+    {
+        for (int i = 0; i < BINS; ++i)
+        {
+            s_field[(c * 3 + 2) * BINS + (uint32_t)i] = 0.0f;
+        }
+    }
+    Build(3);
+    worst = 0.0;
+    for (int c = 0; c < 16; ++c)
+    {
+        for (int i = 0; i < FRAMES; i += 7)
+        {
+            worst = fmax(worst, fabs((double)s_out[c][i] - (double)g[c] * (double)s_out[0][i]));
+        }
+    }
+    CHECK(worst < 1e-5 * scale, "a silent band changes no channel's direction");
     static float first[FRAMES];
     for (int i = 0; i < FRAMES; ++i)
     {
