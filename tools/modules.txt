@@ -18,6 +18,7 @@ backend_pipewire: backend context context_core device follow form layout pipewir
 backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
 backend_wasapi: backend context device layout wasapi_core wasapi_stream
 backend_web: backend clock context device follow period thread web_capture web_core web_devices
+bake_file: allocator crc32 probe_bake probe_graph
 band_eq:
 binaural: allocator binaural_dsp hrtf_core hrtf_lookup near_field
 binaural_decoder: allocator binaural_dsp hrtf_core magls
@@ -32,6 +33,7 @@ coreaudio_core: context_core device
 coreaudio_hog: coreaudio_core
 coreaudio_form: coreaudio_core
 coreaudio_stream: clock context context_core coreaudio_core coreaudio_hog period thread voice xrun
+crc32:
 device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq
 direct_step:
@@ -41,7 +43,7 @@ follow: backend context context_core notify
 form:
 hrtf: allocator hrtf_core hrtf_file hrtf_resample
 hrtf_core:
-hrtf_file:
+hrtf_file: crc32
 hrtf_lookup: hrtf_core
 hrtf_resample:
 gain_control: allocator vad_core voice_dsp
@@ -79,7 +81,7 @@ reverb: allocator band_eq octave_eq
 reverb_estimate: portable_math spherical_harmonics
 scene: allocator bvh
 spatializer: air_absorption allocator direct_step occlusion pathing probe_sets reflections reverb_estimate spatializer_state transmission
-spatializer_paths: pathing probe_bake probe_graph probe_sets reflections reverb_estimate spatializer_state
+spatializer_paths: bake_file pathing probe_bake probe_graph probe_sets reflections reverb_estimate spatializer_state
 spatializer_state: pathing probe_sets reflections reverb_estimate
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics

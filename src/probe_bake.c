@@ -90,21 +90,6 @@ bool maudInterpolateBake(const maudProbeGraph* graph, const maudProbeBake* bake,
     }
     double weights[BLEND];
     uint32_t n = Weights(&end, weights);
-    if (n == 1)
-    {
-        // One probe: its values as they are, bit for bit.
-        uint32_t p = end.probes[0];
-        memcpy(times, bake->times + (size_t)p * MAUD_DIRECT_BANDS,
-               sizeof(float) * MAUD_DIRECT_BANDS);
-        memcpy(levels, bake->levels + (size_t)p * MAUD_DIRECT_BANDS,
-               sizeof(float) * MAUD_DIRECT_BANDS);
-        if (field != nullptr && bake->fieldFloats > 0)
-        {
-            memcpy(field, bake->fields + (size_t)p * bake->fieldFloats,
-                   sizeof(float) * bake->fieldFloats);
-        }
-        return true;
-    }
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
         double logTime = 0.0;

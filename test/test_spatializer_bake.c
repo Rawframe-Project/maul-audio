@@ -10,7 +10,12 @@
 // reverse give the same bits; with no probe in sight it traces; with
 // reflections, the baked field on a probe renders the live one's
 // samples. Using a set before its bake, baking without rays or a
-// closest-hit query, and a destroyed set's id are refused.
+// closest-hit query, and a destroyed set's id are refused. Saved and
+// loaded into another spatializer a bake gives the same estimates and
+// saves to the same bytes; a file with fields loads only where they
+// match; the office's bake is, byte for byte, the shipped one in
+// data/bake (MAUD_WRITE_GOLDEN set rewrites it), and on the web, which
+// has no file system, its hash.
 
 #include "test_harness.h"
 
@@ -18,6 +23,8 @@
 #include "maul-audio/spatializer.h"
 
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum
@@ -260,12 +267,169 @@ static void TestRefused(maudAcousticScene* scene)
     maudDestroySpatializer(s);
 }
 
+static uint32_t s_closest;
+
+static void Counted(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
+{
+    s_closest += count;
+    maudSceneClosestHit(rays, count, hits, context);
+}
+
+// A baked estimate traces nothing; without the set in use it traces.
+static void TestTraces(maudAcousticScene* scene)
+{
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.anyHit = maudSceneAnyHit;
+    def.closestHit = Counted;
+    def.rayContext = scene;
+    def.reverbRays = 1024;
+    def.probeSetCapacity = 1;
+    maudSpatializer* s = nullptr;
+    CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a counting spatializer");
+    maudProbeSetId set = Bake(s);
+    s_closest = 0;
+    (void)At(s, 2.2f, 1.6f, 2.7f);
+    uint32_t baked = s_closest;
+    const maudProbeSetId none = {0, 0};
+    CHECK(maudUseBakedReverb(s, none) == maud_success, "the set out of use");
+    (void)At(s, 2.2f, 1.6f, 2.7f);
+    printf("closest-hit rays: %u baked, %u traced\n", baked, s_closest - baked);
+    CHECK(baked == 0 && s_closest > 0, "a baked estimate traces nothing");
+    (void)set;
+    maudDestroySpatializer(s);
+}
+
+static uint8_t* Save(const maudSpatializer* s, maudProbeSetId set, size_t* size)
+{
+    CHECK(maudSaveProbeSet(s, set, nullptr, 0, size) == maud_success && *size > 40, "a size");
+    uint8_t* bytes = malloc(*size);
+    size_t short_ = 0;
+    CHECK(maudSaveProbeSet(s, set, bytes, *size - 1, &short_) == maud_errorCapacity &&
+              short_ == *size,
+          "a buffer a byte short");
+    size_t written = 0;
+    CHECK(maudSaveProbeSet(s, set, bytes, *size, &written) == maud_success && written == *size,
+          "saved");
+    return bytes;
+}
+
+static void TestFile(maudAcousticScene* scene)
+{
+    maudSpatializer* baked = Create(scene, false, 1);
+    maudProbeSetId set = Bake(baked);
+    size_t size = 0;
+    uint8_t* bytes = Save(baked, set, &size);
+    maudSpatializer* loaded = Create(scene, false, 1);
+    maudProbeSetId again = {0, 0};
+    CHECK(maudLoadProbeSet(loaded, bytes, size, &again) == maud_success &&
+              maudUseBakedReverb(loaded, again) == maud_success,
+          "loaded and in use");
+    bool same = true;
+    const float at[3][3] = {{1.0f, 1.5f, 1.0f}, {2.5f, 1.5f, 1.5f}, {3.7f, 1.4f, 1.9f}};
+    for (int i = 0; i < 3; ++i)
+    {
+        maudReverbResult a = At(baked, at[i][0], at[i][1], at[i][2]);
+        maudReverbResult b = At(loaded, at[i][0], at[i][1], at[i][2]);
+        same = same && Same(&a, &b);
+    }
+    CHECK(same, "the same estimates from the loaded set");
+    size_t size2 = 0;
+    uint8_t* bytes2 = Save(loaded, again, &size2);
+    CHECK(size2 == size && memcmp(bytes, bytes2, size) == 0, "saving it again, the same bytes");
+    maudSpatializer* plain = Create(scene, false, 0);
+    maudProbeSetId refused = {1, 1};
+    CHECK(maudLoadProbeSet(plain, bytes, size, &refused) == maud_errorUnsupported &&
+              refused.index1 == 0,
+          "fields where there are no reflections");
+    bytes[size - 1] ^= 1;
+    CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorInvalid, "a bad checksum");
+    maudProbeSetDef def = maudDefaultProbeSetDef();
+    const maudVector3 point = {1.0f, 1.5f, 1.0f};
+    def.points = &point;
+    def.pointCount = 1;
+    maudProbeSetId bare = {0, 0};
+    CHECK(maudCreateProbeSet(plain, &def, &bare) == maud_success, "an unbaked set");
+    size_t bareSize = 0;
+    uint8_t* bareBytes = Save(plain, bare, &bareSize);
+    CHECK(maudDestroyProbeSet(loaded, again) == maud_success &&
+              maudLoadProbeSet(loaded, bareBytes, bareSize, &again) == maud_success,
+          "probes and links alone load anywhere");
+    CHECK(maudLoadProbeSet(nullptr, bytes, size, &again) == maud_errorInvalid &&
+              maudSaveProbeSet(plain, bare, nullptr, 0, nullptr) == maud_errorInvalid,
+          "NULL");
+    free(bareBytes);
+    free(bytes2);
+    free(bytes);
+    maudDestroySpatializer(plain);
+    maudDestroySpatializer(loaded);
+    maudDestroySpatializer(baked);
+}
+
+// The office's bake with reflections of order 1 over 0.05 s, against
+// the shipped file.
+static void TestGolden(maudAcousticScene* scene)
+{
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.anyHit = maudSceneAnyHit;
+    def.closestHit = maudSceneClosestHit;
+    def.rayContext = scene;
+    def.reverbRays = 1024;
+    def.probeSetCapacity = 1;
+    def.reflectionOrder = 1;
+    def.reflectionDuration = 0.05f;
+    maudSpatializer* s = nullptr;
+    CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
+    maudAcousticMaterial m[6];
+    for (int i = 0; i < 6; ++i)
+    {
+        m[i] = (maudAcousticMaterial){
+            {0.04f + 0.03f * (float)i, 0.06f + 0.04f * (float)i, 0.1f + 0.05f * (float)i},
+            0.3f,
+            {0.0f, 0.0f, 0.0f}};
+    }
+    CHECK(maudSetMaterials(s, m, 6) == maud_success, "materials");
+    maudProbeSetId set = Bake(s);
+    size_t size = 0;
+    uint8_t* bytes = Save(s, set, &size);
+    // Its bytes' hash, which needs no file system (the web has none).
+    uint64_t hash = 1469598103934665603u;
+    for (size_t i = 0; i < size; ++i)
+    {
+        hash = (hash ^ bytes[i]) * 1099511628211u;
+    }
+    printf("golden: %zu bytes, hash %016llx\n", size, (unsigned long long)hash);
+    CHECK(hash == 0x3c3cd93cdb68581cu, "the shipped bake's hash");
+#ifndef __EMSCRIPTEN__
+    const char* path = MAUD_DATA_DIR "/bake/office.maudbake";
+    if (getenv("MAUD_WRITE_GOLDEN") != nullptr)
+    {
+        FILE* out = fopen(path, "wb");
+        CHECK(out != nullptr && fwrite(bytes, 1, size, out) == size && fclose(out) == 0,
+              "the golden file written");
+    }
+    FILE* in = fopen(path, "rb");
+    uint8_t* golden = malloc(size + 1);
+    size_t read = in != nullptr ? fread(golden, 1, size + 1, in) : 0;
+    if (in != nullptr)
+    {
+        fclose(in);
+    }
+    CHECK(read == size && memcmp(golden, bytes, size) == 0, "the shipped bake, byte for byte");
+    free(golden);
+#endif
+    free(bytes);
+    maudDestroySpatializer(s);
+}
+
 int main(void)
 {
     maudAcousticScene* scene = Office();
     TestReverb(scene);
     TestReflections(scene);
     TestRefused(scene);
+    TestTraces(scene);
+    TestFile(scene);
+    TestGolden(scene);
     maudDestroyAcousticScene(scene);
     return s_failures == 0 ? 0 : 1;
 }

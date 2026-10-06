@@ -7,7 +7,8 @@
 // by 1/d less 1/d of the fifth nearest (0 without a fifth), normalised,
 // so a probe's weight reaches 0 before it leaves the four; times blend
 // in log, levels in dB, fields linearly. A point on a probe takes that
-// probe's values exactly.
+// probe's values exactly: its weight is 1, and a time's round trip
+// through log and exp in double lands back on the same float.
 
 #ifndef MAUL_AUDIO_SRC_PROBE_BAKE_H
 #define MAUL_AUDIO_SRC_PROBE_BAKE_H

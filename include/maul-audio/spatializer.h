@@ -605,6 +605,50 @@ extern "C"
     MAUD_NODISCARD MAUD_API maudResult maudUseBakedReverb(maudSpatializer* spatializer,
                                                           maudProbeSetId set);
 
+    /// Saves a probe set as a `.maudbake` file (docs/bake-format.md):
+    /// its probes, links and bake. A set saves to the same bytes on every
+    /// platform.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param set          The set.
+    /// @param bytes        Receives the file, or NULL to ask its size.
+    /// @param capacity     The bytes bytes holds.
+    /// @param sizeOut      Receives the file's size.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
+    ///         or size, or a 0 or unknown id; `maud_errorStale` for a
+    ///         destroyed set's id; `maud_errorCapacity` when capacity is
+    ///         short of the size (nothing written) or the size does not
+    ///         fit in size_t.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSaveProbeSet(const maudSpatializer* spatializer,
+                                                        maudProbeSetId set, void* bytes,
+                                                        size_t capacity, size_t* sizeOut);
+
+    /// Loads a probe set from a `.maudbake` file, treated as hostile:
+    /// every count is checked against the spatializer's limits before
+    /// anything is allocated, and every value against its range. A file
+    /// with a bake loads only if its fields match the spatializer's
+    /// reflections (none, or the same order and length).
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param bytes        The file.
+    /// @param size         Its size in bytes.
+    /// @param setOut       Receives the set; 0 on failure.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or
+    ///         a file not well formed; `maud_errorUnsupported` for
+    ///         another version or fields that do not match;
+    ///         `maud_errorCapacity` past maxProbes or maxProbePairs, with
+    ///         the spatializer's sets all taken or none asked for, or when
+    ///         memory runs out.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudLoadProbeSet(maudSpatializer* spatializer,
+                                                        const void* bytes, size_t size,
+                                                        maudProbeSetId* setOut);
+
 #ifdef __cplusplus
 }
 #endif

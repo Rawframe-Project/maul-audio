@@ -84,6 +84,24 @@ maudResult maudAddProbeSet(maudProbeSets* sets, const maudProbeQueries* queries,
     return maud_success;
 }
 
+maudResult maudAdoptProbeSet(maudProbeSets* sets, maudProbeGraph* graph, maudProbeBake* bake,
+                             maudProbeSetId* setOut)
+{
+    if (sets->freeCount == 0)
+    {
+        return maud_errorCapacity;
+    }
+    uint32_t index = sets->free[--sets->freeCount];
+    Slot* slot = &sets->slots[index];
+    slot->graph = *graph;
+    slot->bake = *bake;
+    slot->live = true;
+    *graph = (maudProbeGraph){0};
+    *bake = (maudProbeBake){0};
+    *setOut = (maudProbeSetId){index + 1, slot->generation};
+    return maud_success;
+}
+
 static maudResult Find(const maudProbeSets* sets, maudProbeSetId set, Slot** slotOut)
 {
     if (sets == nullptr || set.index1 == 0 || set.index1 > sets->capacity || set.generation == 0)

@@ -7,6 +7,8 @@
 #ifndef MAUL_AUDIO_SRC_HRTF_FILE_H
 #define MAUL_AUDIO_SRC_HRTF_FILE_H
 
+#include "crc32.h"
+
 #include "maul-audio/base.h"
 
 #include <stddef.h>
@@ -48,8 +50,5 @@ float maudHrtfFileDelay(const maudHrtfFile* file, uint32_t direction, uint32_t e
 
 // A direction's response for an ear, as floats, taps of them.
 void maudHrtfFileResponse(const maudHrtfFile* file, uint32_t direction, uint32_t ear, float* out);
-
-// The CRC-32 (ISO-HDLC, as zlib computes it) of count bytes.
-uint32_t maudCrc32(const uint8_t* bytes, size_t count);
 
 #endif // MAUL_AUDIO_SRC_HRTF_FILE_H

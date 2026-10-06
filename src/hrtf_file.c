@@ -12,19 +12,18 @@
 #include <math.h>
 #include <string.h>
 
-#define HEADER_BYTES   48u
-#define VERSION        2u
-#define MIN_RATE       8000u
-#define MAX_RATE       384000u
-#define MIN_TAPS       8u
-#define MAX_TAPS       1024u
-#define MAX_RINGS      181u
-#define MAX_DIRS       65536u
-#define MAX_NAME       256u
-#define MAX_LICENSE    65536u
-#define MIN_DISTANCE   0.05f
-#define MAX_DISTANCE   100.0f
-#define CRC_POLYNOMIAL 0xEDB88320u
+#define HEADER_BYTES 48u
+#define VERSION      2u
+#define MIN_RATE     8000u
+#define MAX_RATE     384000u
+#define MIN_TAPS     8u
+#define MAX_TAPS     1024u
+#define MAX_RINGS    181u
+#define MAX_DIRS     65536u
+#define MAX_NAME     256u
+#define MAX_LICENSE  65536u
+#define MIN_DISTANCE 0.05f
+#define MAX_DISTANCE 100.0f
 
 static uint32_t U16(const uint8_t* at)
 {
@@ -42,20 +41,6 @@ static float F32(const uint8_t* at)
     float value;
     memcpy(&value, &bits, sizeof(value));
     return value;
-}
-
-uint32_t maudCrc32(const uint8_t* bytes, size_t count)
-{
-    uint32_t crc = 0xFFFFFFFFu;
-    for (size_t i = 0; i < count; ++i)
-    {
-        crc ^= bytes[i];
-        for (int bit = 0; bit < 8; ++bit)
-        {
-            crc = (crc >> 1) ^ (CRC_POLYNOMIAL & (0u - (crc & 1u)));
-        }
-    }
-    return ~crc;
 }
 
 // The continuation bytes a UTF-8 lead byte announces, or 4 for a byte

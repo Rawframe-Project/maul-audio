@@ -358,7 +358,8 @@ static void LinkBatches(uint32_t start, uint32_t end, void* context)
 }
 
 // Lays the graph's block out; false if it does not fit.
-static bool Lay(const maudAllocator* allocator, maudProbeGraph* g, uint32_t count, uint32_t links)
+bool maudLayProbeGraph(const maudAllocator* allocator, maudProbeGraph* g, uint32_t count,
+                       uint32_t links)
 {
     maudLayout layout = {0};
     size_t points = maudLayoutAdd(&layout, count, sizeof(maudVector3), alignof(maudVector3));
@@ -498,7 +499,7 @@ static maudResult Connect(const maudProbeQueries* q, float range, const maudVect
         links += t.linked[p];
     }
     maudResult result = maud_errorCapacity;
-    if (Lay(q->allocator, graph, count, links))
+    if (maudLayProbeGraph(q->allocator, graph, count, links))
     {
         if (count > 0)
         {

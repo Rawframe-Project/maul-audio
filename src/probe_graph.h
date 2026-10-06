@@ -66,6 +66,11 @@ bool maudProbeSetDefValid(const maudProbeSetDef* def);
 maudResult maudBuildProbeGraph(const maudProbeQueries* queries, const maudProbeSetDef* def,
                                maudProbeGraph* graph);
 
+// Allocates a set's block for count probes and links, setting its
+// arrays, counts and size (not its values); false when memory runs out.
+bool maudLayProbeGraph(const maudAllocator* allocator, maudProbeGraph* graph, uint32_t count,
+                       uint32_t links);
+
 // Releases a built set and zeroes it.
 void maudReleaseProbeGraph(const maudAllocator* allocator, maudProbeGraph* graph);
 

@@ -5,6 +5,7 @@
 // are made, read and destroyed here, one is chosen for pathing, and the
 // direct step hands its occluded sources to the pathing.
 
+#include "bake_file.h"
 #include "spatializer_state.h"
 
 #include <string.h>
@@ -251,4 +252,73 @@ bool maudBakedReverb(maudSpatializer* s, maudVector3 position)
         maudPublishReflections(s->reflections, &s->trace, s->histograms, 1);
     }
     return true;
+}
+
+maudResult maudSaveProbeSet(const maudSpatializer* spatializer, maudProbeSetId set, void* bytes,
+                            size_t capacity, size_t* sizeOut)
+{
+    if (spatializer == nullptr || sizeOut == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    *sizeOut = 0;
+    const maudSpatializer* s = spatializer;
+    const maudProbeGraph* graph = nullptr;
+    maudProbeBake* bake = nullptr;
+    maudResult result = maudFindProbeBake(s->probeSets, set, &graph, &bake);
+    if (result != maud_success)
+    {
+        return result;
+    }
+    size_t size = maudBakeFileBytes(graph, bake, s->trace.fieldOrder, s->trace.fieldBins);
+    if (size == 0)
+    {
+        return maud_errorCapacity;
+    }
+    *sizeOut = size;
+    if (bytes == nullptr)
+    {
+        return maud_success;
+    }
+    if (capacity < size)
+    {
+        return maud_errorCapacity;
+    }
+    maudWriteBakeFile(graph, bake, s->trace.fieldOrder, s->trace.fieldBins, bytes);
+    return maud_success;
+}
+
+maudResult maudLoadProbeSet(maudSpatializer* spatializer, const void* bytes, size_t size,
+                            maudProbeSetId* setOut)
+{
+    if (setOut != nullptr)
+    {
+        *setOut = (maudProbeSetId){0, 0};
+    }
+    if (spatializer == nullptr || bytes == nullptr || setOut == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    maudSpatializer* s = spatializer;
+    if (s->probeSets == nullptr)
+    {
+        return maud_errorCapacity;
+    }
+    maudBakeLimits limits = {s->maxProbes, s->maxProbePairs,
+                             s->reflections != nullptr ? s->trace.fieldOrder : 0,
+                             s->reflections != nullptr ? s->trace.fieldBins : 0};
+    maudProbeGraph graph;
+    maudProbeBake bake;
+    maudResult result = maudReadBakeFile(bytes, size, &limits, &s->allocator, &graph, &bake);
+    if (result != maud_success)
+    {
+        return result;
+    }
+    result = maudAdoptProbeSet(s->probeSets, &graph, &bake, setOut);
+    if (result != maud_success)
+    {
+        maudReleaseProbeGraph(&s->allocator, &graph);
+        maudReleaseProbeBake(&s->allocator, &bake);
+    }
+    return result;
 }

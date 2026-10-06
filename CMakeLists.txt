@@ -99,11 +99,13 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/air_absorption.c
     src/ambisonic_rotation.c
     src/ambisonics.c
+    src/bake_file.c
     src/band_eq.c
     src/bvh.c
     src/binaural.c
     src/binaural_decoder.c
     src/binaural_dsp.c
+    src/crc32.c
     src/direct_effect.c
     src/direct_step.c
     src/fft.c
@@ -263,6 +265,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(partitioned WHITEBOX)
         maul_add_test(path_refine WHITEBOX)
         maul_add_test(path_search WHITEBOX)
+        maul_add_test(bake_file WHITEBOX)
         maul_add_test(portable_math WHITEBOX)
         maul_add_test(probe_graph WHITEBOX)
         maul_add_test(real_fft WHITEBOX)
@@ -273,6 +276,10 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(spatializer_probes)
         maul_add_test(spatializer_pathing)
         maul_add_test(spatializer_bake)
+        if(TARGET test_spatializer_bake)
+            target_compile_definitions(test_spatializer_bake PRIVATE
+                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+        endif()
         maul_add_test(near_field WHITEBOX)
         maul_add_test(bvh WHITEBOX)
         maul_add_test(watertight WHITEBOX)
@@ -395,13 +402,14 @@ endif()
 
 # The fuzz targets: test/fuzz_<area>.c, run as fuzz_<area> <corpus dir>,
 # over the bytes programs load and hand the library; the shipped HRTF
-# file in data/hrtf/, behind a 0x01 byte, is fuzz_hrtf's seed.
+# file in data/hrtf/, behind a 0x01 byte, is fuzz_hrtf's seed; the shipped
+# bake in data/bake/, behind a 0x03 byte (fields of order 1), fuzz_bake's.
 if(MAUL_AUDIO_FUZZ AND MAUL_AUDIO_SPATIAL)
     # The library is instrumented too: its coverage guides libFuzzer, and
     # the sanitizers watch its code, not only the targets'.
     target_compile_options(maul-audio PRIVATE -fsanitize=fuzzer-no-link,address,undefined)
     target_link_options(maul-audio PUBLIC -fsanitize=address,undefined)
-    foreach(area hrtf)
+    foreach(area hrtf bake)
         add_executable(fuzz_${area} test/fuzz_${area}.c)
         target_link_libraries(fuzz_${area} PRIVATE maul-audio)
         # The targets reach the library's own functions.

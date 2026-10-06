@@ -25,6 +25,12 @@ void maudDestroyProbeSets(maudProbeSets* sets);
 maudResult maudAddProbeSet(maudProbeSets* sets, const maudProbeQueries* queries,
                            const maudProbeSetDef* def, maudProbeSetId* setOut);
 
+// Takes a graph and bake made elsewhere into a free slot, owning them
+// from then on; maud_errorCapacity with none free (they stay the
+// caller's).
+maudResult maudAdoptProbeSet(maudProbeSets* sets, maudProbeGraph* graph, maudProbeBake* bake,
+                             maudProbeSetId* setOut);
+
 // Releases a set: maud_errorInvalid for a 0 or unknown id,
 // maud_errorStale for a released one.
 maudResult maudRemoveProbeSet(maudProbeSets* sets, maudProbeSetId set);
