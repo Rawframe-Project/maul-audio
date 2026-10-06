@@ -85,3 +85,29 @@ maudNearFieldFilter maudNearField(float angleDegrees, float inverseDistance,
         .a1 = (k - 1.0f) / (1.0f + k),
     };
 }
+
+static maudVector3 Normalized(maudVector3 v)
+{
+    float length = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (length == 0.0f)
+    {
+        return (maudVector3){0.0f, 0.0f, -1.0f};
+    }
+    return (maudVector3){v.x / length, v.y / length, v.z / length};
+}
+
+maudVector3 maudEarDirection(maudVector3 position, float earX, float setDistance)
+{
+    maudVector3 ray = {position.x - earX, position.y, position.z};
+    float length = sqrtf(ray.x * ray.x + ray.y * ray.y + ray.z * ray.z);
+    if (length == 0.0f || fabsf(earX) >= setDistance)
+    {
+        return Normalized(position);
+    }
+    maudVector3 u = {ray.x / length, ray.y / length, ray.z / length};
+    // |ear + t u| = setDistance: t^2 + 2 t (ear . u) + ear^2 - R^2 = 0,
+    // the positive root (the ear is inside the sphere).
+    float along = earX * u.x;
+    float t = -along + sqrtf(along * along - earX * earX + setDistance * setDistance);
+    return Normalized((maudVector3){earX + t * u.x, t * u.y, t * u.z});
+}

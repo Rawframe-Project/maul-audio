@@ -250,6 +250,10 @@ format.
   fractional delay and runs a direct-form FIR; a change of direction
   crossfades the old and new filters and ramps the delays over 2.67 ms,
   the latest change winning; the host's gain ramps across each call.
-  Processing allocates nothing. `maudVector3` (`maul-audio/base.h`)
-  carries the listener's frame: +x right, +y up, -z ahead. A benchmark,
-  `maul-audio_bench_binaural`, prints the cost per source.
+  With the near field (on by default), a source's distance counts: each
+  ear goes through its near-field filter for a head of `headRadius`,
+  and looks its response up where it sees the source on the set's
+  measurement sphere (parallax). Processing allocates nothing.
+  `maudVector3` (`maul-audio/base.h`) carries the listener's frame: +x
+  right, +y up, -z ahead. A benchmark, `maul-audio_bench_binaural`,
+  prints the cost per source.

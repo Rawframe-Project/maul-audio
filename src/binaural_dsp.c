@@ -63,3 +63,41 @@ void maudReadDelayed(const float* restrict x, float start, float step, float* re
         out[n] = c[0] * p[1] + c[1] * p[0] + c[2] * p[-1] + c[3] * p[-2];
     }
 }
+
+void maudShelve(float* samples, uint32_t frames, const float start[3], const float step[3],
+                float state[2])
+{
+    float x1 = state[0];
+    float y1 = state[1];
+    if (step[0] == 0.0f && step[1] == 0.0f && step[2] == 0.0f)
+    {
+        // A still filter: its coefficients once.
+        float b0 = start[0];
+        float b1 = start[1];
+        float a1 = start[2];
+        for (uint32_t n = 0; n < frames; ++n)
+        {
+            float x = samples[n];
+            float y = b0 * x + b1 * x1 - a1 * y1;
+            samples[n] = y;
+            x1 = x;
+            y1 = y;
+        }
+        state[0] = x1;
+        state[1] = y1;
+        return;
+    }
+    for (uint32_t n = 0; n < frames; ++n)
+    {
+        float b0 = start[0] + step[0] * (float)n;
+        float b1 = start[1] + step[1] * (float)n;
+        float a1 = start[2] + step[2] * (float)n;
+        float x = samples[n];
+        float y = b0 * x + b1 * x1 - a1 * y1;
+        samples[n] = y;
+        x1 = x;
+        y1 = y;
+    }
+    state[0] = x1;
+    state[1] = y1;
+}

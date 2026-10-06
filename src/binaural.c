@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Binaural effects: each ear blends the four measured responses
-// and delays around the source's direction, reads its delayed signal
-// from the input's history by cubic interpolation and convolves it with
-// a direct-form FIR. A change of direction runs the old and new filters
-// side by side for a fixed fade, crossfading them and ramping the delays.
+// Binaural effects: each ear blends the four measured responses and
+// delays around the source's direction (as that ear sees it, near the
+// head), reads its delayed signal from the input's history by cubic
+// interpolation, filters it for the head's near field and convolves it
+// with a direct-form FIR. A change runs the old and new responses side
+// by side for a fixed fade, crossfading them while the delays and the
+// near-field filters move.
 // One block from the def's allocator holds everything; processing only
 // reads and writes it.
 
@@ -15,6 +17,7 @@
 #include "binaural_dsp.h"
 #include "hrtf_core.h"
 #include "hrtf_lookup.h"
+#include "near_field.h"
 
 #include <math.h>
 #include <string.h>
@@ -28,12 +31,17 @@
 // a sample later than the one it writes.
 #define BASE_DELAY 1.0f
 #define DEGREES    57.29577951308232f
+#define MIN_RADIUS 0.05f
+#define MAX_RADIUS 0.15f
+// The near field's nearest distance: closer sources count as this close.
+#define MIN_DISTANCE 0.1f
 
-// An ear pair's responses and delays.
+// An ear pair's responses, delays and near-field filters ({b0, b1, a1}).
 typedef struct Filter
 {
     float* response[2];
     float delay[2];
+    float shelf[2][3];
 } Filter;
 
 struct maudBinaural
@@ -52,11 +60,16 @@ struct maudBinaural
     float* ears[2];
     // The new filter's output during a fade.
     float* scratch;
+    bool nearField;
+    float headRadius;
+    // Each ear's near-field filter memory: x[n - 1], y[n - 1].
+    float shelfState[2][2];
     Filter current;
     Filter next;
-    maudVector3 currentDirection;
-    maudVector3 nextDirection;
-    maudVector3 wantedDirection;
+    // Where the filters are for, as Key gives it.
+    maudVector3 currentKey;
+    maudVector3 nextKey;
+    maudVector3 wantedKey;
     // Frames left in the fade under way; 0 when none is.
     uint32_t fadeLeft;
     float gain;
@@ -69,6 +82,8 @@ maudBinauralDef maudDefaultBinauralDef(void)
         .cookie = BINAURAL_DEF_COOKIE,
         .hrtf = nullptr,
         .maxFrames = DEFAULT_MAX_FRAMES,
+        .nearField = true,
+        .headRadius = 0.0875f,
         .allocator = {nullptr, nullptr, nullptr},
     };
 }
@@ -76,7 +91,8 @@ maudBinauralDef maudDefaultBinauralDef(void)
 static bool DefValid(const maudBinauralDef* def)
 {
     return def->cookie == BINAURAL_DEF_COOKIE && def->hrtf != nullptr && def->maxFrames >= 1 &&
-           def->maxFrames <= MAX_FRAMES && maudIsAllocatorValid(&def->allocator);
+           def->maxFrames <= MAX_FRAMES && def->headRadius >= MIN_RADIUS &&
+           def->headRadius <= MAX_RADIUS && maudIsAllocatorValid(&def->allocator);
 }
 
 // The history the delays need: the set's largest delay, the base delay,
@@ -151,6 +167,8 @@ maudResult maudCreateBinaural(const maudBinauralDef* def, maudBinaural** effectO
         .taps = hrtf->taps,
         .fadeFrames = fade < 1.0 ? 1u : (uint32_t)fade,
         .reach = reach,
+        .nearField = def->nearField,
+        .headRadius = def->headRadius,
         .history = (float*)(block + parts.history),
         .ears = {(float*)(block + parts.ears[0]), (float*)(block + parts.ears[1])},
         .scratch = (float*)(block + parts.scratch),
@@ -187,6 +205,7 @@ maudResult maudResetBinaural(maudBinaural* effect)
         memset(effect->ears[ear], 0,
                ((size_t)effect->taps - 1 + effect->maxFrames) * sizeof(float));
     }
+    memset(effect->shelfState, 0, sizeof(effect->shelfState));
     effect->fadeLeft = 0;
     effect->primed = false;
     return maud_success;
@@ -203,24 +222,59 @@ static maudVector3 Unit(maudVector3 v)
     return (maudVector3){v.x / length, v.y / length, v.z / length};
 }
 
+// What the filters depend on: the position, no nearer than MIN_DISTANCE,
+// with the near field; the direction alone without it.
+static maudVector3 Key(const maudBinaural* effect, maudVector3 position)
+{
+    maudVector3 unit = Unit(position);
+    if (!effect->nearField)
+    {
+        return unit;
+    }
+    float length =
+        sqrtf(position.x * position.x + position.y * position.y + position.z * position.z);
+    float distance = length < MIN_DISTANCE ? MIN_DISTANCE : length;
+    return (maudVector3){unit.x * distance, unit.y * distance, unit.z * distance};
+}
+
 static bool Same(maudVector3 a, maudVector3 b)
 {
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
-// Fills a filter for a unit direction: the listener's frame to the set's
-// (azimuth counterclockwise from ahead, -z; left is -x; up is +y).
-static void Design(const maudBinaural* effect, Filter* filter, maudVector3 unit)
+// Fills one ear of a filter for a key: the direction the ear looks its
+// response up at (with parallax under the near field), converted from
+// the listener's frame to the set's (azimuth counterclockwise from
+// ahead, -z; left is -x; up is +y), and its near-field filter.
+static void DesignEar(const maudBinaural* effect, Filter* filter, uint32_t ear, maudVector3 key)
 {
-    float azimuth = atan2f(-unit.x, -unit.z) * DEGREES;
-    float y = unit.y > 1.0f ? 1.0f : unit.y < -1.0f ? -1.0f : unit.y;
-    float elevation = asinf(y) * DEGREES;
-    maudHrtfNeighbours neighbours = maudHrtfNeighboursOf(effect->hrtf, azimuth, elevation);
-    for (uint32_t ear = 0; ear < 2; ++ear)
+    const maudHrtf* hrtf = effect->hrtf;
+    float earX = ear == 0 ? -effect->headRadius : effect->headRadius;
+    maudVector3 look = effect->nearField ? maudEarDirection(key, earX, hrtf->distance) : key;
+    float azimuth = atan2f(-look.x, -look.z) * DEGREES;
+    float y = look.y > 1.0f ? 1.0f : look.y < -1.0f ? -1.0f : look.y;
+    maudHrtfNeighbours neighbours = maudHrtfNeighboursOf(hrtf, azimuth, asinf(y) * DEGREES);
+    filter->delay[ear] = maudHrtfBlend(hrtf, &neighbours, ear, filter->response[ear]) + BASE_DELAY;
+    maudNearFieldFilter shelf = {1.0f, 0.0f, 0.0f};
+    if (effect->nearField)
     {
-        filter->delay[ear] =
-            maudHrtfBlend(effect->hrtf, &neighbours, ear, filter->response[ear]) + BASE_DELAY;
+        maudVector3 unit = Unit(key);
+        float facing = ear == 0 ? -unit.x : unit.x;
+        facing = facing > 1.0f ? 1.0f : facing < -1.0f ? -1.0f : facing;
+        float distance = sqrtf(key.x * key.x + key.y * key.y + key.z * key.z);
+        shelf = maudNearField(acosf(facing) * DEGREES, effect->headRadius / distance,
+                              effect->headRadius / hrtf->distance, effect->headRadius,
+                              (float)hrtf->sampleRate);
     }
+    filter->shelf[ear][0] = shelf.b0;
+    filter->shelf[ear][1] = shelf.b1;
+    filter->shelf[ear][2] = shelf.a1;
+}
+
+static void Design(const maudBinaural* effect, Filter* filter, maudVector3 key)
+{
+    DesignEar(effect, filter, 0, key);
+    DesignEar(effect, filter, 1, key);
 }
 
 // Renders span frames from done with the current filter alone.
@@ -231,13 +285,18 @@ static void RenderSteady(maudBinaural* effect, const float* x, float* const out[
     {
         float* signal = effect->ears[ear] + effect->taps - 1 + done;
         maudReadDelayed(x, effect->current.delay[ear], 0.0f, signal, span);
+        if (effect->nearField)
+        {
+            static const float still[3] = {0.0f, 0.0f, 0.0f};
+            maudShelve(signal, span, effect->current.shelf[ear], still, effect->shelfState[ear]);
+        }
         maudFir(signal, effect->current.response[ear], effect->taps, out[ear] + done, span);
     }
 }
 
-// Renders span frames from done inside the fade: the delays ramp, both
-// filters run, and the new one's share rises by 1 / fadeFrames a frame,
-// reaching 1 on the fade's last frame.
+// Renders span frames from done inside the fade: the delays and the
+// near-field filters move, both responses run, and the new one's share
+// rises by 1 / fadeFrames a frame, reaching 1 on the fade's last frame.
 static void RenderFade(maudBinaural* effect, const float* x, float* const out[2], uint32_t done,
                        uint32_t span)
 {
@@ -249,6 +308,17 @@ static void RenderFade(maudBinaural* effect, const float* x, float* const out[2]
         float step = (effect->next.delay[ear] - from) / fade;
         float* signal = effect->ears[ear] + effect->taps - 1 + done;
         maudReadDelayed(x, from + step * (float)(faded + 1), step, signal, span);
+        if (effect->nearField)
+        {
+            float start[3];
+            float steps[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                steps[k] = (effect->next.shelf[ear][k] - effect->current.shelf[ear][k]) / fade;
+                start[k] = effect->current.shelf[ear][k] + steps[k] * (float)(faded + 1);
+            }
+            maudShelve(signal, span, start, steps, effect->shelfState[ear]);
+        }
         float* old = out[ear] + done;
         maudFir(signal, effect->current.response[ear], effect->taps, old, span);
         maudFir(signal, effect->next.response[ear], effect->taps, effect->scratch, span);
@@ -267,10 +337,10 @@ static void Render(maudBinaural* effect, const float* x, float* const out[2], ui
     uint32_t done = 0;
     while (done < frames)
     {
-        if (effect->fadeLeft == 0 && !Same(effect->wantedDirection, effect->currentDirection))
+        if (effect->fadeLeft == 0 && !Same(effect->wantedKey, effect->currentKey))
         {
-            Design(effect, &effect->next, effect->wantedDirection);
-            effect->nextDirection = effect->wantedDirection;
+            Design(effect, &effect->next, effect->wantedKey);
+            effect->nextKey = effect->wantedKey;
             effect->fadeLeft = effect->fadeFrames;
         }
         if (effect->fadeLeft == 0)
@@ -287,15 +357,15 @@ static void Render(maudBinaural* effect, const float* x, float* const out[2], ui
             Filter finished = effect->current;
             effect->current = effect->next;
             effect->next = finished;
-            effect->currentDirection = effect->nextDirection;
+            effect->currentKey = effect->nextKey;
         }
     }
 }
 
 static bool ParamsValid(const maudBinauralParams* params)
 {
-    return isfinite(params->direction.x) && isfinite(params->direction.y) &&
-           isfinite(params->direction.z) && isfinite(params->gain);
+    return isfinite(params->position.x) && isfinite(params->position.y) &&
+           isfinite(params->position.z) && isfinite(params->gain);
 }
 
 maudResult maudProcessBinaural(maudBinaural* effect, const maudBinauralParams* params,
@@ -311,15 +381,15 @@ maudResult maudProcessBinaural(maudBinaural* effect, const maudBinauralParams* p
     {
         return maud_success;
     }
-    maudVector3 unit = Unit(params->direction);
+    maudVector3 key = Key(effect, params->position);
     if (!effect->primed)
     {
-        Design(effect, &effect->current, unit);
-        effect->currentDirection = unit;
+        Design(effect, &effect->current, key);
+        effect->currentKey = key;
         effect->gain = params->gain;
         effect->primed = true;
     }
-    effect->wantedDirection = unit;
+    effect->wantedKey = key;
     float* x = effect->history + effect->reach;
     memcpy(x, in, (size_t)frames * sizeof(float));
     Render(effect, x, out, frames);

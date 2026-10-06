@@ -12,6 +12,7 @@
 #include "maul-audio/base.h"
 #include "maul-audio/hrtf.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -31,16 +32,24 @@ extern "C"
         const maudHrtf* hrtf;
         // The most frames one call processes, 1 to 16,384.
         uint32_t maxFrames;
+        // Whether the source's distance counts: each ear filtered for the
+        // head's near field (a rigid sphere of headRadius, against the
+        // distance the set was measured at) and looking its response up
+        // in the direction it sees the source from (parallax).
+        bool nearField;
+        // The head's radius in metres, 0.05 to 0.15.
+        float headRadius;
         maudAllocator allocator;
     } maudBinauralDef;
 
     // A source's parameters for one call.
     typedef struct maudBinauralParams
     {
-        // Where the source is, from the head's centre, in the listener's
-        // frame; only its direction counts. A zero vector is straight
-        // ahead.
-        maudVector3 direction;
+        // Where the source is, from the head's centre, in metres in the
+        // listener's frame. Its direction picks the responses; with the
+        // near field, its length counts too, no nearer than 0.1 m. A zero
+        // vector is straight ahead.
+        maudVector3 position;
         // A gain the host computed, distance attenuation included: the
         // effect applies none of its own. It moves linearly from the
         // previous call's across the call.
@@ -48,7 +57,7 @@ extern "C"
     } maudBinauralParams;
 
     /// Returns the default binaural def: no set, at most 1,024 frames per
-    /// call.
+    /// call, the near field on for a head of 8.75 cm.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -76,11 +85,11 @@ extern "C"
     MAUD_API void maudDestroyBinaural(maudBinaural* effect);
 
     /// Renders frames of a source's mono signal for both ears, written to
-    /// out[0] (left) and out[1] (right). When the direction changes, the
-    /// old and new filters are crossfaded and each ear's delay ramps over
-    /// 2.67 ms; a change during a fade starts when it ends, the latest
-    /// one winning. The first call after creation or a reset starts at
-    /// its parameters.
+    /// out[0] (left) and out[1] (right). When the position changes, the
+    /// old and new responses are crossfaded while each ear's delay and
+    /// near-field filter move, over 2.67 ms; a change during a fade
+    /// starts when it ends, the latest one winning. The first call after
+    /// creation or a reset starts at its parameters.
     ///
     /// @param effect  The effect.
     /// @param params  The source's parameters.

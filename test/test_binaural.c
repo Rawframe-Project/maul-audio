@@ -19,6 +19,7 @@
 
 #include "binaural_dsp.h"
 #include "hrtf_core.h"
+#include "near_field.h"
 #include "test_harness.h"
 
 #include "maul-audio/binaural.h"
@@ -149,20 +150,27 @@ static maudHrtf* LoadCrafted(void)
     return hrtf;
 }
 
-static maudBinaural* Create(const maudHrtf* hrtf, uint32_t maxFrames)
+static maudBinaural* CreateWith(const maudHrtf* hrtf, uint32_t maxFrames, bool nearField)
 {
     maudBinauralDef def = maudDefaultBinauralDef();
     def.hrtf = hrtf;
     def.maxFrames = maxFrames;
+    def.nearField = nearField;
     def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
     maudBinaural* effect = nullptr;
     CHECK(maudCreateBinaural(&def, &effect) == maud_success, "an effect");
     return effect;
 }
 
+// Without the near field, the crafted set's responses come out exactly.
+static maudBinaural* Create(const maudHrtf* hrtf, uint32_t maxFrames)
+{
+    return CreateWith(hrtf, maxFrames, false);
+}
+
 static maudBinauralParams At(float x, float y, float z)
 {
-    return (maudBinauralParams){.direction = {x, y, z}, .gain = 1.0f};
+    return (maudBinauralParams){.position = {x, y, z}, .gain = 1.0f};
 }
 
 enum
@@ -435,6 +443,149 @@ static void TestDirectionOnly(const maudHrtf* hrtf)
     maudDestroyBinaural(far);
 }
 
+// The near-field filter of one ear, applied by the definition, in double.
+static void Shelve(float* samples, int count, maudNearFieldFilter filter)
+{
+    double x1 = 0.0;
+    double y1 = 0.0;
+    for (int n = 0; n < count; ++n)
+    {
+        double x = (double)samples[n];
+        double y = (double)filter.b0 * x + (double)filter.b1 * x1 - (double)filter.a1 * y1;
+        samples[n] = (float)y;
+        x1 = x;
+        y1 = y;
+    }
+}
+
+static bool Near(const float* a, const float* b, int count)
+{
+    for (int n = 0; n < count; ++n)
+    {
+        if (fabsf(a[n] - b[n]) > 1e-5f)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Where the ray from an ear at earX through a source meets the sphere of
+// radius r, by bisection in double: a check on the closed form.
+static maudVector3 Bisected(maudVector3 source, double earX, double r)
+{
+    double ux = (double)source.x - earX, uy = (double)source.y, uz = (double)source.z;
+    double length = sqrt(ux * ux + uy * uy + uz * uz);
+    ux /= length;
+    uy /= length;
+    uz /= length;
+    double low = 0.0, high = 4.0 * r;
+    for (int i = 0; i < 200; ++i)
+    {
+        double t = 0.5 * (low + high);
+        double x = earX + t * ux, y = t * uy, z = t * uz;
+        if (x * x + y * y + z * z < r * r)
+        {
+            low = t;
+        }
+        else
+        {
+            high = t;
+        }
+    }
+    double x = earX + low * ux, y = low * uy, z = low * uz;
+    double norm = sqrt(x * x + y * y + z * z);
+    return (maudVector3){(float)(x / norm), (float)(y / norm), (float)(z / norm)};
+}
+
+// The near field on the crafted set (measured at 1.5 m, a head of
+// 8.75 cm): nothing changes at the set's distance; a close source on the
+// x axis is each ear's response through its near-field filter; off the
+// axis, each ear's response is also looked up where that ear sees the
+// source on the measurement sphere.
+static void TestNearField(const maudHrtf* hrtf)
+{
+    memset(s_in, 0, 256 * sizeof(float));
+    s_in[0] = 1.0f;
+    maudVector3 places[3] = {{-1.5f, 0.0f, 0.0f}, {0.9f, 0.6f, -1.0392305f}, {0.0f, 0.0f, 1.5f}};
+    bool unchanged = true;
+    for (int i = 0; i < 3; ++i)
+    {
+        maudBinaural* on = CreateWith(hrtf, 256, true);
+        maudBinaural* off = Create(hrtf, 256);
+        maudBinauralParams params = {places[i], 1.0f};
+        CHECK(Process(on, params, s_in, s_left, s_right, 256) == maud_success, "process");
+        CHECK(Process(off, params, s_in, s_left2, s_right2, 256) == maud_success, "process");
+        unchanged = unchanged && Near(s_left, s_left2, 256) && Near(s_right, s_right2, 256);
+        maudDestroyBinaural(on);
+        maudDestroyBinaural(off);
+    }
+    CHECK(unchanged, "at the set's distance, the near field changes nothing");
+
+    const float head = 0.0875f;
+    maudBinaural* on = CreateWith(hrtf, 256, true);
+    maudBinaural* off = Create(hrtf, 256);
+    CHECK(Process(on, At(0.2f, 0.0f, 0.0f), s_in, s_left, s_right, 256) == maud_success, "process");
+    CHECK(Process(off, At(1.0f, 0.0f, 0.0f), s_in, s_left2, s_right2, 256) == maud_success,
+          "process");
+    Shelve(s_right2, 256, maudNearField(0.0f, head / 0.2f, head / 1.5f, head, 48000.0f));
+    Shelve(s_left2, 256, maudNearField(180.0f, head / 0.2f, head / 1.5f, head, 48000.0f));
+    CHECK(Near(s_right, s_right2, 256) && Near(s_left, s_left2, 256),
+          "on the axis: each ear through its near-field filter");
+    maudDestroyBinaural(on);
+    maudDestroyBinaural(off);
+
+    // 0.2 m ahead and to the left: each ear looks its response up where
+    // it sees the source on the 1.5 m sphere.
+    maudVector3 source = {-0.12f, 0.0f, -0.16f};
+    float facing[2] = {0.6f, -0.6f};
+    for (int ear = 0; ear < 2; ++ear)
+    {
+        maudVector3 look = Bisected(source, ear == 0 ? -0.0875 : 0.0875, 1.5);
+        on = CreateWith(hrtf, 256, true);
+        off = Create(hrtf, 256);
+        CHECK(Process(on, (maudBinauralParams){source, 1.0f}, s_in, s_left, s_right, 256) ==
+                  maud_success,
+              "process");
+        CHECK(Process(off, (maudBinauralParams){look, 1.0f}, s_in, s_left2, s_right2, 256) ==
+                  maud_success,
+              "process");
+        float* mine = ear == 0 ? s_left : s_right;
+        float* expected = ear == 0 ? s_left2 : s_right2;
+        Shelve(expected, 256,
+               maudNearField(acosf(facing[ear]) * 57.29577951f, head / 0.2f, head / 1.5f, head,
+                             48000.0f));
+        CHECK(Near(mine, expected, 256), "off the axis: each ear's own direction (parallax)");
+        maudDestroyBinaural(on);
+        maudDestroyBinaural(off);
+    }
+
+    // Without the near field a change of distance alone changes nothing;
+    // a zero position under it is 0.1 m ahead.
+    Noise(s_in, 512, 19);
+    off = Create(hrtf, 512);
+    maudBinaural* still = Create(hrtf, 512);
+    CHECK(Process(off, At(0.3f, 0.0f, -0.4f), s_in, s_left, s_right, 256) == maud_success,
+          "process");
+    CHECK(Process(off, At(3.0f, 0.0f, -4.0f), s_in + 256, s_left + 256, s_right + 256, 256) ==
+              maud_success,
+          "process");
+    CHECK(Process(still, At(0.3f, 0.0f, -0.4f), s_in, s_left2, s_right2, 512) == maud_success,
+          "process");
+    CHECK(memcmp(s_left, s_left2, 512 * sizeof(float)) == 0,
+          "without the near field, distance alone changes nothing");
+    maudDestroyBinaural(off);
+    maudDestroyBinaural(still);
+    on = CreateWith(hrtf, 256, true);
+    maudBinaural* ahead = CreateWith(hrtf, 256, true);
+    CHECK(Process(on, At(0.0f, 0.0f, 0.0f), s_in, s_left, s_right, 256) == maud_success, "process");
+    CHECK(Process(ahead, At(0.0f, 0.0f, -0.1f), s_in, s_left2, s_right2, 256) == maud_success,
+          "process");
+    CHECK(memcmp(s_left, s_left2, 256 * sizeof(float)) == 0, "a zero position is 0.1 m ahead");
+    maudDestroyBinaural(on);
+    maudDestroyBinaural(ahead);
+}
+
 // One call of 1,000 frames and calls of 1, 7, 100 and 892 give the same
 // samples while nothing changes.
 static void TestBlocks(const maudHrtf* hrtf)
@@ -543,6 +694,13 @@ static void TestMisuse(const maudHrtf* hrtf)
     def.maxFrames = 16385;
     CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "too many frames");
     def.maxFrames = 64;
+    float radii[3] = {0.049f, 0.151f, NAN};
+    for (int i = 0; i < 3; ++i)
+    {
+        def.headRadius = radii[i];
+        CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "a head out of bounds");
+    }
+    def.headRadius = 0.0875f;
     def.cookie = 0;
     CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "no cookie");
     def = maudDefaultBinauralDef();
@@ -560,7 +718,7 @@ static void TestMisuse(const maudHrtf* hrtf)
 static void TestNoAllocation(const maudHrtf* hrtf)
 {
     long before = s_allocations;
-    maudBinaural* effect = Create(hrtf, 512);
+    maudBinaural* effect = CreateWith(hrtf, 512, true);
     CHECK(s_allocations == before + 1, "one block");
     Noise(s_in, 4096, 5);
     for (uint32_t done = 0; done < 4096; done += 512)
@@ -641,6 +799,19 @@ static void TestShippedSet(void)
         CHECK(Energy(near, 512) > 4.0 * Energy(far, 512), "and louder, by over 6 dB");
         maudDestroyBinaural(effect);
     }
+    // A source 0.15 m to the right against one at the set's 1.2 m: the
+    // near ear louder (the sphere gives +7 to +9 dB), the far ear quieter.
+    maudBinaural* close = CreateWith(hrtf, 512, true);
+    maudBinaural* measured = CreateWith(hrtf, 512, true);
+    CHECK(Process(close, At(0.15f, 0.0f, 0.0f), s_in, s_left, s_right, 512) == maud_success,
+          "process");
+    CHECK(Process(measured, At(1.2f, 0.0f, 0.0f), s_in, s_left2, s_right2, 512) == maud_success,
+          "process");
+    CHECK(Energy(s_right, 512) > 3.0 * Energy(s_right2, 512),
+          "a close source: the near ear louder");
+    CHECK(Energy(s_left, 512) < Energy(s_left2, 512), "and the far ear quieter");
+    maudDestroyBinaural(close);
+    maudDestroyBinaural(measured);
     maudDestroyHrtf(hrtf);
 #endif
 }
@@ -660,6 +831,7 @@ int main(void)
         TestGain(hrtf);
         TestMisuse(hrtf);
         TestNoAllocation(hrtf);
+        TestNearField(hrtf);
         maudDestroyHrtf(hrtf);
     }
     TestShippedSet();

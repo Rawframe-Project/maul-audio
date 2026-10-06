@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The binaural effect's sample loops: a direct-form FIR and a fractional
-// delay read. Both work in caller memory, allocate nothing and do work
+// The binaural effect's sample loops: a direct-form FIR, a fractional
+// delay read and a first-order filter. Both work in caller memory, allocate nothing and do work
 // in proportion to their frames.
 
 #ifndef MAUL_AUDIO_SRC_BINAURAL_DSP_H
@@ -22,5 +22,13 @@ void maudFir(const float* restrict x, const float* restrict h, uint32_t taps, fl
 // sample after x[n]); x has as much history as the largest delay plus 2.
 void maudReadDelayed(const float* restrict x, float start, float step, float* restrict out,
                      uint32_t frames);
+
+// Filters frames samples in place through y[n] = b0 x[n] + b1 x[n - 1]
+// - a1 y[n - 1], the coefficients {b0, b1, a1} being start + step n at
+// sample n (step zero for a still filter). state holds x[n - 1] and
+// y[n - 1] across calls. Coefficients moving between two stable filters
+// stay stable: the pole moves along a line inside the unit circle.
+void maudShelve(float* samples, uint32_t frames, const float start[3], const float step[3],
+                float state[2]);
 
 #endif // MAUL_AUDIO_SRC_BINAURAL_DSP_H

@@ -3,9 +3,9 @@
 //
 // The binaural effect's cost per source on the shipped SADIE II set at
 // 48 kHz (128 taps), in 480-frame blocks (10 ms): a source standing
-// still, and one whose direction changes every block, so that it fades
-// in every block. Prints the best of five runs as microseconds per block
-// and as sources per millisecond of one core for each 10 ms of audio.
+// still without the near field and with it, and one whose direction
+// changes every block, so that it fades in every block. Prints the best of five runs as
+// microseconds per block and as sources per millisecond of one core for each 10 ms of audio.
 
 #define _CRT_SECURE_NO_WARNINGS
 
@@ -30,11 +30,12 @@ static double Seconds(void)
     return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 }
 
-static double Run(const maudHrtf* hrtf, bool moving)
+static double Run(const maudHrtf* hrtf, bool moving, bool nearField)
 {
     maudBinauralDef def = maudDefaultBinauralDef();
     def.hrtf = hrtf;
     def.maxFrames = FRAMES;
+    def.nearField = nearField;
     maudBinaural* effect = nullptr;
     if (maudCreateBinaural(&def, &effect) != maud_success)
     {
@@ -84,12 +85,12 @@ int main(void)
     {
         s_in[i] = sinf(0.05f * (float)i);
     }
-    const char* names[2] = {"still", "moving"};
-    for (int moving = 0; moving < 2; ++moving)
+    const char* names[3] = {"still, no near field", "still", "moving"};
+    for (int row = 0; row < 3; ++row)
     {
-        double micro = Run(hrtf, moving != 0);
-        printf("binaural, %-6s %7.2f us per 10 ms block, %6.1f sources per ms of a core\n",
-               names[moving], micro, micro > 0.0 ? 1000.0 / micro : 0.0);
+        double micro = Run(hrtf, row == 2, row != 0);
+        printf("binaural, %-20s %7.2f us per 10 ms block, %6.1f sources per ms of a core\n",
+               names[row], micro, micro > 0.0 ? 1000.0 / micro : 0.0);
     }
     maudDestroyHrtf(hrtf);
     return 0;

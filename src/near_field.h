@@ -10,6 +10,8 @@
 #ifndef MAUL_AUDIO_SRC_NEAR_FIELD_H
 #define MAUL_AUDIO_SRC_NEAR_FIELD_H
 
+#include "maul-audio/base.h"
+
 // y[n] = b0 x[n] + b1 x[n - 1] - a1 y[n - 1]; |a1| < 1.
 typedef struct maudNearFieldFilter
 {
@@ -25,5 +27,13 @@ typedef struct maudNearFieldFilter
 // and a sample rate. Equal distances give exactly the identity.
 maudNearFieldFilter maudNearField(float angleDegrees, float inverseDistance,
                                   float setInverseDistance, float headRadius, float sampleRate);
+
+// The direction, from the head's centre, at which an ear's response is
+// looked up for a source at position (metres, the listener's frame):
+// where the ray from the ear, at earX on the x axis, through the source
+// meets the sphere the set was measured on (parallax). Unit length. A
+// source at the ear, or an ear outside the sphere, looks up the
+// source's own direction; a zero position, straight ahead.
+maudVector3 maudEarDirection(maudVector3 position, float earX, float setDistance);
 
 #endif // MAUL_AUDIO_SRC_NEAR_FIELD_H
