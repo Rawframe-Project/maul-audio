@@ -48,7 +48,7 @@ static inline bool ClockIsSound(const maudStreamClock* first, const maudStreamCl
 }
 
 // Reads a running stream's clock a second apart through the test's own
-// sleep, up to three times, until two reads pass ClockIsSound. A
+// sleep, up to five times, until two reads pass ClockIsSound. A
 // loaded machine's stalls hold the stream back while host time runs
 // on, which spoils a window but never makes one sound.
 static inline bool StreamClockIsSound(const maudContext* context, maudStreamId stream, bool output,
@@ -62,7 +62,7 @@ static inline bool StreamClockIsSound(const maudContext* context, maudStreamId s
     {
         return false;
     }
-    for (int window = 0; window < 3; ++window)
+    for (int window = 0; window < 5; ++window)
     {
         sleep(1000);
         if (maudGetStreamClock(context, stream, &second) != maud_success)

@@ -632,8 +632,8 @@ static void TestXruns(maudContext* context)
     }
     // The gap of a stop is not an xrun: across each of ten restarts the
     // count stays where it was. A loaded machine may slip a real xrun
-    // into the few blocks after a restart now and then; a counted gap
-    // would show at every one.
+    // into the few blocks after a restart now and then (at a load of 230,
+    // at more than three of ten); a counted gap would show at every one.
     Blocks calm = {0};
     maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &calm);
     uint32_t jumped = 0;
@@ -650,11 +650,11 @@ static void TestXruns(maudContext* context)
         CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
         jumped += status.underruns != before ? 1u : 0u;
     }
-    if (jumped > 3)
+    if (jumped > 6)
     {
         fprintf(stderr, "the count jumped across %u of 10 restarts\n", jumped);
     }
-    CHECK(jumped <= 3, "a stop's gap is not counted");
+    CHECK(jumped <= 6, "a stop's gap is not counted");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy calm");
 }
 
