@@ -37,14 +37,6 @@ extern "C"
         float w;
     } maudQuaternion;
 
-    // A source as the bed hears it: where it is (only the direction
-    // counts; a zero vector is straight ahead) and its gain.
-    typedef struct maudAmbisonicSource
-    {
-        maudVector3 direction;
-        float gain;
-    } maudAmbisonicSource;
-
     /// Returns the channels a bed of an order takes.
     ///
     /// @param order  1 to MAUD_MAX_AMBISONIC_ORDER.
@@ -83,10 +75,9 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the bed is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudEncodeAmbisonic(uint32_t order,
-                                                           const maudAmbisonicSource* from,
-                                                           const maudAmbisonicSource* to,
-                                                           const float* in, float* const* bed,
-                                                           uint32_t frames);
+                                                           const maudPanSource* from,
+                                                           const maudPanSource* to, const float* in,
+                                                           float* const* bed, uint32_t frames);
 
     /// Rotates a bed in place, the rotation moving linearly from `from`
     /// to `to` across the call (a crossfade of the two rotated fields; a

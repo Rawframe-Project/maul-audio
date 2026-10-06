@@ -231,8 +231,8 @@ static void TestEncode(void)
     }
     float in[8] = {1.0f, -1.0f, 2.0f, 0.5f, 1.0f, 1.0f, -2.0f, 3.0f};
     maudVector3 d = {0.3f, 0.4f, -0.5f};
-    maudAmbisonicSource from = {d, 0.0f};
-    maudAmbisonicSource to = {d, 2.0f};
+    maudPanSource from = {d, 0.0f};
+    maudPanSource to = {d, 2.0f};
     CHECK(maudEncodeAmbisonic(3, &from, &to, in, bed, 8) == maud_success, "encode");
     float gains[16];
     CHECK(maudGetAmbisonicGains(3, d, gains) == maud_success, "gains");
@@ -253,11 +253,11 @@ static void TestMisuse(void)
     float channel[4] = {7.0f, 7.0f, 7.0f, 7.0f};
     float* bed[4] = {channel, channel, channel, nullptr};
     float in[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-    maudAmbisonicSource source = {{0.0f, 0.0f, -1.0f}, 1.0f};
+    maudPanSource source = {{0.0f, 0.0f, -1.0f}, 1.0f};
     CHECK(maudEncodeAmbisonic(1, &source, &source, in, bed, 4) == maud_errorInvalid,
           "a missing channel");
     bed[3] = channel;
-    maudAmbisonicSource bad = {{NAN, 0.0f, 0.0f}, 1.0f};
+    maudPanSource bad = {{NAN, 0.0f, 0.0f}, 1.0f};
     CHECK(maudEncodeAmbisonic(1, &bad, &source, in, bed, 4) == maud_errorInvalid, "NaN");
     CHECK(maudEncodeAmbisonic(4, &source, &source, in, bed, 4) == maud_errorInvalid, "order 4");
     CHECK(maudEncodeAmbisonic(1, &source, &source, nullptr, bed, 4) == maud_errorInvalid,

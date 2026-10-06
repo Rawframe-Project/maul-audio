@@ -105,6 +105,15 @@ extern "C"
         float z;
     } maudVector3;
 
+    // A source as a panner hears it, for encoding into an ambisonic bed or
+    // panning to speakers: where it is (only the direction counts; a zero
+    // vector is straight ahead) and its gain.
+    typedef struct maudPanSource
+    {
+        maudVector3 direction;
+        float gain;
+    } maudPanSource;
+
     /// Returns the version of the library that was linked, which may differ
     /// from the MAUD_VERSION macros a program was compiled with.
     ///

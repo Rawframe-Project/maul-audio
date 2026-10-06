@@ -269,3 +269,11 @@ format.
   so that 2 ms filters suffice (0.67 ms of latency); on the shipped set
   they come within 3.9, 4.6 and 5.5 dB RMS of its responses at orders
   3, 2 and 1. The benchmark adds the bed's costs.
+- Speaker panners (`maul-audio/speakers.h`): one per channel layout,
+  made once and shared read-only by any number of sources; VBAP over
+  the triangles between the speakers, with imaginary speakers above and
+  below whose share goes to their neighbours; stereo by the side angle,
+  the rear folded forward; mono passed through; gains normalized for
+  energy, the LFE silent. `maudPanToSpeakers` ramps and adds as
+  encoding does. `maudPanSource` (`maul-audio/base.h`) is the source
+  both take; it replaces `maudAmbisonicSource`.

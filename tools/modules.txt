@@ -57,6 +57,7 @@ pipewire_stream: clock context context_core period pipewire_core thread xrun
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
+speaker_panner: allocator spherical_harmonics
 spherical_harmonics:
 stream: backend clock context context_core duplex follow period stream_open thread
 sample_convert:

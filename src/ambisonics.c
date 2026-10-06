@@ -54,14 +54,13 @@ static bool BedValid(float* const* bed, uint32_t channels)
     return true;
 }
 
-static bool SourceValid(const maudAmbisonicSource* source)
+static bool SourceValid(const maudPanSource* source)
 {
     return source != nullptr && Finite(source->direction) && isfinite(source->gain);
 }
 
-maudResult maudEncodeAmbisonic(uint32_t order, const maudAmbisonicSource* from,
-                               const maudAmbisonicSource* to, const float* in, float* const* bed,
-                               uint32_t frames)
+maudResult maudEncodeAmbisonic(uint32_t order, const maudPanSource* from, const maudPanSource* to,
+                               const float* in, float* const* bed, uint32_t frames)
 {
     uint32_t channels = maudGetAmbisonicChannelCount(order);
     if (channels == 0 || !SourceValid(from) || !SourceValid(to) || in == nullptr ||

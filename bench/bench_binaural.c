@@ -93,8 +93,8 @@ static void RunBed(const maudHrtf* hrtf)
         for (int block = 0; block < BLOCKS; ++block)
         {
             float angle = 0.01f * (float)block;
-            maudAmbisonicSource from = {{sinf(angle), 0.2f, -cosf(angle)}, 1.0f};
-            maudAmbisonicSource to = {{sinf(angle + 0.01f), 0.2f, -cosf(angle + 0.01f)}, 1.0f};
+            maudPanSource from = {{sinf(angle), 0.2f, -cosf(angle)}, 1.0f};
+            maudPanSource to = {{sinf(angle + 0.01f), 0.2f, -cosf(angle + 0.01f)}, 1.0f};
             if (maudEncodeAmbisonic(3, &from, &to, s_in, bed, FRAMES) != maud_success)
             {
                 return;
