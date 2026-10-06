@@ -214,6 +214,22 @@ static void TestTiesAndNormals(void)
     CHECK(h.normal.x == 0.0f && h.normal.y == 0.0f && h.normal.z == -1.0f,
           "its normal faces its counterclockwise side");
     maudDestroyAcousticScene(scene);
+    // Twenty copies of one triangle span several leaves: the tie still
+    // goes to the first listed, whichever leaf is reached first.
+    static uint32_t copies[60];
+    static uint32_t numbers[20];
+    for (uint32_t i = 0; i < 20; ++i)
+    {
+        copies[3 * i] = 0;
+        copies[3 * i + 1] = 1;
+        copies[3 * i + 2] = 2;
+        numbers[i] = 100 + i;
+    }
+    maudMesh stack = {v, 3, copies, numbers, 20};
+    scene = Build(&stack, 1);
+    maudSceneClosestHit(&ray, 1, &h, scene);
+    CHECK(h.material == 100, "a tie across leaves: the first listed");
+    maudDestroyAcousticScene(scene);
     maudMesh one = {v, 3, up, first, 1};
     scene = Build(&one, 1);
     maudSceneClosestHit(&ray, 1, &h, scene);

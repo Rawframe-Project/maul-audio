@@ -6,6 +6,7 @@
 
 #include "watertight.h"
 
+#include <float.h>
 #include <math.h>
 
 void maudShearRay(const float* origin, const float* direction, maudShearedRay* ray)
@@ -36,7 +37,20 @@ void maudShearRay(const float* origin, const float* direction, maudShearedRay* r
     ray->sz = 1.0f / direction[kz];
 }
 
-// The edge functions, recomputed in double where one is exactly zero.
+// A double as a float that keeps its sign: a value too small for a float
+// becomes the smallest float of its sign, not 0.
+static float Narrow(double value)
+{
+    float f = (float)value;
+    if (f == 0.0f && value != 0.0)
+    {
+        return value > 0.0 ? FLT_TRUE_MIN : -FLT_TRUE_MIN;
+    }
+    return f;
+}
+
+// The edge functions, recomputed in double where one is exactly zero
+// (a float product rounded or underflowed away a sign).
 static void Edges(float ax, float ay, float bx, float by, float cx, float cy, float* u, float* v,
                   float* w)
 {
@@ -45,9 +59,9 @@ static void Edges(float ax, float ay, float bx, float by, float cx, float cy, fl
     *w = bx * ay - by * ax;
     if (*u == 0.0f || *v == 0.0f || *w == 0.0f)
     {
-        *u = (float)((double)cx * (double)by - (double)cy * (double)bx);
-        *v = (float)((double)ax * (double)cy - (double)ay * (double)cx);
-        *w = (float)((double)bx * (double)ay - (double)by * (double)ax);
+        *u = Narrow((double)cx * (double)by - (double)cy * (double)bx);
+        *v = Narrow((double)ax * (double)cy - (double)ay * (double)cx);
+        *w = Narrow((double)bx * (double)ay - (double)by * (double)ax);
     }
 }
 
