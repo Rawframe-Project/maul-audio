@@ -15,6 +15,8 @@ backend_pipewire: backend context context_core device follow form layout pipewir
 backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
 backend_wasapi: backend context device layout wasapi_core wasapi_stream
 backend_web: backend clock context device follow period thread web_capture web_core web_devices
+binaural: allocator binaural_dsp hrtf_core hrtf_lookup
+binaural_dsp:
 base:
 buffer:
 clock: context_core
@@ -31,6 +33,7 @@ form:
 hrtf: allocator hrtf_core hrtf_file hrtf_resample
 hrtf_core:
 hrtf_file:
+hrtf_lookup: hrtf_core
 hrtf_resample:
 gain_control: allocator vad_core voice_dsp
 invariant:

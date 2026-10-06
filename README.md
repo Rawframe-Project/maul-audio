@@ -25,8 +25,10 @@ thread where the platform provides none.
 
 ## Status
 
-Not released. The first decisions are made and the skeleton builds;
-the device layer on desktop and the offline backend come first.
+Not released. The device layer works on Linux (PipeWire, PulseAudio,
+ALSA), Windows (WASAPI), macOS (Core Audio) and the web, with an
+offline backend for tests; the mobile backends come later. The spatial
+part has begun: HRTF sets and a binaural effect per source.
 
 ## Building
 

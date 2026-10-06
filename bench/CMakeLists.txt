@@ -3,3 +3,9 @@
 add_executable(${PROJECT_NAME}_bench bench_main.c)
 target_link_libraries(${PROJECT_NAME}_bench PRIVATE ${PROJECT_NAME})
 maul_apply_flags(${PROJECT_NAME}_bench)
+
+add_executable(${PROJECT_NAME}_bench_binaural bench_binaural.c)
+target_link_libraries(${PROJECT_NAME}_bench_binaural PRIVATE ${PROJECT_NAME})
+target_compile_definitions(${PROJECT_NAME}_bench_binaural PRIVATE
+    MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+maul_apply_flags(${PROJECT_NAME}_bench_binaural)

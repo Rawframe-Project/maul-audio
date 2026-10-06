@@ -244,3 +244,12 @@ format.
   series, its DC gain exact (Weiss's sphere theorem). Within 0.48 dB RMS
   of the sphere from 0.1 m, and within 1 dB at the test's reference
   points.
+- Binaural effects (`maul-audio/binaural.h`): one per source, mono in,
+  both ears out, through a loaded HRTF set. Each ear blends the four
+  measured responses and delays around the direction, reads a cubic
+  fractional delay and runs a direct-form FIR; a change of direction
+  crossfades the old and new filters and ramps the delays over 2.67 ms,
+  the latest change winning; the host's gain ramps across each call.
+  Processing allocates nothing. `maudVector3` (`maul-audio/base.h`)
+  carries the listener's frame: +x right, +y up, -z ahead. A benchmark,
+  `maul-audio_bench_binaural`, prints the cost per source.

@@ -94,6 +94,17 @@ extern "C"
         uint16_t patch;
     } maudVersion;
 
+    // A point or direction in the listener's frame, in metres: +x to the
+    // right, +y up, -z straight ahead (right-handed; the convention of
+    // OpenAL, Steam Audio and Resonance Audio). A host with another
+    // convention converts at the call.
+    typedef struct maudVector3
+    {
+        float x;
+        float y;
+        float z;
+    } maudVector3;
+
     /// Returns the version of the library that was linked, which may differ
     /// from the MAUD_VERSION macros a program was compiled with.
     ///

@@ -71,6 +71,9 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/hrtf.c
     src/hrtf_file.c
     src/hrtf_resample.c
+    src/binaural.c
+    src/binaural_dsp.c
+    src/hrtf_lookup.c
     src/near_field.c
     src/near_field_table.c
     src/lifecycle.c
@@ -191,6 +194,11 @@ if(MAUL_AUDIO_BUILD_TESTS)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)
         maul_add_test(near_field WHITEBOX)
+        maul_add_test(binaural WHITEBOX)
+        if(TARGET test_binaural)
+            target_compile_definitions(test_binaural PRIVATE
+                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+        endif()
         maul_add_test(hrtf WHITEBOX)
         if(TARGET test_hrtf)
             target_compile_definitions(test_hrtf PRIVATE
