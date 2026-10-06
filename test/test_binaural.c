@@ -428,6 +428,58 @@ static void TestNoClick(const maudHrtf* hrtf)
     CHECK(worst < 1.6f, "no click on a change");
 }
 
+// With the near field, only the distance changing: from 0.15 m to the
+// set's 1.5 m on the right, the right ear's near-field filter moves
+// across the fade rather than jumping, at eight phases of a slow sine;
+// no step outgrows the larger of the steady ones before and after.
+static void TestNearFieldNoClick(const maudHrtf* hrtf)
+{
+    float worst = 0.0f;
+    for (int phase = 0; phase < 8; ++phase)
+    {
+        for (int n = 0; n < 1024; ++n)
+        {
+            s_in[n] = sinf(2.0f * 3.14159265f * 300.0f * (float)n / 48000.0f +
+                           0.39269908f * (float)phase);
+        }
+        maudBinaural* effect = CreateWith(hrtf, 1024, true);
+        RenderMoving(effect, 64, At(0.15f, 0.0f, 0.0f), At(1.5f, 0.0f, 0.0f), 256, s_left, s_right);
+        maudDestroyBinaural(effect);
+        float steady = 0.0f;
+        float moving = 0.0f;
+        for (int n = 100; n < 1024; ++n)
+        {
+            float step = fabsf(s_right[n] - s_right[n - 1]);
+            if (n < 256 || n >= 600)
+            {
+                steady = step > steady ? step : steady;
+            }
+            moving = step > moving ? step : moving;
+        }
+        worst = moving / steady > worst ? moving / steady : worst;
+    }
+    printf("near field: largest step %.2f times the steady one\n", (double)worst);
+    CHECK(worst < 1.6f, "no click when only the distance changes");
+    // And the filter moves during the fade, not after it: over the fade's
+    // second half the level is already most of the way down (measured
+    // 0.18 against 0.39 before and 0.15 after; a filter held to the end
+    // stays at 0.32).
+    maudBinaural* effect = CreateWith(hrtf, 1024, true);
+    RenderMoving(effect, 64, At(0.15f, 0.0f, 0.0f), At(1.5f, 0.0f, 0.0f), 256, s_left, s_right);
+    maudDestroyBinaural(effect);
+    double before = 0.0;
+    double middle = 0.0;
+    for (int n = 128; n < 256; ++n)
+    {
+        before += fabs((double)s_right[n]) / 128.0;
+    }
+    for (int n = 320; n < 384; ++n)
+    {
+        middle += fabs((double)s_right[n]) / 64.0;
+    }
+    CHECK(middle < 0.6 * before, "the near field moves during the fade");
+}
+
 // Only the direction counts, not the vector's length.
 static void TestDirectionOnly(const maudHrtf* hrtf)
 {
@@ -582,6 +634,17 @@ static void TestNearField(const maudHrtf* hrtf)
     CHECK(Process(ahead, At(0.0f, 0.0f, -0.1f), s_in, s_left2, s_right2, 256) == maud_success,
           "process");
     CHECK(memcmp(s_left, s_left2, 256 * sizeof(float)) == 0, "a zero position is 0.1 m ahead");
+    // A reset forgets the near-field filters' memory too.
+    CHECK(maudResetBinaural(on) == maud_success, "reset");
+    maudBinaural* fresh = CreateWith(hrtf, 256, true);
+    CHECK(Process(on, At(0.2f, 0.0f, -0.1f), s_in, s_left, s_right, 256) == maud_success,
+          "process");
+    CHECK(Process(fresh, At(0.2f, 0.0f, -0.1f), s_in, s_left2, s_right2, 256) == maud_success,
+          "process");
+    CHECK(memcmp(s_left, s_left2, 256 * sizeof(float)) == 0 &&
+              memcmp(s_right, s_right2, 256 * sizeof(float)) == 0,
+          "a reset forgets the near field's memory");
+    maudDestroyBinaural(fresh);
     maudDestroyBinaural(on);
     maudDestroyBinaural(ahead);
 }
@@ -826,6 +889,7 @@ int main(void)
         TestCrossfade(hrtf);
         TestNoClick(hrtf);
         TestDirectionOnly(hrtf);
+        TestNearFieldNoClick(hrtf);
         TestKernels();
         TestBlocks(hrtf);
         TestGain(hrtf);
