@@ -136,12 +136,12 @@ static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t c
     return atomic_load(&blocks->count) >= count;
 }
 
-// The stream's rate: the best of three windows of a second, since a
+// The stream's rate: the best of five windows of a second, since a
 // loaded machine's stalls only lower a window's count.
 static double MeasureRate(const maudContext* context, maudStreamId stream)
 {
     double best = 0.0;
-    for (int window = 0; window < 3; ++window)
+    for (int window = 0; window < 5; ++window)
     {
         uint64_t first = 0;
         uint64_t last = 0;

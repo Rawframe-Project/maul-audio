@@ -236,13 +236,13 @@ static double MeasureWindow(const maudContext* context, maudStreamId stream, int
     return (double)(last - first) / seconds;
 }
 
-// The stream's rate: the best of three windows of a second. A
+// The stream's rate: the best of five windows of a second. A
 // loaded machine can stall the platform's clock, which only lowers a
 // window's count, so the best window is the one that shows the rate.
 static double MeasureRate(const maudContext* context, maudStreamId stream)
 {
     double best = 0.0;
-    for (int window = 0; window < 3; ++window)
+    for (int window = 0; window < 5; ++window)
     {
         double rate = MeasureWindow(context, stream, 1000);
         best = rate > best ? rate : best;
