@@ -144,7 +144,7 @@ static void TestLocalization(void)
         double length;
     } cases[] = {
         {maud_layout7Point1Point4, 3, false, 7.7, 0.81},
-        {maud_layout7Point1Point4, 2, false, 6.4, 0.74},
+        {maud_layout7Point1Point4, 2, false, 6.4, 0.73},
         {maud_layout7Point1Point4, 1, false, 6.2, 0.58},
         {maud_layout5Point1, 1, true, 7.1, 0.55},
     };
@@ -156,7 +156,7 @@ static void TestLocalization(void)
                (unsigned)cases[i].layout, cases[i].order, m.error, m.length, 10.0 * log10(m.energy),
                m.high - m.low);
         CHECK(m.error < cases[i].error + 1.5, "the energy vector points near the source");
-        CHECK(m.length > cases[i].length - 0.05, "and is as long as measured");
+        CHECK(m.length > cases[i].length - 0.02, "and is as long as measured");
         CHECK(fabs(10.0 * log10(m.energy)) < 0.5, "unit energy on average");
         CHECK(m.high - m.low < 4.0, "within the measured energy range");
     }
