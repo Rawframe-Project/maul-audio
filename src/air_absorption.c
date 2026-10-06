@@ -8,6 +8,8 @@
 
 #include "air_absorption.h"
 
+#include "portable_math.h"
+
 #include "maul-audio/direct.h"
 
 #include <math.h>
@@ -20,15 +22,15 @@ static double Attenuation(double f, double t, double rh)
 {
     const double t0 = 293.15;
     const double t01 = 273.16;
-    double psat = pow(10.0, -6.8346 * pow(t01 / t, 1.261) + 4.6151);
+    double psat = maudPow(10.0, -6.8346 * maudPow(t01 / t, 1.261) + 4.6151);
     double h = rh * psat;
     double frO = 24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h);
-    double frN =
-        pow(t / t0, -0.5) * (9.0 + 280.0 * h * exp(-4.170 * (pow(t / t0, -1.0 / 3.0) - 1.0)));
+    double frN = maudPow(t / t0, -0.5) *
+                 (9.0 + 280.0 * h * maudExp(-4.170 * (maudPow(t / t0, -1.0 / 3.0) - 1.0)));
     return 8.686 * f * f *
            (1.84e-11 * sqrt(t / t0) +
-            pow(t / t0, -2.5) * (0.01275 * exp(-2239.1 / t) / (frO + f * f / frO) +
-                                 0.1068 * exp(-3352.0 / t) / (frN + f * f / frN)));
+            maudPow(t / t0, -2.5) * (0.01275 * maudExp(-2239.1 / t) / (frO + f * f / frO) +
+                                     0.1068 * maudExp(-3352.0 / t) / (frN + f * f / frN)));
 }
 
 void maudAirAbsorptionOf(double celsius, double humidity, float* absorption)
@@ -37,14 +39,14 @@ void maudAirAbsorptionOf(double celsius, double humidity, float* absorption)
     double t = celsius + 273.15;
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
-        double ratio = pow(edges[b + 1] / edges[b], 1.0 / POINTS);
+        double ratio = maudPow(edges[b + 1] / edges[b], 1.0 / POINTS);
         double sum = 0.0;
         for (int p = 0; p < POINTS; ++p)
         {
-            sum += Attenuation(edges[b] * pow(ratio, (double)p + 0.5), t, humidity);
+            sum += Attenuation(edges[b] * maudPow(ratio, (double)p + 0.5), t, humidity);
         }
         // dB per metre to an amplitude exponent per metre.
-        absorption[b] = (float)(sum / POINTS * log(10.0) / 20.0);
+        absorption[b] = (float)(sum / POINTS * maudLog(10.0) / 20.0);
     }
 }
 

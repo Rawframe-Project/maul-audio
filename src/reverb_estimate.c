@@ -12,6 +12,7 @@
 
 #include "reverb_estimate.h"
 
+#include "portable_math.h"
 #include "spherical_harmonics.h"
 
 #include <math.h>
@@ -62,14 +63,32 @@ static float Random(uint32_t ray, uint32_t bounce, uint32_t stream)
     return (float)(x >> 8) * (1.0f / 16777216.0f);
 }
 
+// e^x and the sine and cosine in float, through the portable functions.
+static float ExpF(float x)
+{
+    return (float)maudExp((double)x);
+}
+
+static void SinCosF(float a, float* sine, float* cosine)
+{
+    double s = 0.0;
+    double c = 0.0;
+    maudSinCos((double)a, &s, &c);
+    *sine = (float)s;
+    *cosine = (float)c;
+}
+
 static void Start(const maudReverbTrace* trace, uint32_t ray, Path* path)
 {
     float z = 1.0f - 2.0f * ((float)ray + 0.5f) / (float)trace->rays;
     float r = sqrtf(fmaxf(0.0f, 1.0f - z * z));
     // The golden angle, wrapped per ray to keep its float exact.
     float a = 2.39996322972865332f * (float)(ray % 65536u);
+    float sine = 0.0f;
+    float cosine = 0.0f;
+    SinCosF(a, &sine, &cosine);
     *path = (Path){.origin = {trace->listener.x, trace->listener.y, trace->listener.z},
-                   .direction = {r * cosf(a), r * sinf(a), z},
+                   .direction = {r * cosine, r * sine, z},
                    .energy = {1.0f, 1.0f, 1.0f},
                    .ray = ray,
                    .alive = true};
@@ -97,8 +116,11 @@ static void Scatter(const float* n, float u, float v, float* out)
     float t[3] = {1.0f + sign * n[0] * n[0] * a, sign * b, -sign * n[0]};
     float s[3] = {b, sign + n[1] * n[1] * a, -n[1]};
     float r = sqrtf(u);
-    float x = r * cosf(2.0f * PI_F * v);
-    float y = r * sinf(2.0f * PI_F * v);
+    float sine = 0.0f;
+    float cosine = 0.0f;
+    SinCosF(2.0f * PI_F * v, &sine, &cosine);
+    float x = r * cosine;
+    float y = r * sine;
     float z = sqrtf(fmaxf(0.0f, 1.0f - u));
     for (int i = 0; i < 3; ++i)
     {
@@ -205,7 +227,7 @@ static void Gather(const maudReverbTrace* trace, const Path* path, const Shading
     float energy[MAUD_DIRECT_BANDS];
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
-        float air = expf(-2.0f * trace->air[b] * total);
+        float air = ExpF(-2.0f * trace->air[b] * total);
         energy[b] = spread * (1.0f - s->material->absorption[b]) * path->energy[b] * air;
         histogram->energy[b][(uint32_t)bin] += energy[b];
     }
@@ -223,7 +245,7 @@ static bool Bounce(const maudReverbTrace* trace, uint32_t bounce, const Shading*
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
         path->energy[b] *= 1.0f - s->material->absorption[b];
-        left = fmaxf(left, path->energy[b] * expf(-2.0f * trace->air[b] * path->distance));
+        left = fmaxf(left, path->energy[b] * ExpF(-2.0f * trace->air[b] * path->distance));
     }
     if (!(left > CUT_ENERGY) ||
         !(path->distance < SPEED_OF_SOUND * BIN_SECONDS * (float)MAUD_REVERB_BINS))
@@ -394,7 +416,7 @@ static bool Extend(double* energy, uint32_t bins, double* tail)
     double levels[MAUD_REVERB_BINS];
     for (uint32_t i = 0; i < bins; ++i)
     {
-        levels[i] = 10.0 * log10(energy[i]);
+        levels[i] = 10.0 * maudLog10(energy[i]);
     }
     double slope = Slope(levels, start < bins ? start : 0, bins);
     if (!(slope < 0.0))
@@ -407,8 +429,8 @@ static bool Extend(double* energy, uint32_t bins, double* tail)
     {
         level += energy[i] / (double)span;
     }
-    double rate = pow(10.0, slope * (double)BIN_SECONDS / 10.0);
-    double fill = level * pow(rate, ((double)span - 1.0) / 2.0);
+    double rate = maudPow10(slope * (double)BIN_SECONDS / 10.0);
+    double fill = level * maudPow(rate, ((double)span - 1.0) / 2.0);
     for (uint32_t i = bins; i < MAUD_REVERB_BINS; ++i)
     {
         fill *= rate;
@@ -451,7 +473,7 @@ static float Fit(const float* energy, uint32_t bins)
     }
     for (uint32_t i = start; i < end; ++i)
     {
-        decay[i] = 10.0 * log10(decay[i] / decay[0]);
+        decay[i] = 10.0 * maudLog10(decay[i] / decay[0]);
     }
     double slope = Slope(decay, start, end);
     return slope < 0.0 ? (float)fmin(fmax(-60.0 / slope, (double)MIN_TIME), (double)MAX_TIME)
@@ -514,9 +536,9 @@ void maudReverbLevels(const maudReverbHistogram* summed, const float* times, flo
             mean += (double)summed->energy[b][i] / (double)(last - first);
         }
         double rate = 13.815510557964274 / (double)times[b];
-        double traced = mean * exp(-rate * ((double)at - centre));
-        double reverb = start * exp(-rate * ((double)at - (double)delay));
-        double db = traced > 0.0 ? 10.0 * log10(traced / reverb) : -96.0;
+        double traced = mean * maudExp(-rate * ((double)at - centre));
+        double reverb = start * maudExp(-rate * ((double)at - (double)delay));
+        double db = traced > 0.0 ? 10.0 * maudLog10(traced / reverb) : -96.0;
         levels[b] = (float)fmin(fmax(db, -96.0), 24.0);
     }
 }

@@ -122,6 +122,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/path_refine.c
     src/path_search.c
     src/pathing.c
+    src/portable_math.c
     src/probe_graph.c
     src/probe_sets.c
     src/real_fft.c
@@ -261,6 +262,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(partitioned WHITEBOX)
         maul_add_test(path_refine WHITEBOX)
         maul_add_test(path_search WHITEBOX)
+        maul_add_test(portable_math WHITEBOX)
         maul_add_test(probe_graph WHITEBOX)
         maul_add_test(real_fft WHITEBOX)
         maul_add_test(reflection_response WHITEBOX)

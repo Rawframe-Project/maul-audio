@@ -17,8 +17,11 @@
 // materials end a ray. One bounce off a lossless diffuse floor gives the
 // energy the shading integral gives, in the bin of its path; blocked
 // shadow rays bring nothing; the fit reads an exponential's time and
-// spans -5 to -25 dB of a double slope.
+// spans -5 to -25 dB of a double slope. An office's estimate with the
+// default air, field and all, hashes to the same bits on every platform
+// (the bake's promise).
 
+#include "air_absorption.h"
 #include "reverb_estimate.h"
 #include "test_harness.h"
 
@@ -26,6 +29,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define PI 3.14159265358979323846
 
@@ -431,6 +435,69 @@ static void TestFit(void)
     CHECK(times[2] == 0.1f, "no energy: the floor");
 }
 
+static uint64_t Hash(uint64_t hash, const void* bytes, size_t size)
+{
+    const unsigned char* b = bytes;
+    for (size_t i = 0; i < size; ++i)
+    {
+        hash = (hash ^ b[i]) * 1099511628211u;
+    }
+    return hash;
+}
+
+static void TestSealed(void)
+{
+    maudAcousticScene* scene = Box(5.0f, 3.0f, 4.0f);
+    maudAcousticMaterial materials[6];
+    for (int m = 0; m < 6; ++m)
+    {
+        materials[m] = Material(0.05f + 0.07f * (float)m, 0.2f + 0.1f * (float)m);
+    }
+    float air[3];
+    maudAirAbsorptionOf(20.0, 50.0, air);
+    static float field[4 * 3 * 100 * 8];
+    maudReverbTrace trace = {maudSceneClosestHit,
+                             maudSceneAnyHit,
+                             scene,
+                             materials,
+                             6,
+                             {air[0], air[1], air[2]},
+                             {2.1f, 1.4f, 1.7f},
+                             512,
+                             512,
+                             1,
+                             100};
+    uint32_t batches = maudReverbBatches(trace.rays);
+    for (uint32_t b = 0; b < batches; ++b)
+    {
+        s_histograms[b].field = field + (size_t)b * 4 * 3 * 100;
+        maudTraceReverbBatch(&trace, b, &s_histograms[b]);
+    }
+    uint64_t hash = 1469598103934665603u;
+    hash = Hash(hash, air, sizeof(air));
+    for (uint32_t b = 0; b < batches; ++b)
+    {
+        hash = Hash(hash, s_histograms[b].energy, sizeof(s_histograms[b].energy));
+    }
+    hash = Hash(hash, field, (size_t)batches * 4 * 3 * 100 * sizeof(float));
+    float times[3];
+    maudFitReverb(s_histograms, batches, times);
+    maudSumReverbFields(&trace, s_histograms, batches);
+    float levels[3];
+    maudReverbLevels(&s_histograms[0], times, 0.1f, 0.0f, levels);
+    hash = Hash(hash, times, sizeof(times));
+    hash = Hash(hash, levels, sizeof(levels));
+    printf("sealed: %.4f / %.4f / %.4f s, %.3f / %.3f / %.3f dB, hash %016llx\n", (double)times[0],
+           (double)times[1], (double)times[2], (double)levels[0], (double)levels[1],
+           (double)levels[2], (unsigned long long)hash);
+    CHECK(hash == 0x5d10e77d43f2b628u, "the same bits on every platform");
+    for (uint32_t b = 0; b < batches; ++b)
+    {
+        s_histograms[b].field = nullptr;
+    }
+    maudDestroyAcousticScene(scene);
+}
+
 int main(void)
 {
     TestSingleBounce();
@@ -441,5 +508,6 @@ int main(void)
     TestBandsAndAir();
     TestLimits();
     TestOrder();
+    TestSealed();
     return s_failures == 0 ? 0 : 1;
 }
