@@ -1,0 +1,408 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sirac Ozmen
+//
+// The estimate (reverb_estimate.h). A hit reflects toward the listener
+// a Lambert share (the scattering) and a specular lobe of exponent 100
+// (the rest), over 4 pi r^2 with r at least 1 m, the air taking its
+// share over the whole path; the ray goes on mirrored or, with the
+// scattering's probability, cosine-weighted, until each band has lost
+// 40 dB, the bins end or the bounces run out. Directions out of the
+// listener follow a Fibonacci lattice; the bounces' random numbers are
+// hashes of the ray and the bounce, so every run is the same.
+
+#include "reverb_estimate.h"
+
+#include <math.h>
+#include <string.h>
+
+#define PI_F           3.14159265358979323846f
+#define SPEED_OF_SOUND 343.0f
+#define BIN_SECONDS    0.01f
+// Rays leave a surface and reach the listener from 1 mm on.
+#define GAP        0.001f
+#define LOBE       100
+#define CUT_ENERGY 1e-4f
+#define MIN_TIME   0.1f
+#define MAX_TIME   20.0f
+// Fits of a truncated decay, each adding the tail the last one implies;
+// the tail's level is the mean of the last bins before the cut.
+#define TAIL_FITS 4
+#define TAIL_BINS 10u
+
+typedef struct Path
+{
+    float origin[3];
+    float direction[3];
+    // The energy left per band after absorption (air apart).
+    float energy[MAUD_DIRECT_BANDS];
+    float distance;
+    uint32_t ray;
+    bool alive;
+} Path;
+
+uint32_t maudReverbBatches(uint32_t rays)
+{
+    return (rays + MAUD_REVERB_BATCH - 1) / MAUD_REVERB_BATCH;
+}
+
+static float Dot(const float* a, const float* b)
+{
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+// A number in [0, 1) from a ray, a bounce and a stream (lowbias32).
+static float Random(uint32_t ray, uint32_t bounce, uint32_t stream)
+{
+    uint32_t x = ray * 0x9E3779B9u ^ bounce * 0x85EBCA6Bu ^ stream * 0xC2B2AE35u;
+    x ^= x >> 16;
+    x *= 0x7FEB352Du;
+    x ^= x >> 15;
+    x *= 0x846CA68Bu;
+    x ^= x >> 16;
+    return (float)(x >> 8) * (1.0f / 16777216.0f);
+}
+
+static void Start(const maudReverbTrace* trace, uint32_t ray, Path* path)
+{
+    float z = 1.0f - 2.0f * ((float)ray + 0.5f) / (float)trace->rays;
+    float r = sqrtf(fmaxf(0.0f, 1.0f - z * z));
+    // The golden angle, wrapped per ray to keep its float exact.
+    float a = 2.39996322972865332f * (float)(ray % 65536u);
+    *path = (Path){.origin = {trace->listener.x, trace->listener.y, trace->listener.z},
+                   .direction = {r * cosf(a), r * sinf(a), z},
+                   .energy = {1.0f, 1.0f, 1.0f},
+                   .ray = ray,
+                   .alive = true};
+}
+
+// x^100 by squaring.
+static float Lobe(float x)
+{
+    float x2 = x * x;
+    float x4 = x2 * x2;
+    float x8 = x4 * x4;
+    float x16 = x8 * x8;
+    float x32 = x16 * x16;
+    float x64 = x32 * x32;
+    return x64 * x32 * x4;
+}
+
+// A cosine-weighted direction about n (an orthonormal basis after Duff
+// et al., 2017).
+static void Scatter(const float* n, float u, float v, float* out)
+{
+    float sign = n[2] >= 0.0f ? 1.0f : -1.0f;
+    float a = -1.0f / (sign + n[2]);
+    float b = n[0] * n[1] * a;
+    float t[3] = {1.0f + sign * n[0] * n[0] * a, sign * b, -sign * n[0]};
+    float s[3] = {b, sign + n[1] * n[1] * a, -n[1]};
+    float r = sqrtf(u);
+    float x = r * cosf(2.0f * PI_F * v);
+    float y = r * sinf(2.0f * PI_F * v);
+    float z = sqrtf(fmaxf(0.0f, 1.0f - u));
+    for (int i = 0; i < 3; ++i)
+    {
+        out[i] = x * t[i] + y * s[i] + z * n[i];
+    }
+}
+
+typedef struct Shading
+{
+    float point[3];
+    float normal[3];
+    float toListener[3];
+    float listenerDistance;
+    const maudAcousticMaterial* material;
+    float hitDistance;
+} Shading;
+
+// The hit's geometry, or false if the ray found nothing usable.
+static bool Shade(const maudReverbTrace* trace, const Path* path, const maudRay* ray,
+                  const maudRayHit* hit, Shading* s)
+{
+    if (!(hit->distance >= ray->minDistance && hit->distance <= ray->maxDistance) ||
+        hit->material >= trace->materialCount)
+    {
+        return false;
+    }
+    float n[3] = {hit->normal.x, hit->normal.y, hit->normal.z};
+    float length = sqrtf(Dot(n, n));
+    if (!(length > 0.0f))
+    {
+        return false;
+    }
+    // The normal faces where the ray came from.
+    float side = Dot(n, path->direction) > 0.0f ? -1.0f : 1.0f;
+    const float* l = &trace->listener.x;
+    s->listenerDistance = 0.0f;
+    for (int i = 0; i < 3; ++i)
+    {
+        s->normal[i] = side * n[i] / length;
+        s->point[i] = path->origin[i] + hit->distance * path->direction[i];
+        s->toListener[i] = l[i] - s->point[i];
+    }
+    s->listenerDistance = sqrtf(Dot(s->toListener, s->toListener));
+    for (int i = 0; i < 3 && s->listenerDistance > 0.0f; ++i)
+    {
+        s->toListener[i] /= s->listenerDistance;
+    }
+    s->material = &trace->materials[hit->material];
+    s->hitDistance = hit->distance;
+    return true;
+}
+
+// The energy a lit hit sends the listener, into the histogram.
+static void Gather(const maudReverbTrace* trace, const Path* path, const Shading* s,
+                   maudReverbHistogram* histogram)
+{
+    float total = path->distance + s->hitDistance + s->listenerDistance;
+    float bin = floorf(total / (SPEED_OF_SOUND * BIN_SECONDS));
+    if (!(bin < (float)MAUD_REVERB_BINS))
+    {
+        return;
+    }
+    float half[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        half[i] = s->toListener[i] - path->direction[i];
+    }
+    float halfLength = sqrtf(Dot(half, half));
+    float specular = halfLength > 0.0f ? fmaxf(Dot(half, s->normal) / halfLength, 0.0f) : 0.0f;
+    float scattering = s->material->scattering;
+    float lambert = scattering * fmaxf(Dot(s->normal, s->toListener), 0.0f) / PI_F;
+    float lobe = (1.0f - scattering) * (float)(LOBE + 2) / (8.0f * PI_F) * Lobe(specular);
+    float r = fmaxf(s->listenerDistance, 1.0f);
+    float spread = (lambert + lobe) / (4.0f * PI_F * r * r);
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        float air = expf(-2.0f * trace->air[b] * total);
+        histogram->energy[b][(uint32_t)bin] +=
+            spread * (1.0f - s->material->absorption[b]) * path->energy[b] * air;
+    }
+}
+
+// Absorbs, moves and turns a path at its hit; false once it is spent.
+static bool Bounce(const maudReverbTrace* trace, uint32_t bounce, const Shading* s, Path* path)
+{
+    path->distance += s->hitDistance;
+    float left = 0.0f;
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        path->energy[b] *= 1.0f - s->material->absorption[b];
+        left = fmaxf(left, path->energy[b] * expf(-2.0f * trace->air[b] * path->distance));
+    }
+    if (!(left > CUT_ENERGY) ||
+        !(path->distance < SPEED_OF_SOUND * BIN_SECONDS * (float)MAUD_REVERB_BINS))
+    {
+        return false;
+    }
+    memcpy(path->origin, s->point, sizeof(path->origin));
+    if (Random(path->ray, bounce, 0) < s->material->scattering)
+    {
+        Scatter(s->normal, Random(path->ray, bounce, 1), Random(path->ray, bounce, 2),
+                path->direction);
+        return true;
+    }
+    float d = 2.0f * Dot(path->direction, s->normal);
+    for (int i = 0; i < 3; ++i)
+    {
+        path->direction[i] -= d * s->normal[i];
+    }
+    return true;
+}
+
+static maudRay RayOf(const Path* path)
+{
+    return (maudRay){{path->origin[0], path->origin[1], path->origin[2]},
+                     {path->direction[0], path->direction[1], path->direction[2]},
+                     GAP,
+                     INFINITY};
+}
+
+// One bounce of a batch's live paths; returns how many stay alive.
+static uint32_t Step(const maudReverbTrace* trace, uint32_t bounce, Path* paths, uint32_t count,
+                     maudReverbHistogram* histogram)
+{
+    maudRay rays[MAUD_REVERB_BATCH];
+    maudRayHit hits[MAUD_REVERB_BATCH];
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rays[i] = RayOf(&paths[i]);
+    }
+    trace->closestHit(rays, count, hits, trace->context);
+    Shading shading[MAUD_REVERB_BATCH];
+    maudRay shadows[MAUD_REVERB_BATCH];
+    uint8_t lit[MAUD_REVERB_BATCH];
+    uint32_t which[MAUD_REVERB_BATCH];
+    uint32_t shadowCount = 0;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        paths[i].alive = Shade(trace, &paths[i], &rays[i], &hits[i], &shading[i]);
+        const Shading* s = &shading[i];
+        if (paths[i].alive && s->listenerDistance > GAP && Dot(s->normal, s->toListener) > 0.0f)
+        {
+            shadows[shadowCount] = (maudRay){{s->point[0], s->point[1], s->point[2]},
+                                             {s->toListener[0], s->toListener[1], s->toListener[2]},
+                                             GAP,
+                                             s->listenerDistance};
+            which[shadowCount++] = i;
+        }
+    }
+    if (shadowCount > 0)
+    {
+        trace->anyHit(shadows, shadowCount, lit, trace->context);
+    }
+    for (uint32_t k = 0; k < shadowCount; ++k)
+    {
+        if (lit[k] == 0)
+        {
+            Gather(trace, &paths[which[k]], &shading[which[k]], histogram);
+        }
+    }
+    // The live paths move to the front, in order.
+    uint32_t live = 0;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        if (paths[i].alive && Bounce(trace, bounce, &shading[i], &paths[i]))
+        {
+            paths[live++] = paths[i];
+        }
+    }
+    return live;
+}
+
+void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
+                          maudReverbHistogram* histogram)
+{
+    memset(histogram, 0, sizeof(*histogram));
+    Path paths[MAUD_REVERB_BATCH];
+    uint32_t first = batch * MAUD_REVERB_BATCH;
+    uint32_t count =
+        trace->rays - first < MAUD_REVERB_BATCH ? trace->rays - first : MAUD_REVERB_BATCH;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        Start(trace, first + i, &paths[i]);
+    }
+    for (uint32_t bounce = 0; bounce < trace->maxBounces && count > 0; ++bounce)
+    {
+        count = Step(trace, bounce, paths, count, histogram);
+    }
+    histogram->truncated = INFINITY;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        histogram->truncated = fminf(histogram->truncated, paths[i].distance / SPEED_OF_SOUND);
+    }
+}
+
+// The backward integral of the first bins of energy plus tail, and the
+// crossings of -5 and -25 dB; false if it never falls 25 dB.
+static bool Integrate(const float* energy, uint32_t bins, double tail, double* decay,
+                      uint32_t* start, uint32_t* end)
+{
+    double sum = tail;
+    for (uint32_t i = bins; i-- > 0;)
+    {
+        sum += (double)energy[i];
+        decay[i] = sum;
+    }
+    *start = bins;
+    *end = bins;
+    for (uint32_t i = 0; i < bins && *end == bins; ++i)
+    {
+        *start = *start == bins && decay[i] < sum * 0.31622776601683794 ? i : *start;
+        *end = decay[i] < sum * 0.0031622776601683794 ? i : *end;
+    }
+    return *end < bins;
+}
+
+// The least-squares slope, in dB per second, of the decay's level over
+// bins [start, end).
+static double Slope(const double* decay, uint32_t start, uint32_t end)
+{
+    double st = 0.0;
+    double sd = 0.0;
+    double stt = 0.0;
+    double std = 0.0;
+    double count = (double)(end - start);
+    for (uint32_t i = start; i < end; ++i)
+    {
+        double t = ((double)i + 0.5) * (double)BIN_SECONDS;
+        double db = 10.0 * log10(decay[i] / decay[0]);
+        st += t;
+        sd += db;
+        stt += t * t;
+        std += t * db;
+    }
+    return (count * std - st * sd) / (count * stt - st * st);
+}
+
+// A band's time from its first bins of energy (all of them unless rays
+// were cut short).
+static float Fit(const float* energy, uint32_t bins)
+{
+    double total = 0.0;
+    for (uint32_t i = 0; i < bins; ++i)
+    {
+        total += (double)energy[i];
+    }
+    if (!(total > 0.0))
+    {
+        return MIN_TIME;
+    }
+    double level = 0.0;
+    for (uint32_t i = bins > TAIL_BINS ? bins - TAIL_BINS : 0; i < bins; ++i)
+    {
+        level += (double)energy[i] / (double)(bins < TAIL_BINS ? bins : TAIL_BINS);
+    }
+    double decay[MAUD_REVERB_BINS];
+    double tail = 0.0;
+    double slope = 0.0;
+    int fits = bins == MAUD_REVERB_BINS ? 1 : TAIL_FITS;
+    for (int fit = 0; fit < fits; ++fit)
+    {
+        uint32_t start = 0;
+        uint32_t end = 0;
+        if (!Integrate(energy, bins, tail, decay, &start, &end))
+        {
+            return MAX_TIME;
+        }
+        if (end < start + 2)
+        {
+            return MIN_TIME;
+        }
+        slope = Slope(decay, start, end);
+        if (!(slope < 0.0))
+        {
+            return MAX_TIME;
+        }
+        // The energy past the cut, decaying at this rate per bin.
+        double rate = pow(10.0, slope * (double)BIN_SECONDS / 10.0);
+        tail = level * rate / (1.0 - rate);
+    }
+    return (float)fmin(fmax(-60.0 / slope, (double)MIN_TIME), (double)MAX_TIME);
+}
+
+void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[MAUD_DIRECT_BANDS])
+{
+    for (uint32_t h = 1; h < count; ++h)
+    {
+        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+            {
+                histograms[0].energy[b][i] += histograms[h].energy[b][i];
+            }
+        }
+    }
+    float truncated = INFINITY;
+    for (uint32_t h = 0; h < count; ++h)
+    {
+        truncated = fminf(truncated, histograms[h].truncated);
+    }
+    float cut = floorf(truncated / BIN_SECONDS);
+    uint32_t bins = cut < (float)MAUD_REVERB_BINS ? (uint32_t)cut : MAUD_REVERB_BINS;
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        times[b] = Fit(histograms[0].energy[b], bins);
+    }
+}

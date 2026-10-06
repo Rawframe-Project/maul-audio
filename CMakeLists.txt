@@ -118,6 +118,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/occlusion.c
     src/octave_eq.c
     src/reverb.c
+    src/reverb_estimate.c
     src/scene.c
     src/spatializer.c
     src/speaker_decoder.c
@@ -247,6 +248,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     if(MAUL_AUDIO_SPATIAL AND NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(band_eq WHITEBOX)
         maul_add_test(octave_eq WHITEBOX)
+        maul_add_test(reverb_estimate WHITEBOX)
         maul_add_test(near_field WHITEBOX)
         maul_add_test(bvh WHITEBOX)
         maul_add_test(watertight WHITEBOX)
