@@ -396,5 +396,25 @@ if(MAUL_AUDIO_BUILD_BENCH AND EXISTS ${PROJECT_SOURCE_DIR}/bench/bench_main.c)
 endif()
 
 if(MAUL_AUDIO_INSTALL)
+    # The public headers of the parts configured.
+    set(MAUL_PUBLIC_HEADERS base.h buffer.h layout.h)
+    if(MAUL_AUDIO_DEVICE)
+        list(APPEND MAUL_PUBLIC_HEADERS context.h device.h notification.h offline.h stream.h
+             voice.h)
+    endif()
+    if(MAUL_AUDIO_SPATIAL)
+        list(APPEND MAUL_PUBLIC_HEADERS ambisonics.h binaural.h direct.h hrtf.h reverb.h scene.h
+             spatializer.h speakers.h)
+    endif()
+    # With both parts every header must be listed, or it would not install.
+    if(MAUL_AUDIO_DEVICE AND MAUL_AUDIO_SPATIAL)
+        file(GLOB headers RELATIVE ${PROJECT_SOURCE_DIR}/include/maul-audio
+             ${PROJECT_SOURCE_DIR}/include/maul-audio/*.h)
+        foreach(header IN LISTS headers)
+            if(NOT header IN_LIST MAUL_PUBLIC_HEADERS)
+                message(FATAL_ERROR "include/maul-audio/${header} is in no part's header list")
+            endif()
+        endforeach()
+    endif()
     include(cmake/Install.cmake)
 endif()
