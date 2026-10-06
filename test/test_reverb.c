@@ -5,8 +5,8 @@
 // 125 Hz to 16 kHz (Schroeder integration, a line fit from -5 to
 // -35 dB), meets the requested times, the band times placed at the
 // bands' centres and interpolated between: within 12 % to 8 kHz
-// (measured: 9 % at most, at 125 Hz in a 0.6 s room) and 10 % in the top
-// octave (measured: 8 %), including after the times change; the tail is
+// (measured: 9 % at most, at 125 Hz in a 0.6 s room) and 8 % in the top
+// octave (measured: 5 %), including after the times change; the tail is
 // diffuse, each directional channel carrying near a third of W's energy;
 // splitting the stream into other blocks changes nothing; a change of
 // times ramps across its call; silence stays silent; a reset silences the
@@ -236,7 +236,7 @@ static void TestDecay(void)
         printf("\n");
         CheckDiffuse();
         CHECK(worst < 0.12, "each octave to 8 kHz decays as requested");
-        CHECK(top < 0.10, "and the top octave");
+        CHECK(top < 0.08, "and the top octave");
         maudDestroyReverb(r);
     }
 }

@@ -12,11 +12,10 @@
 
 #include <math.h>
 
-#define PI_D        3.14159265358979323846
-#define BANDWIDTH   1.5
-#define PROBE_DB    (-6.0)
-#define SHELF_HZ    14000.0
-#define REFINEMENTS 1
+#define PI_D      3.14159265358979323846
+#define BANDWIDTH 1.5
+#define PROBE_DB  (-6.0)
+#define SHELF_HZ  5000.0
 
 double maudOctaveCentre(int octave)
 {
@@ -122,38 +121,27 @@ void maudDesignOctaveEq(const maudOctaveEqSetup* setup, const double* solve, con
                         maudBiquad* filters, float* gain)
 {
     double median = Median(targets);
-    double shifted[MAUD_OCTAVE_POINTS];
-    double residual[MAUD_OCTAVE_POINTS];
+    // The shelf first; the bells fit what it leaves. Added after the fit
+    // instead, as Prawda et al. do, it deepens the loss toward 8 kHz and
+    // shortens the time there by up to a fifth. Inside the fit, a low
+    // corner (4 to 6 kHz measured best) lets the shelf carry the broad
+    // fall of the highs and the bells the detail: times at the octave
+    // centres within 2 % against 5 % with the corner at 14 kHz.
+    filters[MAUD_OCTAVES] = Shelf(setup->rate, targets[MAUD_OCTAVES - 1] - median);
+    double remainder[MAUD_OCTAVE_POINTS];
     for (int p = 0; p < MAUD_OCTAVE_POINTS; ++p)
     {
-        shifted[p] = AtPoint(targets, p) - median;
-        residual[p] = shifted[p];
+        remainder[p] = AtPoint(targets, p) - median -
+                       Db(&filters[MAUD_OCTAVES], setup->cos1[p], setup->cos2[p]);
     }
-    double gains[MAUD_OCTAVES] = {0.0};
-    for (int step = 0; step <= REFINEMENTS; ++step)
+    for (int m = 0; m < MAUD_OCTAVES; ++m)
     {
-        for (int m = 0; m < MAUD_OCTAVES; ++m)
-        {
-            for (int p = 0; p < MAUD_OCTAVE_POINTS; ++p)
-            {
-                gains[m] += solve[m * MAUD_OCTAVE_POINTS + p] * residual[p];
-            }
-            filters[m] = Bell(setup->bellCos[m], setup->bellAlpha[m], gains[m]);
-        }
-        if (step == REFINEMENTS)
-        {
-            break;
-        }
+        double g = 0.0;
         for (int p = 0; p < MAUD_OCTAVE_POINTS; ++p)
         {
-            double got = 0.0;
-            for (int m = 0; m < MAUD_OCTAVES; ++m)
-            {
-                got += Db(&filters[m], setup->cos1[p], setup->cos2[p]);
-            }
-            residual[p] = shifted[p] - got;
+            g += solve[m * MAUD_OCTAVE_POINTS + p] * remainder[p];
         }
+        filters[m] = Bell(setup->bellCos[m], setup->bellAlpha[m], g);
     }
-    filters[MAUD_OCTAVES] = Shelf(setup->rate, targets[MAUD_OCTAVES - 1] - median);
     *gain = (float)pow(10.0, median / 20.0);
 }

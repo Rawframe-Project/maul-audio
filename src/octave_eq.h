@@ -3,11 +3,12 @@
 //
 // An octave graphic equalizer for feedback delay network lines, after
 // Prawda, Valimaki and Schlecht (2019): ten peak-notch filters at
-// 31.25 Hz to 16 kHz, 1.5 octaves wide, their gains fitted by least
-// squares at the centres and the points between them with weights that
-// make the error relative in reverberation time, refined once; the
-// targets are shifted by their median, which returns as a broadband
-// gain; a first-order high shelf at 14 kHz carries the top band.
+// 31.25 Hz to 16 kHz, 1.5 octaves wide, and a first-order high shelf at
+// 5 kHz carrying the top band's loss; the targets are shifted by their
+// median, which returns as a broadband gain, and the bells' gains are
+// fitted by least squares to what the shelf leaves, at the centres and
+// the points between them, with weights that make the error relative in
+// reverberation time.
 
 #ifndef MAUL_AUDIO_SRC_OCTAVE_EQ_H
 #define MAUL_AUDIO_SRC_OCTAVE_EQ_H
