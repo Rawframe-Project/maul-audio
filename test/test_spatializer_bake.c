@@ -17,6 +17,11 @@
 // data/bake (MAUD_WRITE_GOLDEN set rewrites it), and on the web, which
 // has no file system, its hash.
 
+// fopen and getenv read and rewrite the shipped bake; the C runtime's
+// warning that they are unsafe is about the Annex K alternatives, which
+// the family does not use.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "test_harness.h"
 
 #include "maul-audio/scene.h"

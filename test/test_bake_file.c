@@ -228,8 +228,45 @@ static bool OneEnded(File* c, const maudProbeGraph* g)
     return false;
 }
 
-static void TestRefused(const maudProbeGraph* g, const File* f)
+// The graph with probes 0 and 1 linked to themselves as well: one link
+// more, each row still rising, every link listed from both ends; only
+// the self links are wrong.
+static File SelfLinked(const maudProbeGraph* g, const maudProbeBake* b)
 {
+    maudProbeGraph s;
+    CHECK(maudLayProbeGraph(&s_allocator, &s, g->count, g->links + 1), "a graph");
+    memcpy(s.points, g->points, (size_t)g->count * sizeof(maudVector3));
+    s.range = g->range;
+    uint32_t e = 0;
+    for (uint32_t i = 0; i < g->count; ++i)
+    {
+        s.offsets[i] = e;
+        bool placed = i > 1;
+        for (uint32_t k = g->offsets[i]; k < g->offsets[i + 1]; ++k)
+        {
+            if (!placed && g->neighbours[k] > i)
+            {
+                s.neighbours[e++] = i;
+                placed = true;
+            }
+            s.neighbours[e++] = g->neighbours[k];
+        }
+        if (!placed)
+        {
+            s.neighbours[e++] = i;
+        }
+    }
+    s.offsets[g->count] = e;
+    File f = Write(&s, b);
+    maudReleaseProbeGraph(&s_allocator, &s);
+    return f;
+}
+
+static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const File* f)
+{
+    File self = SelfLinked(g, b);
+    CHECK(Read(&self, &s_limits) == maud_errorInvalid, "probes linked to themselves");
+    free(self.bytes);
     File c = Changed(f);
     c.bytes[0] ^= 1;
     Expect(&c, maud_errorInvalid, "magic");
@@ -308,7 +345,7 @@ int main(void)
     File f = Write(&g, &b);
     printf("file: %u probes, %u links, %zu bytes\n", g.count, g.links, f.size);
     TestRoundTrip(&g, &b, &f);
-    TestRefused(&g, &f);
+    TestRefused(&g, &b, &f);
     free(f.bytes);
     maudReleaseProbeBake(&s_allocator, &b);
     maudReleaseProbeGraph(&s_allocator, &g);
