@@ -141,8 +141,62 @@ static void PrintVoiceUnit(void)
     }
 }
 
+// Each step of a RemoteIO input unit's set-up under the Record
+// category, with its status, so that a refusal names its step.
+static void PrintInputSteps(void)
+{
+    AVAudioSession* session = [AVAudioSession sharedInstance];
+    NSError* error = nil;
+    BOOL categorized = [session setCategory:AVAudioSessionCategoryRecord error:&error];
+    printf("record permission %ld, input available %d, category set %d (%s)\n",
+           (long)session.recordPermission, (int)session.inputAvailable, (int)categorized,
+           error != nil ? error.localizedDescription.UTF8String : "no error");
+    error = nil;
+    BOOL activated = [session setActive:YES error:&error];
+    printf("activated %d (%s), sample rate %.0f, inputs %ld\n", (int)activated,
+           error != nil ? error.localizedDescription.UTF8String : "no error", session.sampleRate,
+           (long)session.inputNumberOfChannels);
+    PrintInputs();
+    AudioComponentDescription description = {
+        .componentType = kAudioUnitType_Output,
+        .componentSubType = kAudioUnitSubType_RemoteIO,
+        .componentManufacturer = kAudioUnitManufacturer_Apple,
+    };
+    AudioComponentInstance unit = nullptr;
+    OSStatus made = AudioComponentInstanceNew(AudioComponentFindNext(nullptr, &description), &unit);
+    UInt32 on = 1;
+    UInt32 off = 0;
+    OSStatus input = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO,
+                                          kAudioUnitScope_Input, 1, &on, sizeof(on));
+    OSStatus output = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO,
+                                           kAudioUnitScope_Output, 0, &off, sizeof(off));
+    AudioStreamBasicDescription format = {
+        .mSampleRate = session.sampleRate,
+        .mFormatID = kAudioFormatLinearPCM,
+        .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+        .mBytesPerPacket = sizeof(float),
+        .mFramesPerPacket = 1,
+        .mBytesPerFrame = sizeof(float),
+        .mChannelsPerFrame = 1,
+        .mBitsPerChannel = 32,
+    };
+    OSStatus formatted = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat,
+                                              kAudioUnitScope_Output, 1, &format, sizeof(format));
+    OSStatus initialized = AudioUnitInitialize(unit);
+    printf("remote input: made %d, input %d, output off %d, format %d, initialized %d\n", (int)made,
+           (int)input, (int)output, (int)formatted, (int)initialized);
+    OSStatus uninitialized = AudioUnitUninitialize(unit);
+    OSStatus disposed = AudioComponentInstanceDispose(unit);
+    (void)uninitialized;
+    (void)disposed;
+    BOOL deactivated = [session setActive:NO error:nil];
+    (void)deactivated;
+}
+
 static void TestCapture(maudContext* context)
 {
+    PrintInputSteps();
+    PrintVoiceUnit();
     maudDeviceId input = {0, 0};
     maudDeviceInfo info = {0};
     CHECK(maudGetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &input) ==
@@ -177,7 +231,6 @@ static void TestCapture(maudContext* context)
     CHECK(StreamClockIsSound(context, stream, false, true, Sleep), "its clock");
     PrintInputs();
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
-    PrintVoiceUnit();
 }
 
 static void* Run(void* unused)
