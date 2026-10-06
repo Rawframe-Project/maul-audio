@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The audio session. The category follows what runs: output only
-// Playback, input only Record, both PlayAndRecord with the speaker as
-// the default output and Bluetooth allowed. It mixes with others until
-// the host asks for focus: lasting or brief focus stops or pauses them,
-// brief mixed focus ducks them. With iosSilencedBySwitch, output alone
+// The audio session. The category follows the streams there are: output
+// only Playback, input only Record, both PlayAndRecord with the speaker
+// as the default output and Bluetooth allowed. Playback and
+// PlayAndRecord mix with others until the host asks for focus: lasting
+// or brief focus stops or pauses them, brief mixed focus ducks them.
+// Record takes no mixing option and never mixes. With iosSilencedBySwitch, output alone
 // is Ambient (or SoloAmbient with focus), which the silent switch
 // silences. Interruptions and route changes come as notifications,
 // which the observer turns into the context's signals. Manual retain and
@@ -209,7 +210,9 @@ static AVAudioSessionCategory CategoryOf(const maudIos* ios, AVAudioSessionCateg
     }
     if (state->inputs)
     {
-        *options |= ALLOW_BLUETOOTH_HFP;
+        // Record takes no mixing options (only PlayAndRecord, Playback and
+        // MultiRoute do): a session that only records never mixes.
+        *options = ALLOW_BLUETOOTH_HFP;
         return AVAudioSessionCategoryRecord;
     }
     if (silenced)

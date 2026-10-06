@@ -3,9 +3,8 @@
 //
 // Capture on iOS, as an application in the simulator
 // (tools/run_ios_app.sh, which grants it the microphone): an input
-// stream runs at its rate on the IO thread with a sound clock, the
-// session's category is Record and mixes with others, and stopping it
-// deactivates the session. It also prints what the simulator offers
+// stream runs at its rate on the IO thread with a sound clock, under
+// the Record category, which takes no mixing option. It also prints what the simulator offers
 // beyond the default input and whether a Voice-Processing I/O unit
 // initializes there. The tests run on a thread of their own once the
 // application has launched; the scene delegate keeps UIKit content.
@@ -225,8 +224,8 @@ static void TestCapture(maudContext* context)
     printf("category %s, options %lu\n", session.category.UTF8String,
            (unsigned long)session.categoryOptions);
     CHECK([session.category isEqualToString:AVAudioSessionCategoryRecord] &&
-              (session.categoryOptions & AVAudioSessionCategoryOptionMixWithOthers) != 0,
-          "Record, mixing with others");
+              (session.categoryOptions & AVAudioSessionCategoryOptionMixWithOthers) == 0,
+          "Record, which takes no mixing option");
     CHECK(Near(MeasureRate(context, stream), (double)info.nativeSampleRate), "at its rate");
     CHECK(StreamClockIsSound(context, stream, false, true, Sleep), "its clock");
     PrintInputs();

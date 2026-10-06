@@ -332,7 +332,8 @@ static void TestCapture(maudContext* context)
     printf("capture: %s\n", captured ? "runs" : "silent");
     if (captured)
     {
-        CHECK(Category(AVAudioSessionCategoryRecord, true), "Record, mixing with others");
+        CHECK(Category(AVAudioSessionCategoryRecord, false),
+              "Record, which takes no mixing option");
     }
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
