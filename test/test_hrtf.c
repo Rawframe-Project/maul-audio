@@ -275,6 +275,17 @@ static void TestCraftedFiles(void)
     file.bytes[45] = 0xC0;
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a name that is not UTF-8");
+    // Well-shaped sequences whose values UTF-8 excludes, in the name.
+    const char* excluded[3][2] = {{"\xC1\xBF", "an overlong character"},
+                                  {"\xED\xA0\x80", "a surrogate"},
+                                  {"\xF4\x90\x80\x80", "a character past U+10FFFF"}};
+    for (int i = 0; i < 3; ++i)
+    {
+        file = Craft();
+        memcpy(file.bytes + 44, excluded[i][0], strlen(excluded[i][0]));
+        Seal(&file);
+        CHECK(LoadCrafted(&file) == maud_errorInvalid, excluded[i][1]);
+    }
     file = Craft();
     file.bytes[55] = 0xE2;
     Seal(&file);
@@ -291,10 +302,16 @@ static void TestCraftedFiles(void)
     PutFloat(file.bytes + 28, NAN);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a scale that is not a number");
+    // Four taps, the file cut to match (16 bytes of taps per tap gone).
     file = Craft();
     Put32(file.bytes + 16, 4);
+    file.count -= 4 * 16;
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "fewer taps than the format allows");
+    file = Craft();
+    PutFloat(file.bytes + 28, INFINITY);
+    Seal(&file);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "an infinite scale");
     file = Craft();
     Put32(file.bytes + 36, 0xFFFFFFF0u);
     Seal(&file);
@@ -360,10 +377,12 @@ static double Energy(const float* samples, uint32_t count)
     return sum;
 }
 
-// A Hann-windowed tone burst at 48 kHz, resampled to 44.1 kHz: at 10 kHz
-// it keeps its energy (scaled by the rate, as a filter's taps are); at
-// 23.5 kHz, past the new Nyquist frequency, it is gone rather than folded
-// down to 20.6 kHz.
+// A Hann-windowed tone burst at 48 kHz, resampled to 44.1 kHz: at 10 and
+// 20 kHz it keeps its energy within 0.1 dB (scaled by the rate, as a
+// filter's taps are); at 23.5 kHz, past the new Nyquist frequency, it is
+// 30 dB down rather than folded to 20.6 kHz. The windowed sinc measures
+// within 0.01 dB and at -42.7 dB; an unwindowed one ripples by 0.3 dB at
+// 20 kHz and lets 23.5 kHz through at -27 dB.
 static void TestResampler(void)
 {
     enum
@@ -372,8 +391,8 @@ static void TestResampler(void)
     };
     static float in[TAPS];
     static float out[TAPS + 64];
-    double frequencies[2] = {10000.0, 23500.0};
-    for (int f = 0; f < 2; ++f)
+    double frequencies[3] = {10000.0, 20000.0, 23500.0};
+    for (int f = 0; f < 3; ++f)
     {
         for (uint32_t n = 0; n < TAPS; ++n)
         {
@@ -384,14 +403,14 @@ static void TestResampler(void)
         CHECK(taps <= TAPS + 64, "room for the resampled burst");
         maudResampleResponse(in, TAPS, 48000, out, taps, 44100);
         double ratio = Energy(out, taps) / (Energy(in, TAPS) * 48000.0 / 44100.0);
-        if (f == 0)
+        if (f < 2)
         {
-            CHECK(fabs(ratio - 1.0) < 0.01,
+            CHECK(fabs(ratio - 1.0) < 0.02,
                   "a tone below both Nyquist frequencies keeps its energy");
         }
         else
         {
-            CHECK(ratio < 0.01, "a tone past the new Nyquist frequency is removed, not folded");
+            CHECK(ratio < 0.001, "a tone past the new Nyquist frequency is removed, not folded");
         }
     }
 }
