@@ -3,9 +3,10 @@
 //
 // Path refinement and diffraction (whitebox): a path through a probe
 // off an L corridor's corner lands on the corner's edge with the exact
-// length; a path through a probe before a door in a wall lands within
-// 0.1 % of the shortest path through the doorway (found by a search of
-// the doorway at 1 mm); a vertex whose neighbours see each other goes;
+// length; paths through a door in a wall 0.2 m thick land within 0.1 %
+// of the shortest (one point on each face, found by searches) near a
+// jamb, within 1 % over the lintel; a vertex whose neighbours see each
+// other goes;
 // no query leaves a path as it is; the diffraction table gives 0 dB at
 // no turn and the half-plane's loss at 30, 90 and 180 degrees within
 // 0.1 dB; a path's corners multiply.
@@ -94,14 +95,16 @@ static void TestCorner(void)
     maudDestroyAcousticScene(scene);
 }
 
-// The shortest path through the doorway, by searches of finer grids.
-static double ThroughDoor(maudVector3 a, maudVector3 b, float y0, float y1, float z0, float z1)
+// The point on the plane at x within the doorway (y0 to y1, z0 to z1)
+// that makes a to p to b shortest, by searches of finer grids.
+static maudVector3 Through(maudVector3 a, maudVector3 b, float x, float y0, float y1, float z0,
+                           float z1)
 {
     double best = HUGE_VAL;
     double cy = 0.5 * ((double)y0 + (double)y1);
     double cz = 0.5 * ((double)z0 + (double)z1);
     double span = fmax((double)y1 - (double)y0, (double)z1 - (double)z0);
-    for (double step = span / 20.0; step > 1e-4; step /= 4.0)
+    for (double step = span / 20.0; step > 1e-5; step /= 4.0)
     {
         double by = cy;
         double bz = cz;
@@ -111,7 +114,7 @@ static double ThroughDoor(maudVector3 a, maudVector3 b, float y0, float y1, floa
             {
                 double y = fmin(fmax(cy + i * step, (double)y0), (double)y1);
                 double z = fmin(fmax(cz + k * step, (double)z0), (double)z1);
-                maudVector3 p = {5.0f, (float)y, (float)z};
+                maudVector3 p = {x, (float)y, (float)z};
                 double d = Length(a, p) + Length(p, b);
                 if (d < best)
                 {
@@ -124,29 +127,47 @@ static double ThroughDoor(maudVector3 a, maudVector3 b, float y0, float y1, floa
         cy = by;
         cz = bz;
     }
-    return best;
+    return (maudVector3){x, (float)cy, (float)cz};
 }
 
+// The shortest path through the door's opening in a wall 0.2 m thick:
+// a point on each face, each found with the other held, in turn.
+static double ThroughThickDoor(maudVector3 a, maudVector3 b)
+{
+    maudVector3 near = {5.1f, 1.0f, 2.5f};
+    maudVector3 far = {4.9f, 1.0f, 2.5f};
+    for (int round = 0; round < 30; ++round)
+    {
+        near = Through(a, far, 5.1f, 0.0f, 2.1f, 2.0f, 3.0f);
+        far = Through(near, b, 4.9f, 0.0f, 2.1f, 2.0f, 3.0f);
+    }
+    return Length(a, near) + Length(near, far) + Length(far, b);
+}
+
+// A wall across x = 5, 0.2 m thick, with a door 1 m wide (z 2 to 3)
+// and 2.1 m high. Paths crossing near a jamb come within 0.1 % of the
+// shortest; ones crossing the lintel at a height, where the shortest
+// path bends at both faces, within 1 % (slides alone are 2.6 % long on
+// the one tested).
 static void TestDoor(void)
 {
-    // A wall across x = 5 (0.2 m thick) with a door 1 m wide (z 2 to 3)
-    // and 2.1 m high.
     Box((maudVector3){4.9f, 0.0f, 0.0f}, (maudVector3){5.1f, 3.0f, 2.0f});
     Box((maudVector3){4.9f, 0.0f, 3.0f}, (maudVector3){5.1f, 3.0f, 6.0f});
-    maudVector3 low = {4.9f, 2.1f, 2.0f};
-    maudVector3 high = {5.1f, 3.0f, 3.0f};
-    Box(low, high);
+    Box((maudVector3){4.9f, 2.1f, 2.0f}, (maudVector3){5.1f, 3.0f, 3.0f});
     maudAcousticScene* scene = Scene();
-    const maudVector3 listener = {8.0f, 2.6f, 5.0f};
-    const maudVector3 source = {1.0f, 0.4f, 0.5f};
-    maudVector3 v[4] = {listener, {6.0f, 1.5f, 3.0f}, {4.0f, 1.5f, 2.0f}, source};
-    uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
-    // The wall is 0.2 m thick: the exact path crosses both faces, here
-    // bounded below by a thin wall at x = 5 and above by both faces.
-    double thin = ThroughDoor(listener, source, 0.0f, 2.1f, 2.0f, 3.0f);
-    double got = PathLength(v, n);
-    printf("door: %u vertices, %.5f m, the thin wall's %.5f\n", n, got, thin);
-    CHECK(got >= thin - 1e-4 && got < thin * 1.003, "within 0.3 % of the doorway's path");
+    const maudVector3 ends[2][2] = {{{8.0f, 2.6f, 5.0f}, {1.0f, 0.4f, 0.5f}},
+                                    {{7.0f, 2.8f, 0.5f}, {1.0f, 2.8f, 0.5f}}};
+    const double within[2] = {1e-3, 1e-2};
+    for (int c = 0; c < 2; ++c)
+    {
+        maudVector3 v[4] = {ends[c][0], {6.0f, 1.5f, 2.5f}, {4.0f, 1.5f, 2.5f}, ends[c][1]};
+        uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+        double exact = ThroughThickDoor(ends[c][0], ends[c][1]);
+        double got = PathLength(v, n);
+        printf("door %d: %u vertices, %.5f m, the shortest %.5f (+%.3f %%)\n", c, n, got, exact,
+               100.0 * (got / exact - 1.0));
+        CHECK(got >= exact - 1e-4 && got < exact * (1.0 + within[c]), "through the door");
+    }
     maudDestroyAcousticScene(scene);
 }
 
