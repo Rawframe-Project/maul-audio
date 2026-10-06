@@ -3,13 +3,14 @@
 //
 // Reverbs: the decay of the impulse response, measured per octave from
 // 125 Hz to 16 kHz (Schroeder integration, a line fit from -5 to
-// -35 dB), meets the requested times within 10 % to 8 kHz (measured: 7 %
-// at most) and within 20 % in the top octave (measured: up to 16 % short,
-// where the high shelf damps the octave's upper half harder), the band
-// times placed at the bands' centres and interpolated
-// between; silence stays silent; the tail adds into the bed; a reset
-// silences it; a change of times stays finite and lands on the new
-// decay; nothing allocates while processing; bad calls write nothing.
+// -35 dB), meets the requested times, the band times placed at the
+// bands' centres and interpolated between: within 12 % to 8 kHz
+// (measured: 9 % at most, at 125 Hz in a 0.6 s room) and 10 % in the top
+// octave (measured: 8 %), including after the times change; the tail is
+// diffuse, each directional channel carrying near a third of W's energy;
+// splitting the stream into other blocks changes nothing; a change of
+// times ramps across its call; silence stays silent; a reset silences the
+// tail; nothing allocates while processing; bad calls write nothing.
 
 #include "test_harness.h"
 
@@ -19,8 +20,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PI   3.14159265358979323846
-#define RATE 48000.0
+#define PI           3.14159265358979323846
+#define RATE         48000.0
+#define DIFFUSE_LOW  0.25
+#define DIFFUSE_HIGH 0.45
+#define RAMPED       0.05
 
 enum
 {
@@ -58,11 +62,18 @@ static float s_in[LENGTH];
 static float s_bed[4][LENGTH];
 static float s_band[LENGTH];
 
-// The W channel's impulse response for given times, in blocks of 480.
-static void Respond(maudReverb* r, const float* times)
+// The impulse response for given times, in blocks of 480, after two
+// silent blocks at the times before.
+static void Respond(maudReverb* r, const float* before, const float* times)
 {
     memset(s_in, 0, sizeof(s_in));
     memset(s_bed, 0, sizeof(s_bed));
+    maudReverbParams first = {{before[0], before[1], before[2]}};
+    for (int block = 0; block < 2; ++block)
+    {
+        float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], s_bed[3]};
+        CHECK(maudProcessReverb(r, &first, s_in, bed, 480) == maud_success, "process");
+    }
     s_in[0] = 1.0f;
     maudReverbParams params = {{times[0], times[1], times[2]}};
     for (int at = 0; at < LENGTH; at += 480)
@@ -72,31 +83,68 @@ static void Respond(maudReverb* r, const float* times)
     }
 }
 
-// An octave band-pass (two cookbook band-passes of an octave, 0 dB at
-// the centre) over the W channel, into s_band.
-static void BandPass(double hz)
+// Each directional channel's energy after the first 50 ms over W's: a
+// third in a diffuse field (SN3D).
+static void CheckDiffuse(void)
+{
+    double energy[4] = {0.0};
+    for (int c = 0; c < 4; ++c)
+    {
+        for (int n = 2400; n < LENGTH; ++n)
+        {
+            energy[c] += (double)s_bed[c][n] * (double)s_bed[c][n];
+        }
+    }
+    printf("  directional over W: %.3f %.3f %.3f\n", energy[1] / energy[0], energy[2] / energy[0],
+           energy[3] / energy[0]);
+    for (int c = 1; c < 4; ++c)
+    {
+        CHECK(energy[c] / energy[0] > DIFFUSE_LOW && energy[c] / energy[0] < DIFFUSE_HIGH,
+              "the tail is diffuse");
+    }
+}
+
+// One cookbook second-order section, high- or low-pass at hz with Q q,
+// run in place over s_band.
+static void Section(double hz, bool high, double q)
 {
     double w = 2.0 * PI * hz / RATE;
-    double q = sqrt(2.0);
     double alpha = sin(w) / (2.0 * q);
+    double c = cos(w);
     double a0 = 1.0 + alpha;
-    double b[3] = {alpha / a0, 0.0, -alpha / a0};
-    double a[3] = {1.0, -2.0 * cos(w) / a0, (1.0 - alpha) / a0};
+    double edge = high ? (1.0 + c) / 2.0 : (1.0 - c) / 2.0;
+    double b[3] = {edge / a0, (high ? -2.0 : 2.0) * edge / a0, edge / a0};
+    double a[3] = {1.0, -2.0 * c / a0, (1.0 - alpha) / a0};
+    double s1 = 0.0;
+    double s2 = 0.0;
+    for (int n = 0; n < LENGTH; ++n)
+    {
+        double x = (double)s_band[n];
+        double y = b[0] * x + s1;
+        s1 = b[1] * x - a[1] * y + s2;
+        s2 = b[2] * x - a[2] * y;
+        s_band[n] = (float)y;
+    }
+}
+
+// The W channel through an octave band into s_band: eighth-order
+// Butterworth edges a half octave either side of hz (none above when
+// that edge passes 0.45 of the rate). Selectivity matters: where times
+// fall steeply, a fourth-order band lets the slower octave below into
+// the late decay and reads 15 to 20 % long.
+static void BandPass(double hz)
+{
     for (int n = 0; n < LENGTH; ++n)
     {
         s_band[n] = s_bed[0][n];
     }
-    for (int pass = 0; pass < 2; ++pass)
+    for (int k = 0; k < 4; ++k)
     {
-        double s1 = 0.0;
-        double s2 = 0.0;
-        for (int n = 0; n < LENGTH; ++n)
+        double q = 1.0 / (2.0 * cos(PI * (2.0 * k + 1.0) / 16.0));
+        Section(hz / sqrt(2.0), true, q);
+        if (hz * sqrt(2.0) < 0.45 * RATE)
         {
-            double x = (double)s_band[n];
-            double y = b[0] * x + s1;
-            s1 = b[1] * x - a[1] * y + s2;
-            s2 = b[2] * x - a[2] * y;
-            s_band[n] = (float)y;
+            Section(hz * sqrt(2.0), false, q);
         }
     }
 }
@@ -157,11 +205,15 @@ static double Requested(const float* times, double hz)
 
 static void TestDecay(void)
 {
-    const float cases[3][3] = {{1.2f, 0.8f, 0.4f}, {3.0f, 2.0f, 0.8f}, {0.6f, 0.6f, 0.6f}};
-    for (int c = 0; c < 3; ++c)
+    const float cases[4][3] = {
+        {1.2f, 0.8f, 0.4f}, {3.0f, 2.0f, 0.8f}, {0.6f, 0.6f, 0.6f}, {2.0f, 1.0f, 0.3f}};
+    // The third case starts from other times: the decay follows a change.
+    const float before[4][3] = {
+        {1.2f, 0.8f, 0.4f}, {3.0f, 2.0f, 0.8f}, {1.0f, 0.8f, 0.5f}, {2.0f, 1.0f, 0.3f}};
+    for (int c = 0; c < 4; ++c)
     {
         maudReverb* r = Create();
-        Respond(r, cases[c]);
+        Respond(r, before[c], cases[c]);
         double worst = 0.0;
         double top = 0.0;
         printf("times %.1f / %.1f / %.1f s, octave errors %%:", (double)cases[c][0],
@@ -182,8 +234,9 @@ static void TestDecay(void)
             }
         }
         printf("\n");
-        CHECK(worst < 0.10, "each octave to 8 kHz decays as requested");
-        CHECK(top < 0.20, "and the top octave");
+        CheckDiffuse();
+        CHECK(worst < 0.12, "each octave to 8 kHz decays as requested");
+        CHECK(top < 0.10, "and the top octave");
         maudDestroyReverb(r);
     }
 }
@@ -272,8 +325,90 @@ static void TestBehaviour(void)
     CHECK(maudCreateReverb(&def, &none) == maud_errorInvalid, "no cookie");
 }
 
+// Splitting the stream differently changes nothing: an impulse in the
+// middle of a block gives what it gives at the start of one.
+static void TestBlocks(void)
+{
+    maudReverb* whole = Create();
+    maudReverb* split = Create();
+    static float in[4800];
+    static float a[4800];
+    static float b[4800];
+    static float zero[4][4800];
+    in[100] = 1.0f;
+    maudReverbParams params = {{1.0f, 0.7f, 0.4f}};
+    for (int at = 0; at < 4800; at += 480)
+    {
+        float* bed[4] = {a + at, zero[1] + at, zero[2] + at, zero[3] + at};
+        CHECK(maudProcessReverb(whole, &params, in + at, bed, 480) == maud_success, "process");
+    }
+    for (int at = 0; at < 4800;)
+    {
+        uint32_t count = at == 0 ? 100 : (at + 480 <= 4800 ? 480 : 4800 - (uint32_t)at);
+        float* bed[4] = {b + at, zero[1] + at, zero[2] + at, zero[3] + at};
+        CHECK(maudProcessReverb(split, &params, in + at, bed, count) == maud_success, "process");
+        at += (int)count;
+    }
+    bool same = true;
+    double energy = 0.0;
+    for (int n = 0; n < 4800; ++n)
+    {
+        same = same && a[n] == b[n];
+        energy += (double)a[n] * (double)a[n];
+    }
+    CHECK(energy > 0.0 && same, "an impulse mid-block gives the same tail");
+    maudDestroyReverb(whole);
+    maudDestroyReverb(split);
+}
+
+// A change of times ramps across the call: its first frames stay close to
+// what the old times give, its last frames reach the new ones.
+static void TestRamp(void)
+{
+    maudReverb* kept = Create();
+    maudReverb* changed = Create();
+    static float noise[480];
+    static float a[4][480];
+    static float b[4][480];
+    uint32_t seed = 1;
+    maudReverbParams before = {{1.0f, 0.7f, 0.4f}};
+    maudReverbParams after = {{0.3f, 0.2f, 0.1f}};
+    for (int block = 0; block < 11; ++block)
+    {
+        for (int n = 0; n < 480; ++n)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            noise[n] = (float)(seed >> 8) / 16777216.0f - 0.5f;
+        }
+        memset(a, 0, sizeof(a));
+        memset(b, 0, sizeof(b));
+        float* outA[4] = {a[0], a[1], a[2], a[3]};
+        float* outB[4] = {b[0], b[1], b[2], b[3]};
+        CHECK(maudProcessReverb(kept, &before, noise, outA, 480) == maud_success, "process");
+        CHECK(maudProcessReverb(changed, block < 10 ? &before : &after, noise, outB, 480) ==
+                  maud_success,
+              "process");
+    }
+    double early = 0.0;
+    double late = 0.0;
+    double scale = 0.0;
+    for (int n = 0; n < 16; ++n)
+    {
+        early += (double)(a[0][n] - b[0][n]) * (double)(a[0][n] - b[0][n]);
+        late += (double)(a[0][464 + n] - b[0][464 + n]) * (double)(a[0][464 + n] - b[0][464 + n]);
+        scale += (double)a[0][n] * (double)a[0][n];
+    }
+    printf("ramp: first 16 frames differ by %.2e of the signal, the last by %.2e\n", early / scale,
+           late / scale);
+    CHECK(early < RAMPED * late, "a change starts gently");
+    maudDestroyReverb(kept);
+    maudDestroyReverb(changed);
+}
+
 int main(void)
 {
+    TestBlocks();
+    TestRamp();
     TestDecay();
     TestBehaviour();
     return s_failures == 0 ? 0 : 1;

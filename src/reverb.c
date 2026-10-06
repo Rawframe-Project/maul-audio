@@ -25,10 +25,15 @@
 #define LINES             16
 #define FILTERS           MAUD_OCTAVE_FILTERS
 #define RAMP_FRAMES       8u
-#define MIN_RATE          44100.0f
-#define MAX_RATE          384000.0f
-#define MIN_TIME          0.1f
-#define MAX_TIME          20.0f
+// The send enters line i negated where bit i is set: with one sign on
+// every line the lines stay correlated, W sums them coherently and the
+// directional channels carry a sixth of its energy rather than the
+// diffuse third.
+#define SEND_SIGNS 0x5A3Cu
+#define MIN_RATE   44100.0f
+#define MAX_RATE   384000.0f
+#define MIN_TIME   0.1f
+#define MAX_TIME   20.0f
 // Times are refitted when one moves by more than this share, a tenth of
 // the 5 % that is just noticeable.
 #define REFIT 0.005f
@@ -324,7 +329,7 @@ static void Run(maudReverb* r, const Bank* k, const float* in, float* const* bed
         float send = 0.25f * in[n];
         for (int i = 0; i < LINES; ++i)
         {
-            r->lines[i][r->positions[i]] = v[i] + send;
+            r->lines[i][r->positions[i]] = v[i] + ((SEND_SIGNS >> i) & 1u ? -send : send);
             r->positions[i] = r->positions[i] + 1 == r->lengths[i] ? 0 : r->positions[i] + 1;
         }
     }
