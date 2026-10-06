@@ -405,3 +405,11 @@ format.
   from Android 12L (API 32) and says whether the stream carries it;
   macOS never spatializes a stream, nor Windows a mono or stereo one,
   nor the offline backend any; the others do not say.
+- What a platform's own spatializer does on each output device
+  (`spatializer`, `headTracking` and `spatialObjects` in
+  `maudDeviceInfo`, `maud_notifySpatializerChanged` on a change):
+  Android's Spatializer on the default output, through the Java half;
+  Windows' spatial sound per endpoint, with the dynamic objects the
+  chosen spatial format takes; none on macOS, where AUHAL output is
+  never spatialized, and offline. `maudSetOfflineDeviceSpatializer`
+  simulates a change.

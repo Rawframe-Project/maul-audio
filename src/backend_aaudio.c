@@ -128,6 +128,26 @@ static bool Add(maudAaudio* aaudio, maudDirection direction, int32_t id, maudDev
     return true;
 }
 
+// Android's Spatializer works on the current route, which the default
+// output follows: its state, from Java where the context has it. Before
+// API 32 there is none; without Java a newer Android does not say.
+// Devices a stream pins say nothing, as Android tells their state only to
+// the system.
+static void DescribeSpatializer(maudAaudio* aaudio, maudDeviceInfo* info)
+{
+    int32_t state = android_get_device_api_level() < 32 ? 0 : maudAaudioSpatializerJava(aaudio);
+    if (state < 0)
+    {
+        return;
+    }
+    bool available = (state & 2) != 0;
+    bool enabled = (state & 4) != 0;
+    info->spatializer = state == 0 || !available ? maud_spatializerNone
+                        : enabled                ? maud_spatializerOn
+                                                 : maud_spatializerOff;
+    info->headTracking = (state & 8) != 0;
+}
+
 static void AddDefault(maudAaudio* aaudio, maudDirection direction)
 {
     bool output = direction == maud_directionOutput;
@@ -141,14 +161,17 @@ static void AddDefault(maudAaudio* aaudio, maudDirection direction)
     snprintf(endpoint->name, sizeof(endpoint->name), "%s",
              output ? "Default output" : "Default input");
     // The microphone, mono until a stream asks for more; AAudio converts.
-    bool added =
-        Add(aaudio, direction, 0,
-            (maudDeviceInfo){
-                .nativeLayout = output ? maudLayoutWithChannels(aaudio->channels) : maud_layoutMono,
-                .nativeSampleRate = aaudio->rate,
-                .minSampleRate = aaudio->rate,
-                .maxSampleRate = aaudio->rate,
-            });
+    maudDeviceInfo info = {
+        .nativeLayout = output ? maudLayoutWithChannels(aaudio->channels) : maud_layoutMono,
+        .nativeSampleRate = aaudio->rate,
+        .minSampleRate = aaudio->rate,
+        .maxSampleRate = aaudio->rate,
+    };
+    if (output)
+    {
+        DescribeSpatializer(aaudio, &info);
+    }
+    bool added = Add(aaudio, direction, 0, info);
     (void)added;
 }
 

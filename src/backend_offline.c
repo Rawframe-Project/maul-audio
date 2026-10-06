@@ -20,7 +20,10 @@ static maudResult AddStartingDevice(maudContext* context, maudDirection directio
                  .nativeLayout = maud_layoutStereo,
                  .nativeSampleRate = context->def.offlineSampleRate,
                  .minSampleRate = OFFLINE_MIN_RATE,
-                 .maxSampleRate = OFFLINE_MAX_RATE},
+                 .maxSampleRate = OFFLINE_MAX_RATE,
+                 // No platform renders between the backend and its caller.
+                 .spatializer = direction == maud_directionOutput ? maud_spatializerNone
+                                                                  : maud_spatializerUnknown},
         .name = name,
         .nameLength = __builtin_strlen(name),
         .key = key,

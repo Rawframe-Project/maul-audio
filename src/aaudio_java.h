@@ -50,4 +50,10 @@ void maudAaudioAskToRecord(maudAaudio* aaudio);
 // refused, 1 granted, 2 delayed; 0 when Java cannot answer.
 int32_t maudAaudioRequestFocusJava(maudAaudio* aaudio, int32_t kind, bool call);
 
+// Android's Spatializer on the current route: 0 where there is none,
+// otherwise 1 plus 2 where the route can be spatialized, 4 where the user
+// turned it on and 8 where a head tracker is available; -1 when Java
+// cannot answer.
+int32_t maudAaudioSpatializerJava(maudAaudio* aaudio);
+
 #endif // MAUL_AUDIO_SRC_AAUDIO_JAVA_H

@@ -150,6 +150,11 @@ static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object, maudDirecti
     };
     ReadRates(coreaudio, object, &spec->info);
     spec->info.form = maudCoreAudioFormOf(object, direction);
+    // macOS never spatializes an AUHAL client's output.
+    if (direction == maud_directionOutput)
+    {
+        spec->info.spatializer = maud_spatializerNone;
+    }
     return true;
 }
 

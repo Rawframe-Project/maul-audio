@@ -14,12 +14,15 @@
 #include "wasapi_core.h"
 #include "wasapi_stream.h"
 
+#include <spatialaudioclient.h>
 #include <string.h>
 
 static const GUID s_clsidEnumerator = {
     0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
 static const GUID s_iidEnumerator = {
     0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
+static const GUID s_iidSpatialClient = {
+    0xBBF8E066, 0xAAAA, 0x49BE, {0x9A, 0x4D, 0xFD, 0x2A, 0x85, 0x8E, 0xA2, 0x7F}};
 static const PROPERTYKEY s_friendlyName = {
     {0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}}, 14};
 static const PROPERTYKEY s_deviceFormat = {
@@ -90,6 +93,29 @@ static maudDeviceForm ReadForm(IPropertyStore* store)
     return form;
 }
 
+// What Windows' spatial sound does on an output endpoint: none where it
+// cannot make a spatial client there; off while the user has chosen no
+// spatial format, which leaves no dynamic objects; on with the format's
+// objects otherwise. Windows tracks no head.
+static void ReadSpatializer(IMMDevice* device, maudDeviceInfo* info)
+{
+    ISpatialAudioClient* client = nullptr;
+    if (FAILED(IMMDevice_Activate(device, &s_iidSpatialClient, CLSCTX_INPROC_SERVER, nullptr,
+                                  (void**)&client)))
+    {
+        info->spatializer = maud_spatializerNone;
+        return;
+    }
+    UINT32 objects = 0;
+    if (FAILED(ISpatialAudioClient_GetMaxDynamicObjectCount(client, &objects)))
+    {
+        objects = 0;
+    }
+    ISpatialAudioClient_Release(client);
+    info->spatializer = objects > 0 ? maud_spatializerOn : maud_spatializerOff;
+    info->spatialObjects = objects;
+}
+
 // Describes one endpoint into endpoint and spec; false when it cannot.
 static bool Describe(const maudContext* context, IMMDevice* device, maudDirection direction,
                      maudWasapiEndpoint* endpoint, maudDeviceSpec* spec)
@@ -114,6 +140,10 @@ static bool Describe(const maudContext* context, IMMDevice* device, maudDirectio
     ReadFormat(store, &spec->info);
     spec->info.form = ReadForm(store);
     IPropertyStore_Release(store);
+    if (direction == maud_directionOutput)
+    {
+        ReadSpatializer(device, &spec->info);
+    }
     spec->name = endpoint->name;
     spec->nameLength = maudCutUtf8(endpoint->name, context->def.limits.deviceTextBytes);
     spec->key = endpoint->key;

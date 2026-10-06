@@ -101,7 +101,19 @@ static void TestDevices(maudContext* context, maudDeviceId* speaker)
     CHECK(maudGetDeviceInfo(context, microphone, &info) == maud_success &&
               info.form == maud_formMicrophone,
           "a microphone");
+    // The default output follows the route Android's Spatializer works
+    // on, so Java tells its state; a pinned output's is the system's.
     maudDeviceId current = {0, 0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
+                  maud_success &&
+              maudGetDeviceInfo(context, current, &info) == maud_success,
+          "the default output");
+    printf("spatializer %u, head tracking %d\n", (unsigned)info.spatializer, info.headTracking);
+    CHECK(info.spatializer != maud_spatializerUnknown && info.spatialObjects == 0,
+          "with the Spatializer's state, and no objects");
+    CHECK(maudGetDeviceInfo(context, *speaker, &info) == maud_success &&
+              info.spatializer == maud_spatializerUnknown,
+          "a pinned output's left unknown");
     CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
                   maud_success &&
               current.index1 != speaker->index1,

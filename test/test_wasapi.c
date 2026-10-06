@@ -320,8 +320,17 @@ static void TestDevices(maudContext* context)
                   "its key");
             endpoint[length < sizeof(endpoint) - 1 ? length : sizeof(endpoint) - 1] = '\0';
             UINT formFactor = FormFactorOf(enumerator, endpoint);
-            printf("endpoint %s: form factor %u, form %u\n", endpoint, formFactor, info.form);
+            printf("endpoint %s: form factor %u, form %u, spatializer %u (%u objects)\n", endpoint,
+                   formFactor, info.form, (unsigned)info.spatializer, info.spatialObjects);
             CHECK(FormMatches(info.form, formFactor), "and the form its form factor names");
+            // An output says what spatial sound does there, with objects
+            // exactly when a spatial format is on; Windows tracks no head.
+            bool output = flows[f].direction == maud_directionOutput;
+            CHECK(output ? info.spatializer != maud_spatializerUnknown &&
+                               (info.spatialObjects > 0) == (info.spatializer == maud_spatializerOn)
+                         : info.spatializer == maud_spatializerUnknown,
+                  "and its spatializer's state");
+            CHECK(!info.headTracking, "no head tracking");
         }
     }
     IMMDeviceEnumerator_Release(enumerator);
@@ -508,10 +517,12 @@ static void TestNotifier(maudContext* context)
     CHECK(maudTakeWasapiChanges(&wasapi->notifier), "a state change");
     IMMNotificationClient_OnDefaultDeviceChanged(client, eRender, eConsole, L"x");
     CHECK(maudTakeWasapiChanges(&wasapi->notifier), "a default change");
+    // Any property: the spatial format the user chose has no documented
+    // key, and the drain posts only what changed.
     IMMNotificationClient_OnPropertyValueChanged(client, L"x", s_otherKey);
-    CHECK(!maudTakeWasapiChanges(&wasapi->notifier), "not another property");
+    CHECK(maudTakeWasapiChanges(&wasapi->notifier), "another property");
     IMMNotificationClient_OnPropertyValueChanged(client, L"x", s_formatKey);
-    CHECK(maudTakeWasapiChanges(&wasapi->notifier), "but the device format");
+    CHECK(maudTakeWasapiChanges(&wasapi->notifier), "the device format");
     void* object = nullptr;
     static const GUID iidNotification = {
         0x7991EEC9, 0x7E89, 0x4D85, {0x83, 0x90, 0x6C, 0x70, 0x3C, 0xEC, 0x60, 0xC0}};

@@ -43,6 +43,10 @@ extern "C"
         maud_notifyRouteChanged = 9,
         // The context's audio focus is now focus (maudRequestFocus).
         maud_notifyFocusChanged = 10,
+        // What the platform's spatializer does on the output device
+        // deviceId changed (maudDeviceInfo's spatializer, headTracking and
+        // spatialObjects).
+        maud_notifySpatializerChanged = 11,
     };
 
     // One change. Fields a kind does not name are zero.

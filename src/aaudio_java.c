@@ -125,9 +125,11 @@ static bool Make(maudAaudio* aaudio, JNIEnv* env, jobject context)
     java->mayRecord = (*env)->GetMethodID(env, type, "mayRecord", "()Z");
     java->askToRecord = (*env)->GetMethodID(env, type, "askToRecord", "()V");
     java->requestFocus = (*env)->GetMethodID(env, type, "requestFocus", "(IZ)I");
+    java->spatializer = (*env)->GetMethodID(env, type, "spatializer", "()I");
     java->close = (*env)->GetMethodID(env, type, "close", "()V");
     if (Thrown(env) || make == nullptr || java->list == nullptr || java->mayRecord == nullptr ||
-        java->askToRecord == nullptr || java->requestFocus == nullptr || java->close == nullptr)
+        java->askToRecord == nullptr || java->requestFocus == nullptr ||
+        java->spatializer == nullptr || java->close == nullptr)
     {
         return false;
     }
@@ -314,4 +316,22 @@ int32_t maudAaudioRequestFocusJava(maudAaudio* aaudio, int32_t kind, bool call)
     }
     Leave(java->vm, attached);
     return result;
+}
+
+int32_t maudAaudioSpatializerJava(maudAaudio* aaudio)
+{
+    maudAaudioJava* java = &aaudio->java;
+    bool attached = false;
+    JNIEnv* env = aaudio->hasJava ? Enter(java->vm, &attached) : nullptr;
+    if (env == nullptr)
+    {
+        return -1;
+    }
+    jint state = (*env)->CallIntMethod(env, java->devices, java->spatializer);
+    if (Thrown(env))
+    {
+        state = -1;
+    }
+    Leave(java->vm, attached);
+    return state;
 }

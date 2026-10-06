@@ -387,6 +387,67 @@ static void TestRouteChanges(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// What a platform spatializer does on an output is part of its info: a
+// change is one record naming the device, the same state again is none;
+// inputs take none, and objects need a spatializer that is on.
+static void TestSpatializerChanges(void)
+{
+    maudContext* context = Offline(16);
+    maudDeviceId output = {0, 0};
+    maudDeviceId input = {0, 0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+                  maud_success &&
+              maudGetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &input) ==
+                  maud_success,
+          "the starting devices");
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
+              info.spatializer == maud_spatializerNone && !info.headTracking &&
+              info.spatialObjects == 0,
+          "an offline output has none");
+    CHECK(maudGetDeviceInfo(context, input, &info) == maud_success &&
+              info.spatializer == maud_spatializerUnknown,
+          "an input says nothing");
+    while (maudNextNotification(context, &(maudNotification){0}) == maud_success)
+    {
+    }
+    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, true, 128) ==
+              maud_success,
+          "a spatial format turned on");
+    maudNotification record = Expect(context, maud_notifySpatializerChanged, "a record");
+    CHECK(Same(record.deviceId, output) && record.direction == maud_directionOutput,
+          "naming the device");
+    CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
+              info.spatializer == maud_spatializerOn && info.headTracking &&
+              info.spatialObjects == 128,
+          "which its info reports");
+    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, true, 128) ==
+              maud_success,
+          "the same again");
+    ExpectDrained(context, "is no change");
+    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, false, 128) ==
+              maud_success,
+          "the head tracker gone");
+    Expect(context, maud_notifySpatializerChanged, "is a change");
+    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, false, 20) ==
+              maud_success,
+          "fewer objects");
+    Expect(context, maud_notifySpatializerChanged, "is a change");
+    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOff, false, 4) ==
+              maud_errorInvalid,
+          "objects while off");
+    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn + 1, false, 0) ==
+              maud_errorInvalid,
+          "an unknown state");
+    CHECK(maudSetOfflineDeviceSpatializer(context, input, maud_spatializerOff, false, 0) ==
+              maud_errorInvalid,
+          "an input");
+    CHECK(maudSetOfflineDeviceSpatializer(context, (maudDeviceId){3, 7}, maud_spatializerOff, false,
+                                          0) == maud_errorStale,
+          "a stale device");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 int main(void)
 {
     TestStartingDevices();
@@ -397,5 +458,6 @@ int main(void)
     TestOverflowRecordCountsDropped();
     TestRefusals();
     TestRouteChanges();
+    TestSpatializerChanges();
     return s_failures == 0 ? 0 : 1;
 }

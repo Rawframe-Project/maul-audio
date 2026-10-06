@@ -62,6 +62,7 @@ typedef struct maudAaudioJava
     jmethodID mayRecord;
     jmethodID askToRecord;
     jmethodID requestFocus;
+    jmethodID spatializer;
     jmethodID close;
 } maudAaudioJava;
 

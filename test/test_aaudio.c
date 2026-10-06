@@ -22,6 +22,7 @@
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
+#include <android/api-level.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -186,6 +187,14 @@ static void TestDevices(maudContext* context)
               "one rate");
         CHECK(direction == maud_directionOutput || info.nativeLayout == maud_layoutMono,
               "a mono microphone");
+        // Without the Java half, only an Android older than 12L can say:
+        // it has no Spatializer.
+        maudPlatformSpatializer expected =
+            direction == maud_directionOutput && android_get_device_api_level() < 32
+                ? maud_spatializerNone
+                : maud_spatializerUnknown;
+        CHECK(info.spatializer == expected && !info.headTracking && info.spatialObjects == 0,
+              "the Spatializer's state where Android says it");
         for (maudDeviceRole role = maud_roleGeneral; role <= maud_roleCommunications; ++role)
         {
             maudDeviceId current = {0, 0};
