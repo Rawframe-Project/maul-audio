@@ -232,6 +232,6 @@ format.
   file's bytes, checking every count, size, ring, text and its CRC-32
   before trusting anything, with limits on directions and taps in its
   def, and resamples the set to the renderer's rate (band-limited, the
-  gain kept; a resampled set starts a constant 16 input samples early);
+  gain kept; a resampled set starts a constant 24 input samples early);
   `maudGetHrtfInfo` reports the set, its name and license. A libFuzzer
   target, `fuzz_hrtf`, behind `MAUL_AUDIO_FUZZ`.

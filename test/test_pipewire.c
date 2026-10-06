@@ -199,8 +199,9 @@ static bool KeyIs(const maudContext* context, maudDeviceId device, const char* k
 // its usual tens of milliseconds.
 #define NOTICE_TRIES 1000
 
-// Drains notifications for up to three seconds until one of kind
-// arrives whose device has key, or whose device is that one.
+// Drains notifications for up to NOTICE_TRIES ten-millisecond waits
+// until one of kind arrives whose device has key, or whose device is
+// that one.
 static bool WaitFor(maudContext* context, maudNotificationKind kind, const char* key,
                     maudDeviceId* deviceOut)
 {

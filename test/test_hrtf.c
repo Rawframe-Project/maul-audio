@@ -4,14 +4,19 @@
 // HRTF sets: the shipped SADIE II KU100 file loads with its name and
 // license, its interaural delay on the right side, and resampled to 44.1
 // and 96 kHz with its response at 1 kHz kept (the resampled responses
-// start early by the sinc's reach, a constant latency); crafted files
+// start 24 input samples early, a constant latency); crafted files
 // with a valid checksum are refused for each rule they break; a seeded
 // sweep of mutations loads exactly the well-formed ones and never
 // crashes; an allocator that fails is a capacity error with nothing
 // leaked.
 
+// fopen reads the shipped set; the C runtime's warning that it is unsafe
+// is about the Annex K alternative, which the family does not use.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "hrtf_core.h"
 #include "hrtf_file.h"
+#include "hrtf_resample.h"
 #include "test_harness.h"
 
 #include "maul-audio/hrtf.h"
@@ -131,7 +136,7 @@ static void TestShippedSet(void)
     const float* ahead = hrtf->responses + 2u * Horizontal(hrtf, 0) * hrtf->taps;
     double at48 = MagnitudeAt(ahead, hrtf->taps, 1000.0, 48000.0);
     uint32_t rates[2] = {44100, 96000};
-    uint32_t expectedTaps[2] = {118 + 16, 256 + 32};
+    uint32_t expectedTaps[2] = {118 + 23, 256 + 48};
     for (int i = 0; i < 2; ++i)
     {
         maudHrtf* other = nullptr;
@@ -165,7 +170,8 @@ static void TestShippedSet(void)
 // A small file: two rings (-90 with one azimuth, 90 with three), 8 taps.
 typedef struct Crafted
 {
-    unsigned char bytes[44 + 4 + 8 + 16 + 16 + 4 * 2 * 8 * 2];
+    // The file, and room for one byte past it.
+    unsigned char bytes[44 + 4 + 8 + 16 + 16 + 4 * 2 * 8 * 2 + 1];
     size_t count;
 } Crafted;
 
@@ -191,7 +197,7 @@ static void Seal(Crafted* file)
 
 static Crafted Craft(void)
 {
-    Crafted file = {.count = sizeof(file.bytes)};
+    Crafted file = {.count = sizeof(file.bytes) - 1};
     memcpy(file.bytes, "MAUDHRTF", 8);
     Put32(file.bytes + 8, 1);
     Put32(file.bytes + 12, 48000);
@@ -232,6 +238,10 @@ static void TestCraftedFiles(void)
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "one byte short");
     file = Craft();
+    file.count++;
+    Seal(&file);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "one byte long");
+    file = Craft();
     file.bytes[100] ^= 1;
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a flipped bit the checksum catches");
     file = Craft();
@@ -253,6 +263,10 @@ static void TestCraftedFiles(void)
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "azimuths not adding up to the directions");
     file = Craft();
+    Put32(file.bytes + 68, 4);
+    Seal(&file);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "nor adding up to more");
+    file = Craft();
     Put32(file.bytes + 60, 0);
     Put32(file.bytes + 68, 4);
     Seal(&file);
@@ -265,6 +279,14 @@ static void TestCraftedFiles(void)
     file.bytes[55] = 0xE2;
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a license cut inside a character");
+    // A lead byte last, and a continuation byte right after the text, in
+    // the first ring's elevation (-89.99999): the character may not borrow
+    // it.
+    file = Craft();
+    file.bytes[55] = 0xC3;
+    Put32(file.bytes + 56, 0xC2B3FFA9u);
+    Seal(&file);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a character reaching past its text");
     file = Craft();
     PutFloat(file.bytes + 28, NAN);
     Seal(&file);
@@ -327,6 +349,53 @@ static void TestMutations(void)
     CHECK(loaded > 0, "some mutations stay well-formed");
 }
 
+// Energy of count samples.
+static double Energy(const float* samples, uint32_t count)
+{
+    double sum = 0.0;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sum += (double)samples[i] * (double)samples[i];
+    }
+    return sum;
+}
+
+// A Hann-windowed tone burst at 48 kHz, resampled to 44.1 kHz: at 10 kHz
+// it keeps its energy (scaled by the rate, as a filter's taps are); at
+// 23.5 kHz, past the new Nyquist frequency, it is gone rather than folded
+// down to 20.6 kHz.
+static void TestResampler(void)
+{
+    enum
+    {
+        TAPS = 1024
+    };
+    static float in[TAPS];
+    static float out[TAPS + 64];
+    double frequencies[2] = {10000.0, 23500.0};
+    for (int f = 0; f < 2; ++f)
+    {
+        for (uint32_t n = 0; n < TAPS; ++n)
+        {
+            double window = 0.5 - 0.5 * cos(2.0 * PI * n / (TAPS - 1));
+            in[n] = (float)(window * cos(2.0 * PI * frequencies[f] * n / 48000.0));
+        }
+        uint32_t taps = maudResampledTaps(TAPS, 48000, 44100);
+        CHECK(taps <= TAPS + 64, "room for the resampled burst");
+        maudResampleResponse(in, TAPS, 48000, out, taps, 44100);
+        double ratio = Energy(out, taps) / (Energy(in, TAPS) * 48000.0 / 44100.0);
+        if (f == 0)
+        {
+            CHECK(fabs(ratio - 1.0) < 0.01,
+                  "a tone below both Nyquist frequencies keeps its energy");
+        }
+        else
+        {
+            CHECK(ratio < 0.01, "a tone past the new Nyquist frequency is removed, not folded");
+        }
+    }
+}
+
 static void TestFailingAllocator(void)
 {
     Crafted file = Craft();
@@ -346,6 +415,7 @@ int main(void)
     TestShippedSet();
     TestCraftedFiles();
     TestMutations();
+    TestResampler();
     TestFailingAllocator();
     CHECK(s_live == 0, "every block returned");
     return s_failures == 0 ? 0 : 1;
