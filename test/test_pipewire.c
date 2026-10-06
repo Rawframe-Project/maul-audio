@@ -195,9 +195,10 @@ static bool KeyIs(const maudContext* context, maudDeviceId device, const char* k
 }
 
 // Polls of 10 ms a wait for the daemon or the session manager takes at
-// most: ten seconds, since a loaded machine slows WirePlumber well past
-// its usual tens of milliseconds.
-#define NOTICE_TRIES 1000
+// most: thirty seconds, since a loaded machine slows WirePlumber well
+// past its usual tens of milliseconds (ten seconds ran out at a load of
+// 200). A wait ends as soon as the answer comes.
+#define NOTICE_TRIES 3000
 
 // Drains notifications for up to NOTICE_TRIES ten-millisecond waits
 // until one of kind arrives whose device has key, or whose device is
@@ -224,8 +225,8 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, const char*
     return false;
 }
 
-// Drains notifications for up to ten seconds until device is the
-// default output for both roles.
+// Drains notifications for up to tries polls of 10 ms until device is
+// the default output for both roles.
 static bool WaitForDefaultWithin(maudContext* context, maudDeviceId device, int tries)
 {
     for (int poll = 0; poll < tries; ++poll)
@@ -308,12 +309,12 @@ static void ResetDefaults(maudContext* context, Helper* helper)
     CHECK(WaitForDefault(context, sink), "the test sink is the default");
 }
 
-// Writes the effective default output, again each second for ten
+// Writes the effective default output, again each second for thirty
 // seconds, until the context follows it.
 static bool SetEffectiveDefault(maudContext* context, Helper* helper, const char* nodeName,
                                 maudDeviceId device)
 {
-    for (int attempt = 0; attempt < 10; ++attempt)
+    for (int attempt = 0; attempt < 30; ++attempt)
     {
         SetDefaultKey(helper, "default.audio.sink", nodeName);
         if (WaitForDefaultWithin(context, device, 100))
@@ -466,13 +467,13 @@ static double MeasureWindow(maudContext* context, maudStreamId stream, int milli
     return (double)(last - first) / seconds;
 }
 
-// The stream's rate: the best of three windows of a second. A
+// The stream's rate: the best of five windows of a second. A
 // loaded machine can stall the platform's clock, which only lowers a
 // window's count, so the best window is the one that shows the rate.
 static double MeasureRate(maudContext* context, maudStreamId stream)
 {
     double best = 0.0;
-    for (int window = 0; window < 3; ++window)
+    for (int window = 0; window < 5; ++window)
     {
         double rate = MeasureWindow(context, stream, 1000);
         best = rate > best ? rate : best;
