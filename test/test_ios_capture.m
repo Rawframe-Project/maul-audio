@@ -192,9 +192,87 @@ static void PrintInputSteps(void)
     (void)deactivated;
 }
 
+static OSStatus Ignore(void* user, AudioUnitRenderActionFlags* flags, const AudioTimeStamp* time,
+                       UInt32 bus, UInt32 frames, AudioBufferList* data)
+{
+    (void)user;
+    (void)flags;
+    (void)time;
+    (void)bus;
+    (void)frames;
+    (void)data;
+    return noErr;
+}
+
+// The library's own sequence for an input unit (Record with Bluetooth
+// allowed, no mode, an input callback and the largest slice), with the
+// session left inactive as the library leaves it before a start, and
+// then active.
+static void PrintLibrarySteps(void)
+{
+    AVAudioSession* session = [AVAudioSession sharedInstance];
+    for (int active = 0; active < 2; ++active)
+    {
+        NSError* error = nil;
+        BOOL categorized = [session setCategory:AVAudioSessionCategoryRecord
+                                           mode:AVAudioSessionModeDefault
+                                        options:(AVAudioSessionCategoryOptions)0x4
+                                          error:&error];
+        BOOL activated = active != 0 ? [session setActive:YES error:nil] : NO;
+        AudioComponentDescription description = {
+            .componentType = kAudioUnitType_Output,
+            .componentSubType = kAudioUnitSubType_RemoteIO,
+            .componentManufacturer = kAudioUnitManufacturer_Apple,
+        };
+        AudioComponentInstance unit = nullptr;
+        OSStatus made =
+            AudioComponentInstanceNew(AudioComponentFindNext(nullptr, &description), &unit);
+        UInt32 on = 1;
+        UInt32 off = 0;
+        UInt32 slice = 4096;
+        AudioStreamBasicDescription format = {
+            .mSampleRate = 48000.0,
+            .mFormatID = kAudioFormatLinearPCM,
+            .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+            .mBytesPerPacket = sizeof(float),
+            .mFramesPerPacket = 1,
+            .mBytesPerFrame = sizeof(float),
+            .mChannelsPerFrame = 1,
+            .mBitsPerChannel = 32,
+        };
+        AURenderCallbackStruct callback = {.inputProc = Ignore, .inputProcRefCon = nullptr};
+        OSStatus steps[5] = {
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1,
+                                 &on, sizeof(on)),
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0,
+                                 &off, sizeof(off)),
+            AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
+                                 &format, sizeof(format)),
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback,
+                                 kAudioUnitScope_Global, 0, &callback, sizeof(callback)),
+            AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice,
+                                 kAudioUnitScope_Global, 0, &slice, sizeof(slice)),
+        };
+        OSStatus initialized = AudioUnitInitialize(unit);
+        printf("library steps, session %s: category %d (%s), activated %d, made %d, "
+               "steps %d %d %d %d %d, initialized %d\n",
+               active != 0 ? "active" : "inactive", (int)categorized,
+               error != nil ? error.localizedDescription.UTF8String : "no error", (int)activated,
+               (int)made, (int)steps[0], (int)steps[1], (int)steps[2], (int)steps[3], (int)steps[4],
+               (int)initialized);
+        OSStatus uninitialized = AudioUnitUninitialize(unit);
+        OSStatus disposed = AudioComponentInstanceDispose(unit);
+        (void)uninitialized;
+        (void)disposed;
+        BOOL deactivated = [session setActive:NO error:nil];
+        (void)deactivated;
+    }
+}
+
 static void TestCapture(maudContext* context)
 {
     PrintInputSteps();
+    PrintLibrarySteps();
     PrintVoiceUnit();
     maudDeviceId input = {0, 0};
     maudDeviceInfo info = {0};
