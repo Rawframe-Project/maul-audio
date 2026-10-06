@@ -285,6 +285,18 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(bvh WHITEBOX)
         maul_add_test(watertight WHITEBOX)
         maul_add_test(scene_instances)
+        # Through the offline backend, so with the Device part too.
+        if(MAUL_AUDIO_DEVICE)
+            maul_add_test(golden)
+        endif()
+        if(TARGET test_golden)
+            target_compile_definitions(test_golden PRIVATE
+                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+            # Node's own file system, so the web reads the references too.
+            if(EMSCRIPTEN)
+                target_link_options(test_golden PRIVATE -sNODERAWFS=1)
+            endif()
+        endif()
         foreach(area binaural binaural_decoder hrtf)
             maul_add_test(${area} WHITEBOX)
             if(TARGET test_${area})
