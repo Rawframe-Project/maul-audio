@@ -18,6 +18,8 @@
 #include <string.h>
 
 static uint32_t s_farMaterial = 1;
+// A careless host that ignores rays' minimum distances.
+static bool s_careless;
 static long s_closest;
 
 static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
@@ -54,7 +56,8 @@ static void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, vo
             continue;
         }
         double t = (-5.0 - (double)r->origin.z) / dz;
-        if (t >= (double)r->minDistance && t <= (double)r->maxDistance &&
+        double least = s_careless ? 0.0 : (double)r->minDistance;
+        if (t >= least && t <= (double)r->maxDistance &&
             (double)r->origin.x + t * (double)r->direction.x < 0.0)
         {
             hits[i].distance = (float)t;
@@ -161,6 +164,16 @@ static void TestWalk(void)
     id = Source(s, true);
     r = Result(s, id, -2.0f, -10.0f);
     CHECK(r.surfaces == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "the limit stops the walk, and says so");
+    maudDestroySpatializer(s);
+    // A hit before the ray's minimum distance is no hit: a careless host
+    // returning the first wall again ends the walk rather than counting
+    // it over and over.
+    s = Create(4, false, true);
+    id = Source(s, true);
+    s_careless = true;
+    r = Result(s, id, -2.0f, -10.0f);
+    s_careless = false;
+    CHECK(r.surfaces == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "a surface is not crossed twice");
     maudDestroySpatializer(s);
     s = Create(4, false, false);
     id = Source(s, true);
