@@ -12,6 +12,8 @@
 
 #include "reverb_estimate.h"
 
+#include "spherical_harmonics.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -149,6 +151,33 @@ static bool Shade(const maudReverbTrace* trace, const Path* path, const maudRay*
     return true;
 }
 
+static uint32_t Channels(const maudReverbTrace* trace)
+{
+    return (trace->fieldOrder + 1) * (trace->fieldOrder + 1);
+}
+
+// A lit hit's energy on the harmonics of its arrival direction (from the
+// listener toward the hit), into bin of the field.
+static void Project(const maudReverbTrace* trace, const Shading* s, const float* energy,
+                    uint32_t bin, float* field)
+{
+    maudVector3 arrival = {-s->toListener[0], -s->toListener[1], -s->toListener[2]};
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    maudFieldAxes(arrival, &x, &y, &z);
+    float g[16];
+    maudSphericalHarmonics(trace->fieldOrder, x, y, z, g);
+    uint32_t channels = Channels(trace);
+    for (uint32_t c = 0; c < channels; ++c)
+    {
+        for (uint32_t b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            field[(c * MAUD_DIRECT_BANDS + b) * trace->fieldBins + bin] += g[c] * energy[b];
+        }
+    }
+}
+
 // The energy a lit hit sends the listener, into the histogram.
 static void Gather(const maudReverbTrace* trace, const Path* path, const Shading* s,
                    maudReverbHistogram* histogram)
@@ -170,12 +199,19 @@ static void Gather(const maudReverbTrace* trace, const Path* path, const Shading
     float lambert = scattering * fmaxf(Dot(s->normal, s->toListener), 0.0f) / PI_F;
     float lobe = (1.0f - scattering) * (float)(LOBE + 2) / (8.0f * PI_F) * Lobe(specular);
     float r = fmaxf(s->listenerDistance, 1.0f);
-    float spread = (lambert + lobe) / (4.0f * PI_F * r * r);
+    // Each ray stands for its share of the sphere.
+    float share = 4.0f * PI_F / (float)trace->rays;
+    float spread = share * (lambert + lobe) / (4.0f * PI_F * r * r);
+    float energy[MAUD_DIRECT_BANDS];
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
         float air = expf(-2.0f * trace->air[b] * total);
-        histogram->energy[b][(uint32_t)bin] +=
-            spread * (1.0f - s->material->absorption[b]) * path->energy[b] * air;
+        energy[b] = spread * (1.0f - s->material->absorption[b]) * path->energy[b] * air;
+        histogram->energy[b][(uint32_t)bin] += energy[b];
+    }
+    if (trace->fieldOrder > 0 && bin < (float)trace->fieldBins)
+    {
+        Project(trace, s, energy, (uint32_t)bin, histogram->field);
     }
 }
 
@@ -272,7 +308,14 @@ static uint32_t Step(const maudReverbTrace* trace, uint32_t bounce, Path* paths,
 void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
                           maudReverbHistogram* histogram)
 {
+    float* field = histogram->field;
     memset(histogram, 0, sizeof(*histogram));
+    histogram->field = field;
+    if (trace->fieldOrder > 0)
+    {
+        memset(field, 0,
+               (size_t)Channels(trace) * MAUD_DIRECT_BANDS * trace->fieldBins * sizeof(float));
+    }
     Path paths[MAUD_REVERB_BATCH];
     uint32_t first = batch * MAUD_REVERB_BATCH;
     uint32_t count =
@@ -437,5 +480,18 @@ void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
         times[b] = Fit(histograms[0].energy[b], bins);
+    }
+}
+
+void maudSumReverbFields(const maudReverbTrace* trace, maudReverbHistogram* histograms,
+                         uint32_t count)
+{
+    size_t values = (size_t)Channels(trace) * MAUD_DIRECT_BANDS * trace->fieldBins;
+    for (uint32_t h = 1; h < count && trace->fieldOrder > 0; ++h)
+    {
+        for (size_t i = 0; i < values; ++i)
+        {
+            histograms[0].field[i] += histograms[h].field[i];
+        }
     }
 }

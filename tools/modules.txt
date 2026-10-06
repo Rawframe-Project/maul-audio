@@ -64,8 +64,9 @@ pipewire_stream: clock context context_core period pipewire_core thread xrun
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
+reflection_response: fft
 reverb: allocator octave_eq
-reverb_estimate:
+reverb_estimate: spherical_harmonics
 scene: allocator bvh
 spatializer: air_absorption allocator direct_step occlusion reverb_estimate transmission
 speaker_decoder: allocator spherical_harmonics

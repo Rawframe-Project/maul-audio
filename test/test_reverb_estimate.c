@@ -55,8 +55,17 @@ static maudReverbHistogram s_histograms[256];
 static void Estimate(maudAcousticScene* scene, const maudAcousticMaterial* materials,
                      maudVector3 listener, const float* air, uint32_t rays, float* times)
 {
-    maudReverbTrace trace = {maudSceneClosestHit,      maudSceneAnyHit, scene, materials, 6,
-                             {air[0], air[1], air[2]}, listener,        rays,  512};
+    maudReverbTrace trace = {maudSceneClosestHit,
+                             maudSceneAnyHit,
+                             scene,
+                             materials,
+                             6,
+                             {air[0], air[1], air[2]},
+                             listener,
+                             rays,
+                             512,
+                             0,
+                             0};
     uint32_t batches = maudReverbBatches(rays);
     for (uint32_t b = 0; b < batches; ++b)
     {
@@ -180,7 +189,8 @@ static void Never(const maudRay* rays, uint32_t count, uint8_t* occluded, void* 
 static void TestLimits(void)
 {
     maudAcousticMaterial hard = Material(0.0f, 0.5f);
-    maudReverbTrace open = {Nothing, Never, nullptr, &hard, 1, {0, 0, 0}, {0, 0, 0}, 128, 512};
+    maudReverbTrace open = {Nothing,   Never, nullptr, &hard, 1, {0, 0, 0},
+                            {0, 0, 0}, 128,   512,     0,     0};
     float times[3];
     for (uint32_t b = 0; b < 2; ++b)
     {
@@ -198,8 +208,17 @@ static void TestLimits(void)
     Estimate(box, lossless, (maudVector3){1.85f, 1.64f, 1.35f}, none, 128, times);
     CHECK(times[1] == 20.0f, "no absorption: the ceiling");
     // An unknown material ends the ray where it hits: nothing comes back.
-    maudReverbTrace unknown = {maudSceneClosestHit, maudSceneAnyHit,       box, lossless, 0,
-                               {0, 0, 0},           {1.85f, 1.64f, 1.35f}, 64,  512};
+    maudReverbTrace unknown = {maudSceneClosestHit,
+                               maudSceneAnyHit,
+                               box,
+                               lossless,
+                               0,
+                               {0, 0, 0},
+                               {1.85f, 1.64f, 1.35f},
+                               64,
+                               512,
+                               0,
+                               0};
     maudTraceReverbBatch(&unknown, 0, &s_histograms[0]);
     double total = 0.0;
     for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
@@ -220,8 +239,17 @@ static void TestOrder(void)
     {
         m[f] = Material(0.1f, 0.5f);
     }
-    maudReverbTrace trace = {maudSceneClosestHit, maudSceneAnyHit,       box, m,  6,
-                             {0, 0, 0},           {1.85f, 1.64f, 1.35f}, 256, 512};
+    maudReverbTrace trace = {maudSceneClosestHit,
+                             maudSceneAnyHit,
+                             box,
+                             m,
+                             6,
+                             {0, 0, 0},
+                             {1.85f, 1.64f, 1.35f},
+                             256,
+                             512,
+                             0,
+                             0};
     float forward[3];
     float backward[3];
     for (uint32_t b = 0; b < 4; ++b)
@@ -240,17 +268,18 @@ static void TestOrder(void)
     maudDestroyAcousticScene(box);
 }
 
-// A floor as two triangles 2 km wide, facing down (away from the
-// listener above it): one lossless, fully scattering bounce sends the
-// listener, from rays over the sphere, N / (4 pi) times the integral
-// over the lower hemisphere of (cos / pi) / (4 pi max(h / cos, 1)^2),
-// which is (N / 4 pi) (1 / 2 pi) (h^2 / 4 + (1 - h^2) / 2) for h below
-// 1 m and (N / 4 pi) / (8 pi h^2) above.
+// A floor (y = 0) as two triangles 2 km wide, facing down (away from
+// the listener above it): one lossless, fully scattering bounce sends
+// the listener the integral over the lower hemisphere of (cos / pi) /
+// (4 pi max(h / cos, 1)^2), which is (1 / 2 pi) (h^2 / 4 + (1 - h^2) / 2)
+// for h below 1 m and 1 / (8 pi h^2) above. Its field arrives from
+// below: above 1 m the energy-weighted mean of the cosine is (1 / 5) /
+// (1 / 4), so Z over W is -0.8, X and Y nothing.
 static void TestSingleBounce(void)
 {
     static const maudVector3 v[4] = {
-        {-1000, -1000, 0}, {1000, -1000, 0}, {-1000, 1000, 0}, {1000, 1000, 0}};
-    static const uint32_t faces[6] = {0, 2, 1, 1, 2, 3};
+        {-1000, 0, -1000}, {1000, 0, -1000}, {-1000, 0, 1000}, {1000, 0, 1000}};
+    static const uint32_t faces[6] = {0, 1, 2, 1, 3, 2};
     static const uint32_t materials[2] = {0, 0};
     maudMesh mesh = {v, 4, faces, materials, 2};
     maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
@@ -259,16 +288,28 @@ static void TestSingleBounce(void)
     maudAcousticScene* floor = nullptr;
     CHECK(maudCreateAcousticScene(&def, &floor) == maud_success, "a floor");
     maudAcousticMaterial lossless = Material(0.0f, 1.0f);
+    static float field[4 * 3 * 100];
     const double heights[2] = {0.5, 2.0};
     for (int k = 0; k < 2; ++k)
     {
         double h = heights[k];
-        maudReverbTrace trace = {maudSceneClosestHit, maudSceneAnyHit,         floor, &lossless, 1,
-                                 {0, 0, 0},           {0.3f, -0.2f, (float)h}, 4096,  1};
+        maudReverbTrace trace = {maudSceneClosestHit,
+                                 maudSceneAnyHit,
+                                 floor,
+                                 &lossless,
+                                 1,
+                                 {0, 0, 0},
+                                 {0.3f, (float)h, -0.2f},
+                                 4096,
+                                 1,
+                                 1,
+                                 100};
         double total = 0.0;
+        double channels[4] = {0.0};
         uint32_t first = MAUD_REVERB_BINS;
         for (uint32_t b = 0; b < 64; ++b)
         {
+            s_histograms[0].field = field;
             maudTraceReverbBatch(&trace, b, &s_histograms[0]);
             for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
             {
@@ -276,12 +317,26 @@ static void TestSingleBounce(void)
                 total += e;
                 first = e > 0.0 && i < first ? i : first;
             }
+            for (int c = 0; c < 4; ++c)
+            {
+                for (uint32_t i = 0; i < 100; ++i)
+                {
+                    channels[c] += (double)field[(c * 3 + 1) * 100 + i];
+                }
+            }
         }
         double integral =
             h < 1.0 ? (h * h / 4.0 + (1.0 - h * h) / 2.0) / (2.0 * PI) : 1.0 / (8.0 * PI * h * h);
-        double expected = 4096.0 / (4.0 * PI) * integral;
-        printf("floor at %.1f m: energy %.4f, expected %.4f\n", h, total, expected);
-        CHECK(fabs(total / expected - 1.0) < 0.02, "the shading integral");
+        printf("floor at %.1f m: energy %.5f, expected %.5f; field W %.5f Y %.5f Z %.5f X %.5f\n",
+               h, total, integral, channels[0], channels[1], channels[2], channels[3]);
+        CHECK(fabs(total / integral - 1.0) < 0.02, "the shading integral");
+        CHECK(fabs(channels[0] / total - 1.0) < 1e-4, "the field's W is the energy");
+        CHECK(fabs(channels[1] / total) < 0.01 && fabs(channels[3] / total) < 0.01,
+              "nothing from the sides");
+        if (h > 1.0)
+        {
+            CHECK(fabs(channels[2] / total + 0.8) < 0.01, "from below");
+        }
         // The straight path down and back: 2h at 343 m/s.
         CHECK(first == (uint32_t)(2.0 * h / 343.0 / 0.01), "the first bin");
     }
@@ -308,7 +363,7 @@ static void TestBlocked(void)
         m[f] = Material(0.1f, 0.5f);
     }
     maudReverbTrace trace = {maudSceneClosestHit,   Always, box, m, 6, {0, 0, 0},
-                             {1.85f, 1.64f, 1.35f}, 64,     512};
+                             {1.85f, 1.64f, 1.35f}, 64,     512, 0, 0};
     maudTraceReverbBatch(&trace, 0, &s_histograms[0]);
     double total = 0.0;
     for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
@@ -330,8 +385,17 @@ static void TestTruncated(void)
     {
         m[f] = Material(0.1f, 0.5f);
     }
-    maudReverbTrace trace = {maudSceneClosestHit, maudSceneAnyHit,       box,  m, 6,
-                             {0, 0, 0},           {1.85f, 1.64f, 1.35f}, 1024, 64};
+    maudReverbTrace trace = {maudSceneClosestHit,
+                             maudSceneAnyHit,
+                             box,
+                             m,
+                             6,
+                             {0, 0, 0},
+                             {1.85f, 1.64f, 1.35f},
+                             1024,
+                             64,
+                             0,
+                             0};
     for (uint32_t b = 0; b < 16; ++b)
     {
         maudTraceReverbBatch(&trace, b, &s_histograms[b]);

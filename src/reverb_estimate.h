@@ -3,10 +3,11 @@
 //
 // Reverberation times from geometry: rays from the listener; at
 // each hit a shadow ray back adds the reflected energy into 10 ms bins
-// per band; each band's histogram is integrated backwards and fitted
-// from -5 to -25 dB. Rays go out in batches of 64, each batch into its
-// own histogram, so that the batches can run on any threads and the
-// sum, taken in batch order, is the same every time.
+// per band (and, if asked, on spherical harmonics of its arrival
+// direction in world axes: the energy field a response is made from); each band's histogram is
+// integrated backwards and fitted from -5 to -25 dB. Rays go out in batches of 64, each batch into
+// its own histogram, so that the batches can run on any threads and the sum, taken in batch order,
+// is the same every time.
 
 #ifndef MAUL_AUDIO_SRC_REVERB_ESTIMATE_H
 #define MAUL_AUDIO_SRC_REVERB_ESTIMATE_H
@@ -32,21 +33,31 @@ typedef struct maudReverbTrace
     // All rays (a multiple of the batch or not); bounces at most.
     uint32_t rays;
     uint32_t maxBounces;
+    // The energy field's order (0 for none, else 1 to 3) and its bins.
+    uint32_t fieldOrder;
+    uint32_t fieldBins;
 } maudReverbTrace;
 
 // One batch's energy per band and bin, and when its first ray was cut
 // short by the bounce cap (INFINITY if none was): past that, energy is
 // missing.
+// The energy is for a source at the listener emitting unit energy in
+// every band: a bin's energy is what reaches the listener in it.
 typedef struct maudReverbHistogram
 {
     float energy[MAUD_DIRECT_BANDS][MAUD_REVERB_BINS];
     float truncated;
+    // The batch's field if the trace has one: (fieldOrder + 1)^2
+    // channels of MAUD_DIRECT_BANDS bands of fieldBins bins, SN3D in the
+    // world's axes taken as a listener's (x right, y up, -z ahead).
+    float* field;
 } maudReverbHistogram;
 
 // The batches rays take.
 uint32_t maudReverbBatches(uint32_t rays);
 
-// Traces batch (rays batch * 64 onward) into histogram, overwriting it.
+// Traces batch (rays batch * 64 onward) into histogram, overwriting it
+// (its field too, if the trace has one).
 void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
                           maudReverbHistogram* histogram);
 
@@ -57,5 +68,9 @@ void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
 // bins before it decay at (as ISO 3382 part 1 compensates a truncated
 // decay), and a band whose bins do not decay takes the ceiling.
 void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[MAUD_DIRECT_BANDS]);
+
+// Sums count histograms' fields into the first's, in order.
+void maudSumReverbFields(const maudReverbTrace* trace, maudReverbHistogram* histograms,
+                         uint32_t count);
 
 #endif // MAUL_AUDIO_SRC_REVERB_ESTIMATE_H
