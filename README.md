@@ -28,7 +28,9 @@ thread where the platform provides none.
 Not released. The device layer works on Linux (PipeWire, PulseAudio,
 ALSA), Windows (WASAPI), macOS (Core Audio) and the web, with an
 offline backend for tests; the mobile backends come later. The spatial
-part has begun: HRTF sets and a binaural effect per source.
+part has HRTF sets, a binaural effect per source, a third-order
+ambisonic bed with binaural and speaker decoders, and speaker panning
+for the library's channel layouts; the rest of it comes later.
 
 ## Building
 
@@ -40,6 +42,11 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build
 ```
+
+Each part has an option, both on by default: `-DMAUL_AUDIO_DEVICE=OFF`
+builds the Spatial part alone, `-DMAUL_AUDIO_SPATIAL=OFF` the Device
+part alone. Neither part's code uses the other's, so a host links only
+what it uses.
 
 ## Design
 

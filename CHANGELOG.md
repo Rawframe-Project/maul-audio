@@ -284,3 +284,6 @@ format.
   speakers with max-rE weights panned by the speaker panner, folded into
   one matrix at creation (`maudGetSpeakerDecoderMatrix` hands it out);
   unit energy on average, the LFE silent.
+- Build options for the two parts, `MAUL_AUDIO_DEVICE` and
+  `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
+  builds each alone.

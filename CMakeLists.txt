@@ -28,6 +28,15 @@ else()
     set(MAUL_AUDIO_PIPEWIRE_DEFAULT OFF)
 endif()
 option(MAUL_AUDIO_FUZZ "Build the libFuzzer targets (Clang)" OFF)
+# The library's two parts, each usable without the other: Device
+# (streams, devices, capture, voice processing) and Spatial (HRTF sets,
+# binaural rendering, the ambisonic bed, speaker panning). Neither's
+# sources use the other's; a build with one alone links only if so.
+option(MAUL_AUDIO_DEVICE "Build the Device part" ON)
+option(MAUL_AUDIO_SPATIAL "Build the Spatial part" ON)
+if(NOT MAUL_AUDIO_DEVICE AND NOT MAUL_AUDIO_SPATIAL)
+    message(FATAL_ERROR "MAUL_AUDIO_DEVICE and MAUL_AUDIO_SPATIAL are both off: nothing to build")
+endif()
 option(MAUL_AUDIO_PIPEWIRE "Build the PipeWire backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 option(MAUL_AUDIO_PULSE "Build the PulseAudio backend, loaded at run time"
@@ -36,6 +45,12 @@ option(MAUL_AUDIO_ALSA "Build the ALSA backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 option(MAUL_AUDIO_WASAPI "Build the WASAPI backend" ${WIN32})
 option(MAUL_AUDIO_COREAUDIO "Build the CoreAudio backend" ${APPLE})
+# Backends belong to the Device part.
+if(NOT MAUL_AUDIO_DEVICE)
+    foreach(backend PIPEWIRE PULSE ALSA WASAPI COREAUDIO)
+        set(MAUL_AUDIO_${backend} OFF)
+    endforeach()
+endif()
 
 # Every executable (tests, benchmarks, tools) lands in the top of the
 # build tree, so scripts and CI find them in one place.
@@ -53,48 +68,58 @@ if(MAUL_AUDIO_BUILD_SHARED)
 else()
     set(MAUL_LIBRARY_KIND STATIC)
 endif()
-add_library(maul-audio ${MAUL_LIBRARY_KIND}
+# What both parts use: results, allocators, buffers, channel layouts.
+set(MAUL_AUDIO_BASE_SOURCES
     src/allocator.c
-    src/backend_offline.c
     src/base.c
     src/buffer.c
+    src/layout.c)
+set(MAUL_AUDIO_DEVICE_SOURCES
+    src/backend_offline.c
+    src/clock.c
     src/context.c
     src/device.c
+    src/duplex.c
     src/follow.c
-    src/layout.c
+    src/form.c
+    src/gain_control.c
+    src/lifecycle.c
     src/notify.c
     src/offline.c
     src/period.c
+    src/sample_convert.c
     src/stream.c
     src/stream_open.c
-    src/sample_convert.c
-    src/hrtf.c
-    src/hrtf_file.c
-    src/hrtf_resample.c
+    src/thread.c
+    src/vad_core.c
+    src/voice.c
+    src/voice_detector.c
+    src/voice_dsp.c)
+set(MAUL_AUDIO_SPATIAL_SOURCES
     src/ambisonic_rotation.c
     src/ambisonics.c
     src/binaural.c
     src/binaural_decoder.c
+    src/binaural_dsp.c
     src/fft.c
+    src/hrtf.c
+    src/hrtf_file.c
+    src/hrtf_lookup.c
+    src/hrtf_resample.c
     src/least_squares.c
     src/magls.c
-    src/spherical_harmonics.c
-    src/speaker_decoder.c
-    src/speaker_panner.c
-    src/binaural_dsp.c
-    src/hrtf_lookup.c
     src/near_field.c
     src/near_field_table.c
-    src/lifecycle.c
-    src/form.c
-    src/duplex.c
-    src/voice.c
-    src/voice_dsp.c
-    src/vad_core.c
-    src/voice_detector.c
-    src/gain_control.c
-    src/clock.c
-    src/thread.c)
+    src/speaker_decoder.c
+    src/speaker_panner.c
+    src/spherical_harmonics.c)
+add_library(maul-audio ${MAUL_LIBRARY_KIND} ${MAUL_AUDIO_BASE_SOURCES})
+if(MAUL_AUDIO_DEVICE)
+    target_sources(maul-audio PRIVATE ${MAUL_AUDIO_DEVICE_SOURCES})
+endif()
+if(MAUL_AUDIO_SPATIAL)
+    target_sources(maul-audio PRIVATE ${MAUL_AUDIO_SPATIAL_SOURCES})
+endif()
 maul_configure_library(maul-audio)
 # The voice processors use the C math library, a library of its own on
 # POSIX systems other than Darwin; static consumers need it too.
@@ -103,7 +128,7 @@ if(UNIX AND NOT APPLE)
 endif()
 # clock_gettime under a strict C23 build, on POSIX systems other than
 # Darwin, which shows it (and clock_gettime_nsec_np) without the request.
-if(UNIX AND NOT APPLE)
+if(MAUL_AUDIO_DEVICE AND UNIX AND NOT APPLE)
     set_source_files_properties(src/clock.c PROPERTIES COMPILE_DEFINITIONS
         _POSIX_C_SOURCE=200809L)
 endif()
@@ -150,7 +175,7 @@ endif()
 
 # Web Audio, in Emscripten builds: the backend's JavaScript is in its
 # source, through EM_JS.
-if(EMSCRIPTEN)
+if(MAUL_AUDIO_DEVICE AND EMSCRIPTEN)
     target_sources(maul-audio PRIVATE src/backend_web.c src/web_capture.c src/web_devices.c)
 endif()
 
@@ -192,6 +217,25 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(base)
     maul_add_test(buffer)
     maul_add_test(layout)
+    if(MAUL_AUDIO_SPATIAL)
+        maul_add_test(ambisonics)
+        maul_add_test(speaker_decoder)
+        maul_add_test(speaker_panner)
+    endif()
+    if(MAUL_AUDIO_SPATIAL AND NOT MAUL_AUDIO_BUILD_SHARED)
+        maul_add_test(near_field WHITEBOX)
+        foreach(area binaural binaural_decoder hrtf)
+            maul_add_test(${area} WHITEBOX)
+            if(TARGET test_${area})
+                target_compile_definitions(test_${area} PRIVATE
+                    MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+            endif()
+        endforeach()
+    endif()
+endif()
+
+# The Device part's tests.
+if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(context)
     maul_add_test(stream)
     maul_add_test(device)
@@ -202,25 +246,6 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)
-        maul_add_test(near_field WHITEBOX)
-        maul_add_test(ambisonics)
-        maul_add_test(speaker_decoder)
-        maul_add_test(speaker_panner)
-        maul_add_test(binaural_decoder WHITEBOX)
-        if(TARGET test_binaural_decoder)
-            target_compile_definitions(test_binaural_decoder PRIVATE
-                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
-        endif()
-        maul_add_test(binaural WHITEBOX)
-        if(TARGET test_binaural)
-            target_compile_definitions(test_binaural PRIVATE
-                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
-        endif()
-        maul_add_test(hrtf WHITEBOX)
-        if(TARGET test_hrtf)
-            target_compile_definitions(test_hrtf PRIVATE
-                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
-        endif()
     endif()
     # The stamp races a writer thread; Emscripten builds have none.
     if(NOT EMSCRIPTEN)
@@ -309,13 +334,17 @@ if(MAUL_AUDIO_BUILD_TESTS)
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(trap WHITEBOX POSIX)
     endif()
+endif()
+
+# Every public header compiles alone, whichever parts are built.
+if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_header_tests()
 endif()
 
 # The fuzz targets: test/fuzz_<area>.c, run as fuzz_<area> <corpus dir>,
 # over the bytes programs load and hand the library; the shipped HRTF
 # file in data/hrtf/, behind a 0x01 byte, is fuzz_hrtf's seed.
-if(MAUL_AUDIO_FUZZ)
+if(MAUL_AUDIO_FUZZ AND MAUL_AUDIO_SPATIAL)
     # The library is instrumented too: its coverage guides libFuzzer, and
     # the sanitizers watch its code, not only the targets'.
     target_compile_options(maul-audio PRIVATE -fsanitize=fuzzer-no-link,address,undefined)
