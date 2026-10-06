@@ -71,6 +71,8 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/hrtf.c
     src/hrtf_file.c
     src/hrtf_resample.c
+    src/ambisonic_rotation.c
+    src/ambisonics.c
     src/binaural.c
     src/binaural_dsp.c
     src/hrtf_lookup.c
@@ -194,6 +196,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)
         maul_add_test(near_field WHITEBOX)
+        maul_add_test(ambisonics)
         maul_add_test(binaural WHITEBOX)
         if(TARGET test_binaural)
             target_compile_definitions(test_binaural PRIVATE

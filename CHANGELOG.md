@@ -257,3 +257,10 @@ format.
   `maudVector3` (`maul-audio/base.h`) carries the listener's frame: +x
   right, +y up, -z ahead. A benchmark, `maul-audio_bench_binaural`,
   prints the cost per source.
+- The ambisonic bed (`maul-audio/ambisonics.h`): orders 1 to 3 in AmbiX
+  (ACN order, SN3D), in planar channels the host owns.
+  `maudGetAmbisonicGains` encodes a direction; `maudEncodeAmbisonic`
+  adds a source into a bed and `maudRotateAmbisonic` rotates one in
+  place by a quaternion (Ivanic and Ruedenberg's recursion), each
+  ramping from the previous call's values across the call; neither
+  allocates.
