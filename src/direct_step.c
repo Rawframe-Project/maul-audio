@@ -80,6 +80,7 @@ void maudDirectGeometry(const maudPose* listener, const maudPose* source,
         }
     }
     result->occlusion = 0.0f;
+    result->surfaces = 0;
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
         result->transmission[b] = 1.0f;

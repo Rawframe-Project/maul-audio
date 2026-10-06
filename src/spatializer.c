@@ -16,6 +16,7 @@
 #include "allocator.h"
 #include "direct_step.h"
 #include "occlusion.h"
+#include "transmission.h"
 
 #include <math.h>
 #include <stdatomic.h>
@@ -26,6 +27,8 @@
 #define MAX_SOURCES            65536u
 #define FRESH                  4u
 #define MAX_SAMPLES            1024u
+#define MAX_SURFACES           16u
+#define MAX_MATERIALS          65536u
 // Rays per round of queries, and per query.
 #define ROUND 4096u
 #define BATCH 64u
@@ -52,6 +55,7 @@ typedef struct Slot
     maudOcclusionMethod occlusion;
     float radius;
     uint32_t samples;
+    bool transmission;
 } Slot;
 
 struct maudSpatializer
@@ -64,7 +68,18 @@ struct maudSpatializer
     uint32_t freeCount;
     uint32_t maxSamples;
     maudAnyHitFn* anyHit;
+    maudClosestHitFn* closestHit;
     void* rayContext;
+    uint32_t maxSurfaces;
+    uint32_t materialCapacity;
+    uint32_t materialCount;
+    maudAcousticMaterial* materials;
+    // Whether the round's rays go to the closest-hit query.
+    bool closest;
+    maudRayHit* hits;
+    // The sources walking a transmission path, and how far each got.
+    uint32_t* walkers;
+    float* walked;
     maudEnqueueTaskFn* enqueueTask;
     maudFinishTaskFn* finishTask;
     void* userTaskContext;
@@ -91,7 +106,10 @@ maudSpatializerDef maudDefaultSpatializerDef(void)
         .sourceCapacity = 256,
         .maxOcclusionSamples = 64,
         .anyHit = nullptr,
+        .closestHit = nullptr,
         .rayContext = nullptr,
+        .maxSurfaces = 4,
+        .materialCapacity = 64,
         .enqueueTask = nullptr,
         .finishTask = nullptr,
         .userTaskContext = nullptr,
@@ -107,6 +125,7 @@ maudSourceDef maudDefaultSourceDef(void)
         .occlusion = maud_occlusionRay,
         .occlusionRadius = 1.0f,
         .occlusionSamples = 32,
+        .transmission = true,
     };
 }
 
@@ -140,6 +159,11 @@ static void Release(maudSpatializer* s)
     Free(&allocator, s->rays, ROUND * sizeof(maudRay), alignof(maudRay));
     Free(&allocator, s->occluded, ROUND, 1);
     Free(&allocator, s->offsets, FreeBytes(s->capacity), alignof(uint32_t));
+    Free(&allocator, s->materials, (size_t)s->materialCapacity * sizeof(maudAcousticMaterial),
+         alignof(maudAcousticMaterial));
+    Free(&allocator, s->hits, ROUND * sizeof(maudRayHit), alignof(maudRayHit));
+    Free(&allocator, s->walkers, FreeBytes(s->capacity), alignof(uint32_t));
+    Free(&allocator, s->walked, (size_t)s->capacity * sizeof(float), alignof(float));
     for (int b = 0; b < 3; ++b)
     {
         if (s->buffers[b].entries != nullptr)
@@ -167,6 +191,8 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     if (def == nullptr || spatializerOut == nullptr || def->cookie != SPATIALIZER_DEF_COOKIE ||
         def->sourceCapacity == 0 || def->sourceCapacity > MAX_SOURCES ||
         def->maxOcclusionSamples == 0 || def->maxOcclusionSamples > MAX_SAMPLES ||
+        def->maxSurfaces == 0 || def->maxSurfaces > MAX_SURFACES || def->materialCapacity == 0 ||
+        def->materialCapacity > MAX_MATERIALS ||
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) ||
         !maudIsAllocatorValid(&def->allocator))
     {
@@ -183,7 +209,10 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
         .capacity = def->sourceCapacity,
         .maxSamples = def->maxOcclusionSamples,
         .anyHit = def->anyHit,
+        .closestHit = def->closestHit,
         .rayContext = def->rayContext,
+        .maxSurfaces = def->maxSurfaces,
+        .materialCapacity = def->materialCapacity,
         .enqueueTask = def->enqueueTask,
         .finishTask = def->finishTask,
         .userTaskContext = def->userTaskContext,
@@ -193,10 +222,18 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     s->rays = maudAllocate(&def->allocator, ROUND * sizeof(maudRay), alignof(maudRay));
     s->occluded = maudAllocate(&def->allocator, ROUND, 1);
     s->offsets = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
+    s->materials =
+        maudAllocate(&def->allocator, (size_t)s->materialCapacity * sizeof(maudAcousticMaterial),
+                     alignof(maudAcousticMaterial));
+    s->hits = maudAllocate(&def->allocator, ROUND * sizeof(maudRayHit), alignof(maudRayHit));
+    s->walkers = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
+    s->walked = maudAllocate(&def->allocator, (size_t)s->capacity * sizeof(float), alignof(float));
     s->slots = maudAllocate(&def->allocator, SlotBytes(s->capacity), alignof(Slot));
     s->free = maudAllocate(&def->allocator, FreeBytes(s->capacity), alignof(uint32_t));
     bool all = s->slots != nullptr && s->free != nullptr && s->points != nullptr &&
-               s->rays != nullptr && s->occluded != nullptr && s->offsets != nullptr;
+               s->rays != nullptr && s->occluded != nullptr && s->offsets != nullptr &&
+               s->materials != nullptr && s->hits != nullptr && s->walkers != nullptr &&
+               s->walked != nullptr;
     for (int b = 0; b < 3; ++b)
     {
         s->buffers[b].entries =
@@ -269,6 +306,7 @@ maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* d
     slot->occlusion = def->occlusion;
     slot->radius = def->occlusionRadius;
     slot->samples = def->occlusionSamples;
+    slot->transmission = def->transmission;
     *sourceOut = (maudSourceId){index + 1, slot->generation};
     return maud_success;
 }
@@ -329,7 +367,14 @@ static void QueryBatches(uint32_t start, uint32_t end, void* context)
     {
         uint32_t first = b * BATCH;
         uint32_t count = s->roundRays - first < BATCH ? s->roundRays - first : BATCH;
-        s->anyHit(s->rays + first, count, s->occluded + first, s->rayContext);
+        if (s->closest)
+        {
+            s->closestHit(s->rays + first, count, s->hits + first, s->rayContext);
+        }
+        else
+        {
+            s->anyHit(s->rays + first, count, s->occluded + first, s->rayContext);
+        }
     }
 }
 
@@ -367,6 +412,7 @@ static void Occlude(maudSpatializer* s, const maudPose* listener, Entry* entries
     {
         uint32_t first = next;
         s->roundRays = 0;
+        s->closest = false;
         for (; next < s->capacity; ++next)
         {
             const Slot* slot = &s->slots[next];
@@ -396,6 +442,108 @@ static void Occlude(maudSpatializer* s, const maudPose* listener, Entry* entries
     }
 }
 
+// One surface of every walking source's path, in rounds of ROUND
+// sources; the walkers still going stay listed in order.
+static void Cross(maudSpatializer* s, const maudPose* listener, Entry* entries, uint32_t* walking)
+{
+    uint32_t kept = 0;
+    for (uint32_t first = 0; first < *walking; first += ROUND)
+    {
+        uint32_t count = *walking - first < ROUND ? *walking - first : ROUND;
+        for (uint32_t k = 0; k < count; ++k)
+        {
+            uint32_t i = s->walkers[first + k];
+            s->rays[k] = maudPathRay(listener, &s->slots[i].pose, s->walked[i]);
+        }
+        s->roundRays = count;
+        s->closest = true;
+        Query(s);
+        for (uint32_t k = 0; k < count; ++k)
+        {
+            uint32_t i = s->walkers[first + k];
+            maudDirectResult* r = &entries[i].result;
+            if (maudCrossSurface(&s->hits[k], &s->rays[k], s->materials, s->materialCount,
+                                 r->transmission, &s->walked[i]))
+            {
+                r->surfaces += 1;
+                s->walkers[kept++] = i;
+            }
+        }
+    }
+    *walking = kept;
+}
+
+// The transmission of every occluded source: walked surface by surface
+// where the source asks and the host answers closest hits, otherwise 0.
+static void Transmit(maudSpatializer* s, const maudPose* listener, Entry* entries)
+{
+    uint32_t walking = 0;
+    for (uint32_t i = 0; i < s->capacity; ++i)
+    {
+        const Slot* slot = &s->slots[i];
+        maudDirectResult* r = &entries[i].result;
+        if (!slot->live || r->occlusion == 0.0f)
+        {
+            continue;
+        }
+        if (slot->transmission && s->closestHit != nullptr)
+        {
+            s->walkers[walking++] = i;
+            s->walked[i] = 0.0f;
+            continue;
+        }
+        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            r->transmission[b] = 0.0f;
+        }
+    }
+    for (uint32_t surface = 0; surface < s->maxSurfaces && walking > 0; ++surface)
+    {
+        Cross(s, listener, entries, &walking);
+    }
+}
+
+static bool Unit(float v)
+{
+    return v >= 0.0f && v <= 1.0f;
+}
+
+static bool MaterialValid(const maudAcousticMaterial* m)
+{
+    bool valid = Unit(m->scattering);
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        valid = valid && Unit(m->absorption[b]) && Unit(m->transmission[b]);
+    }
+    return valid;
+}
+
+maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMaterial* materials,
+                            uint32_t count)
+{
+    if (spatializer == nullptr || (count > 0 && materials == nullptr))
+    {
+        return maud_errorInvalid;
+    }
+    if (count > spatializer->materialCapacity)
+    {
+        return maud_errorCapacity;
+    }
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        if (!MaterialValid(&materials[i]))
+        {
+            return maud_errorInvalid;
+        }
+    }
+    if (count > 0)
+    {
+        memcpy(spatializer->materials, materials, (size_t)count * sizeof(maudAcousticMaterial));
+    }
+    spatializer->materialCount = count;
+    return maud_success;
+}
+
 maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* listener)
 {
     if (spatializer == nullptr || listener == nullptr || !maudPoseValid(listener))
@@ -416,6 +564,7 @@ maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* list
         maudDirectGeometry(listener, &slot->pose, &slot->directivity, &entry->result);
     }
     Occlude(spatializer, listener, buffer->entries);
+    Transmit(spatializer, listener, buffer->entries);
     buffer->step = ++spatializer->steps;
     // Publish: the written buffer waits, marked newer; the one that was
     // waiting becomes the next to write.

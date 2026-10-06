@@ -19,6 +19,7 @@
 #include "maul-audio/base.h"
 #include "maul-audio/direct.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -76,6 +77,34 @@ extern "C"
     typedef void maudAnyHitFn(const maudRay* rays, uint32_t count, uint8_t* occluded,
                               void* context);
 
+    // A surface's acoustic properties per band, each 0 to 1.
+    typedef struct maudAcousticMaterial
+    {
+        // The share of energy a reflection off the surface absorbs.
+        float absorption[MAUD_DIRECT_BANDS];
+        // The share of a reflection scattered rather than mirrored.
+        float scattering;
+        // The share of amplitude a crossing of the surface lets through. A
+        // closed wall has two surfaces, and its material each one's share.
+        float transmission[MAUD_DIRECT_BANDS];
+    } maudAcousticMaterial;
+
+    // What a closest-hit query found on a ray: the distance to the
+    // nearest hit within the ray's distances (any value outside them,
+    // INFINITY for instance, for none), the surface's normal and its
+    // material's index in the spatializer's table.
+    typedef struct maudRayHit
+    {
+        float distance;
+        maudVector3 normal;
+        uint32_t material;
+    } maudRayHit;
+
+    // Finds each of count rays' nearest hit, writing hits[i]; as
+    // maudAnyHitFn, an answer depends only on the ray and the geometry.
+    typedef void maudClosestHitFn(const maudRay* rays, uint32_t count, maudRayHit* hits,
+                                  void* context);
+
     // The task hooks: enqueueTask has the host run task over [0,
     // itemCount) in ranges of at least minRange items, each exactly once,
     // on any threads in any order, and returns a handle that finishTask
@@ -97,7 +126,14 @@ extern "C"
         uint32_t maxOcclusionSamples;
         // The host's any-hit query; NULL leaves every path clear.
         maudAnyHitFn* anyHit;
+        // The host's closest-hit query; NULL lets every occluded path
+        // pass nothing.
+        maudClosestHitFn* closestHit;
         void* rayContext;
+        // The most surfaces a transmission path counts, 1 to 16.
+        uint32_t maxSurfaces;
+        // The material table's capacity, 1 to 65,536.
+        uint32_t materialCapacity;
         // The task hooks; both NULL runs queries on the step's thread.
         maudEnqueueTaskFn* enqueueTask;
         maudFinishTaskFn* finishTask;
@@ -117,6 +153,9 @@ extern "C"
         // 0, and its points, 1 to the spatializer's maxOcclusionSamples.
         float occlusionRadius;
         uint32_t occlusionSamples;
+        // Whether an occluded path's transmission is walked through the
+        // closest-hit query.
+        bool transmission;
     } maudSourceDef;
 
     // What a step found for a source.
@@ -131,12 +170,18 @@ extern "C"
         float directivity[MAUD_DIRECT_BANDS];
         // How much of the source the path's obstacles hide, 0 to 1.
         float occlusion;
-        // What passes through them, per band.
+        // What passes through them, per band: the product of the crossed
+        // surfaces' transmission. 1 for a clear path; 0 for an occluded
+        // one without a walk.
         float transmission[MAUD_DIRECT_BANDS];
+        // The surfaces the walk crossed; the spatializer's maxSurfaces
+        // when the limit stopped it, more surfaces perhaps uncounted.
+        uint32_t surfaces;
     } maudDirectResult;
 
     /// Returns the default spatializer def: 256 sources, up to 64
-    /// occlusion points each, no ray query, no task hooks.
+    /// occlusion points each, transmission paths of up to 4 surfaces, 64
+    /// materials, no ray queries, no task hooks.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -144,7 +189,8 @@ extern "C"
     MAUD_API maudSpatializerDef maudDefaultSpatializerDef(void);
 
     /// Returns the default source def: omnidirectional, occlusion by one
-    /// ray, and for volumetric occlusion a sphere of 1 m with 32 points.
+    /// ray (for volumetric occlusion a sphere of 1 m with 32 points),
+    /// transmission walked.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -222,9 +268,11 @@ extern "C"
                                                          maudSourceId source, const maudPose* pose);
 
     /// Runs a direct step for a listener and publishes its results. Its
-    /// occlusion rays go to the any-hit query in a fixed order and in
-    /// batches of at most 64, through the task hooks if set; no result
-    /// depends on how the tasks split the work.
+    /// occlusion rays go to the any-hit query, and then the transmission
+    /// walks of the sources it found occluded to the closest-hit query, a
+    /// surface at a time, in a fixed order and in batches of at most 64,
+    /// through the task hooks if set; no result depends on how the tasks
+    /// split the work.
     ///
     /// @param spatializer  The spatializer.
     /// @param listener     The listener's pose.
@@ -235,6 +283,22 @@ extern "C"
     /// a time.
     MAUD_NODISCARD MAUD_API maudResult maudSimulateDirect(maudSpatializer* spatializer,
                                                           const maudPose* listener);
+
+    /// Replaces the material table that hits' indices name. A hit on a
+    /// material outside it lets nothing through.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param materials    count materials; NULL if count is 0.
+    /// @param count        Up to the def's materialCapacity.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a
+    ///         value outside 0 to 1; `maud_errorCapacity` for more than the
+    ///         capacity. Nothing changes on failure.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSetMaterials(maudSpatializer* spatializer,
+                                                        const maudAcousticMaterial* materials,
+                                                        uint32_t count);
 
     /// Latches the newest published step for the rendering side; until
     /// the next latch, results come from it.

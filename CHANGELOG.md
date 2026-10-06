@@ -301,6 +301,12 @@ format.
   source sees the share the listener does not), queried in batches of
   at most 64 through the task hooks if set, with results that do not
   depend on how the tasks split the work.
+  Transmission through the host's closest-hit query
+  (`maudClosestHitFn`) and a material table (`maudSetMaterials`):
+  occluded paths are walked surface by surface from the listener, each
+  crossed surface multiplying its material's transmission per band, up
+  to a limit the results report reaching; an occluded path without a
+  walk passes nothing.
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.

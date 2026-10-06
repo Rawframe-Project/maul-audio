@@ -62,7 +62,7 @@ pipewire_stream: clock context context_core period pipewire_core thread xrun
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
-spatializer: allocator direct_step occlusion
+spatializer: allocator direct_step occlusion transmission
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics
 spherical_harmonics:
@@ -70,6 +70,7 @@ stream: backend clock context context_core duplex follow period stream_open thre
 sample_convert:
 stream_open: backend clock context context_core follow period voice
 thread:
+transmission:
 vad_core: voice_dsp
 voice: context_core
 voice_detector: allocator vad_core voice_dsp
