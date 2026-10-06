@@ -5,7 +5,8 @@
 // response in blocks of 64 match direct convolution delayed by one block
 // (within 1e-5 of the largest output, measured 6e-7), fed in uneven
 // chunks; an impulse comes out exactly one block late; a new response
-// takes over within a block, after which the output is the new
+// takes over across one block, faded linearly from the old one's
+// convolution to its own, after which the output is the new
 // response's convolution of all the input, history included; without a
 // response the output is silent, and a reset forgets the input.
 
@@ -145,6 +146,24 @@ static void TestSwap(void)
         finite = finite && isfinite(s_y[0][n]) && fabs((double)s_y[0][n]) < 4.0 * largest;
     }
     CHECK(finite, "a bounded crossfade");
+    // The block the swap happens in (output frames 2048 to 2112, the
+    // first block boundary after frame 2000) fades linearly from the old
+    // response's convolution to the new one's.
+    double fade = 0.0;
+    for (uint32_t i = 0; i < BLOCK; ++i)
+    {
+        uint32_t n = 2048 + i;
+        double old = 0.0;
+        double now = 0.0;
+        for (uint32_t j = 0; j < LENGTH && j + BLOCK <= n; ++j)
+        {
+            old += (double)s_h[0][0][j] * (double)s_x[n - BLOCK - j];
+            now += (double)s_h[1][0][j] * (double)s_x[n - BLOCK - j];
+        }
+        double w = ((double)i + 0.5) / BLOCK;
+        fade = fmax(fade, fabs(old + w * (now - old) - (double)s_y[0][n]));
+    }
+    CHECK(fade < 1e-5 * largest, "a linear crossfade over the swap's block");
     maudSetPartitionedResponse(p, nullptr);
     memset(s_y, 0, sizeof(s_y));
     Feed(p, 0, 4 * BLOCK);
