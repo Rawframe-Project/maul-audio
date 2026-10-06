@@ -213,6 +213,68 @@ static void TestNoClick(void)
     maudDestroyDirectEffect(effect);
 }
 
+// Runs calls of 480 frames of the noise in s_impulse's place through an
+// effect, the last call's output in out.
+static void Run(maudDirectEffect* effect, const maudDirectParams* params, int calls, float* out)
+{
+    static float noise[480];
+    uint32_t seed = 17;
+    for (int c = 0; c < calls; ++c)
+    {
+        for (int n = 0; n < 480; ++n)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            noise[n] = (float)(int32_t)(seed >> 8) / 8388608.0f - 1.0f;
+        }
+        CHECK(maudProcessDirect(effect, params, noise, out, 480) == maud_success, "process");
+    }
+}
+
+// A source moving from 20 m to 25 m (its high band some 1.3 dB lower) is
+// refitted: once settled, it sounds as an effect that began at 25 m.
+// After a stretch of flat bands, what an effect heard before it no
+// longer matters.
+static void TestHistory(void)
+{
+    maudDirectParams near = maudDefaultDirectParams();
+    near.distance = 20.0f;
+    maudDirectParams far = near;
+    far.distance = 25.0f;
+    maudDirectEffect* moved = Create();
+    maudDirectEffect* fresh = Create();
+    float a[480];
+    float b[480];
+    Run(moved, &near, 10, a);
+    Run(moved, &far, 40, a);
+    Run(fresh, &far, 40, b);
+    float apart = 0.0f;
+    for (int n = 0; n < 480; ++n)
+    {
+        apart = fmaxf(apart, fabsf(a[n] - b[n]));
+    }
+    printf("moved against fresh: %.2e\n", (double)apart);
+    CHECK(apart < 1e-4f, "a small move is refitted");
+    maudDirectParams wall = maudDefaultDirectParams();
+    wall.occlusion = 1.0f;
+    wall.transmission[0] = 0.5f;
+    wall.transmission[1] = 0.1f;
+    wall.transmission[2] = 0.02f;
+    maudDirectParams clear = maudDefaultDirectParams();
+    maudDirectEffect* walled = Create();
+    maudDirectEffect* open = Create();
+    Run(walled, &wall, 5, a);
+    Run(open, &clear, 5, b);
+    Run(walled, &clear, 3, a);
+    Run(open, &clear, 3, b);
+    Run(walled, &wall, 1, a);
+    Run(open, &wall, 1, b);
+    CHECK(memcmp(a, b, sizeof(a)) == 0, "a flat stretch forgets what came before");
+    maudDestroyDirectEffect(moved);
+    maudDestroyDirectEffect(fresh);
+    maudDestroyDirectEffect(walled);
+    maudDestroyDirectEffect(open);
+}
+
 static void TestAir(void)
 {
     float air[3];
@@ -298,6 +360,7 @@ int main(void)
     TestPassThrough();
     TestBands();
     TestNoClick();
+    TestHistory();
     TestAir();
     TestDirectivity();
     TestMisuse();
