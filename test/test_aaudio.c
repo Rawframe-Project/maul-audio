@@ -10,6 +10,10 @@
 // MAUD_REQUIRE_CAPTURE set it must run. Where AAudio cannot open a
 // stream at all the test skips, unless MAUD_REQUIRE_AAUDIO is set.
 
+// The emulator's virtual output, starved of the host's time, builds a
+// backlog of up to a few seconds that stays once built: a latency that
+// long is true there, and the clock still steady.
+#define TEST_CLOCK_MAX_LATENCY 5000000000
 #include "test_clock.h"
 #include "test_harness.h"
 

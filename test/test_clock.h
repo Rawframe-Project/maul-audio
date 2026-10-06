@@ -11,8 +11,14 @@
 
 #include <stdio.h>
 
+// The most latency a sound clock reports, in nanoseconds; a test may set
+// it before including this header.
+#ifndef TEST_CLOCK_MAX_LATENCY
+#define TEST_CLOCK_MAX_LATENCY 2000000000
+#endif
+
 // Whether two clock reads a while apart, the later at host time now, are
-// sound: stamped, with a latency of at most two seconds, above 0 where
+// sound: stamped, with a latency of at most TEST_CLOCK_MAX_LATENCY, above 0 where
 // the route is known to buffer (0 is honest where nothing stands
 // between an output and a virtual device), the
 // later one's time where its direction puts it (ahead of now for
@@ -26,7 +32,7 @@ static inline bool ClockIsSound(const maudStreamClock* first, const maudStreamCl
     int64_t latency = second->latencyNanoseconds;
     bool stamped = first->hostNanoseconds != 0 && second->hostNanoseconds != 0 &&
                    second->position > first->position;
-    bool sane = latency >= (buffered ? 1 : 0) && latency <= 2000000000;
+    bool sane = latency >= (buffered ? 1 : 0) && latency <= TEST_CLOCK_MAX_LATENCY;
     int64_t host = second->hostNanoseconds;
     bool placed = output ? host >= now - late && host <= now + latency
                          : host >= now - latency - late && host <= now;
