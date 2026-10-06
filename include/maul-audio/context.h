@@ -67,6 +67,16 @@ extern "C"
         // The rate the offline backend's device runs at, in frames per
         // second, from 8,000 to 384,000.
         uint32_t offlineSampleRate;
+        // On Android, the application's JavaVM* and a jobject naming an
+        // android.content.Context, with the java/maul/audio classes
+        // compiled into the application: the context then lists every
+        // device, follows their changes and asks for the microphone once
+        // where the Context is an Activity. NULL both, the default: only
+        // the default output and input. The context keeps a reference of
+        // its own to the Context. One without the other is invalid.
+        // Unused elsewhere.
+        void* androidJavaVm;
+        void* androidContext;
     } maudContextDef;
 
     /// Returns the default context def: 8 streams, periods of at most

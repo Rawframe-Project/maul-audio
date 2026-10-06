@@ -2,20 +2,27 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The AAudio backend's context and devices, on Android 11 (API 30) and
-// later. AAudio lists no devices and reports no changes to them: the
-// context has one output and one input, the platform's defaults, which
-// streams follow as Android moves them. The output's rate and channels
-// are those of an AAudio stream opened on it once, at the start; the
-// input is described from the output, since opening one would show the
-// microphone in use.
+// later. AAudio lists no devices and reports no changes to them, and
+// Android has no query for the device media goes to: its policy routes
+// a stream opened without one. So the context always has a default
+// output and input, keyed "default", which streams on the null id follow
+// wherever Android moves them. The output's rate and channels are those
+// of an AAudio stream opened on it once, at the start; the input is
+// described from the output, since opening one would show the
+// microphone in use. Given a Java VM and an Android Context, the Java
+// half (aaudio_java.c) lists every user-facing device beside the
+// defaults, for streams that pin one, and raises a flag when they
+// change, on which the drain lists them again.
 
 #include "aaudio_core.h"
+#include "aaudio_java.h"
 #include "aaudio_stream.h"
 #include "backend.h"
 #include "context.h"
 #include "device.h"
 #include "layout.h"
 
+#include <stdio.h>
 #include <string.h>
 
 // The rate a device is taken to run at when the probe cannot tell.
@@ -48,68 +55,233 @@ static bool Probe(uint32_t* rate, uint32_t* channels)
     return true;
 }
 
-// Adds the default device of a direction, the default of both roles.
-static maudResult AddDefault(maudContext* context, maudDirection direction, uint32_t rate,
-                             maudChannelLayout layout)
+// What an AudioDeviceInfo type is: its form, and the name a built-in
+// device takes (others take their product name). Types not here are
+// internal endpoints (telephony, tuners, the remote submix, buses, the
+// echo reference) and are not listed.
+typedef struct Kind
+{
+    int32_t type;
+    maudDeviceForm form;
+    const char* builtIn;
+} Kind;
+
+static const Kind s_kinds[] = {
+    {1, maud_formHandset, "Earpiece"},       // TYPE_BUILTIN_EARPIECE
+    {2, maud_formSpeakers, "Speaker"},       // TYPE_BUILTIN_SPEAKER
+    {3, maud_formHeadset, nullptr},          // TYPE_WIRED_HEADSET
+    {4, maud_formHeadphones, nullptr},       // TYPE_WIRED_HEADPHONES
+    {5, maud_formLine, nullptr},             // TYPE_LINE_ANALOG
+    {6, maud_formDigital, nullptr},          // TYPE_LINE_DIGITAL
+    {7, maud_formHeadset, nullptr},          // TYPE_BLUETOOTH_SCO
+    {8, maud_formHeadphones, nullptr},       // TYPE_BLUETOOTH_A2DP
+    {9, maud_formDigital, nullptr},          // TYPE_HDMI
+    {10, maud_formDigital, nullptr},         // TYPE_HDMI_ARC
+    {11, maud_formUnknown, nullptr},         // TYPE_USB_DEVICE
+    {12, maud_formUnknown, nullptr},         // TYPE_USB_ACCESSORY
+    {13, maud_formUnknown, nullptr},         // TYPE_DOCK
+    {15, maud_formMicrophone, "Microphone"}, // TYPE_BUILTIN_MIC
+    {19, maud_formLine, nullptr},            // TYPE_AUX_LINE
+    {22, maud_formHeadset, nullptr},         // TYPE_USB_HEADSET
+    {23, maud_formHeadphones, nullptr},      // TYPE_HEARING_AID
+    {26, maud_formHeadset, nullptr},         // TYPE_BLE_HEADSET
+    {27, maud_formSpeakers, nullptr},        // TYPE_BLE_SPEAKER
+    {29, maud_formDigital, nullptr},         // TYPE_HDMI_EARC
+};
+
+static const Kind* KindOf(int32_t type)
+{
+    for (size_t i = 0; i < sizeof(s_kinds) / sizeof(s_kinds[0]); ++i)
+    {
+        if (s_kinds[i].type == type)
+        {
+            return &s_kinds[i];
+        }
+    }
+    return nullptr;
+}
+
+// Adds a device to the scan; false when the context's device limit is
+// reached.
+static bool Add(maudAaudio* aaudio, maudDirection direction, int32_t id, maudDeviceInfo info)
+{
+    maudContext* context = aaudio->context;
+    if (aaudio->endpointCount >= context->def.limits.devices)
+    {
+        return false;
+    }
+    maudAaudioEndpoint* endpoint = &aaudio->endpoints[aaudio->endpointCount];
+    info.direction = direction;
+    endpoint->direction = direction;
+    endpoint->id = id;
+    aaudio->specs[aaudio->endpointCount] = (maudDeviceSpec){
+        .info = info,
+        .name = endpoint->name,
+        .nameLength = maudCutUtf8(endpoint->name, context->def.limits.deviceTextBytes),
+        .key = endpoint->key,
+        .keyLength = strlen(endpoint->key),
+    };
+    aaudio->endpointCount++;
+    return true;
+}
+
+static void AddDefault(maudAaudio* aaudio, maudDirection direction)
 {
     bool output = direction == maud_directionOutput;
-    const char* name = output ? "Default output" : "Default input";
-    maudDeviceSpec spec = {
-        .info =
-            {
-                .direction = direction,
-                .nativeLayout = layout,
-                .nativeSampleRate = rate,
-                .minSampleRate = rate,
-                .maxSampleRate = rate,
-            },
-        .name = name,
-        .nameLength = maudCutUtf8(name, context->def.limits.deviceTextBytes),
-        .key = "default",
-        .keyLength = 7,
-    };
-    maudDeviceId device;
-    return maudAddDevice(context, &spec, &device);
+    uint32_t count = aaudio->endpointCount;
+    if (count >= aaudio->context->def.limits.devices)
+    {
+        return;
+    }
+    maudAaudioEndpoint* endpoint = &aaudio->endpoints[count];
+    snprintf(endpoint->key, sizeof(endpoint->key), "default");
+    snprintf(endpoint->name, sizeof(endpoint->name), "%s",
+             output ? "Default output" : "Default input");
+    // The microphone, mono until a stream asks for more; AAudio converts.
+    bool added =
+        Add(aaudio, direction, 0,
+            (maudDeviceInfo){
+                .nativeLayout = output ? maudLayoutWithChannels(aaudio->channels) : maud_layoutMono,
+                .nativeSampleRate = aaudio->rate,
+                .minSampleRate = aaudio->rate,
+                .maxSampleRate = aaudio->rate,
+            });
+    (void)added;
+}
+
+// Adds one device Java listed, keyed by its type and address (its
+// product name when it has none).
+static void Listed(maudAaudio* aaudio, maudDirection direction, const maudAaudioListing* listing)
+{
+    const Kind* kind = KindOf(listing->type);
+    uint32_t count = aaudio->endpointCount;
+    if (kind == nullptr || count >= aaudio->context->def.limits.devices)
+    {
+        return;
+    }
+    maudAaudioEndpoint* endpoint = &aaudio->endpoints[count];
+    const char* where = listing->address[0] != '\0' ? listing->address : listing->product;
+    snprintf(endpoint->key, sizeof(endpoint->key), "%d:%s", (int)listing->type, where);
+    const char* name = kind->builtIn != nullptr ? kind->builtIn : listing->product;
+    snprintf(endpoint->name, sizeof(endpoint->name), "%s", name[0] != '\0' ? name : "Device");
+    uint32_t low = listing->lowRate > 0 ? (uint32_t)listing->lowRate : aaudio->rate;
+    uint32_t high = listing->highRate > 0 ? (uint32_t)listing->highRate : aaudio->rate;
+    uint32_t native = aaudio->rate < low ? low : aaudio->rate > high ? high : aaudio->rate;
+    uint32_t channels = listing->channels > 0               ? (uint32_t)listing->channels
+                        : direction == maud_directionOutput ? aaudio->channels
+                                                            : 1u;
+    bool added = Add(aaudio, direction, listing->id,
+                     (maudDeviceInfo){
+                         .nativeLayout = maudLayoutWithChannels(channels),
+                         .nativeSampleRate = native,
+                         .minSampleRate = low,
+                         .maxSampleRate = high,
+                         .form = kind->form,
+                     });
+    (void)added;
+}
+
+// Points both roles of a direction at its default device.
+static void PointDefaults(maudContext* context, maudDirection direction)
+{
+    maudDeviceId id = maudFindDeviceByKey(context, direction, "default", 7);
+    maudSetDefaultDevice(context, maud_roleGeneral, id);
+    maudSetDefaultDevice(context, maud_roleCommunications, id);
+}
+
+static maudResult Rescan(maudAaudio* aaudio)
+{
+    aaudio->endpointCount = 0;
+    AddDefault(aaudio, maud_directionOutput);
+    AddDefault(aaudio, maud_directionInput);
+    if (aaudio->hasJava)
+    {
+        maudAaudioListJava(aaudio, maud_directionOutput, Listed);
+        maudAaudioListJava(aaudio, maud_directionInput, Listed);
+    }
+    maudResult result =
+        maudSyncDevices(aaudio->context, aaudio->specs, aaudio->endpointCount, nullptr);
+    PointDefaults(aaudio->context, maud_directionOutput);
+    PointDefaults(aaudio->context, maud_directionInput);
+    return result;
+}
+
+static void Release(maudContext* context, maudAaudio* aaudio)
+{
+    if (aaudio->hasJava)
+    {
+        maudAaudioCloseJava(aaudio);
+    }
+    maudContextRelease(context, aaudio, aaudio->bytes, alignof(maudAaudio));
+    context->native = nullptr;
+}
+
+// Carves the context's block: the state, then the streams, the specs
+// and the endpoints.
+static maudAaudio* Allocate(maudContext* context)
+{
+    uint32_t streams = context->def.limits.streams;
+    uint32_t devices = context->def.limits.devices;
+    size_t bytes = sizeof(maudAaudio) + (size_t)streams * sizeof(maudAaudioStream) +
+                   (size_t)devices * (sizeof(maudDeviceSpec) + sizeof(maudAaudioEndpoint));
+    maudAaudio* aaudio = maudContextAllocate(context, bytes, alignof(maudAaudio));
+    if (aaudio == nullptr)
+    {
+        return nullptr;
+    }
+    *aaudio = (maudAaudio){.context = context, .bytes = bytes};
+    aaudio->streams = (maudAaudioStream*)(aaudio + 1);
+    aaudio->specs = (maudDeviceSpec*)(aaudio->streams + streams);
+    aaudio->endpoints = (maudAaudioEndpoint*)(aaudio->specs + devices);
+    memset(aaudio->streams, 0, (size_t)streams * sizeof(maudAaudioStream));
+    atomic_init(&aaudio->changed, false);
+    return aaudio;
 }
 
 static maudResult OpenContext(maudContext* context)
 {
-    uint32_t streams = context->def.limits.streams;
-    size_t bytes = sizeof(maudAaudio) + (size_t)streams * sizeof(maudAaudioStream);
-    maudAaudio* aaudio = maudContextAllocate(context, bytes, alignof(maudAaudio));
+    maudAaudio* aaudio = Allocate(context);
     if (aaudio == nullptr)
     {
         return maud_errorCapacity;
     }
-    *aaudio = (maudAaudio){.context = context, .bytes = bytes};
-    aaudio->streams = (maudAaudioStream*)(aaudio + 1);
-    memset(aaudio->streams, 0, (size_t)streams * sizeof(maudAaudioStream));
     context->native = aaudio;
-    uint32_t rate = FALLBACK_RATE;
-    uint32_t channels = 2;
-    maudResult result = Probe(&rate, &channels) ? maud_success : maud_errorUnsupported;
-    if (result == maud_success)
+    aaudio->rate = FALLBACK_RATE;
+    aaudio->channels = 2;
+    maudResult result =
+        Probe(&aaudio->rate, &aaudio->channels) ? maud_success : maud_errorUnsupported;
+    // Handles that do not lead to the library's class are the platform
+    // failing the host: the class is not compiled in.
+    if (result == maud_success && context->def.androidJavaVm != nullptr &&
+        !maudAaudioOpenJava(aaudio, context->def.androidJavaVm, context->def.androidContext))
     {
-        result = AddDefault(context, maud_directionOutput, rate, maudLayoutWithChannels(channels));
+        result = maud_errorPlatform;
     }
-    // The microphone, mono until a stream asks for more; AAudio converts.
     if (result == maud_success)
     {
-        result = AddDefault(context, maud_directionInput, rate, maud_layoutMono);
+        result = Rescan(aaudio);
     }
     if (result != maud_success)
     {
-        maudContextRelease(context, aaudio, bytes, alignof(maudAaudio));
-        context->native = nullptr;
+        Release(context, aaudio);
     }
     return result;
 }
 
 static void CloseContext(maudContext* context)
 {
+    Release(context, context->native);
+}
+
+static void Pump(maudContext* context)
+{
     maudAaudio* aaudio = context->native;
-    maudContextRelease(context, aaudio, aaudio->bytes, alignof(maudAaudio));
-    context->native = nullptr;
+    if (atomic_exchange_explicit(&aaudio->changed, false, memory_order_acq_rel))
+    {
+        maudResult result = Rescan(aaudio);
+        (void)result;
+    }
+    maudAaudioResumeStreams(context);
 }
 
 // AAudio converts the rate in shared mode: a native stream takes the
@@ -140,7 +312,7 @@ static const maudBackend s_aaudio = {
     .kind = maud_backendAaudio,
     .openContext = OpenContext,
     .closeContext = CloseContext,
-    .pump = maudAaudioResumeStreams,
+    .pump = Pump,
     .openStream = OpenStream,
     .attachStream = maudAaudioAttachStream,
     .detachStream = maudAaudioDetachStream,

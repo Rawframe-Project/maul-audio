@@ -13,8 +13,11 @@
 #include "aaudio_stream.h"
 
 #include "aaudio_core.h"
+#include "aaudio_java.h"
 #include "clock.h"
 #include "context.h"
+#include "device.h"
+#include "follow.h"
 #include "period.h"
 #include "thread.h"
 #include "voice.h"
@@ -136,6 +139,25 @@ static void Describe(AAudioStreamBuilder* builder, const maudStreamCore* core)
     }
 }
 
+// The AAudio id of the device a stream is on: 0 for a default, which
+// Android routes; -1 when the device is not in the last scan.
+static int32_t DeviceIdOf(maudContext* context, const maudStreamCore* core)
+{
+    const maudDeviceSlot* device = maudFindDevice(context, core->binding.current);
+    const maudAaudio* aaudio = context->native;
+    for (uint32_t i = 0; device != nullptr && i < aaudio->endpointCount; ++i)
+    {
+        const maudAaudioEndpoint* endpoint = &aaudio->endpoints[i];
+        if (endpoint->direction == core->def.direction &&
+            strlen(endpoint->key) == device->key.length &&
+            memcmp(endpoint->key, device->key.bytes, device->key.length) == 0)
+        {
+            return endpoint->id;
+        }
+    }
+    return -1;
+}
+
 // Opens the stream's AAudio stream. An exclusive stream AAudio could
 // only share is refused.
 static maudResult Open(maudContext* context, maudStreamSlot* slot)
@@ -144,6 +166,11 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
     maudStreamCore* core = &slot->core;
     *entry = (maudAaudioStream){.core = core};
     atomic_init(&entry->lost, false);
+    int32_t device = DeviceIdOf(context, core);
+    if (device < 0)
+    {
+        return maud_errorPlatform;
+    }
     AAudioStreamBuilder* builder = nullptr;
     if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK)
     {
@@ -152,6 +179,7 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
     bool output = core->def.direction == maud_directionOutput;
     AAudioStreamBuilder_setDirection(builder,
                                      output ? AAUDIO_DIRECTION_OUTPUT : AAUDIO_DIRECTION_INPUT);
+    AAudioStreamBuilder_setDeviceId(builder, device != 0 ? device : AAUDIO_UNSPECIFIED);
     AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT);
     AAudioStreamBuilder_setSampleRate(builder, (int32_t)core->format.sampleRate);
     AAudioStreamBuilder_setChannelCount(builder, (int32_t)core->period.channelCount);
@@ -232,9 +260,28 @@ static bool Running(const maudStreamSlot* slot)
     return atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning;
 }
 
+// Whether an input stream waits for the microphone: the application
+// does not hold the permission, which Java says.
+static bool Unpermitted(maudContext* context, const maudStreamSlot* slot)
+{
+    maudAaudio* aaudio = context->native;
+    return slot->core.def.direction == maud_directionInput && aaudio->hasJava &&
+           !maudAaudioMayRecord(aaudio);
+}
+
+// An input stream without the permission waits with
+// maud_suspendPermission, after the library asks once; the drain opens
+// it when the permission comes.
 maudResult maudAaudioAttachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudResetVoice(&slot->core);
+    if (Unpermitted(context, slot))
+    {
+        *EntryOf(context, slot) = (maudAaudioStream){.core = &slot->core};
+        maudAaudioAskToRecord(context->native);
+        maudAwaitPermission(context, slot, true);
+        return maud_success;
+    }
     return Open(context, slot);
 }
 
@@ -251,7 +298,7 @@ void maudAaudioSetStreamActive(maudContext* context, maudStreamSlot* slot, bool 
         Stop(entry);
         return;
     }
-    if (entry->stream == nullptr)
+    if (entry->stream == nullptr && !slot->core.binding.awaitingPermission)
     {
         maudResult result = Open(context, slot);
         (void)result;
@@ -267,6 +314,15 @@ void maudAaudioResumeStreams(maudContext* context)
         maudAaudioStream* entry = EntryOf(context, slot);
         if (!slot->live)
         {
+            continue;
+        }
+        if (slot->core.binding.awaitingPermission)
+        {
+            // Granted, the stream opens as it resumes, if it runs.
+            if (!Unpermitted(context, slot))
+            {
+                maudAwaitPermission(context, slot, false);
+            }
             continue;
         }
         bool lost = entry->stream != nullptr &&

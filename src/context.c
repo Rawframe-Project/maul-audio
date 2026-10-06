@@ -36,6 +36,7 @@ static bool DefValid(const maudContextDef* def)
            def->limits.streams != 0 && def->limits.periodFrames != 0 && def->limits.devices != 0 &&
            def->limits.notifications >= 2 && def->limits.deviceTextBytes != 0 &&
            def->offlineSampleRate >= MIN_RATE && def->offlineSampleRate <= MAX_RATE &&
+           (def->androidJavaVm == nullptr) == (def->androidContext == nullptr) &&
            def->backend <= maud_backendWeb;
 }
 

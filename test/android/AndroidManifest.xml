@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A test application (tools/build_android_app.sh): the platform's
+     NativeActivity running the test's native library, with the
+     library's Java classes. The microphone permission is declared and
+     not granted at install: the test asks the runner to grant it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="@PACKAGE@">
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <application android:label="@LIBRARY@" android:hasCode="true">
+        <activity android:name="android.app.NativeActivity" android:exported="true">
+            <meta-data android:name="android.app.lib_name" android:value="@LIBRARY@" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

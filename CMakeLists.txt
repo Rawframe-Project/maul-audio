@@ -205,7 +205,7 @@ endif()
 
 # AAudio, on Android 11 (API 30) and later, through the NDK's library.
 if(MAUL_AUDIO_AAUDIO)
-    target_sources(maul-audio PRIVATE src/backend_aaudio.c src/aaudio_stream.c)
+    target_sources(maul-audio PRIVATE src/backend_aaudio.c src/aaudio_java.c src/aaudio_stream.c)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_AAUDIO=1)
     target_link_libraries(maul-audio PRIVATE aaudio)
 endif()
@@ -408,6 +408,31 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     if(MAUL_AUDIO_AAUDIO)
         maul_add_test(aaudio THREADS)
         set_tests_properties(aaudio PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
+    # The Java half, as an application in the emulator, built by
+    # tools/build_android_app.sh without Gradle and run by
+    # tools/run_android_app.sh.
+    if(MAUL_AUDIO_AAUDIO AND DEFINED ENV{ANDROID_HOME})
+        set(package maul.audio.tests.android_java)
+        add_library(test_android_java SHARED test/test_android_java.c)
+        target_link_libraries(test_android_java PRIVATE maul-audio android)
+        target_compile_definitions(test_android_java PRIVATE MAUD_TEST_PACKAGE="${package}")
+        maul_apply_flags(test_android_java)
+        file(GLOB_RECURSE MAUL_AUDIO_JAVA_SOURCES ${PROJECT_SOURCE_DIR}/java/*.java)
+        add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/test_android_java.apk
+            COMMAND ${CMAKE_COMMAND} -E env ANDROID_HOME=$ENV{ANDROID_HOME}
+                    ${PROJECT_SOURCE_DIR}/tools/build_android_app.sh
+                    ${PROJECT_BINARY_DIR}/test_android_java.apk
+                    $<TARGET_FILE:test_android_java> ${package} ${ANDROID_ABI}
+            DEPENDS test_android_java ${MAUL_AUDIO_JAVA_SOURCES}
+                    ${PROJECT_SOURCE_DIR}/test/android/AndroidManifest.xml
+                    ${PROJECT_SOURCE_DIR}/tools/build_android_app.sh
+            VERBATIM)
+        add_custom_target(test_android_java_apk ALL
+            DEPENDS ${PROJECT_BINARY_DIR}/test_android_java.apk)
+        add_test(NAME android_java COMMAND ${PROJECT_SOURCE_DIR}/tools/run_android_app.sh
+                 ${PROJECT_BINARY_DIR}/test_android_java.apk ${package})
+        set_tests_properties(android_java PROPERTIES TIMEOUT 240)
     endif()
     if(MAUL_AUDIO_COREAUDIO)
         maul_add_test(coreaudio THREADS)

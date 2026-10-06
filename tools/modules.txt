@@ -1,7 +1,8 @@
 # The internal module graph (docs/conventions.md, section 6): each module
 # and the modules it may use. tools/check_modules.py enforces it.
-aaudio_core: context_core
-aaudio_stream: aaudio_core clock context context_core period thread voice xrun
+aaudio_core: context_core device
+aaudio_java: aaudio_core
+aaudio_stream: aaudio_core aaudio_java clock context context_core device follow period thread voice xrun
 air_absorption: portable_math
 allocator:
 alsa_api:
@@ -13,7 +14,7 @@ alsa_watch:
 ambisonic_rotation:
 ambisonics: ambisonic_rotation spherical_harmonics
 backend: context_core
-backend_aaudio: aaudio_core aaudio_stream backend context device layout
+backend_aaudio: aaudio_core aaudio_java aaudio_stream backend context device layout
 backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
 backend_coreaudio: backend context coreaudio_core coreaudio_form coreaudio_stream device layout
 backend_offline: backend context_core device

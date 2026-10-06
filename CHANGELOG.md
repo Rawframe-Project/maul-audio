@@ -363,7 +363,15 @@ format.
   low-latency mode; exclusive streams where AAudio grants the device
   alone; host times from AAudio's timestamps and its xrun counts;
   voice streams through the voice-communication preset and usage.
-  Tests run in an API 30 emulator (`cmake/android-emulator.cmake`).
+  Given the application's Java VM and an Android Context
+  (`androidJavaVm`, `androidContext` in the context def) and with
+  `java/maul/audio` compiled in, the context also lists every
+  user-facing device with its form, for streams that pin one, follows
+  their changes, and holds an input stream with
+  `maud_suspendPermission` until the microphone is granted, asking for
+  it once where the Context is an Activity. Tests run in an API 30
+  emulator (`cmake/android-emulator.cmake`), the Java half's in an
+  application built without Gradle (`tools/build_android_app.sh`).
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.
