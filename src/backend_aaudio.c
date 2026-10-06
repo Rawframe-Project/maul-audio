@@ -20,6 +20,7 @@
 #include "backend.h"
 #include "context.h"
 #include "device.h"
+#include "focus.h"
 #include "layout.h"
 
 #include <stdio.h>
@@ -234,7 +235,8 @@ static maudAaudio* Allocate(maudContext* context)
     aaudio->specs = (maudDeviceSpec*)(aaudio->streams + streams);
     aaudio->endpoints = (maudAaudioEndpoint*)(aaudio->specs + devices);
     memset(aaudio->streams, 0, (size_t)streams * sizeof(maudAaudioStream));
-    atomic_init(&aaudio->changed, false);
+    atomic_init(&aaudio->signals.changed, false);
+    atomic_init(&aaudio->signals.focus, 0);
     return aaudio;
 }
 
@@ -273,15 +275,69 @@ static void CloseContext(maudContext* context)
     Release(context, context->native);
 }
 
+// AudioManager's focus changes, as states.
+#define FOCUS_GAIN                    1
+#define FOCUS_LOSS                    (-1)
+#define FOCUS_LOSS_TRANSIENT          (-2)
+#define FOCUS_LOSS_TRANSIENT_CAN_DUCK (-3)
+
 static void Pump(maudContext* context)
 {
     maudAaudio* aaudio = context->native;
-    if (atomic_exchange_explicit(&aaudio->changed, false, memory_order_acq_rel))
+    if (atomic_exchange_explicit(&aaudio->signals.changed, false, memory_order_acq_rel))
     {
         maudResult result = Rescan(aaudio);
         (void)result;
     }
+    int change = atomic_exchange_explicit(&aaudio->signals.focus, 0, memory_order_acq_rel);
+    if (change == FOCUS_GAIN)
+    {
+        maudReportFocus(context, maud_focusHeld);
+    }
+    else if (change == FOCUS_LOSS)
+    {
+        maudReportFocus(context, maud_focusLost);
+    }
+    else if (change == FOCUS_LOSS_TRANSIENT)
+    {
+        maudReportFocus(context, maud_focusPaused);
+    }
+    else if (change == FOCUS_LOSS_TRANSIENT_CAN_DUCK)
+    {
+        maudReportFocus(context, maud_focusDucked);
+    }
     maudAaudioResumeStreams(context);
+}
+
+// AudioManager's request results.
+#define FOCUS_REFUSED 0
+#define FOCUS_GRANTED 1
+
+// A request granted holds focus at once; one delayed holds it when the
+// gain arrives; a release holds none. A focus change the listener stored
+// before the request is stale and dropped.
+static maudResult RequestFocus(maudContext* context, maudFocusRequest request, maudDeviceRole role)
+{
+    maudAaudio* aaudio = context->native;
+    if (!aaudio->hasJava)
+    {
+        return maud_errorUnsupported;
+    }
+    int32_t result = maudAaudioRequestFocusJava(aaudio, request, role == maud_roleCommunications);
+    atomic_store_explicit(&aaudio->signals.focus, 0, memory_order_release);
+    if (result == FOCUS_REFUSED)
+    {
+        return maud_errorPlatform;
+    }
+    if (request == maud_focusRelease)
+    {
+        maudReportFocus(context, maud_focusNone);
+    }
+    else if (result == FOCUS_GRANTED)
+    {
+        maudReportFocus(context, maud_focusHeld);
+    }
+    return maud_success;
 }
 
 // AAudio converts the rate in shared mode: a native stream takes the
@@ -318,6 +374,7 @@ static const maudBackend s_aaudio = {
     .detachStream = maudAaudioDetachStream,
     .setStreamActive = maudAaudioSetStreamActive,
     .exclusive = true,
+    .requestFocus = RequestFocus,
 };
 
 const maudBackend* maudGetAaudioBackend(void)

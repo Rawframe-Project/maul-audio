@@ -83,6 +83,7 @@ set(MAUL_AUDIO_DEVICE_SOURCES
     src/context.c
     src/device.c
     src/duplex.c
+    src/focus.c
     src/follow.c
     src/form.c
     src/gain_control.c
@@ -495,7 +496,7 @@ if(MAUL_AUDIO_INSTALL)
     # The public headers of the parts configured.
     set(MAUL_PUBLIC_HEADERS base.h buffer.h layout.h)
     if(MAUL_AUDIO_DEVICE)
-        list(APPEND MAUL_PUBLIC_HEADERS context.h device.h notification.h offline.h stream.h
+        list(APPEND MAUL_PUBLIC_HEADERS context.h device.h focus.h notification.h offline.h stream.h
              voice.h)
     endif()
     if(MAUL_AUDIO_SPATIAL)

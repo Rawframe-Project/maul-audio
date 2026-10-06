@@ -24,8 +24,10 @@ typedef struct maudAaudioListing
 } maudAaudioListing;
 
 // Loads the Devices class through the Context's class loader, registers
-// its native method and makes the object, which raises aaudio->changed
-// whenever Android's devices change. false when any of it fails.
+// its native methods and makes the object, which raises
+// aaudio->signals.changed whenever Android's devices change and stores
+// each focus change in aaudio->signals.focus. false when any of it
+// fails.
 bool maudAaudioOpenJava(maudAaudio* aaudio, void* vm, void* context);
 
 // Closes the object and drops the references.
@@ -42,5 +44,10 @@ bool maudAaudioMayRecord(maudAaudio* aaudio);
 
 // Asks for the microphone, once, where the Context is an Activity.
 void maudAaudioAskToRecord(maudAaudio* aaudio);
+
+// Asks for audio focus (1 lasting, 2 brief, 3 brief and mixed) or gives
+// it back (0), for a call or for media: AudioManager's result, 0
+// refused, 1 granted, 2 delayed; 0 when Java cannot answer.
+int32_t maudAaudioRequestFocusJava(maudAaudio* aaudio, int32_t kind, bool call);
 
 #endif // MAUL_AUDIO_SRC_AAUDIO_JAVA_H

@@ -357,6 +357,12 @@ format.
   16-bit WAV references in `data/golden`, and the benchmarks' rows
   printed beside a recorded baseline (`bench/baseline.txt`), with rows
   for the reflections' simulation and convolution.
+- Audio focus (`maudRequestFocus`, `maudGetContextFocus`,
+  `maud_notifyFocusChanged`): the host asks for focus for good, for a
+  moment, or for a moment over others, for media or a call, and reads
+  the state that follows (held, lost, paused, ducked); the library
+  never pauses or ducks streams itself. On Android with the Java half;
+  unsupported elsewhere for now.
 - The AAudio backend, on Android 11 (API 30) and later: the platform's
   default output and input, which streams follow as Android moves
   them; float streams at the device's rate or one AAudio converts to;

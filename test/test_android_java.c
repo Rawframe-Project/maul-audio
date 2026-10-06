@@ -8,17 +8,21 @@
 // emulator's internal endpoints out; a stream pinned to the speaker
 // plays; an input stream waits for the microphone permission, which the
 // library asks for, and leaves the wait when the runner grants it; one
-// handle without the other is refused. The test runs on a thread of its
-// own, which the library attaches to the VM only while it calls Java.
+// handle without the other is refused; audio focus is held when asked
+// for, follows what another request (the test's own, through AudioManager)
+// does to it, and is released. The test runs on a thread of its own,
+// which the library attaches to the VM only while it calls Java.
 
 #include "test_harness.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
+#include "maul-audio/focus.h"
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
 #include <android/native_activity.h>
+#include <jni.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -160,6 +164,102 @@ static void TestPermission(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed");
 }
 
+// Another client's focus request, through the test's own JNI: the
+// AudioManager's request of AudioFocusRequest gain, or its abandonment
+// (gain 0) of the last one.
+static bool OtherFocus(int gain)
+{
+    static jobject s_request;
+    JavaVM* vm = s_run.vm;
+    JNIEnv* env = nullptr;
+    if ((*vm)->AttachCurrentThread(vm, &env, nullptr) != JNI_OK)
+    {
+        return false;
+    }
+    jobject activity = s_run.activity;
+    jclass contextType = (*env)->FindClass(env, "android/content/Context");
+    jmethodID service = (*env)->GetMethodID(env, contextType, "getSystemService",
+                                            "(Ljava/lang/String;)Ljava/lang/Object;");
+    jobject manager =
+        (*env)->CallObjectMethod(env, activity, service, (*env)->NewStringUTF(env, "audio"));
+    jclass managerType = (*env)->FindClass(env, "android/media/AudioManager");
+    jint result = 0;
+    if (gain == 0 && s_request != nullptr)
+    {
+        jmethodID abandon = (*env)->GetMethodID(env, managerType, "abandonAudioFocusRequest",
+                                                "(Landroid/media/AudioFocusRequest;)I");
+        result = (*env)->CallIntMethod(env, manager, abandon, s_request);
+        (*env)->DeleteGlobalRef(env, s_request);
+        s_request = nullptr;
+    }
+    else if (gain != 0)
+    {
+        jclass builderType = (*env)->FindClass(env, "android/media/AudioFocusRequest$Builder");
+        jobject builder = (*env)->NewObject(
+            env, builderType, (*env)->GetMethodID(env, builderType, "<init>", "(I)V"), gain);
+        jobject request = (*env)->CallObjectMethod(
+            env, builder,
+            (*env)->GetMethodID(env, builderType, "build", "()Landroid/media/AudioFocusRequest;"));
+        jmethodID ask = (*env)->GetMethodID(env, managerType, "requestAudioFocus",
+                                            "(Landroid/media/AudioFocusRequest;)I");
+        result = (*env)->CallIntMethod(env, manager, ask, request);
+        s_request = (*env)->NewGlobalRef(env, request);
+    }
+    bool thrown = (*env)->ExceptionCheck(env);
+    (*env)->ExceptionClear(env);
+    (*vm)->DetachCurrentThread(vm);
+    return !thrown && result == 1;
+}
+
+// Drains until a focus record says focus, two seconds at most.
+static bool FocusBecomes(maudContext* context, maudFocus focus)
+{
+    bool seen = false;
+    for (int tries = 0; tries < 200 && !seen; ++tries)
+    {
+        maudNotification record;
+        while (maudNextNotification(context, &record) == maud_success)
+        {
+            seen = seen || (record.kind == maud_notifyFocusChanged && record.focus == focus);
+        }
+        Sleep(10);
+    }
+    maudFocus now = maud_focusNone;
+    CHECK(maudGetContextFocus(context, &now) == maud_success, "focus read");
+    if (!seen || now != focus)
+    {
+        printf("focus: wanted %u, now %u\n", (unsigned)focus, (unsigned)now);
+    }
+    return seen && now == focus;
+}
+
+// AudioManager's gains, for the other client.
+#define GAIN                    1
+#define GAIN_TRANSIENT          2
+#define GAIN_TRANSIENT_MAY_DUCK 3
+
+static void TestFocus(maudContext* context)
+{
+    CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_success,
+          "focus asked for");
+    CHECK(FocusBecomes(context, maud_focusHeld), "and held");
+    CHECK(OtherFocus(GAIN_TRANSIENT) && FocusBecomes(context, maud_focusPaused),
+          "paused while another takes it for a while");
+    CHECK(OtherFocus(0) && FocusBecomes(context, maud_focusHeld), "held again after");
+    CHECK(OtherFocus(GAIN_TRANSIENT_MAY_DUCK) && FocusBecomes(context, maud_focusDucked),
+          "ducked, reported rather than applied");
+    CHECK(OtherFocus(0) && FocusBecomes(context, maud_focusHeld), "held again after the duck");
+    CHECK(OtherFocus(GAIN) && FocusBecomes(context, maud_focusLost),
+          "lost when another takes it for good");
+    CHECK(OtherFocus(0), "the other gives it back");
+    CHECK(maudRequestFocus(context, maud_focusBrief, maud_roleCommunications) == maud_success &&
+              FocusBecomes(context, maud_focusHeld),
+          "asked for again, for a call");
+    CHECK(maudRequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success &&
+              FocusBecomes(context, maud_focusNone),
+          "released");
+}
+
 static void TestHalfHandles(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -192,6 +292,7 @@ static void* Main(void* unused)
         TestDevices(context, &speaker);
         TestPinned(context, speaker);
         TestPermission(context);
+        TestFocus(context);
         CHECK(maudDestroyContext(context) == maud_success, "destroyed");
     }
     TestHalfHandles();

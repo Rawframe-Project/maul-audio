@@ -174,6 +174,8 @@ struct maudContext
     bool held;
     // The host suspended the context (maudSetContextSuspended).
     bool hostSuspended;
+    // The audio focus last reported (focus.h).
+    maudFocus focus;
     _Atomic(uint64_t) misuse;
 };
 

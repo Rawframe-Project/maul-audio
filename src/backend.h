@@ -63,6 +63,10 @@ struct maudBackend
     // Whether it can open a stream for exclusive use; its openStream
     // still refuses a device that cannot be.
     bool exclusive;
+    // Asks the platform for audio focus or gives it back (maudRequestFocus,
+    // whose results it returns); the backend reports the state that
+    // follows through maudReportFocus. May be NULL: no audio focus.
+    maudResult (*requestFocus)(maudContext* context, maudFocusRequest request, maudDeviceRole role);
 };
 
 // The offline backend.

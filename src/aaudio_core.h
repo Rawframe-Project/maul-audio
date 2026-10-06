@@ -41,6 +41,15 @@ typedef struct maudAaudioEndpoint
     char name[MAUD_AAUDIO_NAME_BYTES];
 } maudAaudioEndpoint;
 
+// What the Java half reports from Android's threads, for the drain:
+// devices changed, and the last focus change (AudioManager's value, 0
+// for none since the last drain).
+typedef struct maudAaudioSignals
+{
+    atomic_bool changed;
+    atomic_int focus;
+} maudAaudioSignals;
+
 // The Java half (aaudio_java.c), present when the host gave a Java VM
 // and an Android Context: global references to the Context and to the
 // library's maul.audio.Devices object, and the class's methods.
@@ -52,6 +61,7 @@ typedef struct maudAaudioJava
     jmethodID list;
     jmethodID mayRecord;
     jmethodID askToRecord;
+    jmethodID requestFocus;
     jmethodID close;
 } maudAaudioJava;
 
@@ -62,9 +72,7 @@ typedef struct maudAaudio
     // The default output's rate and channels, from the probe.
     uint32_t rate;
     uint32_t channels;
-    // Raised by the Java half when Android's devices changed; the drain
-    // lists them again.
-    atomic_bool changed;
+    maudAaudioSignals signals;
     bool hasJava;
     maudAaudioJava java;
     // Room for a scan.

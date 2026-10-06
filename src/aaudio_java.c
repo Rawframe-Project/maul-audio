@@ -50,22 +50,31 @@ static bool Thrown(JNIEnv* env)
     return true;
 }
 
-// The change flag's address as the Java object holds it.
-typedef union FlagLong
+// The signals' address as the Java object holds it.
+typedef union SignalsLong
 {
     jlong value;
-    atomic_bool* flag;
-} FlagLong;
+    maudAaudioSignals* signals;
+} SignalsLong;
 
-static_assert(sizeof(jlong) >= sizeof(atomic_bool*), "a jlong holds an address");
+static_assert(sizeof(jlong) >= sizeof(maudAaudioSignals*), "a jlong holds an address");
 
-// The native method of maul.audio.Devices: Android's devices changed.
-static void JNICALL Raise(JNIEnv* env, jclass type, jlong flag)
+// The native methods of maul.audio.Devices: Android's devices changed,
+// and its audio focus did.
+static void JNICALL Raise(JNIEnv* env, jclass type, jlong signals)
 {
     (void)env;
     (void)type;
-    FlagLong held = {.value = flag};
-    atomic_store_explicit(held.flag, true, memory_order_release);
+    SignalsLong held = {.value = signals};
+    atomic_store_explicit(&held.signals->changed, true, memory_order_release);
+}
+
+static void JNICALL Focus(JNIEnv* env, jclass type, jlong signals, jint change)
+{
+    (void)env;
+    (void)type;
+    SignalsLong held = {.value = signals};
+    atomic_store_explicit(&held.signals->focus, change, memory_order_release);
 }
 
 // The library's class, through the Context's class loader, which knows
@@ -104,8 +113,9 @@ static bool Make(maudAaudio* aaudio, JNIEnv* env, jobject context)
     {
         return false;
     }
-    static const JNINativeMethod natives[] = {{"raise", "(J)V", (void*)Raise}};
-    if ((*env)->RegisterNatives(env, type, natives, 1) != JNI_OK || Thrown(env))
+    static const JNINativeMethod natives[] = {{"raise", "(J)V", (void*)Raise},
+                                              {"focus", "(JI)V", (void*)Focus}};
+    if ((*env)->RegisterNatives(env, type, natives, 2) != JNI_OK || Thrown(env))
     {
         return false;
     }
@@ -114,14 +124,15 @@ static bool Make(maudAaudio* aaudio, JNIEnv* env, jobject context)
     java->list = (*env)->GetMethodID(env, type, "list", "(Z)[Ljava/lang/Object;");
     java->mayRecord = (*env)->GetMethodID(env, type, "mayRecord", "()Z");
     java->askToRecord = (*env)->GetMethodID(env, type, "askToRecord", "()V");
+    java->requestFocus = (*env)->GetMethodID(env, type, "requestFocus", "(IZ)I");
     java->close = (*env)->GetMethodID(env, type, "close", "()V");
     if (Thrown(env) || make == nullptr || java->list == nullptr || java->mayRecord == nullptr ||
-        java->askToRecord == nullptr || java->close == nullptr)
+        java->askToRecord == nullptr || java->requestFocus == nullptr || java->close == nullptr)
     {
         return false;
     }
-    FlagLong held = {.value = 0};
-    held.flag = &aaudio->changed;
+    SignalsLong held = {.value = 0};
+    held.signals = &aaudio->signals;
     jobject devices = (*env)->NewObject(env, type, make, context, held.value);
     if (Thrown(env) || devices == nullptr)
     {
@@ -284,4 +295,23 @@ void maudAaudioAskToRecord(maudAaudio* aaudio)
     (*env)->CallVoidMethod(env, java->devices, java->askToRecord);
     Thrown(env);
     Leave(java->vm, attached);
+}
+
+int32_t maudAaudioRequestFocusJava(maudAaudio* aaudio, int32_t kind, bool call)
+{
+    maudAaudioJava* java = &aaudio->java;
+    bool attached = false;
+    JNIEnv* env = aaudio->hasJava ? Enter(java->vm, &attached) : nullptr;
+    if (env == nullptr)
+    {
+        return 0;
+    }
+    jint result =
+        (*env)->CallIntMethod(env, java->devices, java->requestFocus, (jint)kind, (jboolean)call);
+    if (Thrown(env))
+    {
+        result = 0;
+    }
+    Leave(java->vm, attached);
+    return result;
 }
