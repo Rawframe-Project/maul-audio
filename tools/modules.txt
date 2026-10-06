@@ -58,6 +58,9 @@ octave_eq: least_squares
 offline: context context_core device
 partitioned: real_fft
 period:
+path_refine:
+path_search: allocator probe_graph
+pathing: allocator direct_step path_refine path_search probe_graph
 pipewire_api:
 pipewire_card: context context_core device form pipewire_core
 pipewire_core: context_core pipewire_api
@@ -73,7 +76,9 @@ reflections: allocator ambisonics partitioned reflection_response reverb_estimat
 reverb: allocator band_eq octave_eq
 reverb_estimate: spherical_harmonics
 scene: allocator bvh
-spatializer: air_absorption allocator direct_step occlusion probe_sets reflections reverb_estimate transmission
+spatializer: air_absorption allocator direct_step occlusion pathing probe_sets reflections reverb_estimate spatializer_state transmission
+spatializer_paths: pathing probe_graph probe_sets spatializer_state
+spatializer_state: pathing probe_sets reflections reverb_estimate
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics
 spherical_harmonics:

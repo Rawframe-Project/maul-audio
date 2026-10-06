@@ -536,6 +536,7 @@ maudResult maudBuildProbeGraph(const maudProbeQueries* queries, const maudProbeS
         return maud_errorCapacity;
     }
     maudResult result = Connect(queries, def->range, points, count, graph);
+    graph->range = result == maud_success ? def->range : 0.0f;
     if (generated != nullptr)
     {
         maudRelease(queries->allocator, generated, (size_t)count * sizeof(maudVector3),

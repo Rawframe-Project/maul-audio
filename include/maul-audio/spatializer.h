@@ -164,6 +164,9 @@ extern "C"
         uint32_t probeSetCapacity;
         uint32_t maxProbes;
         uint32_t maxProbePairs;
+        // The most occluded sources a direct step looks for paths for,
+        // in slot order (0 to 4,096; 0 for no pathing): 780 bytes each.
+        uint32_t maxPaths;
         // The task hooks; both NULL runs queries on the step's thread.
         maudEnqueueTaskFn* enqueueTask;
         maudFinishTaskFn* finishTask;
@@ -186,6 +189,9 @@ extern "C"
         // Whether an occluded path's transmission is walked through the
         // closest-hit query.
         bool transmission;
+        // Whether an occluded source looks for a path around what hides
+        // it, over the probe set in use (maudSetPathing).
+        bool pathing;
     } maudSourceDef;
 
     // How to create a probe set: probes at the host's points or, without
@@ -239,6 +245,14 @@ extern "C"
         // The surfaces the walk crossed; the spatializer's maxSurfaces
         // when the limit stopped it, more surfaces perhaps uncounted.
         uint32_t surfaces;
+        // Whether a path around the obstacles was found. Then distance is
+        // the path's length; direction and directivity blend the path's
+        // with the straight line's by the energy each brings; and
+        // transmission per band is the energy sum of what diffracts
+        // around the path's corners and what passes through, at most 1.
+        // The host's attenuation and air absorption, taken from
+        // distance, then cover the longer way.
+        bool pathed;
     } maudDirectResult;
 
     // A reverberation estimate as a step published it.
@@ -535,6 +549,20 @@ extern "C"
                                                        maudProbeSetId set,
                                                        maudProbeSetInfo* infoOut, uint32_t first,
                                                        uint32_t count, maudVector3* points);
+
+    /// Sets the probe set occluded sources look for paths over, from the
+    /// next direct step on; 0 for none. Destroying the set ends its use.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param set          The set, or 0.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
+    ///         or an unknown id; `maud_errorStale` for a destroyed set's
+    ///         id.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSetPathing(maudSpatializer* spatializer,
+                                                      maudProbeSetId set);
 
 #ifdef __cplusplus
 }

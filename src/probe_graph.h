@@ -45,6 +45,8 @@ typedef struct maudProbeGraph
 {
     uint32_t count;
     uint32_t links;
+    // The longest link, from the def.
+    float range;
     maudVector3* points;
     uint32_t* offsets;
     uint32_t* neighbours;

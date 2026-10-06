@@ -119,6 +119,9 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/octave_eq.c
     src/reverb.c
     src/partitioned.c
+    src/path_refine.c
+    src/path_search.c
+    src/pathing.c
     src/probe_graph.c
     src/probe_sets.c
     src/real_fft.c
@@ -127,6 +130,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/reverb_estimate.c
     src/scene.c
     src/spatializer.c
+    src/spatializer_paths.c
     src/speaker_decoder.c
     src/speaker_panner.c
     src/spherical_harmonics.c
@@ -255,6 +259,8 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(band_eq WHITEBOX)
         maul_add_test(octave_eq WHITEBOX)
         maul_add_test(partitioned WHITEBOX)
+        maul_add_test(path_refine WHITEBOX)
+        maul_add_test(path_search WHITEBOX)
         maul_add_test(probe_graph WHITEBOX)
         maul_add_test(real_fft WHITEBOX)
         maul_add_test(reflection_response WHITEBOX)
@@ -262,6 +268,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(spatializer_reverb)
         maul_add_test(spatializer_reflections)
         maul_add_test(spatializer_probes)
+        maul_add_test(spatializer_pathing)
         maul_add_test(near_field WHITEBOX)
         maul_add_test(bvh WHITEBOX)
         maul_add_test(watertight WHITEBOX)
