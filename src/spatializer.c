@@ -17,6 +17,7 @@
 #include "allocator.h"
 #include "direct_step.h"
 #include "occlusion.h"
+#include "reflections.h"
 #include "reverb_estimate.h"
 #include "transmission.h"
 
@@ -38,8 +39,9 @@
 #define MAX_REVERB_RAYS 16384u
 // A reverberation ray's bounces at most; past them the decay is filled
 // in at its rate.
-#define REVERB_BOUNCES 1024u
-#define NO_REVERB      0.1f
+#define REVERB_BOUNCES       1024u
+#define NO_REVERB            0.1f
+#define MAX_REFLECTION_ORDER 3u
 
 typedef struct Entry
 {
@@ -103,6 +105,8 @@ struct maudSpatializer
     // the newest estimate.
     maudReverbTrace trace;
     maudReverbHistogram* histograms;
+    // Geometric reflections, if the def asked for them.
+    maudReflections* reflections;
     maudReverbResult reverb;
     Buffer buffers[3];
     // The simulation side's buffer and step count.
@@ -125,6 +129,9 @@ maudSpatializerDef maudDefaultSpatializerDef(void)
         .maxSurfaces = 4,
         .materialCapacity = 64,
         .reverbRays = 2048,
+        .reflectionOrder = 0,
+        .reflectionDuration = 1.0f,
+        .reflectionRate = 48000.0f,
         .enqueueTask = nullptr,
         .finishTask = nullptr,
         .userTaskContext = nullptr,
@@ -181,6 +188,7 @@ static void Release(maudSpatializer* s)
     Free(&allocator, s->hits, ROUND * sizeof(maudRayHit), alignof(maudRayHit));
     Free(&allocator, s->walkers, FreeBytes(s->capacity), alignof(uint32_t));
     Free(&allocator, s->walked, (size_t)s->capacity * sizeof(float), alignof(float));
+    maudDestroyReflections(s->reflections);
     Free(&allocator, s->histograms,
          (size_t)maudReverbBatches(s->trace.rays) * sizeof(maudReverbHistogram),
          alignof(maudReverbHistogram));
@@ -211,8 +219,12 @@ static bool ReverbValid(const maudSpatializerDef* def)
             return false;
         }
     }
-    return def->reverbRays == 0 ||
-           (def->reverbRays >= MIN_REVERB_RAYS && def->reverbRays <= MAX_REVERB_RAYS);
+    bool reflections = def->reflectionOrder == 0 ||
+                       (def->reflectionOrder <= MAX_REFLECTION_ORDER && def->reverbRays > 0 &&
+                        def->reflectionDuration >= 0.05f && def->reflectionDuration <= 4.0f &&
+                        def->reflectionRate >= 44100.0f && def->reflectionRate <= 384000.0f);
+    return reflections && (def->reverbRays == 0 || (def->reverbRays >= MIN_REVERB_RAYS &&
+                                                    def->reverbRays <= MAX_REVERB_RAYS));
 }
 
 // Allocates everything a spatializer holds but itself; false if any
@@ -243,6 +255,18 @@ static bool Allocate(maudSpatializer* s, const maudSpatializerDef* def)
                s->rays != nullptr && s->occluded != nullptr && s->offsets != nullptr &&
                s->materials != nullptr && s->hits != nullptr && s->walkers != nullptr &&
                s->walked != nullptr && (def->reverbRays == 0 || s->histograms != nullptr);
+    if (all && def->reflectionOrder > 0)
+    {
+        uint32_t batches = maudReverbBatches(def->reverbRays);
+        s->reflections =
+            maudCreateReflections(&def->allocator, def->reflectionOrder, def->reflectionDuration,
+                                  def->reflectionRate, batches);
+        all = s->reflections != nullptr;
+        if (all)
+        {
+            maudPrepareReflections(s->reflections, &s->trace, s->histograms, batches);
+        }
+    }
     for (int b = 0; b < 3; ++b)
     {
         s->buffers[b].entries =
@@ -683,6 +707,10 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
         TraceBatches(0, batches, s);
     }
     maudFitReverb(s->histograms, batches, s->reverb.reverbTime);
+    if (s->reflections != nullptr)
+    {
+        maudPublishReflections(s->reflections, &s->trace, s->histograms, batches);
+    }
     return maud_success;
 }
 
@@ -735,5 +763,39 @@ maudResult maudGetReverbResult(const maudSpatializer* spatializer, maudReverbRes
         return maud_errorInvalid;
     }
     *resultOut = buffer->reverb;
+    return maud_success;
+}
+
+maudResult maudRenderReflections(maudSpatializer* spatializer, const maudQuaternion* orientation,
+                                 const float* send, float* const* bed, uint32_t frames)
+{
+    if (spatializer == nullptr || orientation == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    const maudQuaternion* q = orientation;
+    float n = q->x * q->x + q->y * q->y + q->z * q->z + q->w * q->w;
+    if (!isfinite(n) || !(n > 0.0f))
+    {
+        return maud_errorInvalid;
+    }
+    if (spatializer->reflections == nullptr)
+    {
+        return maud_errorState;
+    }
+    uint32_t channels = maudReflectionsOrder(spatializer->reflections) + 1;
+    channels *= channels;
+    if (frames > 0 && (send == nullptr || bed == nullptr))
+    {
+        return maud_errorInvalid;
+    }
+    for (uint32_t c = 0; c < channels && frames > 0; ++c)
+    {
+        if (bed[c] == nullptr)
+        {
+            return maud_errorInvalid;
+        }
+    }
+    maudConvolveReflections(spatializer->reflections, orientation, send, bed, frames);
     return maud_success;
 }

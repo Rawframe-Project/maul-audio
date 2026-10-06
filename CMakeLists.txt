@@ -121,6 +121,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/partitioned.c
     src/real_fft.c
     src/reflection_response.c
+    src/reflections.c
     src/reverb_estimate.c
     src/scene.c
     src/spatializer.c
@@ -256,6 +257,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(reflection_response WHITEBOX)
         maul_add_test(reverb_estimate WHITEBOX)
         maul_add_test(spatializer_reverb)
+        maul_add_test(spatializer_reflections)
         maul_add_test(near_field WHITEBOX)
         maul_add_test(bvh WHITEBOX)
         maul_add_test(watertight WHITEBOX)

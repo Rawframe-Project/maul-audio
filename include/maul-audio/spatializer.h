@@ -141,6 +141,14 @@ extern "C"
         // The air's amplitude exponent per metre and band, for the
         // estimate (as the direct effect's def).
         float airAbsorption[MAUD_DIRECT_BANDS];
+        // Geometric reflections: the bed's order (0 for none, else 1 to
+        // 3; they need reverbRays), the response's length in seconds
+        // (0.05 to 4) and the rate rendering runs at (44,100 to
+        // 384,000 Hz). Memory grows with all three: four responses of
+        // (order + 1)^2 channels.
+        uint32_t reflectionOrder;
+        float reflectionDuration;
+        float reflectionRate;
         // The task hooks; both NULL runs queries on the step's thread.
         maudEnqueueTaskFn* enqueueTask;
         maudFinishTaskFn* finishTask;
@@ -199,7 +207,8 @@ extern "C"
     /// Returns the default spatializer def: 256 sources, up to 64
     /// occlusion points each, transmission paths of up to 4 surfaces, 64
     /// materials, reverberation estimates of 2048 rays through air at
-    /// 20 degrees and 50 % humidity, no ray queries, no task hooks.
+    /// 20 degrees and 50 % humidity, no geometric reflections (when
+    /// asked for: 1 s at 48 kHz), no ray queries, no task hooks.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -221,8 +230,10 @@ extern "C"
     /// @param spatializerOut  Receives the spatializer; NULL on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, a capacity or ray count out of
-    ///         range, an air absorption below 0 or not finite, or one task
-    ///         hook without the other; `maud_errorCapacity` when the
+    ///         range, an air absorption below 0 or not finite, a
+    ///         reflection order, duration or rate out of range (or
+    ///         reflections without reverberation rays), or one task hook
+    ///         without the other; `maud_errorCapacity` when the
     ///         allocator fails.
     /// @par Thread safety
     /// Safe from any thread.
@@ -326,7 +337,10 @@ extern "C"
     /// the task hooks if set; the times do not depend on how the tasks
     /// split them. Without a closest-hit query there is nothing to
     /// reflect and the times are 0.1 s. The next direct step publishes
-    /// the times with its results.
+    /// the times with its results. If the def asks for reflections, the
+    /// same rays' energy, on spherical harmonics of its arrival
+    /// direction, becomes a response (noise shaped per 10 ms and per
+    /// band) published at once for maudRenderReflections.
     ///
     /// @param spatializer  The spatializer.
     /// @param listener     The listener's pose.
@@ -365,6 +379,30 @@ extern "C"
     MAUD_NODISCARD MAUD_API maudResult maudGetDirectResult(const maudSpatializer* spatializer,
                                                            maudSourceId source,
                                                            maudDirectResult* resultOut);
+
+    /// Renders geometric reflections: convolves the host's mono send with
+    /// the newest response published, crossfading over 128 frames to a
+    /// new one, and adds the result into a bed of the def's order (ACN,
+    /// SN3D) in the listener's frame. The response is advanced by the
+    /// convolution's 128-frame block, so the output does not lag.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param orientation  The listener's orientation at the call's end;
+    ///                     the bed turns linearly from the last call's.
+    /// @param send         frames samples.
+    /// @param bed          (order + 1)^2 channels of frames samples, added
+    ///                     to.
+    /// @param frames       The frames; 0 does nothing.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or
+    ///         an orientation of zero length or not finite;
+    ///         `maud_errorState` when the def asked for no reflections.
+    /// @par Thread safety
+    /// Real-time safe: no allocation, lock or wait. The rendering side is
+    /// used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudRenderReflections(maudSpatializer* spatializer,
+                                                             const maudQuaternion* orientation,
+                                                             const float* send, float* const* bed,
+                                                             uint32_t frames);
 
     /// Reads the reverberation estimate the latched step published.
     ///
