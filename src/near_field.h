@@ -4,8 +4,8 @@
 // The near-field filter of one ear: how a rigid sphere of the head's
 // radius changes the sound of a source at one distance against a source
 // at the distance the HRTF set was measured at, as a gain and a
-// first-order high shelf (research 23). Only the head's effect: the 1/r
-// change of pressure is the host's distance attenuation.
+// first-order high shelf. Only the head's effect: the 1/r change of
+// pressure is the host's distance attenuation.
 
 #ifndef MAUL_AUDIO_SRC_NEAR_FIELD_H
 #define MAUL_AUDIO_SRC_NEAR_FIELD_H

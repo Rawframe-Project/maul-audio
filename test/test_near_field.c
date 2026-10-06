@@ -5,10 +5,12 @@
 // points on and off the table's grid (near_field_reference.h, from the
 // generator); the identity when the source is at the set's distance;
 // stable for every angle, distance, head radius and rate; clamped at
-// the table's ends.
+// the table's ends; the table read exactly at and between its points;
+// frequencies scaled by the head's radius.
 
 #include "near_field.h"
 #include "near_field_reference.h"
+#include "near_field_table.h"
 #include "test_harness.h"
 
 #include <math.h>
@@ -86,6 +88,51 @@ static void TestStable(void)
     CHECK(stable, "stable everywhere");
 }
 
+// With the set at infinity, the filter's DC gain is the table's gain:
+// exactly at each grid point, and the neighbours' mean between them.
+static void TestTableRead(void)
+{
+    bool exact = true;
+    bool between = true;
+    const float* axis = maudNearFieldInverseDistances;
+    for (int i = 0; i < MAUD_NEAR_FIELD_ANGLES - 1; ++i)
+    {
+        for (int j = 0; j < MAUD_NEAR_FIELD_DISTANCES - 1; ++j)
+        {
+            float angle = 5.0f * (float)i;
+            double at = MagnitudeDb(maudNearField(angle, axis[j], 0.0f, HEAD, 48000.0f), 0.0, 1.0);
+            exact = exact && fabs(at - (double)maudNearFieldTable[i][j][0]) < 1e-3;
+            float middle = 0.5f * (axis[j] + axis[j + 1]);
+            double mean = 0.25 * ((double)maudNearFieldTable[i][j][0] +
+                                  (double)maudNearFieldTable[i][j + 1][0] +
+                                  (double)maudNearFieldTable[i + 1][j][0] +
+                                  (double)maudNearFieldTable[i + 1][j + 1][0]);
+            double half =
+                MagnitudeDb(maudNearField(angle + 2.5f, middle, 0.0f, HEAD, 48000.0f), 0.0, 1.0);
+            between = between && fabs(half - mean) < 1e-3;
+        }
+    }
+    CHECK(exact, "the table's gain at each of its points");
+    CHECK(between, "the mean of four points between them");
+}
+
+// Frequencies are normalized by the head's radius: a head twice as
+// large at the same inverse distances answers at half the frequency.
+static void TestRadius(void)
+{
+    float set = HEAD / SET_METRES;
+    maudNearFieldFilter small = maudNearField(0.0f, HEAD / 0.15f, set, HEAD, 48000.0f);
+    maudNearFieldFilter large = maudNearField(0.0f, HEAD / 0.15f, set, 2.0f * HEAD, 48000.0f);
+    double worst = 0.0;
+    for (double hz = 100.0; hz <= 2000.0; hz *= 1.25)
+    {
+        double error =
+            fabs(MagnitudeDb(small, hz, 48000.0) - MagnitudeDb(large, 0.5 * hz, 48000.0));
+        worst = error > worst ? error : worst;
+    }
+    CHECK(worst < 0.02, "the response scales with the head");
+}
+
 static void TestClamps(void)
 {
     float set = HEAD / SET_METRES;
@@ -107,5 +154,7 @@ int main(void)
     TestIdentity();
     TestStable();
     TestClamps();
+    TestTableRead();
+    TestRadius();
     return s_failures == 0 ? 0 : 1;
 }
