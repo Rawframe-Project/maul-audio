@@ -433,6 +433,24 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
             OBJC_EXTENSIONS OFF)
         target_compile_options(test_ios PRIVATE $<$<COMPILE_LANGUAGE:OBJC>:-fno-objc-arc>)
         add_test(NAME ios COMMAND test_ios)
+        # Capture, as an application the runner grants the microphone
+        # (tools/run_ios_app.sh).
+        add_executable(test_ios_capture MACOSX_BUNDLE test/test_ios_capture.m)
+        target_link_libraries(test_ios_capture PRIVATE maul-audio "-framework AudioToolbox"
+            "-framework AVFAudio" "-framework Foundation" "-framework UIKit")
+        maul_apply_flags(test_ios_capture)
+        set_target_properties(test_ios_capture PROPERTIES OBJC_STANDARD 23
+            OBJC_STANDARD_REQUIRED ON OBJC_EXTENSIONS OFF
+            MACOSX_BUNDLE_INFO_PLIST ${PROJECT_SOURCE_DIR}/test/ios/Info.plist.in
+            MACOSX_BUNDLE_GUI_IDENTIFIER org.maul.audio.test.ios-capture
+            MACOSX_BUNDLE_BUNDLE_NAME test_ios_capture
+            MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+            MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+        target_compile_options(test_ios_capture PRIVATE -fno-objc-arc)
+        add_test(NAME ios_capture COMMAND ${PROJECT_SOURCE_DIR}/tools/run_ios_app.sh
+                 $<TARGET_BUNDLE_DIR:test_ios_capture>)
+        set_tests_properties(ios_capture PROPERTIES TIMEOUT 240 RESOURCE_LOCK simulator)
+        set_tests_properties(ios PROPERTIES RESOURCE_LOCK simulator)
     endif()
     if(MAUL_AUDIO_AAUDIO)
         maul_add_test(aaudio THREADS)
