@@ -18,6 +18,8 @@ struct maudHrtf
     uint32_t taps;
     uint32_t ringCount;
     uint32_t directionCount;
+    // Metres from the head's centre at which the set was measured.
+    float distance;
     // Per ring: its elevation in degrees, its azimuth count, and the index
     // of its first direction.
     float* elevations;

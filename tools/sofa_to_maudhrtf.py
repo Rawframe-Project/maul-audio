@@ -18,12 +18,18 @@
 #
 # Needs numpy and h5py (both BSD licensed; tool-only, see THIRD_PARTY.md).
 #
+# The file records the distance the set was measured at, from the source
+# positions' radii; a set measured at several distances needs --distance
+# to choose one, and only the directions within 1% of it are used.
+#
 # usage: sofa_to_maudhrtf.py input.sofa output.maudhrtf
-#            [--name TEXT] [--license-file PATH]
+#            [--name TEXT] [--license-file PATH] [--distance METRES]
 #   --name          the dataset and subject; by default from the file's
 #                   DatabaseName and ListenerShortName attributes
 #   --license-file  the license and attribution text; by default the
 #                   file's License attribute, which must then be present
+#   --distance      the measurement distance to keep, for sets measured
+#                   at several
 
 import argparse
 import struct
@@ -37,7 +43,7 @@ except ImportError:
     sys.exit("sofa_to_maudhrtf.py needs numpy and h5py: pip install numpy h5py")
 
 MAGIC = b"MAUDHRTF"
-VERSION = 1
+VERSION = 2
 RING_STEP = 5.0
 AZIMUTHS_AT_EQUATOR = 72
 TAPS_AT_48K = 128
@@ -49,6 +55,9 @@ ONSET_STOP_HZ = 2000.0
 NEAREST_ONLY_DEGREES = 0.1
 NEIGHBOURS = 3
 DELAY_UNITS = 256
+DISTANCE_TOLERANCE = 0.01
+MIN_DISTANCE = 0.05
+MAX_DISTANCE = 100.0
 
 
 def attribute(sofa, name):
@@ -73,10 +82,18 @@ def read_sofa(path):
         rate = float(np.asarray(sofa["Data.SamplingRate"]).reshape(-1)[0])
         position = np.asarray(sofa["SourcePosition"], dtype=np.float64)
         kind = attribute(sofa["SourcePosition"], "Type") or "spherical"
+        units = (attribute(sofa["SourcePosition"], "Units") or "").lower()
+        if "metre" not in units and "meter" not in units:
+            sys.exit(f"{path}: SourcePosition is not in metres ({units or 'no units'})")
         if kind == "cartesian":
             x, y, z = position[:, 0], position[:, 1], position[:, 2]
             position = np.stack(
-                [np.degrees(np.arctan2(y, x)), np.degrees(np.arctan2(z, np.hypot(x, y)))], axis=1
+                [
+                    np.degrees(np.arctan2(y, x)),
+                    np.degrees(np.arctan2(z, np.hypot(x, y))),
+                    np.sqrt(x * x + y * y + z * z),
+                ],
+                axis=1,
             )
         if ir.ndim != 3 or ir.shape[1] != 2 or ir.shape[0] != position.shape[0]:
             sys.exit(f"{path}: Data.IR is not M x 2 x N for M source positions")
@@ -85,7 +102,30 @@ def read_sofa(path):
             for part in (attribute(sofa, "DatabaseName"), attribute(sofa, "ListenerShortName"))
             if part
         )
-        return ir, rate, position[:, 0], position[:, 1], name, attribute(sofa, "License")
+        return (
+            ir,
+            rate,
+            position[:, 0],
+            position[:, 1],
+            position[:, 2],
+            name,
+            attribute(sofa, "License"),
+        )
+
+
+def choose_distance(radius, wanted):
+    """The measurement distance and which directions were measured at it:
+    the one radius, or the wanted one when the set has several."""
+    reference = float(np.median(radius)) if wanted is None else wanted
+    kept = np.abs(radius - reference) <= DISTANCE_TOLERANCE * reference
+    if wanted is None and not kept.all():
+        sys.exit("the set was measured at several distances: choose one with --distance")
+    if not kept.any():
+        sys.exit(f"no direction was measured at {wanted} m")
+    distance = float(np.median(radius[kept]))
+    if not MIN_DISTANCE <= distance <= MAX_DISTANCE:
+        sys.exit(f"a measurement distance of {distance} m is outside the format's bounds")
+    return distance, kept
 
 
 def low_pass(response, rate):
@@ -169,7 +209,7 @@ def convert(ir, rate, azimuth, elevation):
     return taps, ring_elevations, ring_counts, delays, taps_out
 
 
-def encode(rate, taps, ring_elevations, ring_counts, delays, responses, name, license_text):
+def encode(rate, distance, taps, ring_elevations, ring_counts, delays, responses, name, license_text):
     peak = float(np.abs(responses).max())
     scale = np.float32(peak / 32767.0 if peak > 0 else 1.0)
     samples = np.clip(np.round(responses / float(scale)), -32768, 32767).astype("<i2")
@@ -185,13 +225,14 @@ def encode(rate, taps, ring_elevations, ring_counts, delays, responses, name, li
     body += units.tobytes()
     body += samples.tobytes()
     header = MAGIC + struct.pack(
-        "<IIIIIfII",
+        "<IIIIIffII",
         VERSION,
         int(round(rate)),
         taps,
         len(ring_counts),
         int(sum(ring_counts)),
         float(scale),
+        distance,
         len(name_bytes),
         len(license_bytes),
     )
@@ -204,8 +245,11 @@ def main():
     parser.add_argument("output")
     parser.add_argument("--name")
     parser.add_argument("--license-file")
+    parser.add_argument("--distance", type=float)
     arguments = parser.parse_args()
-    ir, rate, azimuth, elevation, name, license_text = read_sofa(arguments.input)
+    ir, rate, azimuth, elevation, radius, name, license_text = read_sofa(arguments.input)
+    distance, kept = choose_distance(radius, arguments.distance)
+    ir, azimuth, elevation = ir[kept], azimuth[kept], elevation[kept]
     if arguments.name is not None:
         name = arguments.name
     if arguments.license_file is not None:
@@ -214,12 +258,14 @@ def main():
     if not license_text:
         sys.exit("no License attribute in the file: give --license-file")
     taps, ring_elevations, ring_counts, delays, responses = convert(ir, rate, azimuth, elevation)
-    data = encode(rate, taps, ring_elevations, ring_counts, delays, responses, name, license_text)
+    data = encode(
+        rate, distance, taps, ring_elevations, ring_counts, delays, responses, name, license_text
+    )
     with open(arguments.output, "wb") as out:
         out.write(data)
     print(
         f"{arguments.output}: {sum(ring_counts)} directions on {len(ring_counts)} rings, "
-        f"{taps} taps at {int(round(rate))} Hz, {len(data)} bytes"
+        f"{taps} taps at {int(round(rate))} Hz, measured at {distance:g} m, {len(data)} bytes"
     )
 
 

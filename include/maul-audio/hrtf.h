@@ -48,6 +48,8 @@ extern "C"
         uint32_t taps;
         uint32_t directionCount;
         uint32_t ringCount;
+        // The metres from the head's centre at which the set was measured.
+        float distance;
         // The dataset and subject, and its license and attribution, UTF-8.
         const char* name;
         size_t nameLength;

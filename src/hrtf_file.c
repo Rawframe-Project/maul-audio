@@ -12,8 +12,8 @@
 #include <math.h>
 #include <string.h>
 
-#define HEADER_BYTES   44u
-#define VERSION        1u
+#define HEADER_BYTES   48u
+#define VERSION        2u
 #define MIN_RATE       8000u
 #define MAX_RATE       384000u
 #define MIN_TAPS       8u
@@ -22,6 +22,8 @@
 #define MAX_DIRS       65536u
 #define MAX_NAME       256u
 #define MAX_LICENSE    65536u
+#define MIN_DISTANCE   0.05f
+#define MAX_DISTANCE   100.0f
 #define CRC_POLYNOMIAL 0xEDB88320u
 
 static uint32_t U16(const uint8_t* at)
@@ -112,7 +114,8 @@ static bool CountsValid(const maudHrtfFile* file, uint32_t nameBytes, uint32_t l
     return file->sampleRate >= MIN_RATE && file->sampleRate <= MAX_RATE && file->taps >= MIN_TAPS &&
            file->taps <= MAX_TAPS && file->ringCount >= 1 && file->ringCount <= MAX_RINGS &&
            file->directionCount >= 1 && file->directionCount <= MAX_DIRS && isfinite(file->scale) &&
-           file->scale > 0.0f && nameBytes <= MAX_NAME && licenseBytes <= MAX_LICENSE;
+           file->scale > 0.0f && file->distance >= MIN_DISTANCE && file->distance <= MAX_DISTANCE &&
+           nameBytes <= MAX_NAME && licenseBytes <= MAX_LICENSE;
 }
 
 // Elevations rising strictly within [-90, 90], every ring with an
@@ -153,9 +156,10 @@ maudResult maudReadHrtfFile(const void* bytes, size_t count, maudHrtfFile* fileO
         .ringCount = U32(data + 20),
         .directionCount = U32(data + 24),
         .scale = F32(data + 28),
+        .distance = F32(data + 32),
     };
-    uint32_t nameBytes = U32(data + 32);
-    uint32_t licenseBytes = U32(data + 36);
+    uint32_t nameBytes = U32(data + 36);
+    uint32_t licenseBytes = U32(data + 40);
     if (!CountsValid(&file, nameBytes, licenseBytes))
     {
         return maud_errorInvalid;
@@ -165,7 +169,7 @@ maudResult maudReadHrtfFile(const void* bytes, size_t count, maudHrtfFile* fileO
                         8u * (uint64_t)file.ringCount + 4u * (uint64_t)file.directionCount +
                         4u * (uint64_t)file.directionCount * file.taps;
     if (expected != (uint64_t)count ||
-        maudCrc32(data + HEADER_BYTES, count - HEADER_BYTES) != U32(data + 40))
+        maudCrc32(data + HEADER_BYTES, count - HEADER_BYTES) != U32(data + 44))
     {
         return maud_errorInvalid;
     }

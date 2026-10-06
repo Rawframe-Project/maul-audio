@@ -28,5 +28,5 @@ It was generated, not edited, from the published SOFA file:
   ```
 
 - **Result:** 1,652 directions on 37 rings, 128 taps at 48 kHz,
-  853,892 bytes, SHA-256
-  `8b962b05bd4600e62aba04fe7ffdf88f08bdf5e44a999c0f1dba08d1de4b2c5d`.
+  measured at 1.2 m, format version 2, 853,896 bytes, SHA-256
+  `6867385a5f475ff735151daeba145d12e5c7524c9a52cb1be37f65c587deac33`.

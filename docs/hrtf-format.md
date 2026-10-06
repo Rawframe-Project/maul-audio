@@ -14,19 +14,20 @@ the file.
 | Offset | Type | Field | Rule |
 |---|---|---|---|
 | 0 | 8 bytes | magic | `MAUDHRTF` |
-| 8 | uint32 | version | 1 |
+| 8 | uint32 | version | 2 |
 | 12 | uint32 | sampleRate | 8,000 to 384,000 |
 | 16 | uint32 | taps | 8 to 1,024 |
 | 20 | uint32 | ringCount | 1 to 181 |
 | 24 | uint32 | directionCount | 1 to 65,536; the sum of the rings' azimuth counts |
 | 28 | float32 | scale | finite, greater than 0: a tap is its 16-bit value times scale |
-| 32 | uint32 | nameBytes | 0 to 256 |
-| 36 | uint32 | licenseBytes | 0 to 65,536 |
-| 40 | uint32 | crc | CRC-32 (ISO-HDLC, as zlib computes it) of every byte from offset 44 to the end |
+| 32 | float32 | distance | 0.05 to 100: the metres from the head's centre at which the set was measured |
+| 36 | uint32 | nameBytes | 0 to 256 |
+| 40 | uint32 | licenseBytes | 0 to 65,536 |
+| 44 | uint32 | crc | CRC-32 (ISO-HDLC, as zlib computes it) of every byte from offset 48 to the end |
 
 ## Body
 
-From offset 44, in this order, with nothing between:
+From offset 48, in this order, with nothing between:
 
 1. **Name:** `nameBytes` of UTF-8, the dataset and subject, unterminated.
 2. **License:** `licenseBytes` of UTF-8, the dataset's license and its
@@ -56,3 +57,9 @@ Each response is minimum-phase and starts at its first tap; the delay
 restores the time it took to arrive, so the interaural delay is the
 difference between the ears' delays. A renderer interpolates responses
 and delays separately.
+
+## Versions
+
+- **2** (2026-10-06): adds `distance`, which the renderer's near-field
+  model and its per-ear lookups need. The body moves to offset 48.
+- **1** (2026-10-02): never released; the loader reads version 2 only.

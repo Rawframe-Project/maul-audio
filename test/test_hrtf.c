@@ -114,7 +114,7 @@ static void TestShippedSet(void)
 #endif
     size_t count = 0;
     unsigned char* bytes = ReadFile(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", &count);
-    CHECK(bytes != nullptr && count == 853892, "the shipped file");
+    CHECK(bytes != nullptr && count == 853896, "the shipped file");
     if (bytes == nullptr)
     {
         return;
@@ -123,8 +123,9 @@ static void TestShippedSet(void)
     CHECK(Load(bytes, count, 0, &hrtf) == maud_success, "loads");
     maudHrtfInfo info = {0};
     CHECK(maudGetHrtfInfo(hrtf, &info) == maud_success && info.sampleRate == 48000 &&
-              info.taps == 128 && info.directionCount == 1652 && info.ringCount == 37,
-          "at 48 kHz, 128 taps, 1,652 directions on 37 rings");
+              info.taps == 128 && info.directionCount == 1652 && info.ringCount == 37 &&
+              info.distance == 1.2f,
+          "at 48 kHz, 128 taps, 1,652 directions on 37 rings, measured at 1.2 m");
     CHECK(info.nameLength > 8 && memcmp(info.name, "SADIE II", 8) == 0, "named");
     CHECK(info.licenseLength > 0 && strstr(info.license, "Apache License") != nullptr,
           "with its license");
@@ -171,7 +172,7 @@ static void TestShippedSet(void)
 typedef struct Crafted
 {
     // The file, and room for one byte past it.
-    unsigned char bytes[44 + 4 + 8 + 16 + 16 + 4 * 2 * 8 * 2 + 1];
+    unsigned char bytes[48 + 4 + 8 + 16 + 16 + 4 * 2 * 8 * 2 + 1];
     size_t count;
 } Crafted;
 
@@ -192,28 +193,29 @@ static void PutFloat(unsigned char* at, float value)
 
 static void Seal(Crafted* file)
 {
-    Put32(file->bytes + 40, maudCrc32(file->bytes + 44, file->count - 44));
+    Put32(file->bytes + 44, maudCrc32(file->bytes + 48, file->count - 48));
 }
 
 static Crafted Craft(void)
 {
     Crafted file = {.count = sizeof(file.bytes) - 1};
     memcpy(file.bytes, "MAUDHRTF", 8);
-    Put32(file.bytes + 8, 1);
+    Put32(file.bytes + 8, 2);
     Put32(file.bytes + 12, 48000);
     Put32(file.bytes + 16, 8);
     Put32(file.bytes + 20, 2);
     Put32(file.bytes + 24, 4);
     PutFloat(file.bytes + 28, 1.0f / 32768.0f);
-    Put32(file.bytes + 32, 4);
-    Put32(file.bytes + 36, 8);
-    memcpy(file.bytes + 44, "Test", 4);
-    memcpy(file.bytes + 48, "License.", 8);
-    PutFloat(file.bytes + 56, -90.0f);
-    Put32(file.bytes + 60, 1);
-    PutFloat(file.bytes + 64, 90.0f);
-    Put32(file.bytes + 68, 3);
-    for (size_t i = 72; i < file.count; ++i)
+    PutFloat(file.bytes + 32, 1.5f);
+    Put32(file.bytes + 36, 4);
+    Put32(file.bytes + 40, 8);
+    memcpy(file.bytes + 48, "Test", 4);
+    memcpy(file.bytes + 52, "License.", 8);
+    PutFloat(file.bytes + 60, -90.0f);
+    Put32(file.bytes + 64, 1);
+    PutFloat(file.bytes + 68, 90.0f);
+    Put32(file.bytes + 72, 3);
+    for (size_t i = 76; i < file.count; ++i)
     {
         file.bytes[i] = (unsigned char)(i * 7u);
     }
@@ -248,31 +250,34 @@ static void TestCraftedFiles(void)
     file.bytes[0] = 'X';
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a wrong magic");
     file = Craft();
-    Put32(file.bytes + 8, 2);
-    CHECK(LoadCrafted(&file) == maud_errorUnsupported, "another version");
+    Put32(file.bytes + 8, 1);
+    CHECK(LoadCrafted(&file) == maud_errorUnsupported, "version 1, never released");
     file = Craft();
-    PutFloat(file.bytes + 64, -90.0f);
+    Put32(file.bytes + 8, 3);
+    CHECK(LoadCrafted(&file) == maud_errorUnsupported, "a later version");
+    file = Craft();
+    PutFloat(file.bytes + 68, -90.0f);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "elevations that do not rise");
     file = Craft();
-    PutFloat(file.bytes + 64, 91.0f);
+    PutFloat(file.bytes + 68, 91.0f);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "an elevation past 90");
     file = Craft();
-    Put32(file.bytes + 68, 2);
+    Put32(file.bytes + 72, 2);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "azimuths not adding up to the directions");
     file = Craft();
-    Put32(file.bytes + 68, 4);
+    Put32(file.bytes + 72, 4);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "nor adding up to more");
     file = Craft();
-    Put32(file.bytes + 60, 0);
-    Put32(file.bytes + 68, 4);
+    Put32(file.bytes + 64, 0);
+    Put32(file.bytes + 72, 4);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a ring without an azimuth");
     file = Craft();
-    file.bytes[45] = 0xC0;
+    file.bytes[49] = 0xC0;
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a name that is not UTF-8");
     // Well-shaped sequences whose values UTF-8 excludes, in the name.
@@ -282,20 +287,20 @@ static void TestCraftedFiles(void)
     for (int i = 0; i < 3; ++i)
     {
         file = Craft();
-        memcpy(file.bytes + 44, excluded[i][0], strlen(excluded[i][0]));
+        memcpy(file.bytes + 48, excluded[i][0], strlen(excluded[i][0]));
         Seal(&file);
         CHECK(LoadCrafted(&file) == maud_errorInvalid, excluded[i][1]);
     }
     file = Craft();
-    file.bytes[55] = 0xE2;
+    file.bytes[59] = 0xE2;
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a license cut inside a character");
     // A lead byte last, and a continuation byte right after the text, in
     // the first ring's elevation (-89.99999): the character may not borrow
     // it.
     file = Craft();
-    file.bytes[55] = 0xC3;
-    Put32(file.bytes + 56, 0xC2B3FFA9u);
+    file.bytes[59] = 0xC3;
+    Put32(file.bytes + 60, 0xC2B3FFA9u);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a character reaching past its text");
     file = Craft();
@@ -312,8 +317,17 @@ static void TestCraftedFiles(void)
     PutFloat(file.bytes + 28, INFINITY);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "an infinite scale");
+    // Distances just outside the bounds, and not a number.
+    float distances[3] = {0.049f, 100.5f, NAN};
+    for (int i = 0; i < 3; ++i)
+    {
+        file = Craft();
+        PutFloat(file.bytes + 32, distances[i]);
+        Seal(&file);
+        CHECK(LoadCrafted(&file) == maud_errorInvalid, "a measurement distance out of bounds");
+    }
     file = Craft();
-    Put32(file.bytes + 36, 0xFFFFFFF0u);
+    Put32(file.bytes + 40, 0xFFFFFFF0u);
     Seal(&file);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a license length past the bound");
     maudHrtf* hrtf = (maudHrtf*)&file;
@@ -348,7 +362,7 @@ static void TestMutations(void)
         {
             file.count = (state >> 8) % file.count;
         }
-        if ((state & 16u) != 0 && file.count >= 44)
+        if ((state & 16u) != 0 && file.count >= 48)
         {
             Seal(&file);
         }

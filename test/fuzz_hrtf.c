@@ -37,12 +37,12 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     uint8_t* bytes = malloc(count > 0 ? count : 1);
     Expect(bytes != nullptr);
     memcpy(bytes, data + 1, count);
-    if ((choice & 1u) != 0 && count >= 44)
+    if ((choice & 1u) != 0 && count >= 48)
     {
-        uint32_t crc = maudCrc32(bytes + 44, count - 44);
+        uint32_t crc = maudCrc32(bytes + 48, count - 48);
         for (int i = 0; i < 4; ++i)
         {
-            bytes[40 + i] = (uint8_t)(crc >> (8 * i));
+            bytes[44 + i] = (uint8_t)(crc >> (8 * i));
         }
     }
     maudHrtfDef def = maudDefaultHrtfDef();
@@ -61,6 +61,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         Expect(maudGetHrtfInfo(hrtf, &info) == maud_success);
         Expect(info.directionCount == file.directionCount && info.ringCount == file.ringCount);
         Expect(info.nameLength == file.nameLength && info.licenseLength == file.licenseLength);
+        Expect(info.distance == file.distance);
         maudDestroyHrtf(hrtf);
     }
     free(bytes);

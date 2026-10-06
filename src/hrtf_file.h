@@ -20,6 +20,8 @@ typedef struct maudHrtfFile
     uint32_t ringCount;
     uint32_t directionCount;
     float scale;
+    // Metres from the head's centre at which the set was measured.
+    float distance;
     const uint8_t* name;
     uint32_t nameLength;
     const uint8_t* license;

@@ -224,7 +224,8 @@ format.
   application holds it.
 - The HRTF format (`docs/hrtf-format.md`): minimum-phase responses with
   onset delays on 5-degree elevation rings, 16-bit, with the dataset's
-  name and license and a CRC-32; `tools/sofa_to_maudhrtf.py` converts
+  name and license, the distance it was measured at, and a CRC-32
+  (version 2); `tools/sofa_to_maudhrtf.py` converts
   SOFA files into it (numpy and h5py, tool-only); the default set,
   SADIE II's KU100 at 48 kHz under the Apache License 2.0, generated
   into `data/hrtf/` with its provenance.
@@ -233,5 +234,6 @@ format.
   before trusting anything, with limits on directions and taps in its
   def, and resamples the set to the renderer's rate (band-limited, the
   gain kept; a resampled set starts a constant 24 input samples early);
-  `maudGetHrtfInfo` reports the set, its name and license. A libFuzzer
-  target, `fuzz_hrtf`, behind `MAUL_AUDIO_FUZZ`.
+  `maudGetHrtfInfo` reports the set, the distance it was measured at,
+  its name and license. A libFuzzer target, `fuzz_hrtf`, behind
+  `MAUL_AUDIO_FUZZ`.
