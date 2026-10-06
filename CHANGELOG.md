@@ -363,6 +363,18 @@ format.
   the state that follows (held, lost, paused, ducked); the library
   never pauses or ducks streams itself. On Android with the Java half;
   unsupported elsewhere for now.
+- The iOS backend, on iOS 15 and later: RemoteIO units on the
+  session's default output and input, which streams follow as iOS
+  routes them, at the session's rate or one the unit converts to. The
+  session's category follows what runs (Playback, Record,
+  PlayAndRecord) and mixes with others until the host asks for focus;
+  `iosSilencedBySwitch` in the context def lets the silent switch
+  silence output. Interruptions hold the streams with
+  `maud_suspendPolicy` and are focus states; they run again when one
+  ends with the hint to resume, or when the host resumes the context or
+  asks for focus. A route change gives the default devices the forms
+  the route leads to. Tests run in the simulator
+  (`cmake/ios-simulator.cmake`).
 - The AAudio backend, on Android 11 (API 30) and later: the platform's
   default output and input, which streams follow as Android moves
   them; float streams at the device's rate or one AAudio converts to;

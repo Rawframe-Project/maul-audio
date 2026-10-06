@@ -125,10 +125,11 @@ extern "C"
 
     /// Asks the platform to let the context's audio run. Browsers hold audio
     /// until the user acts: call it from a user gesture's handler, such as
-    /// a click's. Streams held meanwhile are suspended with
-    /// maud_suspendPolicy and resume, with a notification, once the
-    /// platform lets the context run. Where no policy holds audio it does
-    /// nothing.
+    /// a click's. On iOS an interruption that ended without the hint to
+    /// resume holds audio until this is called. Streams held meanwhile are
+    /// suspended with maud_suspendPolicy and resume, with a notification,
+    /// once the platform lets the context run. Where no policy holds audio
+    /// it does nothing.
     ///
     /// @param context  The context.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL context;

@@ -167,7 +167,10 @@ extern "C"
         // It follows the default device, and its direction has no device.
         maud_suspendNoDevice = 2,
         // The platform holds audio until the user acts: on the web, until
-        // a user gesture's handler calls maudResumeContext.
+        // a user gesture's handler calls maudResumeContext; on iOS, while
+        // an interruption (a call, an alarm) lasts, and after one that
+        // ended without the hint to resume, until maudResumeContext or a
+        // focus request.
         maud_suspendPolicy = 3,
         // The platform has not granted access to its device: on the web,
         // until the user allows the microphone. A refusal leaves it here.

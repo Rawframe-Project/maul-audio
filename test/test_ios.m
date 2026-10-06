@@ -4,8 +4,10 @@
 // The iOS backend in the simulator: the default output and input; an
 // output stream's blocks, rate and clock, stopping and starting, its
 // converted and refused rates; the session's category following what
-// runs and the host's focus; capture as far as the simulator lets
-// a spawned process record.
+// runs and the host's focus; interruptions, posted as the session
+// posts them, holding the streams and ending with or without the hint
+// to resume; a route change giving the default output its form; capture
+// as far as the simulator lets a spawned process record.
 
 #include "test_clock.h"
 #include "test_harness.h"
@@ -203,6 +205,112 @@ static void TestOutput(maudContext* context, const maudDeviceInfo* info)
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
 }
 
+// Posts an interruption as the session does: began, or ended with or
+// without the hint to resume.
+static void PostInterruption(bool began, bool resume)
+{
+    NSMutableDictionary* info = [NSMutableDictionary dictionary];
+    info[AVAudioSessionInterruptionTypeKey] =
+        @(began ? AVAudioSessionInterruptionTypeBegan : AVAudioSessionInterruptionTypeEnded);
+    if (!began)
+    {
+        info[AVAudioSessionInterruptionOptionKey] =
+            @(resume ? AVAudioSessionInterruptionOptionShouldResume : 0);
+    }
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:AVAudioSessionInterruptionNotification
+                      object:[AVAudioSession sharedInstance]
+                    userInfo:info];
+}
+
+static maudSuspendReason Suspension(const maudContext* context, maudStreamId stream)
+{
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    return status.suspension;
+}
+
+// Drains, then reads the context's focus.
+static maudFocus FocusAfterDrain(maudContext* context)
+{
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+    maudFocus focus = maud_focusNone;
+    CHECK(maudGetContextFocus(context, &focus) == maud_success, "focus");
+    return focus;
+}
+
+static void TestInterruptions(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = Open(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 10),
+          "a stream runs");
+    PostInterruption(true, false);
+    CHECK(FocusAfterDrain(context) == maud_focusPaused, "an interruption pauses focus");
+    CHECK(Suspension(context, stream) == maud_suspendPolicy, "and holds the stream");
+    PostInterruption(false, true);
+    CHECK(FocusAfterDrain(context) == maud_focusNone, "ended with the hint, no focus asked");
+    CHECK(Suspension(context, stream) == maud_suspendNone, "the stream runs again");
+    uint32_t count = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, count + 10), "and plays");
+    PostInterruption(true, false);
+    PostInterruption(false, false);
+    CHECK(FocusAfterDrain(context) == maud_focusPaused &&
+              Suspension(context, stream) == maud_suspendPolicy,
+          "ended without the hint, it stays held");
+    CHECK(maudResumeContext(context) == maud_success &&
+              FocusAfterDrain(context) == maud_focusNone &&
+              Suspension(context, stream) == maud_suspendNone,
+          "until the host resumes it");
+    PostInterruption(true, false);
+    CHECK(FocusAfterDrain(context) == maud_focusPaused, "interrupted again");
+    CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_success &&
+              FocusAfterDrain(context) == maud_focusHeld &&
+              Suspension(context, stream) == maud_suspendNone,
+          "or asks for focus");
+    CHECK(maudRequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success,
+          "released");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed");
+}
+
+// The form the session's route leads to, as the backend reads it.
+static maudDeviceForm RouteForm(void)
+{
+    AVAudioSessionPortDescription* port =
+        [AVAudioSession sharedInstance].currentRoute.outputs.firstObject;
+    if ([port.portType isEqualToString:AVAudioSessionPortBuiltInSpeaker])
+    {
+        return maud_formSpeakers;
+    }
+    if ([port.portType isEqualToString:AVAudioSessionPortHeadphones])
+    {
+        return maud_formHeadphones;
+    }
+    return maud_formUnknown;
+}
+
+static void TestRoute(maudContext* context)
+{
+    [[NSNotificationCenter defaultCenter] postNotificationName:AVAudioSessionRouteChangeNotification
+                                                        object:[AVAudioSession sharedInstance]
+                                                      userInfo:@{}];
+    FocusAfterDrain(context);
+    maudDeviceId output = {0, 0};
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+                  maud_success &&
+              maudGetDeviceInfo(context, output, &info) == maud_success,
+          "the default output");
+    printf("route: %s, form %u\n",
+           [AVAudioSession sharedInstance].currentRoute.outputs.firstObject.portType.UTF8String,
+           (unsigned)info.form);
+    CHECK(info.form == RouteForm(), "leads where the session's route does");
+}
+
 static void TestCapture(maudContext* context)
 {
     Blocks blocks = {0};
@@ -243,6 +351,8 @@ int main(void)
     maudDeviceInfo output = {0};
     TestDevices(context, &output);
     TestOutput(context, &output);
+    TestInterruptions(context);
+    TestRoute(context);
     TestCapture(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;

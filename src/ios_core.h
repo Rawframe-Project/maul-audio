@@ -10,6 +10,7 @@
 #include "context_core.h"
 
 #include <AudioToolbox/AudioToolbox.h>
+#include <stdatomic.h>
 
 // A stream's RemoteIO unit, run by the system's IO thread while it
 // plays.
@@ -47,11 +48,28 @@ typedef struct maudIosSession
     bool outputs;
 } maudIosSession;
 
+// What the session reports on the main thread, for the drain: the last
+// interruption (0 none since the last drain, 1 began, 2 ended with the
+// hint to resume, 3 ended without it) and a route change.
+typedef struct maudIosSignals
+{
+    atomic_int interruption;
+    atomic_bool routeChanged;
+} maudIosSignals;
+
+// The signals' values.
+#define MAUD_IOS_INTERRUPTION_BEGAN   1
+#define MAUD_IOS_INTERRUPTION_RESUME  2
+#define MAUD_IOS_INTERRUPTION_STOPPED 3
+
 typedef struct maudIos
 {
     maudContext* context;
     maudIosStream* streams;
     maudIosSession session;
+    maudIosSignals signals;
+    // The session observer (ios_session.m), retained.
+    void* observer;
     // The session's rate and output channels when the context opened.
     uint32_t rate;
     uint32_t channels;

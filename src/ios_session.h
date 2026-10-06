@@ -15,6 +15,16 @@ void maudIosSessionFormat(uint32_t* rate, uint32_t* channels);
 // output or input latency and its IO buffer.
 int64_t maudIosSessionLatency(bool input);
 
+// Starts observing the session's interruptions and route changes into
+// signals; returns the observer, retained, or NULL.
+void* maudIosSessionObserve(maudIosSignals* signals);
+
+// Stops observing: once it returns, no report reaches the signals.
+void maudIosSessionUnobserve(void* observer);
+
+// The forms the session's current route leads to, output and input.
+void maudIosSessionRoute(maudDeviceForm* output, maudDeviceForm* input);
+
 // Sets the category for what runs and activates the session while
 // anything runs or focus is asked for, deactivating it, so that others
 // resume, otherwise. false when the session refuses.

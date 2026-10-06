@@ -7,12 +7,15 @@
 // which streams follow wherever iOS routes them. Their rate and channels
 // are the session's when the context opens. Streams run on RemoteIO
 // units (ios_stream.c); the session's category follows them and the
-// host's focus requests (ios_session.m).
+// host's focus requests (ios_session.m). The session's interruptions
+// hold the streams (maud_suspendPolicy) and are focus states; its route
+// changes give the default devices the forms the route leads to.
 
 #include "backend.h"
 #include "context.h"
 #include "device.h"
 #include "focus.h"
+#include "follow.h"
 #include "ios_core.h"
 #include "ios_session.h"
 #include "ios_stream.h"
@@ -21,27 +24,39 @@
 #include <mach/mach_time.h>
 #include <string.h>
 
-static maudResult AddDefault(maudContext* context, maudDirection direction, uint32_t rate,
-                             maudChannelLayout layout)
+// The default device of a direction, leading where the route does.
+static maudDeviceSpec DefaultSpec(const maudIos* ios, maudDirection direction, maudDeviceForm form)
 {
     bool output = direction == maud_directionOutput;
     const char* name = output ? "Default output" : "Default input";
-    maudDeviceSpec spec = {
+    // The microphone, mono until a stream asks for more; the unit
+    // converts.
+    return (maudDeviceSpec){
         .info =
             {
                 .direction = direction,
-                .nativeLayout = layout,
-                .nativeSampleRate = rate,
-                .minSampleRate = rate,
-                .maxSampleRate = rate,
+                .nativeLayout = output ? maudLayoutWithChannels(ios->channels) : maud_layoutMono,
+                .nativeSampleRate = ios->rate,
+                .minSampleRate = ios->rate,
+                .maxSampleRate = ios->rate,
+                .form = form,
             },
         .name = name,
-        .nameLength = maudCutUtf8(name, context->def.limits.deviceTextBytes),
+        .nameLength = maudCutUtf8(name, ios->context->def.limits.deviceTextBytes),
         .key = "default",
         .keyLength = 7,
     };
-    maudDeviceId device;
-    return maudAddDevice(context, &spec, &device);
+}
+
+// Brings the default pair in line with the session's route.
+static maudResult Rescan(maudIos* ios)
+{
+    maudDeviceForm output = maud_formUnknown;
+    maudDeviceForm input = maud_formUnknown;
+    maudIosSessionRoute(&output, &input);
+    maudDeviceSpec specs[2] = {DefaultSpec(ios, maud_directionOutput, output),
+                               DefaultSpec(ios, maud_directionInput, input)};
+    return maudSyncDevices(ios->context, specs, 2, nullptr);
 }
 
 static maudResult OpenContext(maudContext* context)
@@ -65,16 +80,13 @@ static maudResult OpenContext(maudContext* context)
     ios->timebaseNumer = timebase.numer;
     ios->timebaseDenom = timebase.denom;
     maudIosSessionFormat(&ios->rate, &ios->channels);
-    // The microphone, mono until a stream asks for more; the unit
-    // converts.
-    maudResult result =
-        AddDefault(context, maud_directionOutput, ios->rate, maudLayoutWithChannels(ios->channels));
-    if (result == maud_success)
-    {
-        result = AddDefault(context, maud_directionInput, ios->rate, maud_layoutMono);
-    }
+    atomic_init(&ios->signals.interruption, 0);
+    atomic_init(&ios->signals.routeChanged, false);
+    ios->observer = maudIosSessionObserve(&ios->signals);
+    maudResult result = ios->observer != nullptr ? Rescan(ios) : maud_errorPlatform;
     if (result != maud_success)
     {
+        maudIosSessionUnobserve(ios->observer);
         maudContextRelease(context, ios, bytes, alignof(maudIos));
         context->native = nullptr;
     }
@@ -84,6 +96,7 @@ static maudResult OpenContext(maudContext* context)
 static void CloseContext(maudContext* context)
 {
     maudIos* ios = context->native;
+    maudIosSessionUnobserve(ios->observer);
     // No stream runs: the session is deactivated, letting others resume.
     ios->session.focus = maud_focusRelease;
     bool updated = maudIosSessionUpdate(ios, false, false);
@@ -116,9 +129,61 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
     return maud_success;
 }
 
+// The focus the context holds when nothing interrupts it.
+static maudFocus Settled(const maudIos* ios)
+{
+    return ios->session.focus == maud_focusRelease ? maud_focusNone : maud_focusHeld;
+}
+
+// An interruption began: iOS has deactivated the session and stopped the
+// units; the streams wait until it ends. When it ends with the hint to
+// resume they run again; without it they wait for the host
+// (maudResumeContext, or a focus request).
+static void Interrupt(maudContext* context, int interruption)
+{
+    maudIos* ios = context->native;
+    if (interruption == MAUD_IOS_INTERRUPTION_BEGAN)
+    {
+        ios->session.active = false;
+        maudHoldStreams(context, true);
+        maudReportFocus(context, maud_focusPaused);
+    }
+    else if (interruption == MAUD_IOS_INTERRUPTION_RESUME && context->held)
+    {
+        maudHoldStreams(context, false);
+        maudReportFocus(context, Settled(ios));
+    }
+}
+
+static void Pump(maudContext* context)
+{
+    maudIos* ios = context->native;
+    if (atomic_exchange_explicit(&ios->signals.routeChanged, false, memory_order_acq_rel))
+    {
+        maudResult result = Rescan(ios);
+        (void)result;
+    }
+    int interruption =
+        atomic_exchange_explicit(&ios->signals.interruption, 0, memory_order_acq_rel);
+    if (interruption != 0)
+    {
+        Interrupt(context, interruption);
+    }
+}
+
+// The host lets streams an interruption held run again.
+static void ResumeContext(maudContext* context)
+{
+    if (context->held)
+    {
+        maudHoldStreams(context, false);
+        maudReportFocus(context, Settled(context->native));
+    }
+}
+
 // Focus is the session's: asking sets whether it mixes with others and
-// activates it; releasing mixes again and deactivates it when no stream
-// runs.
+// activates it, and lets streams an interruption held run again;
+// releasing mixes again and deactivates it when no stream runs.
 static maudResult RequestFocus(maudContext* context, maudFocusRequest request, maudDeviceRole role)
 {
     (void)role;
@@ -130,7 +195,11 @@ static maudResult RequestFocus(maudContext* context, maudFocusRequest request, m
         ios->session.focus = previous;
         return maud_errorPlatform;
     }
-    maudReportFocus(context, request == maud_focusRelease ? maud_focusNone : maud_focusHeld);
+    if (request != maud_focusRelease)
+    {
+        maudHoldStreams(context, false);
+    }
+    maudReportFocus(context, Settled(ios));
     return maud_success;
 }
 
@@ -138,10 +207,12 @@ static const maudBackend s_ios = {
     .kind = maud_backendCoreAudio,
     .openContext = OpenContext,
     .closeContext = CloseContext,
+    .pump = Pump,
     .openStream = OpenStream,
     .attachStream = maudIosAttachStream,
     .detachStream = maudIosDetachStream,
     .setStreamActive = maudIosSetStreamActive,
+    .resumeContext = ResumeContext,
     .requestFocus = RequestFocus,
 };
 
