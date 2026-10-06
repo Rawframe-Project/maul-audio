@@ -344,17 +344,17 @@ static void TestTruncated(void)
     maudDestroyAcousticScene(box);
 }
 
-// Synthetic histograms: an exponential of 1.5 s; a decay at 0.5 s to
-// -15 dB and then at 3 s, whose -5 to -25 dB fit lies well above the
-// first slope (a fit only to -15 dB would read it).
+// Synthetic histograms: an exponential of 1.5 s; bins falling at 0.5 s
+// to -25 dB and then at 3 s, whose integral's -5 to -25 dB fit reads
+// 2.03 s (a fit to -15 dB would read 0.61 s).
 static void TestFit(void)
 {
     for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
     {
         double t = (double)i * 0.01;
         s_histograms[0].energy[0][i] = (float)pow(10.0, -6.0 * t / 1.5);
-        double knee = 0.5 * 15.0 / 60.0;
-        double db = t < knee ? -60.0 * t / 0.5 : -15.0 - 60.0 * (t - knee) / 3.0;
+        double knee = 0.5 * 25.0 / 60.0;
+        double db = t < knee ? -60.0 * t / 0.5 : -25.0 - 60.0 * (t - knee) / 3.0;
         s_histograms[0].energy[1][i] = (float)pow(10.0, db / 10.0);
         s_histograms[0].energy[2][i] = 0.0f;
     }
@@ -363,7 +363,7 @@ static void TestFit(void)
     maudFitReverb(s_histograms, 1, times);
     printf("fits: exponential %.3f s, double slope %.3f s\n", (double)times[0], (double)times[1]);
     CHECK(fabs((double)times[0] / 1.5 - 1.0) < 0.01, "an exponential's time");
-    CHECK(times[1] > 0.75f, "the double slope's -5 to -25 dB");
+    CHECK(times[1] > 1.8f && times[1] < 2.3f, "the double slope's -5 to -25 dB");
     CHECK(times[2] == 0.1f, "no energy: the floor");
 }
 
