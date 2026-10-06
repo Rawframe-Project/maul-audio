@@ -65,6 +65,10 @@ void maudIosSessionFormat(uint32_t* rate, uint32_t* channels)
     {
         if (signals != nullptr)
         {
+            if (value == MAUD_IOS_INTERRUPTION_BEGAN)
+            {
+                atomic_store_explicit(&signals->began, true, memory_order_release);
+            }
             atomic_store_explicit(&signals->interruption, value, memory_order_release);
         }
     }

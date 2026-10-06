@@ -80,6 +80,7 @@ static maudResult OpenContext(maudContext* context)
     ios->timebaseNumer = timebase.numer;
     ios->timebaseDenom = timebase.denom;
     maudIosSessionFormat(&ios->rate, &ios->channels);
+    atomic_init(&ios->signals.began, false);
     atomic_init(&ios->signals.interruption, 0);
     atomic_init(&ios->signals.routeChanged, false);
     ios->observer = maudIosSessionObserve(&ios->signals);
@@ -163,9 +164,15 @@ static void Pump(maudContext* context)
         maudResult result = Rescan(ios);
         (void)result;
     }
+    // A beginning since the last drain first, then the last event if it
+    // ended one.
     int interruption =
         atomic_exchange_explicit(&ios->signals.interruption, 0, memory_order_acq_rel);
-    if (interruption != 0)
+    if (atomic_exchange_explicit(&ios->signals.began, false, memory_order_acq_rel))
+    {
+        Interrupt(context, MAUD_IOS_INTERRUPTION_BEGAN);
+    }
+    if (interruption != MAUD_IOS_INTERRUPTION_BEGAN && interruption != 0)
     {
         Interrupt(context, interruption);
     }
