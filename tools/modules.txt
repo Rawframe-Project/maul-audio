@@ -62,6 +62,8 @@ pipewire_api:
 pipewire_card: context context_core device form pipewire_core
 pipewire_core: context_core pipewire_api
 pipewire_stream: clock context context_core period pipewire_core thread xrun
+probe_graph: allocator
+probe_sets: allocator probe_graph
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
@@ -71,7 +73,7 @@ reflections: allocator ambisonics partitioned reflection_response reverb_estimat
 reverb: allocator band_eq octave_eq
 reverb_estimate: spherical_harmonics
 scene: allocator bvh
-spatializer: air_absorption allocator direct_step occlusion reflections reverb_estimate transmission
+spatializer: air_absorption allocator direct_step occlusion probe_sets reflections reverb_estimate transmission
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics
 spherical_harmonics:

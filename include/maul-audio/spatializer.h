@@ -37,6 +37,13 @@ extern "C"
         uint32_t generation;
     } maudSourceId;
 
+    // A probe set of a spatializer; 0 is no set.
+    typedef struct maudProbeSetId
+    {
+        uint32_t index1;
+        uint32_t generation;
+    } maudProbeSetId;
+
     // Where something is and which way it faces.
     typedef struct maudPose
     {
@@ -149,6 +156,14 @@ extern "C"
         uint32_t reflectionOrder;
         float reflectionDuration;
         float reflectionRate;
+        // Probe sets for pathing: how many at once (0 to 64), the most
+        // probes one holds (1 to 65,536) and the most probe pairs within
+        // range one tests (1 to 16,777,216). A set takes its memory when
+        // made: 12 bytes a probe and 16 a link, with 9 bytes a pair and
+        // 5 a column while it is built.
+        uint32_t probeSetCapacity;
+        uint32_t maxProbes;
+        uint32_t maxProbePairs;
         // The task hooks; both NULL runs queries on the step's thread.
         maudEnqueueTaskFn* enqueueTask;
         maudFinishTaskFn* finishTask;
@@ -172,6 +187,38 @@ extern "C"
         // closest-hit query.
         bool transmission;
     } maudSourceDef;
+
+    // How to create a probe set: probes at the host's points or, without
+    // them, generated; two probes within range are linked when one ray
+    // connects them. Build it with maudDefaultProbeSetDef.
+    typedef struct maudProbeSetDef
+    {
+        uint32_t cookie;
+        // The host's probes (finite), or NULL to generate them; with
+        // points the box is not used.
+        const maudVector3* points;
+        uint32_t pointCount;
+        // Generation: columns on a grid of this spacing (0.25 to 100 m)
+        // over the box's x and z, centred, each walked down from the
+        // box's top by the closest-hit query; a probe goes at height
+        // (0.1 to 10 m) above each horizontal surface (its normal within
+        // 45 degrees of vertical) with that height free above it, at
+        // most 8 a column. y is up. A slab thicker than the height may
+        // hold a probe inside it; give such scenes points.
+        maudVector3 boxMin;
+        maudVector3 boxMax;
+        float spacing;
+        float height;
+        // The longest link, 0.1 to 1,000 m.
+        float range;
+    } maudProbeSetDef;
+
+    // What a probe set holds.
+    typedef struct maudProbeSetInfo
+    {
+        uint32_t probes;
+        uint32_t links;
+    } maudProbeSetInfo;
 
     // What a step found for a source.
     typedef struct maudDirectResult
@@ -424,6 +471,70 @@ extern "C"
     /// used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudGetReverbResult(const maudSpatializer* spatializer,
                                                            maudReverbResult* resultOut);
+
+    /// Returns the default probe set def: no points and an empty box (set
+    /// one or the other), 2 m spacing, 1.5 m height, a 5 m range.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_API maudProbeSetDef maudDefaultProbeSetDef(void);
+
+    /// Creates a probe set: the def's points, or probes generated over
+    /// its box; then the links, a ray for each pair within range (every
+    /// pair is linked without an any-hit query). The rays go through the
+    /// task hooks; the same scene and def give the same set however they
+    /// run.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param def          The def, from maudDefaultProbeSetDef.
+    /// @param setOut       Receives the set; 0 on failure.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
+    ///         def without its cookie, a value out of range or not
+    ///         finite, or neither points nor a box (one with height);
+    ///         `maud_errorState` to generate without a closest-hit query;
+    ///         `maud_errorCapacity` when the spatializer has its capacity
+    ///         of sets, past maxProbes or maxProbePairs, past 4,194,304
+    ///         columns, or when memory runs out.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudCreateProbeSet(maudSpatializer* spatializer,
+                                                          const maudProbeSetDef* def,
+                                                          maudProbeSetId* setOut);
+
+    /// Destroys a probe set.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param set          The set.
+    /// @return `maud_success`, `maud_errorInvalid` for a NULL spatializer
+    ///         or a 0 or unknown id, or `maud_errorStale` for a destroyed
+    ///         set's id.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudDestroyProbeSet(maudSpatializer* spatializer,
+                                                           maudProbeSetId set);
+
+    /// Reads what a probe set holds and, if points is not NULL, copies
+    /// its probes from first on into points, count of them.
+    ///
+    /// @param spatializer  The spatializer.
+    /// @param set          The set.
+    /// @param infoOut      Receives the counts.
+    /// @param first        The first probe to copy.
+    /// @param count        The probes to copy.
+    /// @param points       Receives them, or NULL.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
+    ///         or info, a 0 or unknown id, or probes past the set's;
+    ///         `maud_errorStale` for a destroyed set's id.
+    /// @par Thread safety
+    /// Safe from any thread; the simulation side is used by one thread at
+    /// a time.
+    MAUD_NODISCARD MAUD_API maudResult maudGetProbeSet(const maudSpatializer* spatializer,
+                                                       maudProbeSetId set,
+                                                       maudProbeSetInfo* infoOut, uint32_t first,
+                                                       uint32_t count, maudVector3* points);
 
 #ifdef __cplusplus
 }

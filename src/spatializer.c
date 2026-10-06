@@ -17,6 +17,7 @@
 #include "allocator.h"
 #include "direct_step.h"
 #include "occlusion.h"
+#include "probe_sets.h"
 #include "reflections.h"
 #include "reverb_estimate.h"
 #include "transmission.h"
@@ -27,6 +28,7 @@
 
 #define SPATIALIZER_DEF_COOKIE 0x6D617370u
 #define SOURCE_DEF_COOKIE      0x6D61736Fu
+#define PROBE_SET_DEF_COOKIE   0x6D617062u
 #define MAX_SOURCES            65536u
 #define FRESH                  4u
 #define MAX_SAMPLES            1024u
@@ -42,6 +44,9 @@
 #define REVERB_BOUNCES       1024u
 #define NO_REVERB            0.1f
 #define MAX_REFLECTION_ORDER 3u
+#define MAX_PROBE_SETS       64u
+#define MAX_PROBES           65536u
+#define MAX_PROBE_PAIRS      16777216u
 // When the reverb's level is matched without reflections, and how long
 // its output stays silent after its input (its shortest delay line).
 #define LEVEL_AT     0.1f
@@ -114,6 +119,10 @@ struct maudSpatializer
     // response's length.
     maudReflections* reflections;
     float reflectionDuration;
+    // Probe sets, if the def asked for any, and their limits.
+    maudProbeSets* probeSets;
+    uint32_t maxProbes;
+    uint32_t maxProbePairs;
     maudReverbResult reverb;
     Buffer buffers[3];
     // The simulation side's buffer and step count.
@@ -139,6 +148,9 @@ maudSpatializerDef maudDefaultSpatializerDef(void)
         .reflectionOrder = 0,
         .reflectionDuration = 1.0f,
         .reflectionRate = 48000.0f,
+        .probeSetCapacity = 0,
+        .maxProbes = 4096,
+        .maxProbePairs = 1048576,
         .enqueueTask = nullptr,
         .finishTask = nullptr,
         .userTaskContext = nullptr,
@@ -196,6 +208,7 @@ static void Release(maudSpatializer* s)
     Free(&allocator, s->walkers, FreeBytes(s->capacity), alignof(uint32_t));
     Free(&allocator, s->walked, (size_t)s->capacity * sizeof(float), alignof(float));
     maudDestroyReflections(s->reflections);
+    maudDestroyProbeSets(s->probeSets);
     Free(&allocator, s->histograms,
          (size_t)maudReverbBatches(s->trace.rays) * sizeof(maudReverbHistogram),
          alignof(maudReverbHistogram));
@@ -232,6 +245,13 @@ static bool ReverbValid(const maudSpatializerDef* def)
                         def->reflectionRate >= 44100.0f && def->reflectionRate <= 384000.0f);
     return reflections && (def->reverbRays == 0 || (def->reverbRays >= MIN_REVERB_RAYS &&
                                                     def->reverbRays <= MAX_REVERB_RAYS));
+}
+
+static bool ProbesValid(const maudSpatializerDef* def)
+{
+    return def->probeSetCapacity <= MAX_PROBE_SETS && def->maxProbes >= 1 &&
+           def->maxProbes <= MAX_PROBES && def->maxProbePairs >= 1 &&
+           def->maxProbePairs <= MAX_PROBE_PAIRS;
 }
 
 // Allocates everything a spatializer holds but itself; false if any
@@ -274,6 +294,11 @@ static bool Allocate(maudSpatializer* s, const maudSpatializerDef* def)
             maudPrepareReflections(s->reflections, &s->trace, s->histograms, batches);
         }
     }
+    if (all && def->probeSetCapacity > 0)
+    {
+        s->probeSets = maudCreateProbeSets(&def->allocator, def->probeSetCapacity);
+        all = s->probeSets != nullptr;
+    }
     for (int b = 0; b < 3; ++b)
     {
         s->buffers[b].entries =
@@ -295,7 +320,7 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
         def->maxSurfaces == 0 || def->maxSurfaces > MAX_SURFACES || def->materialCapacity == 0 ||
         def->materialCapacity > MAX_MATERIALS ||
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || !ReverbValid(def) ||
-        !maudIsAllocatorValid(&def->allocator))
+        !ProbesValid(def) || !maudIsAllocatorValid(&def->allocator))
     {
         return maud_errorInvalid;
     }
@@ -322,6 +347,8 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
                   .maxBounces = REVERB_BOUNCES},
         .reverb = {.reverbTime = {NO_REVERB, NO_REVERB, NO_REVERB}},
         .reflectionDuration = def->reflectionDuration,
+        .maxProbes = def->maxProbes,
+        .maxProbePairs = def->maxProbePairs,
     };
     bool all = Allocate(s, def);
     if (!all)
@@ -811,5 +838,85 @@ maudResult maudRenderReflections(maudSpatializer* spatializer, const maudQuatern
         }
     }
     maudConvolveReflections(spatializer->reflections, orientation, send, bed, frames);
+    return maud_success;
+}
+
+maudProbeSetDef maudDefaultProbeSetDef(void)
+{
+    return (maudProbeSetDef){
+        .cookie = PROBE_SET_DEF_COOKIE,
+        .points = nullptr,
+        .pointCount = 0,
+        .boxMin = {0.0f, 0.0f, 0.0f},
+        .boxMax = {0.0f, 0.0f, 0.0f},
+        .spacing = 2.0f,
+        .height = 1.5f,
+        .range = 5.0f,
+    };
+}
+
+maudResult maudCreateProbeSet(maudSpatializer* spatializer, const maudProbeSetDef* def,
+                              maudProbeSetId* setOut)
+{
+    if (setOut != nullptr)
+    {
+        *setOut = (maudProbeSetId){0, 0};
+    }
+    if (spatializer == nullptr || def == nullptr || setOut == nullptr ||
+        def->cookie != PROBE_SET_DEF_COOKIE || !maudProbeSetDefValid(def))
+    {
+        return maud_errorInvalid;
+    }
+    maudSpatializer* s = spatializer;
+    if (s->probeSets == nullptr)
+    {
+        return maud_errorCapacity;
+    }
+    maudProbeQueries queries = {
+        .anyHit = s->anyHit,
+        .closestHit = s->closestHit,
+        .rayContext = s->rayContext,
+        .enqueueTask = s->enqueueTask,
+        .finishTask = s->finishTask,
+        .userTaskContext = s->userTaskContext,
+        .allocator = &s->allocator,
+        .maxProbes = s->maxProbes,
+        .maxPairs = s->maxProbePairs,
+    };
+    return maudAddProbeSet(s->probeSets, &queries, def, setOut);
+}
+
+maudResult maudDestroyProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
+{
+    if (spatializer == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    return maudRemoveProbeSet(spatializer->probeSets, set);
+}
+
+maudResult maudGetProbeSet(const maudSpatializer* spatializer, maudProbeSetId set,
+                           maudProbeSetInfo* infoOut, uint32_t first, uint32_t count,
+                           maudVector3* points)
+{
+    if (spatializer == nullptr || infoOut == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    const maudProbeGraph* graph = nullptr;
+    maudResult result = maudFindProbeSet(spatializer->probeSets, set, &graph);
+    if (result != maud_success)
+    {
+        return result;
+    }
+    if (points != nullptr && (first > graph->count || count > graph->count - first))
+    {
+        return maud_errorInvalid;
+    }
+    *infoOut = (maudProbeSetInfo){graph->count, graph->links};
+    if (points != nullptr && count > 0)
+    {
+        memcpy(points, graph->points + first, (size_t)count * sizeof(maudVector3));
+    }
     return maud_success;
 }
