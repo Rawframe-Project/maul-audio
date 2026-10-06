@@ -130,28 +130,34 @@ static bool Category(AVAudioSessionCategory category, bool mixes)
     return same;
 }
 
-static void TestDevices(maudContext* context, maudDeviceInfo* output)
+static void TestDevices(maudContext* context, maudDeviceInfo* outputInfo)
 {
     for (maudDirection direction = maud_directionOutput; direction <= maud_directionInput;
          ++direction)
     {
-        maudDeviceId ids[4];
+        // One output, as iOS lets none be chosen; the inputs are the
+        // default and the session's available inputs.
+        maudDeviceId ids[8];
         uint32_t count = 0;
-        CHECK(maudGetDevices(context, direction, ids, 4, &count) == maud_success && count == 1,
-              "one device each way");
+        bool output = direction == maud_directionOutput;
+        CHECK(maudGetDevices(context, direction, ids, 8, &count) == maud_success &&
+                  (output ? count == 1 : count >= 1),
+              "one output, and inputs");
+        maudDeviceId current = {0, 0};
         maudDeviceInfo info = {0};
         char key[32] = {0};
         size_t length = 0;
-        CHECK(maudGetDeviceInfo(context, ids[0], &info) == maud_success &&
-                  maudGetDeviceKey(context, ids[0], key, sizeof(key) - 1, &length) ==
-                      maud_success &&
-                  strcmp(key, "default") == 0 && info.nativeSampleRate >= 8000,
-              "the session's default");
-        printf("%s: %u Hz, layout %u\n", direction == maud_directionOutput ? "output" : "input",
-               info.nativeSampleRate, (unsigned)info.nativeLayout);
-        if (direction == maud_directionOutput)
+        CHECK(
+            maudGetDefaultDevice(context, direction, maud_roleGeneral, &current) == maud_success &&
+                maudGetDeviceInfo(context, current, &info) == maud_success &&
+                maudGetDeviceKey(context, current, key, sizeof(key) - 1, &length) == maud_success &&
+                strcmp(key, "default") == 0 && info.nativeSampleRate >= 8000,
+            "the session's default");
+        printf("%s: %u Hz, layout %u, %u devices\n", output ? "output" : "input",
+               info.nativeSampleRate, (unsigned)info.nativeLayout, count);
+        if (output)
         {
-            *output = info;
+            *outputInfo = info;
         }
     }
 }
