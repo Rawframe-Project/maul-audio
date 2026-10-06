@@ -238,8 +238,16 @@ static bool FocusBecomes(maudContext* context, maudFocus focus)
 #define GAIN_TRANSIENT          2
 #define GAIN_TRANSIENT_MAY_DUCK 3
 
+// Focus while a stream plays, as Android ducks a playing application
+// itself unless its request says it pauses when ducked.
 static void TestFocus(maudContext* context)
 {
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = Silence;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudStartStream(context, stream) == maud_success,
+          "a stream plays");
     CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_success,
           "focus asked for");
     CHECK(FocusBecomes(context, maud_focusHeld), "and held");
@@ -258,6 +266,16 @@ static void TestFocus(maudContext* context)
     CHECK(maudRequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success &&
               FocusBecomes(context, maud_focusNone),
           "released");
+    CHECK(maudRequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success,
+          "released again");
+    maudNotification record;
+    bool again = false;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        again = again || record.kind == maud_notifyFocusChanged;
+    }
+    CHECK(!again, "an unchanged state is not posted again");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "the stream destroyed");
 }
 
 static void TestHalfHandles(void)
