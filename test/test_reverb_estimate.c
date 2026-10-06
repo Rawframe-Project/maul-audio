@@ -12,8 +12,12 @@
 // differently get their own times; the air shortens a hall's as
 // Eyring's air term says; an open field gives the floor, a box without
 // absorption the ceiling (its rays cut by the bounce cap, the tail
-// compensated); batches split any way sum the same; unknown materials
-// end a ray.
+// compensated), and a room whose rays are cut mid-decay its time once
+// the tail is filled in; batches split any way sum the same; unknown
+// materials end a ray. One bounce off a lossless diffuse floor gives the
+// energy the shading integral gives, in the bin of its path; blocked
+// shadow rays bring nothing; the fit reads an exponential's time and
+// spans -5 to -25 dB of a double slope.
 
 #include "reverb_estimate.h"
 #include "test_harness.h"
@@ -22,6 +26,8 @@
 
 #include <math.h>
 #include <stdlib.h>
+
+#define PI 3.14159265358979323846
 
 // A closed box from the origin to size, a material per face: x low and
 // high, y low and high, z low and high.
@@ -234,8 +240,139 @@ static void TestOrder(void)
     maudDestroyAcousticScene(box);
 }
 
+// A floor as two triangles 2 km wide, facing down (away from the
+// listener above it): one lossless, fully scattering bounce sends the
+// listener, from rays over the sphere, N / (4 pi) times the integral
+// over the lower hemisphere of (cos / pi) / (4 pi max(h / cos, 1)^2),
+// which is (N / 4 pi) (1 / 2 pi) (h^2 / 4 + (1 - h^2) / 2) for h below
+// 1 m and (N / 4 pi) / (8 pi h^2) above.
+static void TestSingleBounce(void)
+{
+    static const maudVector3 v[4] = {
+        {-1000, -1000, 0}, {1000, -1000, 0}, {-1000, 1000, 0}, {1000, 1000, 0}};
+    static const uint32_t faces[6] = {0, 2, 1, 1, 2, 3};
+    static const uint32_t materials[2] = {0, 0};
+    maudMesh mesh = {v, 4, faces, materials, 2};
+    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    def.meshes = &mesh;
+    def.meshCount = 1;
+    maudAcousticScene* floor = nullptr;
+    CHECK(maudCreateAcousticScene(&def, &floor) == maud_success, "a floor");
+    maudAcousticMaterial lossless = Material(0.0f, 1.0f);
+    const double heights[2] = {0.5, 2.0};
+    for (int k = 0; k < 2; ++k)
+    {
+        double h = heights[k];
+        maudReverbTrace trace = {maudSceneClosestHit, maudSceneAnyHit,         floor, &lossless, 1,
+                                 {0, 0, 0},           {0.3f, -0.2f, (float)h}, 4096,  1};
+        double total = 0.0;
+        uint32_t first = MAUD_REVERB_BINS;
+        for (uint32_t b = 0; b < 64; ++b)
+        {
+            maudTraceReverbBatch(&trace, b, &s_histograms[0]);
+            for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+            {
+                double e = (double)s_histograms[0].energy[1][i];
+                total += e;
+                first = e > 0.0 && i < first ? i : first;
+            }
+        }
+        double integral =
+            h < 1.0 ? (h * h / 4.0 + (1.0 - h * h) / 2.0) / (2.0 * PI) : 1.0 / (8.0 * PI * h * h);
+        double expected = 4096.0 / (4.0 * PI) * integral;
+        printf("floor at %.1f m: energy %.4f, expected %.4f\n", h, total, expected);
+        CHECK(fabs(total / expected - 1.0) < 0.02, "the shading integral");
+        // The straight path down and back: 2h at 343 m/s.
+        CHECK(first == (uint32_t)(2.0 * h / 343.0 / 0.01), "the first bin");
+    }
+    maudDestroyAcousticScene(floor);
+}
+
+// Every shadow blocked: nothing reaches the listener.
+static void Always(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
+{
+    (void)rays;
+    (void)context;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        occluded[i] = 1;
+    }
+}
+
+static void TestBlocked(void)
+{
+    maudAcousticScene* box = Box(5, 4, 3);
+    maudAcousticMaterial m[6];
+    for (int f = 0; f < 6; ++f)
+    {
+        m[f] = Material(0.1f, 0.5f);
+    }
+    maudReverbTrace trace = {maudSceneClosestHit,   Always, box, m, 6, {0, 0, 0},
+                             {1.85f, 1.64f, 1.35f}, 64,     512};
+    maudTraceReverbBatch(&trace, 0, &s_histograms[0]);
+    double total = 0.0;
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        total += (double)s_histograms[0].energy[0][i];
+    }
+    CHECK(total == 0.0, "blocked shadows bring nothing");
+    maudDestroyAcousticScene(box);
+}
+
+// Rays cut at 64 bounces (0.4 s into a 1 s office): the bins past the
+// cut filled in at the rate of those before give the time (measured:
+// 1.007 s; 0.83 s with nothing filled in).
+static void TestTruncated(void)
+{
+    maudAcousticScene* box = Box(5, 4, 3);
+    maudAcousticMaterial m[6];
+    for (int f = 0; f < 6; ++f)
+    {
+        m[f] = Material(0.1f, 0.5f);
+    }
+    maudReverbTrace trace = {maudSceneClosestHit, maudSceneAnyHit,       box,  m, 6,
+                             {0, 0, 0},           {1.85f, 1.64f, 1.35f}, 1024, 64};
+    for (uint32_t b = 0; b < 16; ++b)
+    {
+        maudTraceReverbBatch(&trace, b, &s_histograms[b]);
+    }
+    CHECK(s_histograms[0].truncated < 1.0f, "rays were cut");
+    float times[3];
+    maudFitReverb(s_histograms, 16, times);
+    printf("office cut at 64 bounces: %.3f s\n", (double)times[1]);
+    CHECK(fabs((double)times[1] / 0.99 - 1.0) < 0.05, "the truncated decay's time");
+    maudDestroyAcousticScene(box);
+}
+
+// Synthetic histograms: an exponential of 1.5 s; a decay at 0.5 s to
+// -15 dB and then at 3 s, whose -5 to -25 dB fit lies well above the
+// first slope (a fit only to -15 dB would read it).
+static void TestFit(void)
+{
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        double t = (double)i * 0.01;
+        s_histograms[0].energy[0][i] = (float)pow(10.0, -6.0 * t / 1.5);
+        double knee = 0.5 * 15.0 / 60.0;
+        double db = t < knee ? -60.0 * t / 0.5 : -15.0 - 60.0 * (t - knee) / 3.0;
+        s_histograms[0].energy[1][i] = (float)pow(10.0, db / 10.0);
+        s_histograms[0].energy[2][i] = 0.0f;
+    }
+    s_histograms[0].truncated = INFINITY;
+    float times[3];
+    maudFitReverb(s_histograms, 1, times);
+    printf("fits: exponential %.3f s, double slope %.3f s\n", (double)times[0], (double)times[1]);
+    CHECK(fabs((double)times[0] / 1.5 - 1.0) < 0.01, "an exponential's time");
+    CHECK(times[1] > 0.75f, "the double slope's -5 to -25 dB");
+    CHECK(times[2] == 0.1f, "no energy: the floor");
+}
+
 int main(void)
 {
+    TestSingleBounce();
+    TestBlocked();
+    TestTruncated();
+    TestFit();
     TestRooms();
     TestBandsAndAir();
     TestLimits();

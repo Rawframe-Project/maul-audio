@@ -24,9 +24,7 @@
 #define CUT_ENERGY 1e-4f
 #define MIN_TIME   0.1f
 #define MAX_TIME   20.0f
-// Fits of a truncated decay, each adding the tail the last one implies;
-// the tail's level is the mean of the last bins before the cut.
-#define TAIL_FITS 4
+// The bins whose mean sets a truncated decay's level at the cut.
 #define TAIL_BINS 10u
 
 typedef struct Path
@@ -294,92 +292,127 @@ void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
     }
 }
 
-// The backward integral of the first bins of energy plus tail, and the
+// The backward integral of the bins and past them tail, and the
 // crossings of -5 and -25 dB; false if it never falls 25 dB.
-static bool Integrate(const float* energy, uint32_t bins, double tail, double* decay,
-                      uint32_t* start, uint32_t* end)
+static bool Integrate(const double* energy, double tail, double* decay, uint32_t* start,
+                      uint32_t* end)
 {
     double sum = tail;
-    for (uint32_t i = bins; i-- > 0;)
+    for (uint32_t i = MAUD_REVERB_BINS; i-- > 0;)
     {
-        sum += (double)energy[i];
+        sum += energy[i];
         decay[i] = sum;
     }
-    *start = bins;
-    *end = bins;
-    for (uint32_t i = 0; i < bins && *end == bins; ++i)
+    *start = MAUD_REVERB_BINS;
+    *end = MAUD_REVERB_BINS;
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS && *end == MAUD_REVERB_BINS; ++i)
     {
-        *start = *start == bins && decay[i] < sum * 0.31622776601683794 ? i : *start;
+        *start = *start == MAUD_REVERB_BINS && decay[i] < sum * 0.31622776601683794 ? i : *start;
         *end = decay[i] < sum * 0.0031622776601683794 ? i : *end;
     }
-    return *end < bins;
+    return *end < MAUD_REVERB_BINS;
 }
 
-// The least-squares slope, in dB per second, of the decay's level over
-// bins [start, end).
-static double Slope(const double* decay, uint32_t start, uint32_t end)
+// The least-squares slope, in dB per second, of levels[i] (dB) over
+// bins [start, end), skipping those that are not finite.
+static double Slope(const double* levels, uint32_t start, uint32_t end)
 {
+    double n = 0.0;
     double st = 0.0;
     double sd = 0.0;
     double stt = 0.0;
     double std = 0.0;
-    double count = (double)(end - start);
     for (uint32_t i = start; i < end; ++i)
     {
-        double t = ((double)i + 0.5) * (double)BIN_SECONDS;
-        double db = 10.0 * log10(decay[i] / decay[0]);
-        st += t;
-        sd += db;
-        stt += t * t;
-        std += t * db;
+        if (isfinite(levels[i]))
+        {
+            double t = ((double)i + 0.5) * (double)BIN_SECONDS;
+            n += 1.0;
+            st += t;
+            sd += levels[i];
+            stt += t * t;
+            std += t * levels[i];
+        }
     }
-    return (count * std - st * sd) / (count * stt - st * st);
+    return n < 2.0 ? 0.0 : (n * std - st * sd) / (n * stt - st * st);
+}
+
+// Fills the bins from the cut on, and returns the energy past the last,
+// at the rate the raw bins decay at between the integral's -5 dB and the
+// cut (their levels' least-squares slope), from the level of the last
+// bins (their mean, half their span before the cut). False if the bins
+// do not decay.
+static bool Extend(double* energy, uint32_t bins, double* tail)
+{
+    double decay[MAUD_REVERB_BINS];
+    uint32_t start = 0;
+    uint32_t end = 0;
+    (void)Integrate(energy, 0.0, decay, &start, &end);
+    double levels[MAUD_REVERB_BINS];
+    for (uint32_t i = 0; i < bins; ++i)
+    {
+        levels[i] = 10.0 * log10(energy[i]);
+    }
+    double slope = Slope(levels, start < bins ? start : 0, bins);
+    if (!(slope < 0.0))
+    {
+        return false;
+    }
+    uint32_t span = bins < TAIL_BINS ? bins : TAIL_BINS;
+    double level = 0.0;
+    for (uint32_t i = bins - span; i < bins; ++i)
+    {
+        level += energy[i] / (double)span;
+    }
+    double rate = pow(10.0, slope * (double)BIN_SECONDS / 10.0);
+    double fill = level * pow(rate, ((double)span - 1.0) / 2.0);
+    for (uint32_t i = bins; i < MAUD_REVERB_BINS; ++i)
+    {
+        fill *= rate;
+        energy[i] = fill;
+    }
+    *tail = fill * rate / (1.0 - rate);
+    return true;
 }
 
 // A band's time from its first bins of energy (all of them unless rays
-// were cut short).
+// were cut short, the rest then filled in by Extend).
 static float Fit(const float* energy, uint32_t bins)
 {
+    double extended[MAUD_REVERB_BINS];
     double total = 0.0;
-    for (uint32_t i = 0; i < bins; ++i)
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
     {
-        total += (double)energy[i];
+        extended[i] = i < bins ? (double)energy[i] : 0.0;
+        total += extended[i];
     }
     if (!(total > 0.0))
     {
         return MIN_TIME;
     }
-    double level = 0.0;
-    for (uint32_t i = bins > TAIL_BINS ? bins - TAIL_BINS : 0; i < bins; ++i)
+    double tail = 0.0;
+    if (bins < MAUD_REVERB_BINS && !Extend(extended, bins, &tail))
     {
-        level += (double)energy[i] / (double)(bins < TAIL_BINS ? bins : TAIL_BINS);
+        return MAX_TIME;
     }
     double decay[MAUD_REVERB_BINS];
-    double tail = 0.0;
-    double slope = 0.0;
-    int fits = bins == MAUD_REVERB_BINS ? 1 : TAIL_FITS;
-    for (int fit = 0; fit < fits; ++fit)
+    uint32_t start = 0;
+    uint32_t end = 0;
+    if (!Integrate(extended, tail, decay, &start, &end))
     {
-        uint32_t start = 0;
-        uint32_t end = 0;
-        if (!Integrate(energy, bins, tail, decay, &start, &end))
-        {
-            return MAX_TIME;
-        }
-        if (end < start + 2)
-        {
-            return MIN_TIME;
-        }
-        slope = Slope(decay, start, end);
-        if (!(slope < 0.0))
-        {
-            return MAX_TIME;
-        }
-        // The energy past the cut, decaying at this rate per bin.
-        double rate = pow(10.0, slope * (double)BIN_SECONDS / 10.0);
-        tail = level * rate / (1.0 - rate);
+        return MAX_TIME;
     }
-    return (float)fmin(fmax(-60.0 / slope, (double)MIN_TIME), (double)MAX_TIME);
+    if (end < start + 2)
+    {
+        return MIN_TIME;
+    }
+    for (uint32_t i = start; i < end; ++i)
+    {
+        decay[i] = 10.0 * log10(decay[i] / decay[0]);
+    }
+    double slope = Slope(decay, start, end);
+    return slope < 0.0 ? (float)fmin(fmax(-60.0 / slope, (double)MIN_TIME), (double)MAX_TIME)
+                       : MAX_TIME;
 }
 
 void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[MAUD_DIRECT_BANDS])

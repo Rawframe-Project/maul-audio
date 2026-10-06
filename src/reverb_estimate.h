@@ -53,8 +53,9 @@ void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
 // Sums count histograms into the first, in order, and fits each band:
 // times in seconds, 0.1 to 20; the floor for a band without energy (an
 // open field), the ceiling for one that never falls 25 dB. Where rays
-// were cut short, the fit uses the bins before and adds the tail they
-// miss at the fitted rate (as ISO 3382 part 1 compensates a truncated decay).
+// were cut short, the bins from the cut on are filled at the rate the
+// bins before it decay at (as ISO 3382 part 1 compensates a truncated
+// decay), and a band whose bins do not decay takes the ceiling.
 void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[MAUD_DIRECT_BANDS]);
 
 #endif // MAUL_AUDIO_SRC_REVERB_ESTIMATE_H
