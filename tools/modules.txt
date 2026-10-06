@@ -12,6 +12,7 @@ alsa_scan: alsa_api context_core device
 alsa_stream: alsa_chmap alsa_core clock context context_core period thread worker xrun
 alsa_watch:
 ambisonic_rotation:
+apple_objects: context context_core period
 ambisonics: ambisonic_rotation spherical_harmonics
 backend: context_core
 backend_aaudio: aaudio_core aaudio_java aaudio_stream backend context device focus layout
@@ -34,10 +35,10 @@ bvh: watertight
 clock: context_core
 context: allocator backend context_core invariant thread
 context_core: period
-coreaudio_core: context_core device
+coreaudio_core: apple_objects context_core device
 coreaudio_hog: coreaudio_core
 coreaudio_form: coreaudio_core
-coreaudio_stream: clock context context_core coreaudio_core coreaudio_hog period thread voice xrun
+coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device period thread voice xrun
 crc32:
 device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq

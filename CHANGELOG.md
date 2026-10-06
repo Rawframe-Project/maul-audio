@@ -418,5 +418,9 @@ format.
   fills and places up to 256 mono objects (position relative to the
   listener, gain, active), kept from period to period, and the block
   says how many active objects the platform takes. The offline backend
-  renders them to its caller (`maudRenderObjects`); backends without an
-  object renderer refuse them.
+  renders them to its caller (`maudRenderObjects`); on macOS they
+  render through the system's spatial mixer (each object a point
+  source, the bed passed through, the renderer chosen for headphones,
+  built-in or other speakers, the listener's personalized HRTF from
+  macOS 13), with a mono or stereo bed; backends without an object
+  renderer refuse them.

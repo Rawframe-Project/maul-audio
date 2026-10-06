@@ -26,7 +26,13 @@ typedef struct Scene
     bool pointerRestored;
 } Scene;
 
-// Each block: the bed at 0.1, object 0 at 0.25 plus the block number,
+// Object 0's frame f of block b, distinct for every frame.
+static float Ramp(uint32_t block, uint32_t frame)
+{
+    return (float)block + (float)frame / (float)PERIOD;
+}
+
+// Each block: the bed at 0.1, object 0 a ramp distinct in every frame,
 // placed only on the first block (to the right, at half gain) and then
 // left alone; object 1 stays inactive; object 2 is written only in the
 // first block, whose end clears its pointer to see it set again, and is
@@ -61,7 +67,7 @@ static void Place(const maudStreamBlock* block, void* user)
     {
         block->output[2 * f] = 0.1f;
         block->output[2 * f + 1] = 0.1f;
-        objects[0].samples[f] = 0.25f + (float)scene->blocks;
+        objects[0].samples[f] = Ramp(scene->blocks, f);
         if (scene->blocks == 0)
         {
             objects[2].samples[f] = -1.0f;
@@ -163,9 +169,8 @@ static void TestRendering(void)
     for (uint32_t f = 0; f < 2 * PERIOD; ++f)
     {
         bedRight = bedRight && bed[2 * f] == 0.1f && bed[2 * f + 1] == 0.1f;
-        float block = (float)(f / PERIOD);
-        framesRight = framesRight && frames[0][f] == 0.25f + block && frames[1][f] == 0.0f &&
-                      frames[2][f] == (f < PERIOD ? -1.0f : 0.0f);
+        framesRight = framesRight && frames[0][f] == Ramp(f / PERIOD, f % PERIOD) &&
+                      frames[1][f] == 0.0f && frames[2][f] == (f < PERIOD ? -1.0f : 0.0f);
     }
     CHECK(bedRight, "the bed");
     CHECK(framesRight, "each object's frames, a period at a time, silent where unwritten");

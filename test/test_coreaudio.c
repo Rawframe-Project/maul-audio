@@ -12,6 +12,7 @@
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
+#include "maul-audio/objects.h"
 #include "maul-audio/stream.h"
 
 #include <CoreAudio/CoreAudio.h>
@@ -843,6 +844,117 @@ static void TestVoice(maudContext* context)
     CHECK(Destroy(context, stream), "destroy the input");
 }
 
+// One object playing a tone from x metres to the side, ahead of
+// nothing else; the bed stays silent.
+typedef struct Placed
+{
+    double phase;
+    float x;
+    atomic_uint blocks;
+    atomic_uint offered;
+} Placed;
+
+static void PlaceTone(const maudStreamBlock* block, void* user)
+{
+    Placed* placed = user;
+    maudStreamObject* object = &block->objects[0];
+    object->active = true;
+    object->position[0] = placed->x;
+    double step = 2.0 * 3.141592653589793 * 440.0 / (double)block->sampleRate;
+    for (uint32_t i = 0; i < block->frameCount; ++i)
+    {
+        object->samples[i] = (float)(0.25 * sin(placed->phase));
+        placed->phase = fmod(placed->phase + step, 2.0 * 3.141592653589793);
+    }
+    atomic_store(&placed->offered, block->objectsAvailable);
+    atomic_fetch_add(&placed->blocks, 1);
+}
+
+// What BlackHole's input hears on each side, past the first second.
+typedef struct Sides
+{
+    uint64_t frames;
+    uint64_t from;
+    double left;
+    double right;
+} Sides;
+
+static void HearSides(const maudStreamBlock* block, void* user)
+{
+    Sides* sides = user;
+    for (uint32_t i = 0; i < block->frameCount; ++i, ++sides->frames)
+    {
+        if (sides->frames >= sides->from)
+        {
+            double left = (double)block->input[2 * i];
+            double right = (double)block->input[2 * i + 1];
+            sides->left += left * left;
+            sides->right += right * right;
+        }
+    }
+}
+
+// Plays the object x metres to the right (to the left when negative)
+// through the spatial mixer into BlackHole for 2.5 s and returns how
+// much more the right side heard than the left, or -1.
+static double RightOverLeft(maudContext* context, float x)
+{
+    Placed placed = {.x = x};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.device = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    def.objectCount = 2;
+    def.periodFrames = 256;
+    def.callback = PlaceTone;
+    def.user = &placed;
+    maudStreamId player = {0, 0};
+    CHECK(maudCreateStream(context, &def, &player) == maud_success, "an object stream");
+    Sides sides = {.from = 48000};
+    maudStreamDef heard = maudDefaultStreamDef();
+    heard.direction = maud_directionInput;
+    heard.device = FindByKey(context, maud_directionInput, BLACKHOLE_UID);
+    heard.callback = HearSides;
+    heard.user = &sides;
+    maudStreamId recorder = {0, 0};
+    CHECK(maudCreateStream(context, &heard, &recorder) == maud_success, "a capture");
+    CHECK(maudStartStream(context, recorder) == maud_success &&
+              maudStartStream(context, player) == maud_success,
+          "both run");
+    Sleep(2500);
+    CHECK(Destroy(context, recorder) && Destroy(context, player), "destroy both");
+    CHECK(atomic_load(&placed.blocks) > 100 && atomic_load(&placed.offered) == 2,
+          "the callback ran, offered every object");
+    printf("object at x %.1f: left %.3f, right %.3f\n", (double)x, sides.left, sides.right);
+    return sides.left > 0.0 ? sides.right / sides.left : -1.0;
+}
+
+// An object stream renders through the system's spatial mixer: an
+// object to the right is heard on the right, one to the left on the
+// left. Outputs say the mixer takes objects; a bed wider than stereo is
+// refused.
+static void TestObjects(maudContext* context)
+{
+    maudDeviceId output = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
+              info.spatializer == maud_spatializerOn &&
+              info.spatialObjects == MAUD_MAX_STREAM_OBJECTS,
+          "outputs take objects");
+    double right = RightOverLeft(context, 2.0f);
+    double left = RightOverLeft(context, -2.0f);
+    CHECK(right > 2.0, "an object to the right is heard on the right");
+    CHECK(left >= 0.0 && left < 0.5, "and one to the left on the left");
+    Placed placed = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.device = output;
+    def.layout = maud_layoutQuad;
+    def.objectCount = 1;
+    def.callback = PlaceTone;
+    def.user = &placed;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "a bed wider than stereo");
+}
+
 int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
@@ -861,6 +973,7 @@ int main(void)
     CHECK(maudGetContextBackend(context) == maud_backendCoreAudio, "CoreAudio chosen");
     TestDevices(context);
     TestOutputStream(context);
+    TestObjects(context);
     TestCapture(context);
     TestDuplex(context);
     TestVoice(context);
