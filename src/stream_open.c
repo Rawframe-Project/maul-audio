@@ -83,6 +83,13 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
     core->duplexGroup = duplexGroup;
     core->exclusive = def->share == maud_shareExclusive;
     maudResetVoice(core);
+    maudSpatialMark mark = maud_markNone;
+    if (def->contentSpatialized)
+    {
+        mark = context->backend->markStream != nullptr ? context->backend->markStream(def, &format)
+                                                       : maud_markUnknown;
+    }
+    atomic_store_explicit(&core->spatialMark, mark, memory_order_release);
     atomic_store_explicit(&core->underruns, 0, memory_order_relaxed);
     atomic_store_explicit(&core->overruns, 0, memory_order_relaxed);
     if (context->backend->hasNoVoice && def->direction == maud_directionInput)

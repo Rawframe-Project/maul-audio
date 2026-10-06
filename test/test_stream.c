@@ -296,6 +296,35 @@ static void TestVoiceReport(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// A stream marked as already spatialized is left as it is offline; an
+// unmarked one reports no mark; an input cannot be marked.
+static void TestSpatialMark(void)
+{
+    maudContext* context = OfflineContext();
+    Recorder recorder = {0};
+    maudStreamDef def = PullDef(&recorder);
+    def.contentSpatialized = true;
+    maudStreamId marked = {0, 0};
+    maudStreamStatus status = {0};
+    CHECK(maudCreateStream(context, &def, &marked) == maud_success &&
+              maudGetStreamStatus(context, marked, &status) == maud_success &&
+              status.spatialMark == maud_markHonored,
+          "a marked output, honored");
+    def = PullDef(&recorder);
+    maudStreamId plain = {0, 0};
+    CHECK(maudCreateStream(context, &def, &plain) == maud_success &&
+              maudGetStreamStatus(context, plain, &status) == maud_success &&
+              status.spatialMark == maud_markNone,
+          "an unmarked output, no mark");
+    def = PullDef(&recorder);
+    def.direction = maud_directionInput;
+    def.contentSpatialized = true;
+    maudStreamId input = {0, 0};
+    CHECK(maudCreateStream(context, &def, &input) == maud_errorInvalid, "a marked input refused");
+    CHECK(!maudDefaultStreamDef().contentSpatialized, "unmarked by default");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 // Exclusive use needs a device and a backend that can give it; the
 // offline backend cannot, and says so rather than sharing. Shared
 // streams report that they are.
@@ -423,6 +452,7 @@ int main(void)
     TestUnsupportedAndInvalidDefs();
     TestStreamLimitAndStaleIds();
     TestVoiceReport();
+    TestSpatialMark();
     TestExclusive();
     TestStoppedStreamsDoNotRender();
     TestControlCallsFromTheCallbackAreRefused();

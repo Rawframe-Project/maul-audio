@@ -59,7 +59,8 @@ static bool DefValid(const maudStreamDef* def)
         return false;
     }
     if (def->share > maud_shareExclusive ||
-        (def->share == maud_shareExclusive && def->device.index1 == 0))
+        (def->share == maud_shareExclusive && def->device.index1 == 0) ||
+        (def->contentSpatialized && def->direction == maud_directionInput))
     {
         return false;
     }
@@ -219,6 +220,7 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
         .underruns = atomic_load_explicit(&slot->core.underruns, memory_order_relaxed),
         .overruns = atomic_load_explicit(&captured->overruns, memory_order_relaxed),
         .exclusive = slot->core.exclusive,
+        .spatialMark = atomic_load_explicit(&slot->core.spatialMark, memory_order_acquire),
     };
     return maud_success;
 }

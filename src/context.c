@@ -108,6 +108,7 @@ static void InitStreams(maudStreamTable* streams)
         slot->hidden = false;
         atomic_init(&slot->core.state, maud_streamIdle);
         atomic_init(&slot->core.blockRate, 0);
+        atomic_init(&slot->core.spatialMark, maud_markNone);
         atomic_init(&slot->core.renderingThread, 0);
         atomic_init(&slot->core.position, 0);
         atomic_init(&slot->core.clockSequence, 0);

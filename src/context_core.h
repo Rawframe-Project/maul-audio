@@ -58,6 +58,9 @@ typedef struct maudStreamCore
     // Underruns and overruns the platform revealed (xrun.h).
     _Atomic(uint64_t) underruns;
     _Atomic(uint64_t) overruns;
+    // What the platform does with the stream's spatialized mark
+    // (maudSpatialMark), as the backend says.
+    _Atomic(uint8_t) spatialMark;
     // Whether the stream keeps others off its device: asked for, or a
     // backend's report (as for an ALSA hardware PCM).
     bool exclusive;

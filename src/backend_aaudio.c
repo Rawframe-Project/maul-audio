@@ -23,6 +23,8 @@
 #include "focus.h"
 #include "layout.h"
 
+#include <android/api-level.h>
+#include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -207,8 +209,36 @@ static maudResult Rescan(maudAaudio* aaudio)
     return result;
 }
 
+// Loads the calls past API 30 the backend uses, where the device has
+// them.
+static void LoadLate(maudAaudioLate* late)
+{
+    *late = (maudAaudioLate){0};
+    if (android_get_device_api_level() < 32)
+    {
+        return;
+    }
+    late->library = dlopen("libaaudio.so", RTLD_NOW | RTLD_LOCAL);
+    if (late->library == nullptr)
+    {
+        return;
+    }
+    late->setContentSpatialized = (void (*)(AAudioStreamBuilder*, bool))dlsym(
+        late->library, "AAudioStreamBuilder_setIsContentSpatialized");
+    late->setSpatializationBehavior =
+        (void (*)(AAudioStreamBuilder*, aaudio_spatialization_behavior_t))dlsym(
+            late->library, "AAudioStreamBuilder_setSpatializationBehavior");
+    late->isContentSpatialized =
+        (bool (*)(AAudioStream*))dlsym(late->library, "AAudioStream_isContentSpatialized");
+}
+
 static void Release(maudContext* context, maudAaudio* aaudio)
 {
+    if (aaudio->late.library != nullptr)
+    {
+        int closed = dlclose(aaudio->late.library);
+        (void)closed;
+    }
     if (aaudio->hasJava)
     {
         maudAaudioCloseJava(aaudio);
@@ -248,6 +278,7 @@ static maudResult OpenContext(maudContext* context)
         return maud_errorCapacity;
     }
     context->native = aaudio;
+    LoadLate(&aaudio->late);
     aaudio->rate = FALLBACK_RATE;
     aaudio->channels = 2;
     maudResult result =
@@ -364,7 +395,17 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
     return maud_success;
 }
 
+// Android spatializes output from API 32 (Android 12L): before, a marked
+// stream is left as it is; after, the open stream says (aaudio_stream.c).
+static maudSpatialMark MarkStream(const maudStreamDef* def, const maudStreamFormat* format)
+{
+    (void)def;
+    (void)format;
+    return android_get_device_api_level() < 32 ? maud_markHonored : maud_markUnknown;
+}
+
 static const maudBackend s_aaudio = {
+    .markStream = MarkStream,
     .kind = maud_backendAaudio,
     .openContext = OpenContext,
     .closeContext = CloseContext,

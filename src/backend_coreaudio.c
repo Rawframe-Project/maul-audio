@@ -385,7 +385,16 @@ static bool SharesClock(const maudContext* context, const maudStreamSlot* output
            memcmp(played->key.bytes, captured->key.bytes, played->key.length) == 0;
 }
 
+// macOS never spatializes an AUHAL client's output.
+static maudSpatialMark MarkStream(const maudStreamDef* def, const maudStreamFormat* format)
+{
+    (void)def;
+    (void)format;
+    return maud_markHonored;
+}
+
 static const maudBackend s_coreaudio = {
+    .markStream = MarkStream,
     .kind = maud_backendCoreAudio,
     .openContext = OpenContext,
     .closeContext = CloseContext,

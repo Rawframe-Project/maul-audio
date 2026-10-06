@@ -187,6 +187,13 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
     AAudioStreamBuilder_setSharingMode(builder, core->exclusive ? AAUDIO_SHARING_MODE_EXCLUSIVE
                                                                 : AAUDIO_SHARING_MODE_SHARED);
     Describe(builder, core);
+    const maudAaudioLate* late = &((const maudAaudio*)context->native)->late;
+    if (core->def.contentSpatialized && late->setContentSpatialized != nullptr &&
+        late->setSpatializationBehavior != nullptr)
+    {
+        late->setContentSpatialized(builder, true);
+        late->setSpatializationBehavior(builder, AAUDIO_SPATIALIZATION_BEHAVIOR_NEVER);
+    }
     AAudioStreamBuilder_setDataCallback(builder, Move, entry);
     AAudioStreamBuilder_setErrorCallback(builder, Fail, entry);
     AAudioStream* stream = nullptr;
@@ -202,6 +209,13 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
         return maud_errorUnsupported;
     }
     entry->stream = stream;
+    // From API 32 the open stream says whether it carries the mark.
+    if (core->def.contentSpatialized && late->isContentSpatialized != nullptr)
+    {
+        maudSpatialMark mark =
+            late->isContentSpatialized(stream) ? maud_markHonored : maud_markIgnored;
+        atomic_store_explicit(&core->spatialMark, mark, memory_order_release);
+    }
     if (!output)
     {
         // AAudio cannot say which processing the device applied: the

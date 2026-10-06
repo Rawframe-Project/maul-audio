@@ -59,7 +59,17 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
     return maud_success;
 }
 
+// No platform stands between the offline backend and its caller: a
+// marked stream is left as it is.
+static maudSpatialMark MarkStream(const maudStreamDef* def, const maudStreamFormat* format)
+{
+    (void)def;
+    (void)format;
+    return maud_markHonored;
+}
+
 static const maudBackend s_offline = {
+    .markStream = MarkStream,
     .kind = maud_backendOffline,
     .openContext = OpenContext,
     .closeContext = nullptr,

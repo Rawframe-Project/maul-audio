@@ -224,7 +224,7 @@ endif()
 if(MAUL_AUDIO_AAUDIO)
     target_sources(maul-audio PRIVATE src/backend_aaudio.c src/aaudio_java.c src/aaudio_stream.c)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_AAUDIO=1)
-    target_link_libraries(maul-audio PRIVATE aaudio)
+    target_link_libraries(maul-audio PRIVATE aaudio ${CMAKE_DL_LIBS})
 endif()
 
 # Web Audio, in Emscripten builds: the backend's JavaScript is in its

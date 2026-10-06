@@ -231,6 +231,19 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
     CHECK(StreamClockIsSound(context, stream, true, true, Sleep), "its clock after a restart");
     CHECK(Destroy(context, stream), "destroy while running");
+    // A stream marked as already spatialized: Android before API 32 has
+    // no spatializer; after, the open stream carries the mark.
+    Blocks marked = {0};
+    def = maudDefaultStreamDef();
+    def.contentSpatialized = true;
+    stream = OpenStream(context, &def, &marked);
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.spatialMark == maud_markHonored,
+          "a marked stream, honored");
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &marked, 10),
+          "and it plays");
+    CHECK(Destroy(context, stream), "destroy");
     double other = info.nativeSampleRate == 44100 ? 48000.0 : 44100.0;
     def = maudDefaultStreamDef();
     def.ratePolicy = maud_rateRequired;

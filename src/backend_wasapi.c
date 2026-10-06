@@ -283,7 +283,16 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
     return maud_success;
 }
 
+// A mono or stereo shared stream goes "direct to ears", unvirtualized;
+// more channels may go through a spatial format the user chose.
+static maudSpatialMark MarkStream(const maudStreamDef* def, const maudStreamFormat* format)
+{
+    (void)def;
+    return maudGetLayoutChannelCount(format->layout) <= 2 ? maud_markHonored : maud_markUnknown;
+}
+
 static const maudBackend s_wasapi = {
+    .markStream = MarkStream,
     .kind = maud_backendWasapi,
     .openContext = OpenContext,
     .closeContext = CloseContext,

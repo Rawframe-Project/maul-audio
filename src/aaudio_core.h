@@ -65,9 +65,21 @@ typedef struct maudAaudioJava
     jmethodID close;
 } maudAaudioJava;
 
+// AAudio's calls past API 30, loaded at run time; NULL where the device
+// is older.
+typedef struct maudAaudioLate
+{
+    void* library;
+    void (*setContentSpatialized)(AAudioStreamBuilder* builder, bool spatialized);
+    void (*setSpatializationBehavior)(AAudioStreamBuilder* builder,
+                                      aaudio_spatialization_behavior_t behavior);
+    bool (*isContentSpatialized)(AAudioStream* stream);
+} maudAaudioLate;
+
 typedef struct maudAaudio
 {
     maudContext* context;
+    maudAaudioLate late;
     maudAaudioStream* streams;
     // The default output's rate and channels, from the probe.
     uint32_t rate;

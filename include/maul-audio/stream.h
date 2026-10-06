@@ -105,6 +105,23 @@ extern "C"
         maud_shareExclusive = 1,
     };
 
+    // What the platform does with an output stream marked as already
+    // spatialized (contentSpatialized).
+    typedef uint8_t maudSpatialMark;
+
+    enum
+    {
+        // The stream is not marked.
+        maud_markNone = 0,
+        // The platform does not say whether it spatializes the stream.
+        maud_markUnknown = 1,
+        // The platform leaves the stream unprocessed: it took the mark, or
+        // never spatializes such a stream.
+        maud_markHonored = 2,
+        // The platform may spatialize the stream anyway.
+        maud_markIgnored = 3,
+    };
+
     // How a stream is made. Build it with maudDefaultStreamDef.
     typedef struct maudStreamDef
     {
@@ -141,6 +158,11 @@ extern "C"
         maudShareMode share;
         // The role whose default a stream on the null device follows.
         maudDeviceRole role;
+        // Whether an output or duplex stream's content is already
+        // spatialized (a binaural or transaural mix), so that no platform
+        // spatializer processes it again; the status says what the
+        // platform did with the mark. Input streams take false.
+        bool contentSpatialized;
         maudStreamCallback callback;
         void* user;
     } maudStreamDef;
@@ -228,6 +250,9 @@ extern "C"
         // device: an exclusive stream, or an ALSA hardware PCM, which does
         // so even when opened shared.
         bool exclusive;
+        // For a stream marked contentSpatialized, what the platform does
+        // with the mark; maud_markNone for an unmarked stream.
+        maudSpatialMark spatialMark;
     } maudStreamStatus;
 
     /// Returns the default stream def: an output stream in callback mode,

@@ -63,6 +63,11 @@ struct maudBackend
     // Whether it can open a stream for exclusive use; its openStream
     // still refuses a device that cannot be.
     bool exclusive;
+    // What a stream marked contentSpatialized gets from the platform,
+    // from its def and settled format; a backend whose platform says only
+    // once the stream is open reports again through the core's
+    // spatialMark. May be NULL: unknown.
+    maudSpatialMark (*markStream)(const maudStreamDef* def, const maudStreamFormat* format);
     // Asks the platform for audio focus or gives it back (maudRequestFocus,
     // whose results it returns); the backend reports the state that
     // follows through maudReportFocus. May be NULL: no audio focus.

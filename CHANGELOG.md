@@ -373,8 +373,13 @@ format.
   `maud_suspendPolicy` and are focus states; they run again when one
   ends with the hint to resume, or when the host resumes the context or
   asks for focus. A route change gives the default devices the forms
-  the route leads to. Tests run in the simulator
-  (`cmake/ios-simulator.cmake`).
+  the route leads to. The session's available inputs are listed beside
+  the default input, for streams that pin one through the session's
+  preferred input. A duplex stream asking for voice processing runs
+  both halves on one Voice-Processing I/O unit in the voice chat mode,
+  with echo cancellation and noise suppression, and gain control on
+  request. Tests run in the simulator (`cmake/ios-simulator.cmake`),
+  capture in an application granted the microphone.
 - The AAudio backend, on Android 11 (API 30) and later: the platform's
   default output and input, which streams follow as Android moves
   them; float streams at the device's rate or one AAudio converts to;
@@ -393,3 +398,10 @@ format.
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.
+- A mark for content already spatialized (`contentSpatialized` in the
+  stream def), so that a binaural mix is not spatialized again, and
+  what the platform does with it in the stream's status
+  (`spatialMark`: honored, ignored or unknown). AAudio takes the mark
+  from Android 12L (API 32) and says whether the stream carries it;
+  macOS never spatializes a stream, nor Windows a mono or stereo one,
+  nor the offline backend any; the others do not say.
