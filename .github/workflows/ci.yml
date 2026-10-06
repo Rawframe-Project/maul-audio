@@ -103,6 +103,12 @@ jobs:
         run: cmake --build build --config Release -j 4
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      # The public headers alone under MSVC's cl, as C17 and C++17 with
+      # /W4 /WX, which cannot build the library itself (family record 0008).
+      - name: Headers under MSVC
+        run: |
+          cmake -S cmake/HeaderCheck -B build-headers
+          cmake --build build-headers --config Release
 
   web:
     name: web-emscripten

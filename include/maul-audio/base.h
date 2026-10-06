@@ -38,8 +38,10 @@ extern "C"
 
 // MAUD_NODISCARD marks a function whose result must be read: every
 // function that returns a status. The attribute is standard in C23 and
-// C++17 and left out for older dialects.
-#if defined(__cplusplus) && __cplusplus >= 201703L
+// C++17 and left out for older dialects. MSVC reports its C++ dialect in
+// _MSVC_LANG, leaving __cplusplus at 199711L unless asked otherwise.
+#if (defined(__cplusplus) && __cplusplus >= 201703L) ||                                            \
+    (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
 #define MAUD_NODISCARD [[nodiscard]]
 #elif !defined(__cplusplus) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
 #define MAUD_NODISCARD [[nodiscard]]
