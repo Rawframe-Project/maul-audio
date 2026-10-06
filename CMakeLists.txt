@@ -44,7 +44,13 @@ option(MAUL_AUDIO_PULSE "Build the PulseAudio backend, loaded at run time"
 option(MAUL_AUDIO_ALSA "Build the ALSA backend, loaded at run time"
     ${MAUL_AUDIO_PIPEWIRE_DEFAULT})
 option(MAUL_AUDIO_WASAPI "Build the WASAPI backend" ${WIN32})
-option(MAUL_AUDIO_COREAUDIO "Build the CoreAudio backend" ${APPLE})
+# CoreAudio's HAL backend is macOS's; iOS has its own (no HAL devices).
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(MAUL_AUDIO_COREAUDIO_DEFAULT ON)
+else()
+    set(MAUL_AUDIO_COREAUDIO_DEFAULT OFF)
+endif()
+option(MAUL_AUDIO_COREAUDIO "Build the CoreAudio backend" ${MAUL_AUDIO_COREAUDIO_DEFAULT})
 option(MAUL_AUDIO_AAUDIO "Build the AAudio backend" ${ANDROID})
 # Backends belong to the Device part.
 if(NOT MAUL_AUDIO_DEVICE)

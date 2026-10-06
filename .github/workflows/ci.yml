@@ -113,6 +113,39 @@ jobs:
           cmake -S cmake/HeaderCheck -B build-headers
           cmake --build build-headers --config Release
 
+  ios:
+    # iOS in the simulator: every test through simctl spawn, on an iPhone
+    # of the newest runtime. The simulator plays through the runner's
+    # output, which BlackHole provides.
+    name: ios-simulator
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install BlackHole
+        run: |
+          brew install --cask blackhole-2ch
+          sudo killall coreaudiod || true
+          sleep 5
+      - name: Boot a simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((r for r in devices if ".iOS-" in r),
+                            key=lambda r: [int(p) for p in r.rsplit("iOS-", 1)[1].split("-")])
+          print(next(d["udid"] for d in devices[runtimes[-1]] if d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "MAUD_IOS_DEVICE=$udid" >> "$GITHUB_ENV"
+      - name: Configure
+        run: >
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/ios-simulator.cmake
+          -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 300
+
   android:
     # The AAudio backend in the emulator, Android 11 (the oldest the
     # backend takes) on x86_64 with KVM: every test through adb
