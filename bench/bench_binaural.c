@@ -13,6 +13,7 @@
 
 #include "maul-audio/ambisonics.h"
 #include "maul-audio/binaural.h"
+#include "maul-audio/direct.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -117,6 +118,45 @@ static void RunBed(const maudHrtf* hrtf)
     maudDestroyBinauralDecoder(decoder);
 }
 
+// The direct effect per 10 ms block: a still source behind a wall, and
+// one swinging between 5 and 50 m at up to 9 m/s, whose air absorption
+// keeps changing.
+static void RunDirect(void)
+{
+    maudDirectEffectDef def = maudDefaultDirectEffectDef();
+    maudDirectEffect* effect = nullptr;
+    if (maudCreateDirectEffect(&def, &effect) != maud_success)
+    {
+        return;
+    }
+    for (int moving = 0; moving < 2; ++moving)
+    {
+        double best = 1e9;
+        for (int run = 0; run < 5; ++run)
+        {
+            maudDirectParams params = maudDefaultDirectParams();
+            params.occlusion = 0.8f;
+            params.transmission[0] = 0.5f;
+            params.transmission[1] = 0.2f;
+            params.transmission[2] = 0.05f;
+            double start = Seconds();
+            for (int block = 0; block < BLOCKS; ++block)
+            {
+                params.distance = moving ? 27.5f + 22.5f * sinf(0.004f * (float)block) : 20.0f;
+                if (maudProcessDirect(effect, &params, s_in, s_left, FRAMES) != maud_success)
+                {
+                    return;
+                }
+            }
+            double elapsed = Seconds() - start;
+            best = elapsed < best ? elapsed : best;
+        }
+        printf("direct effect, %-14s %7.2f us per 10 ms block\n", moving ? "moving" : "still",
+               best / BLOCKS * 1e6);
+    }
+    maudDestroyDirectEffect(effect);
+}
+
 int main(void)
 {
     FILE* file = fopen(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", "rb");
@@ -148,6 +188,7 @@ int main(void)
                names[row], micro, micro > 0.0 ? 1000.0 / micro : 0.0);
     }
     RunBed(hrtf);
+    RunDirect();
     maudDestroyHrtf(hrtf);
     return 0;
 }

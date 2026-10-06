@@ -1,5 +1,6 @@
 # The internal module graph (docs/conventions.md, section 6): each module
 # and the modules it may use. tools/check_modules.py enforces it.
+air_absorption:
 allocator:
 alsa_api:
 alsa_chmap:
@@ -31,6 +32,7 @@ coreaudio_hog: coreaudio_core
 coreaudio_form: coreaudio_core
 coreaudio_stream: clock context context_core coreaudio_core coreaudio_hog period thread voice xrun
 device: context context_core follow notify
+direct_effect: air_absorption allocator band_eq
 duplex: context context_core stream_open
 fft:
 follow: backend context context_core notify

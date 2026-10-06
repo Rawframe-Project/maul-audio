@@ -165,6 +165,22 @@ static void TestFlat(void)
     CHECK(through, "and the signal passes unchanged");
 }
 
+// The bell spans the middle band: alone at +12 dB it peaks at the band's
+// geometric centre and is near half its gain at the band's edges.
+static void TestBell(void)
+{
+    maudBandEqSetup setup;
+    maudSetupBandEq(&setup, 48000.0f);
+    double gains[3] = {0.0, 12.0, 0.0};
+    Respond(&setup, gains);
+    double low = Level(s_response, TAPS, 800.0, 48000.0);
+    double centre = Level(s_response, TAPS, sqrt(800.0 * 8000.0), 48000.0);
+    double high = Level(s_response, TAPS, 8000.0, 48000.0);
+    printf("bell: %.2f dB at 800 Hz, %.2f at the centre, %.2f at 8 kHz\n", low, centre, high);
+    CHECK(fabs(centre - 12.0) < 0.01, "the bell peaks at the middle band's centre");
+    CHECK(fabs(low - 6.0) < 0.7 && fabs(high - 6.0) < 0.7, "and spans the band");
+}
+
 // A sine at 3 kHz through a step from flat to a -24 dB tilt across one
 // call: the ramp ends on the new filters (a later call with them
 // matches one that ran them throughout, once the old state has decayed)
@@ -208,6 +224,44 @@ static void TestRamp(void)
         apart = fmaxf(apart, fabsf(out[n] - reference[n]));
     }
     CHECK(apart < 1e-4f, "the ramp ends on the new filters");
+    // The ramp's first segment is still close to the old filters, its
+    // last is the new ones: one call of a single segment from the same
+    // state runs the new filters exactly.
+    maudBandEqState a = {{0.0f}, {0.0f}};
+    maudBandEqState b = {{0.0f}, {0.0f}};
+    float rampOut[8];
+    float newOut[8];
+    float oldOut[8];
+    maudRunBandEq(&a, &before, &before, in, out, 960);
+    b = a;
+    maudBandEqState c = a;
+    maudRunBandEq(&a, &before, &after, in + 960, rampOut, 8);
+    maudRunBandEq(&b, &after, &after, in + 960, newOut, 8);
+    maudRunBandEq(&c, &before, &before, in + 960, oldOut, 8);
+    float single = 0.0f;
+    for (int n = 0; n < 8; ++n)
+    {
+        single = fmaxf(single, fabsf(rampOut[n] - newOut[n]));
+    }
+    CHECK(single < 1e-6f, "a one-segment ramp ends on the new filters");
+    maudBandEqState d = c;
+    static float rampLong[480];
+    static float oldLong[480];
+    maudRunBandEq(&c, &before, &after, in + 968, rampLong, 480);
+    maudRunBandEq(&d, &before, &before, in + 968, oldLong, 480);
+    float first = 0.0f;
+    float whole = 0.0f;
+    for (int n = 0; n < 8; ++n)
+    {
+        first = fmaxf(first, fabsf(rampLong[n] - oldLong[n]));
+    }
+    for (int n = 0; n < 480; ++n)
+    {
+        whole = fmaxf(whole, fabsf(rampLong[n] - oldLong[n]));
+    }
+    printf("ramp's first segment %.4f from the old filters, the call %.4f\n", (double)first,
+           (double)whole);
+    CHECK(first < 0.1f * whole, "a longer ramp starts close to the old filters");
 }
 
 // Gains jumping across the whole range every 16 samples, under noise.
@@ -248,6 +302,7 @@ int main(void)
     TestResponse();
     TestSolve();
     TestFlat();
+    TestBell();
     TestRamp();
     TestModulation();
     return s_failures == 0 ? 0 : 1;

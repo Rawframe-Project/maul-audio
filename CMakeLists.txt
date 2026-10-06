@@ -96,12 +96,14 @@ set(MAUL_AUDIO_DEVICE_SOURCES
     src/voice_detector.c
     src/voice_dsp.c)
 set(MAUL_AUDIO_SPATIAL_SOURCES
+    src/air_absorption.c
     src/ambisonic_rotation.c
     src/ambisonics.c
     src/band_eq.c
     src/binaural.c
     src/binaural_decoder.c
     src/binaural_dsp.c
+    src/direct_effect.c
     src/fft.c
     src/hrtf.c
     src/hrtf_file.c
@@ -220,6 +222,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     maul_add_test(layout)
     if(MAUL_AUDIO_SPATIAL)
         maul_add_test(ambisonics)
+        maul_add_test(direct_effect)
         maul_add_test(speaker_decoder)
         maul_add_test(speaker_panner)
     endif()

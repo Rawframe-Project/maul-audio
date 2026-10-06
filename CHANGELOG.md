@@ -284,6 +284,12 @@ format.
   speakers with max-rE weights panned by the speaker panner, folded into
   one matrix at creation (`maudGetSpeakerDecoderMatrix` hands it out);
   unit energy on average, the LFE silent.
+- Direct effects (`maul-audio/direct.h`): per source, in three bands,
+  air absorption over distance (ISO 9613 part 1, `maudGetAirAbsorption` for
+  other conditions), directivity (`maudGetDirectivity`, a weighted
+  dipole per band), occlusion and transmission, after the host's own
+  gain; band gains are met within 0.2 dB by filters whose gains are
+  solved from the bands, and every change ramps across a call.
 - Build options for the two parts, `MAUL_AUDIO_DEVICE` and
   `MAUL_AUDIO_SPATIAL`, both on by default; either builds alone, and CI
   builds each alone.
