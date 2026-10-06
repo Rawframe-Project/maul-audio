@@ -73,7 +73,9 @@ set(MAUL_AUDIO_BASE_SOURCES
     src/allocator.c
     src/base.c
     src/buffer.c
-    src/layout.c)
+    src/fft.c
+    src/layout.c
+    src/real_fft.c)
 set(MAUL_AUDIO_DEVICE_SOURCES
     src/backend_offline.c
     src/clock.c
@@ -84,6 +86,7 @@ set(MAUL_AUDIO_DEVICE_SOURCES
     src/form.c
     src/gain_control.c
     src/lifecycle.c
+    src/noise_suppressor.c
     src/notify.c
     src/offline.c
     src/period.c
@@ -108,7 +111,6 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/crc32.c
     src/direct_effect.c
     src/direct_step.c
-    src/fft.c
     src/hrtf.c
     src/hrtf_file.c
     src/hrtf_lookup.c
@@ -128,7 +130,6 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/probe_bake.c
     src/probe_graph.c
     src/probe_sets.c
-    src/real_fft.c
     src/reflection_response.c
     src/reflections.c
     src/reverb_estimate.c
@@ -316,6 +317,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(duplex)
     maul_add_test(voice_detector)
     maul_add_test(gain_control)
+    maul_add_test(noise_suppressor)
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)

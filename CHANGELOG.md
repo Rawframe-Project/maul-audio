@@ -346,6 +346,12 @@ format.
   `maudCommitAcousticScene`): meshes built once and placed any number
   of times with a position, orientation and scale, moved between
   commits; named limits on instances and triangles.
+- A noise suppressor (`maudCreateNoiseSuppressor`,
+  `maudSuppressNoise`): a high-pass filter, then a noise spectrum that
+  follows changing noise in tens of milliseconds and a log-spectral
+  gain per frequency, one gain for all channels, 10 ms of latency;
+  measured on public recordings against the processors PipeWire uses
+  (research 37). The FFT moves to the base, for both parts.
 - Golden renders through the offline backend (an HRTF sweep, an
   ambisonic rotation, an occlusion walk and a reverb tail) against
   16-bit WAV references in `data/golden`, and the benchmarks' rows

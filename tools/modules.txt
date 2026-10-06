@@ -54,6 +54,7 @@ lifecycle: backend context context_core follow
 magls: allocator fft hrtf_core least_squares spherical_harmonics
 near_field: near_field_table
 near_field_table:
+noise_suppressor: allocator real_fft
 notify: backend context context_core invariant
 occlusion:
 octave_eq: least_squares

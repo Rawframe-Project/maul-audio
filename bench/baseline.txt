@@ -27,3 +27,7 @@ reflections.render3.us 1623
 instanced.commit.ms 0.3531
 instanced.closest.mrays 1.196
 instanced.moving.ms 0.3446
+# The noise suppressor's rows: the best of three runs, load about 170.
+noise.16k.mono.us 45.49
+noise.48k.mono.us 93.39
+noise.48k.stereo.us 103.7

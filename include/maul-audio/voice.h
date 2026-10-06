@@ -190,6 +190,86 @@ extern "C"
                                                             uint32_t frameCount,
                                                             maudGainState* stateOut);
 
+    // A noise suppressor. Build its def with
+    // maudDefaultNoiseSuppressorDef. A high-pass filter takes out the
+    // rumble below speech; then each 10 ms it estimates the noise's
+    // spectrum, following it through speech, and takes each frequency
+    // down by how likely it holds only noise, never below a floor. One
+    // gain per frequency applies to all channels.
+    typedef struct maudNoiseSuppressorDef
+    {
+        uint32_t cookie;
+        // The frames' rate, from 8,000 to 384,000 and a multiple of 100,
+        // and their layout.
+        uint32_t sampleRate;
+        maudChannelLayout layout;
+        // The most it takes noise down, in dB, from -40 to -6.
+        float floorDb;
+        // The high-pass filter's corner, from 20 to 400 Hz, or 0 for none.
+        float highPassHz;
+        maudAllocator allocator;
+    } maudNoiseSuppressorDef;
+
+    // What a noise suppressor hears.
+    typedef struct maudNoiseState
+    {
+        // The share of the last 10 ms's frequencies likely to hold speech,
+        // 0 to 1.
+        float speechProbability;
+        // The noise it estimates under the input, in dBFS.
+        float noiseDbfs;
+        // The 10 ms frames analyzed so far.
+        uint64_t frames;
+    } maudNoiseState;
+
+    typedef struct maudNoiseSuppressor maudNoiseSuppressor;
+
+    /// Returns the default noise suppressor def: 48,000, mono, a floor of
+    /// -30 dB, a high-pass at 100 Hz, the default allocator.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_API maudNoiseSuppressorDef maudDefaultNoiseSuppressorDef(void);
+
+    /// Creates a noise suppressor.
+    ///
+    /// @param def            The def, from maudDefaultNoiseSuppressorDef.
+    /// @param suppressorOut  Receives the noise suppressor; NULL on failure.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a
+    ///         def out of range; `maud_errorCapacity` when the allocator
+    ///         fails.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_NODISCARD MAUD_API maudResult maudCreateNoiseSuppressor(
+        const maudNoiseSuppressorDef* def, maudNoiseSuppressor** suppressorOut);
+
+    /// Destroys a noise suppressor. NULL is ignored.
+    ///
+    /// @param suppressor  The noise suppressor.
+    /// @par Thread safety
+    /// Safe from any thread; the noise suppressor is used by one thread at
+    /// a time.
+    MAUD_API void maudDestroyNoiseSuppressor(maudNoiseSuppressor* suppressor);
+
+    /// Suppresses noise in interleaved frames in place, in any count; the
+    /// output does not depend on how the frames are cut. It lags the
+    /// input by 10 ms: the first 10 ms out are silence.
+    ///
+    /// @param suppressor  The noise suppressor.
+    /// @param frames      frameCount frames in the def's layout; may be
+    ///                    NULL when frameCount is 0.
+    /// @param frameCount  How many.
+    /// @param stateOut    Receives the state after them; may be NULL.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL noise
+    ///         suppressor, or NULL frames with a frameCount.
+    /// @par Thread safety
+    /// Real-time safe: no allocation, lock or wait. The noise suppressor
+    /// is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSuppressNoise(maudNoiseSuppressor* suppressor,
+                                                         float* frames, uint32_t frameCount,
+                                                         maudNoiseState* stateOut);
+
 #ifdef __cplusplus
 }
 #endif
