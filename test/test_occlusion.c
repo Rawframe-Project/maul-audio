@@ -150,7 +150,9 @@ static void TestVolumetric(void)
     }
     printf("volumetric against the exact share: %.3f worst\n", worst);
     CHECK(steady, "passing the edge, the occlusion only falls");
-    CHECK(worst < 0.25, "within the sampled error of the exact share");
+    // 0.085 measured; points crowding the centre (radii not spread by
+    // volume) give 0.165.
+    CHECK(worst < 0.12, "within the sampled error of the exact share");
     // A wall right in front of the source cuts its sphere: the points
     // beyond the wall do not count, and the source stays occluded.
     s_fullWall = true;
@@ -197,6 +199,9 @@ static void TestSplit(void)
         b[i] = Source(split, method, samples);
         expected += method == maud_occlusionRay ? 1 : 2 * (long)samples;
     }
+    // A destroyed source casts nothing.
+    maudSourceId gone = Source(serial, maud_occlusionVolumetric, 100);
+    CHECK(maudDestroySource(serial, gone) == maud_success, "destroy");
     static maudDirectResult x[COUNT];
     static maudDirectResult y[COUNT];
     s_rays = 0;
