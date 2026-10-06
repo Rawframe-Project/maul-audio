@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/system_properties.h>
 #include <time.h>
 
 // The exit code CTest reads as skipped.
@@ -267,8 +268,17 @@ static void TestXruns(maudContext* context)
     CHECK(Destroy(context, stream), "destroy");
 }
 
+// Whether the test runs in the emulator, whose AAudio has no MMAP path
+// and so never grants a device to one stream alone.
+static bool Emulated(void)
+{
+    char value[PROP_VALUE_MAX] = {0};
+    return __system_property_get("ro.kernel.qemu", value) > 0 && value[0] == '1';
+}
+
 // An exclusive stream runs where AAudio grants the device to it alone
-// and is refused where AAudio could only share it, as on the emulator.
+// and is refused where AAudio could only share it: always on the
+// emulator.
 static void TestExclusive(maudContext* context)
 {
     Blocks blocks = {0};
@@ -283,6 +293,7 @@ static void TestExclusive(maudContext* context)
     maudResult result = maudCreateStream(context, &def, &stream);
     printf("exclusive: %s\n", maudResultName(result));
     CHECK(result == maud_success || result == maud_errorUnsupported, "granted or refused");
+    CHECK(!Emulated() || result == maud_errorUnsupported, "refused where AAudio only shares");
     if (result == maud_success)
     {
         maudStreamStatus status = {0};
