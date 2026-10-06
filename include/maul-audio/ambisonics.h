@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The ambisonic bed: sources encoded into a sound field of order 1 to 3
-// and the field rotated, in planar channels the host owns. Channels
+// The ambisonic bed: sources encoded into a sound field of order 1 to 3,
+// the field rotated, in planar channels the host owns, and decoded for
+// both ears. Channels
 // follow AmbiX: ACN order with SN3D normalization, the field's axes x
 // ahead, y left and z up; directions and rotations are given in the
-// listener's frame (maudVector3) and converted. Every function here
-// allocates nothing and does work in proportion to its frames.
+// listener's frame (maudVector3) and converted. Encoding, rotating and
+// decoding allocate nothing and do work in proportion to their frames.
 
 #ifndef MAUL_AUDIO_AMBISONICS_H
 #define MAUL_AUDIO_AMBISONICS_H
 
 #include "maul-audio/base.h"
+#include "maul-audio/hrtf.h"
 
 #include <stdint.h>
 
@@ -104,6 +106,82 @@ extern "C"
                                                            const maudQuaternion* from,
                                                            const maudQuaternion* to,
                                                            float* const* bed, uint32_t frames);
+
+    // A binaural decoder: a bed's channels to both ears.
+    typedef struct maudBinauralDecoder maudBinauralDecoder;
+
+    // How to create a binaural decoder. Build it with
+    // maudDefaultBinauralDecoderDef.
+    typedef struct maudBinauralDecoderDef
+    {
+        uint32_t cookie;
+        // The set the decoder is fitted to, at the rate it runs at. The
+        // decoder keeps its own filters: the set may go once it exists.
+        const maudHrtf* hrtf;
+        // The order decoded, 1 to MAUD_MAX_AMBISONIC_ORDER; a bed's
+        // higher channels are ignored.
+        uint32_t order;
+        // The most frames one call decodes, 1 to 16,384.
+        uint32_t maxFrames;
+        maudAllocator allocator;
+    } maudBinauralDecoderDef;
+
+    /// Returns the default binaural decoder def: no set, order 3, at most
+    /// 1,024 frames per call.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_API maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void);
+
+    /// Creates a binaural decoder: fits filters to the set by magnitude
+    /// least squares (least squares below 1.5 kHz, magnitudes above), each
+    /// 2 ms long and delaying the field by 0.67 ms. The fit is the heavy
+    /// part, done here and never while decoding; its working memory comes
+    /// from the def's allocator and goes back before this returns.
+    ///
+    /// @param def         The def, from maudDefaultBinauralDecoderDef,
+    ///                    with a set.
+    /// @param decoderOut  Receives the decoder; NULL on failure.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
+    ///         def without its cookie, without a set or out of range, or a
+    ///         set whose directions cannot carry the order;
+    ///         `maud_errorCapacity` when the allocator fails.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_NODISCARD MAUD_API maudResult maudCreateBinauralDecoder(const maudBinauralDecoderDef* def,
+                                                                 maudBinauralDecoder** decoderOut);
+
+    /// Destroys a binaural decoder. NULL is ignored.
+    ///
+    /// @param decoder  The decoder.
+    /// @par Thread safety
+    /// Safe from any thread; the decoder is used by one thread at a time.
+    MAUD_API void maudDestroyBinauralDecoder(maudBinauralDecoder* decoder);
+
+    /// Decodes frames of a bed for both ears, written to out[0] (left)
+    /// and out[1] (right).
+    ///
+    /// @param decoder  The decoder.
+    /// @param bed      The decoder's order's channel count of channels,
+    ///                 frames each.
+    /// @param out      Two channels of frames samples each.
+    /// @param frames   0 to the def's maxFrames; 0 does nothing.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer
+    ///         or too many frames; nothing is written then.
+    /// @par Thread safety
+    /// Safe from any thread; the decoder is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudDecodeBinaural(maudBinauralDecoder* decoder,
+                                                          const float* const* bed,
+                                                          float* const out[2], uint32_t frames);
+
+    /// Forgets the bed a decoder has heard.
+    ///
+    /// @param decoder  The decoder.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
+    /// @par Thread safety
+    /// Safe from any thread; the decoder is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudResetBinauralDecoder(maudBinauralDecoder* decoder);
 
 #ifdef __cplusplus
 }

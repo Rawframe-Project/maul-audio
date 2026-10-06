@@ -33,6 +33,20 @@ static void Weights(float f, float* c)
     c[3] = (f + 1.0f) * f * (f - 1.0f) / 6.0f;
 }
 
+void maudFirAdd(const float* restrict x, const float* restrict h, uint32_t taps,
+                float* restrict out, uint32_t frames)
+{
+    for (uint32_t k = 0; k < taps; ++k)
+    {
+        float coefficient = h[k];
+        const float* in = x - k;
+        for (uint32_t n = 0; n < frames; ++n)
+        {
+            out[n] += coefficient * in[n];
+        }
+    }
+}
+
 void maudReadDelayed(const float* restrict x, float start, float step, float* restrict out,
                      uint32_t frames)
 {

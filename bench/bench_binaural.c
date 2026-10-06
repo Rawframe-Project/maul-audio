@@ -4,11 +4,14 @@
 // The binaural effect's cost per source on the shipped SADIE II set at
 // 48 kHz (128 taps), in 480-frame blocks (10 ms): a source standing
 // still without the near field and with it, and one whose direction
-// changes every block, so that it fades in every block. Prints the best of five runs as
+// changes every block, so that it fades in every block; then a source
+// encoded into a third-order ambisonic bed, and the bed decoded for both
+// ears. Prints the best of five runs as
 // microseconds per block and as sources per millisecond of one core for each 10 ms of audio.
 
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "maul-audio/ambisonics.h"
 #include "maul-audio/binaural.h"
 
 #include <math.h>
@@ -62,6 +65,58 @@ static double Run(const maudHrtf* hrtf, bool moving, bool nearField)
     return best / BLOCKS * 1e6;
 }
 
+static float s_bed[16][FRAMES];
+
+// The bed's two costs per 10 ms block: encoding one moving source, and
+// decoding the bed.
+static void RunBed(const maudHrtf* hrtf)
+{
+    maudBinauralDecoderDef def = maudDefaultBinauralDecoderDef();
+    def.hrtf = hrtf;
+    def.maxFrames = FRAMES;
+    maudBinauralDecoder* decoder = nullptr;
+    if (maudCreateBinauralDecoder(&def, &decoder) != maud_success)
+    {
+        return;
+    }
+    float* bed[16];
+    for (int c = 0; c < 16; ++c)
+    {
+        bed[c] = s_bed[c];
+    }
+    float* out[2] = {s_left, s_right};
+    double encode = 1e9;
+    double decode = 1e9;
+    for (int run = 0; run < 5; ++run)
+    {
+        double start = Seconds();
+        for (int block = 0; block < BLOCKS; ++block)
+        {
+            float angle = 0.01f * (float)block;
+            maudAmbisonicSource from = {{sinf(angle), 0.2f, -cosf(angle)}, 1.0f};
+            maudAmbisonicSource to = {{sinf(angle + 0.01f), 0.2f, -cosf(angle + 0.01f)}, 1.0f};
+            if (maudEncodeAmbisonic(3, &from, &to, s_in, bed, FRAMES) != maud_success)
+            {
+                return;
+            }
+        }
+        double middle = Seconds();
+        for (int block = 0; block < BLOCKS; ++block)
+        {
+            if (maudDecodeBinaural(decoder, (const float* const*)bed, out, FRAMES) != maud_success)
+            {
+                return;
+            }
+        }
+        double end = Seconds();
+        encode = middle - start < encode ? middle - start : encode;
+        decode = end - middle < decode ? end - middle : decode;
+    }
+    printf("bed, encode a source        %7.2f us per 10 ms block\n", encode / BLOCKS * 1e6);
+    printf("bed, decode order 3          %7.2f us per 10 ms block\n", decode / BLOCKS * 1e6);
+    maudDestroyBinauralDecoder(decoder);
+}
+
 int main(void)
 {
     FILE* file = fopen(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", "rb");
@@ -92,6 +147,7 @@ int main(void)
         printf("binaural, %-20s %7.2f us per 10 ms block, %6.1f sources per ms of a core\n",
                names[row], micro, micro > 0.0 ? 1000.0 / micro : 0.0);
     }
+    RunBed(hrtf);
     maudDestroyHrtf(hrtf);
     return 0;
 }

@@ -17,6 +17,10 @@
 void maudFir(const float* restrict x, const float* restrict h, uint32_t taps, float* restrict out,
              uint32_t frames);
 
+// The same, added to out instead of written.
+void maudFirAdd(const float* restrict x, const float* restrict h, uint32_t taps,
+                float* restrict out, uint32_t frames);
+
 // out[n] = x read start + step n samples in the past, by cubic Lagrange
 // interpolation. Every delay is at least 1 (the read never needs a
 // sample after x[n]); x has as much history as the largest delay plus 2.

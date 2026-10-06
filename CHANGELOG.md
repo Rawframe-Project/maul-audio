@@ -263,4 +263,9 @@ format.
   adds a source into a bed and `maudRotateAmbisonic` rotates one in
   place by a quaternion (Ivanic and Ruedenberg's recursion), each
   ramping from the previous call's values across the call; neither
-  allocates.
+  allocates. Binaural decoders (`maudCreateBinauralDecoder`,
+  `maudDecodeBinaural`) fit filters to an HRTF set at creation by
+  magnitude least squares, with a group delay carried through the fit
+  so that 2 ms filters suffice (0.67 ms of latency); on the shipped set
+  they come within 3.9, 4.6 and 5.5 dB RMS of its responses at orders
+  3, 2 and 1. The benchmark adds the bed's costs.

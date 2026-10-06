@@ -8,7 +8,7 @@ alsa_scan: alsa_api context_core device
 alsa_stream: alsa_chmap alsa_core clock context context_core period thread worker xrun
 alsa_watch:
 ambisonic_rotation:
-ambisonics: ambisonic_rotation
+ambisonics: ambisonic_rotation spherical_harmonics
 backend: context_core
 backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
 backend_coreaudio: backend context coreaudio_core coreaudio_form coreaudio_stream device layout
@@ -18,6 +18,7 @@ backend_pulse: backend context context_core device form layout pulse_api pulse_c
 backend_wasapi: backend context device layout wasapi_core wasapi_stream
 backend_web: backend clock context device follow period thread web_capture web_core web_devices
 binaural: allocator binaural_dsp hrtf_core hrtf_lookup near_field
+binaural_decoder: allocator binaural_dsp hrtf_core magls
 binaural_dsp:
 base:
 buffer:
@@ -30,6 +31,7 @@ coreaudio_form: coreaudio_core
 coreaudio_stream: clock context context_core coreaudio_core coreaudio_hog period thread voice xrun
 device: context context_core follow notify
 duplex: context context_core stream_open
+fft:
 follow: backend context context_core notify
 form:
 hrtf: allocator hrtf_core hrtf_file hrtf_resample
@@ -41,6 +43,7 @@ gain_control: allocator vad_core voice_dsp
 invariant:
 layout:
 lifecycle: backend context context_core follow
+magls: allocator fft hrtf_core spherical_harmonics
 near_field: near_field_table
 near_field_table:
 notify: backend context context_core invariant
@@ -53,6 +56,7 @@ pipewire_stream: clock context context_core period pipewire_core thread xrun
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
+spherical_harmonics:
 stream: backend clock context context_core duplex follow period stream_open thread
 sample_convert:
 stream_open: backend clock context context_core follow period voice

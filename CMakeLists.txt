@@ -74,6 +74,10 @@ add_library(maul-audio ${MAUL_LIBRARY_KIND}
     src/ambisonic_rotation.c
     src/ambisonics.c
     src/binaural.c
+    src/binaural_decoder.c
+    src/fft.c
+    src/magls.c
+    src/spherical_harmonics.c
     src/binaural_dsp.c
     src/hrtf_lookup.c
     src/near_field.c
@@ -197,6 +201,11 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(sample_convert WHITEBOX)
         maul_add_test(near_field WHITEBOX)
         maul_add_test(ambisonics)
+        maul_add_test(binaural_decoder WHITEBOX)
+        if(TARGET test_binaural_decoder)
+            target_compile_definitions(test_binaural_decoder PRIVATE
+                MAUD_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+        endif()
         maul_add_test(binaural WHITEBOX)
         if(TARGET test_binaural)
             target_compile_definitions(test_binaural PRIVATE
