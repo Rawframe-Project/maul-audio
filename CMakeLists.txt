@@ -133,6 +133,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/reflections.c
     src/reverb_estimate.c
     src/scene.c
+    src/scene_instances.c
     src/spatializer.c
     src/spatializer_paths.c
     src/speaker_decoder.c
@@ -283,6 +284,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(near_field WHITEBOX)
         maul_add_test(bvh WHITEBOX)
         maul_add_test(watertight WHITEBOX)
+        maul_add_test(scene_instances)
         foreach(area binaural binaural_decoder hrtf)
             maul_add_test(${area} WHITEBOX)
             if(TARGET test_${area})

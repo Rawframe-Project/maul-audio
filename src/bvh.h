@@ -50,4 +50,15 @@ const maudTriangle* maudBvhClosestHit(const maudBvhNode* nodes, const maudTriang
                                       const float* origin, const float* direction, float tMin,
                                       float tMax, float* t);
 
+// Called for a leaf entry whose box a ray enters within the limit; may
+// lower *limit, and returns true to stop the visit.
+typedef bool maudBvhVisitFn(const maudTriangle* entry, float* limit, void* context);
+
+// Visits the leaf entries whose boxes a ray enters within [tMin,
+// *limit], the nearer box first, boxes entered past *limit (as visits
+// lower it) skipped; returns whether a visit stopped it.
+bool maudBvhVisit(const maudBvhNode* nodes, const maudTriangle* entries, const float* origin,
+                  const float* direction, float tMin, float* limit, maudBvhVisitFn* visit,
+                  void* context);
+
 #endif // MAUL_AUDIO_SRC_BVH_H

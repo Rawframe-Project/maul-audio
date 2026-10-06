@@ -399,3 +399,40 @@ const maudTriangle* maudBvhClosestHit(const maudBvhNode* nodes, const maudTriang
     *t = bestT;
     return best;
 }
+
+bool maudBvhVisit(const maudBvhNode* nodes, const maudTriangle* entries, const float* origin,
+                  const float* direction, float tMin, float* limit, maudBvhVisitFn* visit,
+                  void* context)
+{
+    Ray ray;
+    Prepare(origin, direction, &ray);
+    Pending stack[STACK];
+    uint32_t top = 0;
+    float root = Enter(&ray, &nodes[0], tMin, *limit);
+    if (root != INFINITY)
+    {
+        stack[top++] = (Pending){0, root};
+    }
+    while (top > 0)
+    {
+        Pending pending = stack[--top];
+        if (pending.enter > *limit)
+        {
+            continue;
+        }
+        const maudBvhNode* node = &nodes[pending.node];
+        if (node->count == 0)
+        {
+            PushChildren(&ray, nodes, pending.node, tMin, *limit, stack, &top);
+            continue;
+        }
+        for (uint32_t i = 0; i < node->count; ++i)
+        {
+            if (visit(&entries[node->offset + i], limit, context))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}

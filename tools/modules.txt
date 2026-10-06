@@ -79,7 +79,9 @@ reflection_response: fft
 reflections: allocator ambisonics partitioned reflection_response reverb_estimate
 reverb: allocator band_eq octave_eq
 reverb_estimate: portable_math spherical_harmonics
-scene: allocator bvh
+scene: allocator bvh scene_state
+scene_instances: allocator bvh scene_state
+scene_state: bvh
 spatializer: air_absorption allocator direct_step occlusion pathing probe_sets reflections reverb_estimate spatializer_state transmission
 spatializer_paths: bake_file pathing probe_bake probe_graph probe_sets reflections reverb_estimate spatializer_state
 spatializer_state: pathing probe_sets reflections reverb_estimate

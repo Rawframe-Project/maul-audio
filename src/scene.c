@@ -1,27 +1,23 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Acoustic scenes (maul-audio/scene.h): the meshes' triangles copied in
-// order, numbered across the meshes, and a hierarchy over them.
+// Acoustic scenes (maul-audio/scene.h): the static meshes' triangles
+// copied in order, numbered across the meshes, and a hierarchy over
+// them; each instancing mesh likewise on its own; the instances in
+// scene_instances.c. A query asks the static hierarchy first, then the
+// committed instances, which win a tie only against nothing.
 
 #include "maul-audio/scene.h"
 
 #include "allocator.h"
 #include "bvh.h"
+#include "scene_state.h"
 
 #include <math.h>
 
 #define SCENE_DEF_COOKIE 0x6D617363u
 #define MAX_TRIANGLES    16777216u
-
-struct maudAcousticScene
-{
-    maudAllocator allocator;
-    uint32_t triangleCount;
-    uint32_t nodeCount;
-    maudTriangle* triangles;
-    maudBvhNode* nodes;
-};
+#define MAX_INSTANCES    65536u
 
 maudAcousticSceneDef maudDefaultAcousticSceneDef(void)
 {
@@ -29,6 +25,10 @@ maudAcousticSceneDef maudDefaultAcousticSceneDef(void)
         .cookie = SCENE_DEF_COOKIE,
         .meshes = nullptr,
         .meshCount = 0,
+        .instanceMeshes = nullptr,
+        .instanceMeshCount = 0,
+        .instanceCapacity = 0,
+        .maxTriangles = MAX_TRIANGLES,
         .allocator = {nullptr, nullptr, nullptr},
     };
 }
@@ -61,64 +61,142 @@ static bool MeshValid(const maudMesh* mesh)
     return true;
 }
 
-// Checks the def and counts its triangles.
-static maudResult Count(const maudAcousticSceneDef* def, uint32_t* total)
+static bool MeshesValid(const maudMesh* meshes, uint32_t count, uint64_t* sum)
 {
-    if (def->cookie != SCENE_DEF_COOKIE || (def->meshCount > 0 && def->meshes == nullptr) ||
-        !maudIsAllocatorValid(&def->allocator))
+    if (count > 0 && meshes == nullptr)
+    {
+        return false;
+    }
+    for (uint32_t m = 0; m < count; ++m)
+    {
+        if (!MeshValid(&meshes[m]))
+        {
+            return false;
+        }
+        *sum += meshes[m].triangleCount;
+    }
+    return true;
+}
+
+// Checks the def and its triangles against its limit.
+static maudResult Check(const maudAcousticSceneDef* def)
+{
+    uint64_t sum = 0;
+    if (def->cookie != SCENE_DEF_COOKIE || !maudIsAllocatorValid(&def->allocator) ||
+        def->instanceCapacity > MAX_INSTANCES || def->maxTriangles == 0 ||
+        def->maxTriangles > MAX_TRIANGLES || !MeshesValid(def->meshes, def->meshCount, &sum) ||
+        !MeshesValid(def->instanceMeshes, def->instanceMeshCount, &sum))
     {
         return maud_errorInvalid;
     }
-    uint64_t sum = 0;
-    for (uint32_t m = 0; m < def->meshCount; ++m)
-    {
-        if (!MeshValid(&def->meshes[m]))
-        {
-            return maud_errorInvalid;
-        }
-        sum += def->meshes[m].triangleCount;
-    }
-    if (sum > MAX_TRIANGLES)
-    {
-        return maud_errorCapacity;
-    }
-    *total = (uint32_t)sum;
-    return maud_success;
+    return sum > def->maxTriangles ? maud_errorCapacity : maud_success;
 }
 
-static void Copy(const maudAcousticSceneDef* def, maudTriangle* triangles)
+bool maudBuildSceneMesh(const maudAllocator* allocator, const maudMesh* meshes, uint32_t count,
+                        maudSceneMesh* out)
 {
-    uint32_t n = 0;
-    for (uint32_t m = 0; m < def->meshCount; ++m)
+    *out = (maudSceneMesh){0};
+    uint32_t total = 0;
+    for (uint32_t m = 0; m < count; ++m)
     {
-        const maudMesh* mesh = &def->meshes[m];
+        total += meshes[m].triangleCount;
+    }
+    if (total == 0)
+    {
+        return true;
+    }
+    out->triangles =
+        maudAllocate(allocator, (size_t)total * sizeof(maudTriangle), alignof(maudTriangle));
+    out->nodes = maudAllocate(allocator, (size_t)maudBvhCapacity(total) * sizeof(maudBvhNode),
+                              alignof(maudBvhNode));
+    out->triangleCount = total;
+    if (out->triangles == nullptr || out->nodes == nullptr)
+    {
+        maudReleaseSceneMesh(allocator, out);
+        return false;
+    }
+    uint32_t n = 0;
+    for (uint32_t m = 0; m < count; ++m)
+    {
+        const maudMesh* mesh = &meshes[m];
         for (uint32_t i = 0; i < mesh->triangleCount; ++i, ++n)
         {
             const maudVector3* v = mesh->vertices;
             maudVector3 a = v[mesh->indices[3 * (size_t)i]];
             maudVector3 b = v[mesh->indices[3 * (size_t)i + 1]];
             maudVector3 c = v[mesh->indices[3 * (size_t)i + 2]];
-            triangles[n] = (maudTriangle){
+            out->triangles[n] = (maudTriangle){
                 {a.x, a.y, a.z}, {b.x, b.y, b.z}, {c.x, c.y, c.z}, n, mesh->materials[i]};
         }
     }
+    out->nodeCount = maudBuildBvh(out->triangles, total, out->nodes);
+    return true;
+}
+
+void maudReleaseSceneMesh(const maudAllocator* allocator, maudSceneMesh* mesh)
+{
+    if (mesh->triangles != nullptr)
+    {
+        maudRelease(allocator, mesh->triangles, (size_t)mesh->triangleCount * sizeof(maudTriangle),
+                    alignof(maudTriangle));
+    }
+    if (mesh->nodes != nullptr)
+    {
+        maudRelease(allocator, mesh->nodes,
+                    (size_t)maudBvhCapacity(mesh->triangleCount) * sizeof(maudBvhNode),
+                    alignof(maudBvhNode));
+    }
+    *mesh = (maudSceneMesh){0};
 }
 
 static void Release(maudAcousticScene* scene)
 {
     maudAllocator allocator = scene->allocator;
-    uint32_t capacity = maudBvhCapacity(scene->triangleCount);
-    if (scene->triangles != nullptr)
+    maudReleaseSceneMesh(&allocator, &scene->statics);
+    if (scene->meshes != nullptr)
     {
-        maudRelease(&allocator, scene->triangles,
-                    (size_t)scene->triangleCount * sizeof(maudTriangle), alignof(maudTriangle));
+        for (uint32_t m = 0; m < scene->meshCount; ++m)
+        {
+            maudReleaseSceneMesh(&allocator, &scene->meshes[m]);
+        }
+        maudRelease(&allocator, scene->meshes, (size_t)scene->meshCount * sizeof(maudSceneMesh),
+                    alignof(maudSceneMesh));
     }
-    if (scene->nodes != nullptr)
-    {
-        maudRelease(&allocator, scene->nodes, (size_t)capacity * sizeof(maudBvhNode),
-                    alignof(maudBvhNode));
-    }
+    maudReleaseInstances(scene);
     maudRelease(&allocator, scene, sizeof(maudAcousticScene), alignof(maudAcousticScene));
+}
+
+// Builds every hierarchy and the instances' slots; false when memory
+// runs out.
+static bool Build(maudAcousticScene* scene, const maudAcousticSceneDef* def)
+{
+    if (!maudBuildSceneMesh(&def->allocator, def->meshes, def->meshCount, &scene->statics))
+    {
+        return false;
+    }
+    if (def->instanceMeshCount > 0)
+    {
+        scene->meshes =
+            maudAllocate(&def->allocator, (size_t)def->instanceMeshCount * sizeof(maudSceneMesh),
+                         alignof(maudSceneMesh));
+        if (scene->meshes == nullptr)
+        {
+            return false;
+        }
+        scene->meshCount = def->instanceMeshCount;
+        for (uint32_t m = 0; m < def->instanceMeshCount; ++m)
+        {
+            scene->meshes[m] = (maudSceneMesh){0};
+        }
+        for (uint32_t m = 0; m < def->instanceMeshCount; ++m)
+        {
+            if (!maudBuildSceneMesh(&def->allocator, &def->instanceMeshes[m], 1, &scene->meshes[m]))
+            {
+                return false;
+            }
+        }
+    }
+    return maudAllocateInstances(scene, def->instanceCapacity);
 }
 
 maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcousticScene** sceneOut)
@@ -131,8 +209,7 @@ maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcoustic
     {
         return maud_errorInvalid;
     }
-    uint32_t total = 0;
-    maudResult result = Count(def, &total);
+    maudResult result = Check(def);
     if (result != maud_success)
     {
         return result;
@@ -143,21 +220,11 @@ maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcoustic
     {
         return maud_errorCapacity;
     }
-    *scene = (maudAcousticScene){.allocator = def->allocator, .triangleCount = total};
-    if (total > 0)
+    *scene = (maudAcousticScene){.allocator = def->allocator};
+    if (!Build(scene, def))
     {
-        scene->triangles = maudAllocate(&def->allocator, (size_t)total * sizeof(maudTriangle),
-                                        alignof(maudTriangle));
-        scene->nodes =
-            maudAllocate(&def->allocator, (size_t)maudBvhCapacity(total) * sizeof(maudBvhNode),
-                         alignof(maudBvhNode));
-        if (scene->triangles == nullptr || scene->nodes == nullptr)
-        {
-            Release(scene);
-            return maud_errorCapacity;
-        }
-        Copy(def, scene->triangles);
-        scene->nodeCount = maudBuildBvh(scene->triangles, total, scene->nodes);
+        Release(scene);
+        return maud_errorCapacity;
     }
     *sceneOut = scene;
     return maud_success;
@@ -189,13 +256,16 @@ void maudSceneAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, voi
         float origin[3];
         float direction[3];
         Unpack(&rays[i], origin, direction);
+        float tMin = rays[i].minDistance;
+        float tMax = rays[i].maxDistance;
         occluded[i] =
-            s->triangleCount > 0 && maudBvhAnyHit(s->nodes, s->triangles, origin, direction,
-                                                  rays[i].minDistance, rays[i].maxDistance);
+            (s->statics.triangleCount > 0 && maudBvhAnyHit(s->statics.nodes, s->statics.triangles,
+                                                           origin, direction, tMin, tMax)) ||
+            maudInstancesAnyHit(s, origin, direction, tMin, tMax);
     }
 }
 
-static maudVector3 Normal(const maudTriangle* t)
+maudVector3 maudTriangleNormal(const maudTriangle* t)
 {
     double u[3];
     double v[3];
@@ -219,19 +289,24 @@ void maudSceneClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, 
     for (uint32_t i = 0; i < count; ++i)
     {
         hits[i] = (maudRayHit){INFINITY, {0.0f, 0.0f, 0.0f}, 0};
-        if (s->triangleCount == 0)
-        {
-            continue;
-        }
         float origin[3];
         float direction[3];
         Unpack(&rays[i], origin, direction);
-        float t = 0.0f;
-        const maudTriangle* hit = maudBvhClosestHit(s->nodes, s->triangles, origin, direction,
-                                                    rays[i].minDistance, rays[i].maxDistance, &t);
-        if (hit != nullptr)
+        float best = rays[i].maxDistance;
+        bool found = false;
+        if (s->statics.triangleCount > 0)
         {
-            hits[i] = (maudRayHit){t, Normal(hit), hit->material};
+            float t = 0.0f;
+            const maudTriangle* hit =
+                maudBvhClosestHit(s->statics.nodes, s->statics.triangles, origin, direction,
+                                  rays[i].minDistance, rays[i].maxDistance, &t);
+            if (hit != nullptr)
+            {
+                hits[i] = (maudRayHit){t, maudTriangleNormal(hit), hit->material};
+                best = t;
+                found = true;
+            }
         }
+        maudInstancesClosestHit(s, origin, direction, rays[i].minDistance, found, &best, &hits[i]);
     }
 }
