@@ -22,6 +22,14 @@ void* maudIosSessionObserve(maudIosSignals* signals);
 // Stops observing: once it returns, no report reaches the signals.
 void maudIosSessionUnobserve(void* observer);
 
+// Fills ports with the session's available inputs, at most capacity;
+// returns the count.
+uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity);
+
+// Makes the input whose UID is uid, length bytes, the session's
+// preferred input; false when it is not available.
+bool maudIosSessionPreferInput(const char* uid, size_t length);
+
 // The forms the session's current route leads to, output and input.
 void maudIosSessionRoute(maudDeviceForm* output, maudDeviceForm* input);
 

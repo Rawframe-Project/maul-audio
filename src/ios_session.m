@@ -15,6 +15,7 @@
 #include "ios_session.h"
 
 #import <AVFAudio/AVFAudio.h>
+#include <stdio.h>
 
 // AVAudioSessionCategoryOptionAllowBluetooth by its value: the iOS 26
 // SDK renames it, and either name is deprecated in one SDK or missing in
@@ -164,6 +165,46 @@ static maudDeviceForm FormOf(AVAudioSessionPortDescription* port)
         return maud_formDigital;
     }
     return maud_formUnknown;
+}
+
+uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity)
+{
+    @autoreleasepool
+    {
+        uint32_t count = 0;
+        for (AVAudioSessionPortDescription* port in [AVAudioSession sharedInstance].availableInputs)
+        {
+            if (count >= capacity)
+            {
+                break;
+            }
+            maudIosPort* out = &ports[count];
+            snprintf(out->key, sizeof(out->key), "port:%s", port.UID.UTF8String);
+            snprintf(out->name, sizeof(out->name), "%s", port.portName.UTF8String);
+            out->form = FormOf(port);
+            count++;
+        }
+        return count;
+    }
+}
+
+bool maudIosSessionPreferInput(const char* uid, size_t length)
+{
+    @autoreleasepool
+    {
+        NSString* wanted = [[[NSString alloc] initWithBytes:uid
+                                                     length:length
+                                                   encoding:NSUTF8StringEncoding] autorelease];
+        AVAudioSession* session = [AVAudioSession sharedInstance];
+        for (AVAudioSessionPortDescription* port in session.availableInputs)
+        {
+            if ([port.UID isEqualToString:wanted])
+            {
+                return [session setPreferredInput:port error:nil];
+            }
+        }
+        return false;
+    }
 }
 
 void maudIosSessionRoute(maudDeviceForm* output, maudDeviceForm* input)

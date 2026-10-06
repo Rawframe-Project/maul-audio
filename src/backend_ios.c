@@ -49,20 +49,43 @@ static maudDeviceSpec DefaultSpec(const maudIos* ios, maudDirection direction, m
 }
 
 // Brings the default pair in line with the session's route.
+// Brings the devices in line with the session: the default pair, where
+// the route leads, and beside it the session's available inputs, which a
+// stream pins through the session's preferred input. iOS lets no output
+// be chosen.
 static maudResult Rescan(maudIos* ios)
 {
+    uint32_t limit = ios->context->def.limits.devices;
     maudDeviceForm output = maud_formUnknown;
     maudDeviceForm input = maud_formUnknown;
     maudIosSessionRoute(&output, &input);
-    maudDeviceSpec specs[2] = {DefaultSpec(ios, maud_directionOutput, output),
-                               DefaultSpec(ios, maud_directionInput, input)};
-    return maudSyncDevices(ios->context, specs, 2, nullptr);
+    ios->specs[0] = DefaultSpec(ios, maud_directionOutput, output);
+    uint32_t count = 1;
+    if (limit > 1)
+    {
+        ios->specs[1] = DefaultSpec(ios, maud_directionInput, input);
+        count = 2;
+    }
+    uint32_t ports = limit > count ? maudIosSessionInputs(ios->ports, limit - count) : 0;
+    for (uint32_t i = 0; i < ports; ++i)
+    {
+        const maudIosPort* port = &ios->ports[i];
+        maudDeviceSpec spec = DefaultSpec(ios, maud_directionInput, port->form);
+        spec.name = port->name;
+        spec.nameLength = maudCutUtf8(port->name, ios->context->def.limits.deviceTextBytes);
+        spec.key = port->key;
+        spec.keyLength = strlen(port->key);
+        ios->specs[count++] = spec;
+    }
+    return maudSyncDevices(ios->context, ios->specs, count, nullptr);
 }
 
 static maudResult OpenContext(maudContext* context)
 {
     uint32_t streams = context->def.limits.streams;
-    size_t bytes = sizeof(maudIos) + (size_t)streams * sizeof(maudIosStream);
+    uint32_t devices = context->def.limits.devices;
+    size_t bytes = sizeof(maudIos) + (size_t)streams * sizeof(maudIosStream) +
+                   (size_t)devices * (sizeof(maudDeviceSpec) + sizeof(maudIosPort));
     maudIos* ios = maudContextAllocate(context, bytes, alignof(maudIos));
     if (ios == nullptr)
     {
@@ -70,6 +93,8 @@ static maudResult OpenContext(maudContext* context)
     }
     *ios = (maudIos){.context = context, .bytes = bytes};
     ios->streams = (maudIosStream*)(ios + 1);
+    ios->specs = (maudDeviceSpec*)(ios->streams + streams);
+    ios->ports = (maudIosPort*)(ios->specs + devices);
     memset(ios->streams, 0, (size_t)streams * sizeof(maudIosStream));
     context->native = ios;
     mach_timebase_info_data_t timebase = {0};

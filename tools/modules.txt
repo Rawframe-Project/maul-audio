@@ -54,9 +54,9 @@ hrtf_lookup: hrtf_core
 hrtf_resample:
 gain_control: allocator vad_core voice_dsp
 invariant:
-ios_core: context_core
+ios_core: context_core device
 ios_session: ios_core
-ios_stream: clock context context_core ios_core ios_session period thread voice xrun
+ios_stream: clock context context_core device ios_core ios_session period thread voice xrun
 layout:
 least_squares:
 lifecycle: backend context context_core follow

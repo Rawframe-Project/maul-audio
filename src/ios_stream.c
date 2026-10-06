@@ -11,6 +11,7 @@
 
 #include "clock.h"
 #include "context.h"
+#include "device.h"
 #include "ios_core.h"
 #include "ios_session.h"
 #include "period.h"
@@ -223,6 +224,22 @@ static bool AllocateCaptured(maudContext* context, maudIosStream* entry)
     return true;
 }
 
+// Points the session's preferred input at the port a pinned input
+// stream is on; a stream on the default leaves it. false when the port
+// is no longer available.
+static bool PreferPort(maudContext* context, const maudStreamCore* core)
+{
+    const maudDeviceSlot* device = maudFindDevice(context, core->binding.current);
+    static const char prefix[] = "port:";
+    size_t skip = sizeof(prefix) - 1;
+    if (core->def.direction != maud_directionInput || device == nullptr ||
+        device->key.length <= skip || memcmp(device->key.bytes, prefix, skip) != 0)
+    {
+        return true;
+    }
+    return maudIosSessionPreferInput(device->key.bytes + skip, device->key.length - skip);
+}
+
 static maudResult Connect(maudContext* context, maudIosStream* entry)
 {
     AudioComponentDescription description = {
@@ -244,6 +261,7 @@ static maudResult Connect(maudContext* context, maudIosStream* entry)
     // The session takes the stream's direction before its unit
     // initializes.
     bool initialized = Configure(entry) && maudIosUpdateSession(context, true) &&
+                       PreferPort(context, entry->core) &&
                        AudioUnitInitialize(entry->unit) == noErr;
     // Back to what runs: an initialized unit outlives the session's
     // deactivation, as it does an interruption's.

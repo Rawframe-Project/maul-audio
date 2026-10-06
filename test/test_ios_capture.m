@@ -4,15 +4,17 @@
 // Capture on iOS, as an application in the simulator
 // (tools/run_ios_app.sh, which grants it the microphone): an input
 // stream runs at its rate on the IO thread with a sound clock, under
-// the Record category, which takes no mixing option. It also prints what the simulator offers
-// beyond the default input and whether a Voice-Processing I/O unit
-// initializes there. The tests run on a thread of their own once the
-// application has launched; the scene delegate keeps UIKit content.
+// the Record category, which takes no mixing option; the session's
+// available inputs are listed and a stream pinned to one runs. It also prints what the simulator
+// offers beyond the default input and whether a Voice-Processing I/O unit initializes there. The
+// tests run on a thread of their own once the application has launched; the scene delegate keeps
+// UIKit content.
 
 #include "test_clock.h"
 #include "test_harness.h"
 
 #include "maul-audio/context.h"
+#include "maul-audio/device.h"
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
@@ -179,6 +181,64 @@ static void TestCapture(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// The session's available inputs are listed beside the default input,
+// keyed by their UIDs (the category that records, set by the stream
+// before, lists them); a stream pinned to one runs, the session
+// preferring that input.
+static void TestPinnedInput(maudContext* context)
+{
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+    maudDeviceId ids[8];
+    uint32_t count = 0;
+    CHECK(maudGetDevices(context, maud_directionInput, ids, 8, &count) == maud_success,
+          "the inputs");
+    maudDeviceId port = {0, 0};
+    char portKey[128] = {0};
+    for (uint32_t i = 0; i < count && i < 8; ++i)
+    {
+        char key[128] = {0};
+        char name[128] = {0};
+        size_t length = 0;
+        maudDeviceInfo info = {0};
+        CHECK(maudGetDeviceKey(context, ids[i], key, sizeof(key) - 1, &length) == maud_success &&
+                  maudGetDeviceName(context, ids[i], name, sizeof(name) - 1, &length) ==
+                      maud_success &&
+                  maudGetDeviceInfo(context, ids[i], &info) == maud_success,
+              "described");
+        printf("input: %s [%s], form %u\n", name, key, (unsigned)info.form);
+        if (strncmp(key, "port:", 5) == 0 && port.index1 == 0)
+        {
+            port = ids[i];
+            memcpy(portKey, key, sizeof(portKey));
+            CHECK(info.form == maud_formMicrophone, "the built-in microphone's form");
+        }
+    }
+    CHECK(port.index1 != 0, "an available input listed");
+    if (port.index1 == 0)
+    {
+        return;
+    }
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionInput;
+    def.device = port;
+    def.periodFrames = 256;
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudStartStream(context, stream) == maud_success,
+          "a stream pinned to it");
+    CHECK(WaitForBlocks(context, &blocks, 20), "captures");
+    NSString* preferred = [AVAudioSession sharedInstance].preferredInput.UID;
+    CHECK(preferred != nil && strcmp(preferred.UTF8String, portKey + 5) == 0,
+          "the session prefers that input");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void* Run(void* unused)
 {
     (void)unused;
@@ -195,6 +255,7 @@ static void* Run(void* unused)
     if (context != nullptr)
     {
         TestCapture(context);
+        TestPinnedInput(context);
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
     }
     printf("result: %d failures\n", s_failures);

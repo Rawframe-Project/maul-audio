@@ -8,9 +8,22 @@
 #define MAUL_AUDIO_SRC_IOS_CORE_H
 
 #include "context_core.h"
+#include "device.h"
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <stdatomic.h>
+
+// Bytes kept for an input port's key and name, in UTF-8.
+#define MAUD_IOS_PORT_BYTES 128u
+
+// One of the session's available inputs: its key ("port:" and its UID),
+// its name and the form it leads to.
+typedef struct maudIosPort
+{
+    char key[MAUD_IOS_PORT_BYTES];
+    char name[MAUD_IOS_PORT_BYTES];
+    maudDeviceForm form;
+} maudIosPort;
 
 // A stream's RemoteIO unit, run by the system's IO thread while it
 // plays.
@@ -74,6 +87,9 @@ typedef struct maudIos
     maudIosSignals signals;
     // The session observer (ios_session.m), retained.
     void* observer;
+    // Room for a scan: the available inputs and the specs.
+    maudIosPort* ports;
+    maudDeviceSpec* specs;
     // The session's rate and output channels when the context opened.
     uint32_t rate;
     uint32_t channels;
