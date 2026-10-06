@@ -133,8 +133,12 @@ static World Build(bool reversed, float transmission)
           "a set in use");
     const maudVector3 at[4] = {
         {6.0f, 1.5f, 1.5f}, {6.0f, 1.5f, 1.5f}, {18.5f, 1.5f, 5.0f}, {8.0f, 1.5f, 1.0f}};
-    for (int i = 0; i < 4; ++i)
+    // The one not asking takes the first slot, so that were it pathed it
+    // would take the only path a step allows.
+    const int order[4] = {1, 0, 2, 3};
+    for (int n = 0; n < 4; ++n)
     {
+        int i = order[n];
         maudSourceDef sd = maudDefaultSourceDef();
         sd.pathing = i != 1;
         maudPose pose = {at[i], {0.0f, 0.0f, 0.0f, 1.0f}};
