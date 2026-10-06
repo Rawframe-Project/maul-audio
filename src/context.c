@@ -340,7 +340,8 @@ static void ReleaseHalf(maudContext* context, maudStreamSlot* slot)
     {
         context->backend->detachStream(context, slot);
     }
-    maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes, alignof(float));
+    maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes,
+                       MAUD_STREAM_STORAGE_ALIGN);
     slot->live = false;
     slot->duplex = nullptr;
     slot->hidden = false;

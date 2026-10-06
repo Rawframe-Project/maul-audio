@@ -56,6 +56,9 @@ extern "C"
         maud_ratePlatformConverted = 2,
     };
 
+    // One object of an object stream (maul-audio/objects.h).
+    typedef struct maudStreamObject maudStreamObject;
+
     // One period of a stream, as its callback sees it.
     typedef struct maudStreamBlock
     {
@@ -71,6 +74,12 @@ extern "C"
         maudChannelLayout layout;
         // The stream frame index of the block's first frame.
         uint64_t position;
+        // Object streams: the def's objectCount objects to fill and place
+        // (maul-audio/objects.h), and how many active ones the platform
+        // takes this period; the bed is output. NULL and 0 otherwise.
+        maudStreamObject* objects;
+        uint32_t objectCount;
+        uint32_t objectsAvailable;
     } maudStreamBlock;
 
     // The host's real-time callback. It must not allocate, lock, wait or
@@ -163,6 +172,12 @@ extern "C"
         // spatializer processes it again; the status says what the
         // platform did with the mark. Input streams take false.
         bool contentSpatialized;
+        // An output stream's positioned objects, up to
+        // MAUD_MAX_STREAM_OBJECTS: an object stream (maul-audio/objects.h),
+        // whose layout is its bed's. Shared only; refused with
+        // maud_errorUnsupported where the backend has no object renderer.
+        // 0 for an ordinary stream.
+        uint32_t objectCount;
         maudStreamCallback callback;
         void* user;
     } maudStreamDef;

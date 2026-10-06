@@ -554,6 +554,13 @@ static void TestOutputStream(maudContext* context)
               clock.hostNanoseconds == 0 && clock.position == 0,
           "a new stream has no stamp, even in a slot used before");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    // PipeWire has no object renderer: the host's own binaural mix goes
+    // to an ordinary stream.
+    def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    def.objectCount = 4;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no object streams");
 }
 
 static void TestInputStream(maudContext* context)

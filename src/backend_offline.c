@@ -73,6 +73,7 @@ static maudSpatialMark MarkStream(const maudStreamDef* def, const maudStreamForm
 
 static const maudBackend s_offline = {
     .markStream = MarkStream,
+    .rendersObjects = true,
     .kind = maud_backendOffline,
     .openContext = OpenContext,
     .closeContext = nullptr,

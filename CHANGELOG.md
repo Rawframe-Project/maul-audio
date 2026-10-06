@@ -413,3 +413,10 @@ format.
   chosen spatial format takes; none on macOS, where AUHAL output is
   never spatialized, and offline. `maudSetOfflineDeviceSpatializer`
   simulates a change.
+- Object streams (`maul-audio/objects.h`, `objectCount` in the stream
+  def): beside the stream's ordinary output, the bed, the callback
+  fills and places up to 256 mono objects (position relative to the
+  listener, gain, active), kept from period to period, and the block
+  says how many active objects the platform takes. The offline backend
+  renders them to its caller (`maudRenderObjects`); backends without an
+  object renderer refuse them.

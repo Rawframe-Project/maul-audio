@@ -57,6 +57,9 @@ struct maudBackend
     // Whether the caller's thread renders the streams (maudRenderStream
     // and maudFeedStream), as on the offline backend.
     bool rendersOnCaller;
+    // Whether the backend renders object streams (maul-audio/objects.h):
+    // hands their objects to a platform renderer, or to the caller.
+    bool rendersObjects;
     // Whether the platform has no voice processing, so input streams
     // report none from the start; otherwise the backend reports.
     bool hasNoVoice;

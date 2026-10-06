@@ -351,6 +351,7 @@ endif()
 if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(context)
     maul_add_test(stream)
+    maul_add_test(objects)
     maul_add_test(device)
     maul_add_test(utf8 WHITEBOX)
     maul_add_test(duplex)
@@ -542,8 +543,8 @@ if(MAUL_AUDIO_INSTALL)
     # The public headers of the parts configured.
     set(MAUL_PUBLIC_HEADERS base.h buffer.h layout.h)
     if(MAUL_AUDIO_DEVICE)
-        list(APPEND MAUL_PUBLIC_HEADERS context.h device.h focus.h notification.h offline.h stream.h
-             voice.h)
+        list(APPEND MAUL_PUBLIC_HEADERS context.h device.h focus.h notification.h objects.h
+             offline.h stream.h voice.h)
     endif()
     if(MAUL_AUDIO_SPATIAL)
         list(APPEND MAUL_PUBLIC_HEADERS ambisonics.h binaural.h direct.h hrtf.h reverb.h scene.h
