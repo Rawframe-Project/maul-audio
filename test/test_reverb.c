@@ -539,9 +539,11 @@ static void TestBandLevel(void)
     CHECK(drop < -16.0 && drop > -24.0, "the low band down");
 }
 
-// The W bed's impulse response from a reverb with a tail: params until
-// block off (of 480 frames), then stopped (the tail's times 0).
-static void TailResponse(const maudReverbParams* params, uint32_t off, bool tail)
+// The bed from a reverb with a tail or without, fed unit impulses at
+// the given frames, the tail stopped (its times 0) in blocks of 480 from
+// stop to start.
+static void Sequence(bool tail, const maudReverbParams* params, const int* impulses, int count,
+                     uint32_t stop, uint32_t start)
 {
     maudReverbDef def = maudDefaultReverbDef();
     def.tail = tail;
@@ -552,17 +554,84 @@ static void TailResponse(const maudReverbParams* params, uint32_t off, bool tail
     memset(stopped.tailTime, 0, sizeof(stopped.tailTime));
     memset(s_in, 0, sizeof(s_in));
     memset(s_bed, 0, sizeof(s_bed));
-    s_in[0] = 1.0f;
+    for (int i = 0; i < count; ++i)
+    {
+        s_in[impulses[i]] = 1.0f;
+    }
     long before = s_allocations;
     for (uint32_t at = 0; at < LENGTH; at += 480)
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
-        CHECK(maudProcessReverb(r, at / 480 < off ? params : &stopped, s_in + at, bed, 480) ==
-                  maud_success,
+        bool on = at / 480 < stop || at / 480 >= start;
+        CHECK(maudProcessReverb(r, on ? params : &stopped, s_in + at, bed, 480) == maud_success,
               "process");
     }
     CHECK(s_allocations == before, "a tail allocates nothing");
     maudDestroyReverb(r);
+}
+
+// The impulse response, the tail stopped from block stop on.
+static void TailResponse(const maudReverbParams* params, uint32_t stop, bool tail)
+{
+    Sequence(tail, params, (const int[]){0}, 1, stop, LENGTH / 480);
+}
+
+// What a reverb's tail adds to W: the bed with a tail less the bed
+// without, for the same impulses and stops.
+static void Added(const maudReverbParams* params, const int* impulses, int count, uint32_t stop,
+                  uint32_t start, float* added)
+{
+    Sequence(true, params, impulses, count, stop, start);
+    memcpy(added, s_bed[0], LENGTH * sizeof(float));
+    Sequence(false, params, impulses, count, stop, start);
+    for (int n = 0; n < LENGTH; ++n)
+    {
+        added[n] -= s_bed[0][n];
+    }
+}
+
+// A tail stopped until it stops running, then started again, sounds as a
+// new reverb's: it adds the same to the bed.
+static float s_again[LENGTH];
+static float s_fresh[LENGTH];
+
+static void TestTailAgain(void)
+{
+    maudReverbParams p = {
+        {0.1f, 0.1f, 0.1f}, {-96.0f, -96.0f, -96.0f}, 0.0f, {0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}};
+    const int twice[2] = {0, 24000};
+    Added(&p, twice, 2, 1, 50, s_again);
+    Added(&p, twice + 1, 1, 0, 0, s_fresh);
+    double worst = 0.0;
+    double peak = 0.0;
+    for (int n = 24000; n < 48000; ++n)
+    {
+        worst = fmax(worst, fabs((double)s_again[n] - (double)s_fresh[n]));
+        peak = fmax(peak, fabs((double)s_fresh[n]));
+    }
+    printf("a tail started again: %.2g from a new one's (peak %.2g)\n", worst, peak);
+    CHECK(peak > 1e-3 && worst < 1e-6 * peak, "a tail started again sounds as new");
+}
+
+// A tail in the 2 kHz band alone: the 125 Hz octave holds nothing of it.
+static void TestTailBand(void)
+{
+    maudReverbParams p = {
+        {1.5f, 1.5f, 1.5f}, {-96.0f, -96.0f, -96.0f}, 0.0f, {0.0f, 1.5f, 0.0f}, {0.0f, 0.0f, 0.0f}};
+    TailResponse(&p, LENGTH / 480, true);
+    double energy[2] = {0.0, 0.0};
+    const double centres[2] = {125.0, 2000.0};
+    for (int k = 0; k < 2; ++k)
+    {
+        BandPass(centres[k]);
+        for (int i = 0; i < LENGTH; ++i)
+        {
+            energy[k] += (double)s_band[i] * (double)s_band[i];
+        }
+    }
+    double low = 10.0 * log10(energy[0] / energy[1]);
+    printf("a tail in one band: 125 Hz against 2 kHz, %.1f dB\n", low);
+    CHECK(low < -30.0, "a band without a tail is silent in it");
 }
 
 // The W bed's 10 ms bins from start to end seconds, over the reverb's
@@ -631,13 +700,15 @@ static void TestTail(void)
     CHECK(memcmp(without, s_bed[0] + 4800, sizeof(without)) == 0,
           "a reverb without a tail ignores it");
     maudReverbParams brief = {
-        {0.1f, 0.1f, 0.1f}, {-96.0f, -96.0f, -96.0f}, 0.0f, {0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}};
+        {0.1f, 0.1f, 0.1f}, {-96.0f, -96.0f, -96.0f}, 0.0f, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
     TailResponse(&brief, 1, true);
-    double ringing = Peak(0.1, 0.15);
-    double after = Peak(0.3, 0.5);
-    printf("a stopped tail: %.2g at 100 ms, %.2g from 300 ms\n", ringing, after);
-    CHECK(ringing > 1e-6, "a stopped tail decays at its time");
+    double ringing = OverModel(1.0, 0.1, 0.6);
+    double after = Peak(1.4, 1.6);
+    printf("a stopped tail: %.2f dB from its decay, %.2g from 1.4 s\n", ringing, after);
+    CHECK(fabs(ringing) < 1.0, "a stopped tail decays at its time");
     CHECK(after < 1e-9, "and then stops");
+    TestTailAgain();
+    TestTailBand();
     maudReverb* r = Create();
     float out[4][16] = {{0}};
     float* const bed[4] = {out[0], out[1], out[2], out[3]};

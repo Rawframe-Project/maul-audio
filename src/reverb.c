@@ -33,7 +33,6 @@
 // directional channels carry a sixth of its energy rather than the
 // diffuse third.
 #define SEND_SIGNS 0x5A3Cu
-#define TAIL_SIGNS 0xA5C3u
 #define MIN_RATE   44100.0f
 #define MAX_RATE   384000.0f
 #define MIN_TIME   0.1f
@@ -71,7 +70,6 @@ typedef struct Network
     float* lines[LINES];
     // Its lines' samples, one block.
     size_t floats;
-    uint32_t signs;
     float s1[FILTERS][LINES];
     float s2[FILTERS][LINES];
     // The bed's gains per line: W, Y, Z, X.
@@ -205,7 +203,6 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
         {
             n->floats += n->lengths[i];
         }
-        n->signs = k == 0 ? SEND_SIGNS : TAIL_SIGNS;
         Directions(n->encode);
         r->memoryFloats += n->floats;
     }
@@ -408,7 +405,7 @@ static void Run(Network* r, const Bank* k, const float* in, float* const* bed, u
         float send = 0.25f * in[n];
         for (int i = 0; i < LINES; ++i)
         {
-            r->lines[i][r->positions[i]] = v[i] + ((r->signs >> i) & 1u ? -send : send);
+            r->lines[i][r->positions[i]] = v[i] + ((SEND_SIGNS >> i) & 1u ? -send : send);
             r->positions[i] = r->positions[i] + 1 == r->lengths[i] ? 0 : r->positions[i] + 1;
         }
     }
