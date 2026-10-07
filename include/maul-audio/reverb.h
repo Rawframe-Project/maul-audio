@@ -5,7 +5,9 @@
 // reverberation times given per band (up to 800 Hz, 800 Hz to 8 kHz,
 // above 8 kHz). It takes the host's mono reverb send and adds a diffuse
 // tail into a first-order ambisonic bed, which the binaural and speaker
-// decoders render. One per listener; it allocates nothing once made.
+// decoders render. Where a coupled space decays in two slopes, a reverb
+// made with a tail renders the slower one too. One per listener; it
+// allocates nothing once made.
 
 #ifndef MAUL_AUDIO_REVERB_H
 #define MAUL_AUDIO_REVERB_H
@@ -13,6 +15,7 @@
 #include "maul-audio/base.h"
 #include "maul-audio/direct.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -31,6 +34,10 @@ extern "C"
         float sampleRate;
         // The longest input delay it will be asked for, 0 to 4 s.
         float maxDelay;
+        // Whether it renders a slower second slope (the params' tail):
+        // a second network, which doubles its memory and, while a tail
+        // sounds, its work. False by default.
+        bool tail;
         maudAllocator allocator;
     } maudReverbDef;
 
@@ -48,6 +55,13 @@ extern "C"
         float level[MAUD_DIRECT_BANDS];
         // The send's delay, 0 to the def's maxDelay seconds.
         float delay;
+        // The slower slope per band, as maudReverbResult's tailTime and
+        // tailLevel give it, rendered by a reverb made with a tail (and
+        // ignored by others): its time, 0.1 to 20 s, or 0 for none in the
+        // band; and its level, as level is the first's, -96 to 24 dB. A
+        // tail that stops decays at its time and then stops running.
+        float tailTime[MAUD_DIRECT_BANDS];
+        float tailLevel[MAUD_DIRECT_BANDS];
     } maudReverbParams;
 
     /// Returns the default reverb def: 48 kHz, no input delay.
@@ -91,8 +105,8 @@ extern "C"
     /// @param bed     Four channels of frames samples, added to.
     /// @param frames  The frames; 0 does nothing.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
-    ///         a time, level or delay out of range or not finite; nothing
-    ///         is written then.
+    ///         a time, level or delay out of range or not finite (a tail's
+    ///         too); nothing is written then.
     /// @par Thread safety
     /// Safe from any thread; the reverb is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudProcessReverb(maudReverb* reverb,

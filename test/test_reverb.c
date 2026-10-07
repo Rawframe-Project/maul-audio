@@ -68,14 +68,22 @@ static void Respond(maudReverb* r, const float* before, const float* times)
 {
     memset(s_in, 0, sizeof(s_in));
     memset(s_bed, 0, sizeof(s_bed));
-    maudReverbParams first = {{before[0], before[1], before[2]}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams first = {{before[0], before[1], before[2]},
+                              {0.0f, 0.0f, 0.0f},
+                              0.0f,
+                              {0.0f, 0.0f, 0.0f},
+                              {0.0f, 0.0f, 0.0f}};
     for (int block = 0; block < 2; ++block)
     {
         float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], s_bed[3]};
         CHECK(maudProcessReverb(r, &first, s_in, bed, 480) == maud_success, "process");
     }
     s_in[0] = 1.0f;
-    maudReverbParams params = {{times[0], times[1], times[2]}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams params = {{times[0], times[1], times[2]},
+                               {0.0f, 0.0f, 0.0f},
+                               0.0f,
+                               {0.0f, 0.0f, 0.0f},
+                               {0.0f, 0.0f, 0.0f}};
     for (int at = 0; at < LENGTH; at += 480)
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
@@ -244,7 +252,8 @@ static void TestDecay(void)
 static void TestBehaviour(void)
 {
     maudReverb* r = Create();
-    maudReverbParams params = {{1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams params = {
+        {1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     float in[480] = {0};
     static float bed[4][480];
     float* out[4] = {bed[0], bed[1], bed[2], bed[3]};
@@ -284,7 +293,8 @@ static void TestBehaviour(void)
     CHECK(energy[0] > 0.0 && energy[1] > 0.0 && energy[2] > 0.0 && energy[3] > 0.0,
           "the tail adds into all four channels");
     // A change of times: finite throughout, then the new decay.
-    maudReverbParams longer = {{2.5f, 1.5f, 0.6f}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams longer = {
+        {2.5f, 1.5f, 0.6f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     bool finite = true;
     for (int block = 0; block < 20; ++block)
     {
@@ -306,7 +316,8 @@ static void TestBehaviour(void)
         silent = silent && bed[0][n] == 0.0f;
     }
     CHECK(silent, "a reset silences the tail");
-    maudReverbParams bad = {{0.05f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams bad = {
+        {0.05f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     bed[0][0] = 7.0f;
     in[0] = 1.0f;
     CHECK(maudProcessReverb(r, &bad, in, out, 480) == maud_errorInvalid, "a time too short");
@@ -336,7 +347,8 @@ static void TestBlocks(void)
     static float b[4800];
     static float zero[4][4800];
     in[100] = 1.0f;
-    maudReverbParams params = {{1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams params = {
+        {1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     for (int at = 0; at < 4800; at += 480)
     {
         float* bed[4] = {a + at, zero[1] + at, zero[2] + at, zero[3] + at};
@@ -371,8 +383,10 @@ static void TestRamp(void)
     static float a[4][480];
     static float b[4][480];
     uint32_t seed = 1;
-    maudReverbParams before = {{1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f};
-    maudReverbParams after = {{0.3f, 0.2f, 0.1f}, {0.0f, 0.0f, 0.0f}, 0.0f};
+    maudReverbParams before = {
+        {1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
+    maudReverbParams after = {
+        {0.3f, 0.2f, 0.1f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     for (int block = 0; block < 11; ++block)
     {
         for (int n = 0; n < 480; ++n)
@@ -425,7 +439,9 @@ static void TestSend(void)
         maudReverbParams p = {{1.0f, 1.0f, 1.0f},
                               {k == 0 ? flat[0] : louder[0], k == 0 ? flat[1] : louder[1],
                                k == 0 ? flat[2] : louder[2]},
-                              k == 0 ? 0.0f : 0.1f};
+                              k == 0 ? 0.0f : 0.1f,
+                              {0.0f, 0.0f, 0.0f},
+                              {0.0f, 0.0f, 0.0f}};
         static float in[24000];
         memset(in, 0, sizeof(in));
         in[0] = 1.0f;
@@ -456,7 +472,8 @@ static void TestSend(void)
     }
     printf("6 dB: energy ratio %.3f\n", loud / plain);
     CHECK(fabs(loud / plain / pow(10.0, 0.6) - 1.0) < 0.05, "6 dB louder");
-    maudReverbParams bad = {{1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.21f};
+    maudReverbParams bad = {
+        {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.21f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     CHECK(maudProcessReverb(r[0], &bad, out[0][0],
                             (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
                             16) == maud_errorInvalid,
@@ -484,7 +501,11 @@ static void TestSend(void)
 static double LowOverMiddle(const float* levels)
 {
     maudReverb* r = Create();
-    maudReverbParams p = {{1.0f, 1.0f, 1.0f}, {levels[0], levels[1], levels[2]}, 0.0f};
+    maudReverbParams p = {{1.0f, 1.0f, 1.0f},
+                          {levels[0], levels[1], levels[2]},
+                          0.0f,
+                          {0.0f, 0.0f, 0.0f},
+                          {0.0f, 0.0f, 0.0f}};
     memset(s_in, 0, sizeof(s_in));
     memset(s_bed, 0, sizeof(s_bed));
     s_in[0] = 1.0f;
@@ -518,8 +539,123 @@ static void TestBandLevel(void)
     CHECK(drop < -16.0 && drop > -24.0, "the low band down");
 }
 
+// The W bed's impulse response from a reverb with a tail: params until
+// block off (of 480 frames), then stopped (the tail's times 0).
+static void TailResponse(const maudReverbParams* params, uint32_t off, bool tail)
+{
+    maudReverbDef def = maudDefaultReverbDef();
+    def.tail = tail;
+    def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
+    maudReverb* r = nullptr;
+    CHECK(maudCreateReverb(&def, &r) == maud_success, "a reverb with a tail");
+    maudReverbParams stopped = *params;
+    memset(stopped.tailTime, 0, sizeof(stopped.tailTime));
+    memset(s_in, 0, sizeof(s_in));
+    memset(s_bed, 0, sizeof(s_bed));
+    s_in[0] = 1.0f;
+    long before = s_allocations;
+    for (uint32_t at = 0; at < LENGTH; at += 480)
+    {
+        float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
+        CHECK(maudProcessReverb(r, at / 480 < off ? params : &stopped, s_in + at, bed, 480) ==
+                  maud_success,
+              "process");
+    }
+    CHECK(s_allocations == before, "a tail allocates nothing");
+    maudDestroyReverb(r);
+}
+
+// The W bed's 10 ms bins from start to end seconds, over the reverb's
+// 0.0144 exp(-13.8 t / time) at level 0: the mean in dB.
+static double OverModel(double time, double start, double end)
+{
+    double sum = 0.0;
+    int bins = 0;
+    for (int i = (int)(start * 100.0); i < (int)(end * 100.0); ++i, ++bins)
+    {
+        double energy = 0.0;
+        for (int n = i * 480; n < (i + 1) * 480; ++n)
+        {
+            energy += (double)s_bed[0][n] * (double)s_bed[0][n];
+        }
+        sum += 10.0 * log10(energy / (0.0144 * exp(-13.815510557964274 * i * 0.01 / time)));
+    }
+    return sum / bins;
+}
+
+static double Peak(double start, double end)
+{
+    double peak = 0.0;
+    for (int n = (int)(start * RATE); n < (int)(end * RATE); ++n)
+    {
+        peak = fmax(peak, fabs((double)s_bed[0][n]));
+    }
+    return peak;
+}
+
+// The tail: alone it gives the first's energy for its time and level; the
+// two do not ring together (equal ones sum in energy, not amplitude); a
+// reverb made without one ignores it; a stopped tail decays at its time,
+// then stops; times and levels are checked.
+static void TestTail(void)
+{
+    maudReverbParams alone = {
+        {0.3f, 0.3f, 0.3f}, {-96.0f, -96.0f, -96.0f}, 0.0f, {1.5f, 1.5f, 1.5f}, {0.0f, 0.0f, 0.0f}};
+    TailResponse(&alone, 1000, true);
+    double tail = OverModel(1.5, 0.1, 0.8);
+    maudReverbParams first = {
+        {1.5f, 1.5f, 1.5f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
+    TailResponse(&first, 1000, true);
+    double reference = OverModel(1.5, 0.1, 0.8);
+    double single = 0.0;
+    for (int n = (int)(0.1 * RATE); n < (int)(1.0 * RATE); ++n)
+    {
+        single += (double)s_bed[0][n] * (double)s_bed[0][n];
+    }
+    maudReverbParams both = first;
+    memcpy(both.tailTime, both.reverbTime, sizeof(both.tailTime));
+    TailResponse(&both, 1000, true);
+    double sum = 0.0;
+    for (int n = (int)(0.1 * RATE); n < (int)(1.0 * RATE); ++n)
+    {
+        sum += (double)s_bed[0][n] * (double)s_bed[0][n];
+    }
+    printf("tail: alone %.2f dB from the model, the first %.2f dB; two equal %.2f times one\n",
+           tail, reference, sum / single);
+    CHECK(fabs(tail) < 1.0 && fabs(reference) < 1.0, "the tail's energy as the first's");
+    CHECK(sum / single > 1.7 && sum / single < 2.3, "the two do not ring together");
+    TailResponse(&both, 1000, false);
+    float without[4800];
+    memcpy(without, s_bed[0] + 4800, sizeof(without));
+    TailResponse(&first, 1000, false);
+    CHECK(memcmp(without, s_bed[0] + 4800, sizeof(without)) == 0,
+          "a reverb without a tail ignores it");
+    maudReverbParams brief = {
+        {0.1f, 0.1f, 0.1f}, {-96.0f, -96.0f, -96.0f}, 0.0f, {0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}};
+    TailResponse(&brief, 1, true);
+    double ringing = Peak(0.1, 0.15);
+    double after = Peak(0.3, 0.5);
+    printf("a stopped tail: %.2g at 100 ms, %.2g from 300 ms\n", ringing, after);
+    CHECK(ringing > 1e-6, "a stopped tail decays at its time");
+    CHECK(after < 1e-9, "and then stops");
+    maudReverb* r = Create();
+    float out[4][16] = {{0}};
+    float* const bed[4] = {out[0], out[1], out[2], out[3]};
+    maudReverbParams bad = first;
+    bad.tailTime[1] = 0.05f;
+    CHECK(maudProcessReverb(r, &bad, out[0], bed, 16) == maud_errorInvalid, "a tail too short");
+    bad.tailTime[1] = NAN;
+    CHECK(maudProcessReverb(r, &bad, out[0], bed, 16) == maud_errorInvalid, "a tail not a number");
+    bad.tailTime[1] = 1.0f;
+    bad.tailLevel[2] = 25.0f;
+    CHECK(maudProcessReverb(r, &bad, out[0], bed, 16) == maud_errorInvalid,
+          "a tail's level past 24 dB");
+    maudDestroyReverb(r);
+}
+
 int main(void)
 {
+    TestTail();
     TestBlocks();
     TestRamp();
     TestDecay();

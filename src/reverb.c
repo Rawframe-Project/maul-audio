@@ -11,7 +11,9 @@
 // bed from one of 16 directions spread over the sphere. A change of times
 // ramps the filters in steps of 8 frames: a biquad is stable for any
 // denominator inside a triangle, which holds every blend of two stable
-// ones.
+// ones. A reverb with a tail has a second such network for the slower
+// slope, its lines between the first's (24 to 72 ms) so that the two do
+// not ring together, fed the same delayed send at its own levels.
 
 #include "maul-audio/reverb.h"
 
@@ -31,6 +33,7 @@
 // directional channels carry a sixth of its energy rather than the
 // diffuse third.
 #define SEND_SIGNS 0x5A3Cu
+#define TAIL_SIGNS 0xA5C3u
 #define MIN_RATE   44100.0f
 #define MAX_RATE   384000.0f
 #define MIN_TIME   0.1f
@@ -46,6 +49,8 @@
 // the 5 % that is just noticeable.
 #define REFIT 0.005f
 #define PI_D  3.14159265358979323846
+// A tail whose send has stopped runs on until it has fallen this far.
+#define TAIL_RING_DB 80.0
 
 // Every line's filters, structure of arrays so that lines vectorize.
 typedef struct Bank
@@ -58,16 +63,15 @@ typedef struct Bank
     float gain[LINES];
 } Bank;
 
-struct maudReverb
+// One network: its lines, their filters, and the leveling of its send.
+typedef struct Network
 {
-    maudAllocator allocator;
-    double rate;
-    maudOctaveEqSetup setup;
     uint32_t lengths[LINES];
     uint32_t positions[LINES];
     float* lines[LINES];
-    float* memory;
-    size_t memoryFloats;
+    // Its lines' samples, one block.
+    size_t floats;
+    uint32_t signs;
     float s1[FILTERS][LINES];
     float s2[FILTERS][LINES];
     // The bed's gains per line: W, Y, Z, X.
@@ -75,21 +79,41 @@ struct maudReverb
     Bank current;
     Bank target;
     float times[MAUD_DIRECT_BANDS];
+    // Whether it has run since made, reset or cleared, and whether its
+    // filters ramp in this call.
     bool started;
-    // The send's delay line (the longest delay and one sample), where
-    // the next sample goes, and the delay now.
-    float* delayLine;
-    uint32_t delayLength;
-    uint32_t delayAt;
-    // The send's levels: the equalizer, its filters now and to come, its
+    bool ramp;
+    // The send's levels: the equalizer's filters now and to come, its
     // state, the levels they meet, whether all are 0 dB.
-    maudBandEqSetup eqSetup;
     maudBandEqFilters eqCurrent;
     maudBandEqFilters eqTarget;
     maudBandEqState eqState;
     float levels[MAUD_DIRECT_BANDS];
     bool flat;
     bool leveling;
+} Network;
+
+struct maudReverb
+{
+    maudAllocator allocator;
+    double rate;
+    maudOctaveEqSetup setup;
+    maudBandEqSetup eqSetup;
+    float* memory;
+    size_t memoryFloats;
+    // The send's delay line (the longest delay and one sample), where
+    // the next sample goes, and the delay now.
+    float* delayLine;
+    uint32_t delayLength;
+    uint32_t delayAt;
+    // The first slope's network, and the tail's for a reverb made with
+    // one.
+    Network networks[2];
+    uint32_t networkCount;
+    // Whether the tail's network runs, and the frames it runs on once its
+    // send has stopped.
+    bool tailRunning;
+    uint64_t tailLeft;
 };
 
 maudReverbDef maudDefaultReverbDef(void)
@@ -98,6 +122,7 @@ maudReverbDef maudDefaultReverbDef(void)
         .cookie = REVERB_DEF_COOKIE,
         .sampleRate = 48000.0f,
         .maxDelay = 0.0f,
+        .tail = false,
         .allocator = {nullptr, nullptr, nullptr},
     };
 }
@@ -118,11 +143,13 @@ static bool Prime(uint32_t n)
     return true;
 }
 
-static void Lengths(double rate, uint32_t* lengths)
+// Lengths from 23 ms up by thirds of an octave of time, offset by a
+// share of a step.
+static void Lengths(double rate, double offset, uint32_t* lengths)
 {
     for (int i = 0; i < LINES; ++i)
     {
-        double ms = 23.0 * pow(3.0, (double)i / (LINES - 1));
+        double ms = 23.0 * pow(3.0, ((double)i + offset) / (LINES - 1));
         uint32_t n = (uint32_t)(ms * rate / 1000.0);
         while (!Prime(n) || (i > 0 && n <= lengths[i - 1]))
         {
@@ -167,11 +194,20 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     {
         return maud_errorCapacity;
     }
-    *r = (maudReverb){.allocator = def->allocator, .rate = (double)def->sampleRate};
-    Lengths(r->rate, r->lengths);
-    for (int i = 0; i < LINES; ++i)
+    *r = (maudReverb){.allocator = def->allocator,
+                      .rate = (double)def->sampleRate,
+                      .networkCount = def->tail ? 2u : 1u};
+    for (uint32_t k = 0; k < r->networkCount; ++k)
     {
-        r->memoryFloats += r->lengths[i];
+        Network* n = &r->networks[k];
+        Lengths(r->rate, k == 0 ? 0.0 : 0.5, n->lengths);
+        for (int i = 0; i < LINES; ++i)
+        {
+            n->floats += n->lengths[i];
+        }
+        n->signs = k == 0 ? SEND_SIGNS : TAIL_SIGNS;
+        Directions(n->encode);
+        r->memoryFloats += n->floats;
     }
     r->delayLength = (uint32_t)ceil((double)def->maxDelay * r->rate) + 1;
     r->memoryFloats += r->delayLength;
@@ -182,15 +218,17 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
         return maud_errorCapacity;
     }
     size_t offset = 0;
-    for (int i = 0; i < LINES; ++i)
+    for (uint32_t k = 0; k < r->networkCount; ++k)
     {
-        r->lines[i] = r->memory + offset;
-        offset += r->lengths[i];
+        for (int i = 0; i < LINES; ++i)
+        {
+            r->networks[k].lines[i] = r->memory + offset;
+            offset += r->networks[k].lengths[i];
+        }
     }
     r->delayLine = r->memory + offset;
     maudSetupOctaveEq(&r->setup, r->rate);
     maudSetupBandEq(&r->eqSetup, def->sampleRate);
-    Directions(r->encode);
     if (maudResetReverb(r) != maud_success)
     {
         maudDestroyReverb(r);
@@ -211,19 +249,30 @@ void maudDestroyReverb(maudReverb* reverb)
     maudRelease(&allocator, reverb, sizeof(maudReverb), alignof(maudReverb));
 }
 
+// Silences a network: its lines, filters and leveling.
+static void Clear(Network* n)
+{
+    memset(n->lines[0], 0, n->floats * sizeof(float));
+    memset(n->positions, 0, sizeof(n->positions));
+    memset(n->s1, 0, sizeof(n->s1));
+    memset(n->s2, 0, sizeof(n->s2));
+    memset(&n->eqState, 0, sizeof(n->eqState));
+    n->started = false;
+}
+
 maudResult maudResetReverb(maudReverb* reverb)
 {
     if (reverb == nullptr)
     {
         return maud_errorInvalid;
     }
-    memset(reverb->memory, 0, reverb->memoryFloats * sizeof(float));
-    memset(reverb->positions, 0, sizeof(reverb->positions));
-    memset(reverb->s1, 0, sizeof(reverb->s1));
-    memset(reverb->s2, 0, sizeof(reverb->s2));
-    memset(&reverb->eqState, 0, sizeof(reverb->eqState));
+    for (uint32_t k = 0; k < reverb->networkCount; ++k)
+    {
+        Clear(&reverb->networks[k]);
+    }
+    memset(reverb->delayLine, 0, reverb->delayLength * sizeof(float));
     reverb->delayAt = 0;
-    reverb->started = false;
+    reverb->tailRunning = false;
     return maud_success;
 }
 
@@ -249,7 +298,7 @@ static double OctaveTime(const float* times, double hz)
 }
 
 // Designs every line's filters for the times into bank.
-static void Design(const maudReverb* r, const float* times, Bank* bank)
+static void Design(const maudReverb* r, const Network* n, const float* times, Bank* bank)
 {
     // Every line's targets have one shape, scaled by its length: one fit
     // serves them all.
@@ -265,7 +314,7 @@ static void Design(const maudReverb* r, const float* times, Bank* bank)
         double targets[MAUD_OCTAVES];
         for (int m = 0; m < MAUD_OCTAVES; ++m)
         {
-            targets[m] = shape[m] * (double)r->lengths[i] / r->rate;
+            targets[m] = shape[m] * (double)n->lengths[i] / r->rate;
         }
         maudBiquad filters[FILTERS];
         float gain = 0.0f;
@@ -317,7 +366,7 @@ static void Hadamard(float* v)
 }
 
 // Lines' outputs through their filters.
-static void Filter(maudReverb* r, const Bank* k, float* v)
+static void Filter(Network* r, const Bank* k, float* v)
 {
     for (int f = 0; f < FILTERS; ++f)
     {
@@ -336,7 +385,7 @@ static void Filter(maudReverb* r, const Bank* k, float* v)
     }
 }
 
-static void Run(maudReverb* r, const Bank* k, const float* in, float* const* bed, uint32_t count)
+static void Run(Network* r, const Bank* k, const float* in, float* const* bed, uint32_t count)
 {
     for (uint32_t n = 0; n < count; ++n)
     {
@@ -359,7 +408,7 @@ static void Run(maudReverb* r, const Bank* k, const float* in, float* const* bed
         float send = 0.25f * in[n];
         for (int i = 0; i < LINES; ++i)
         {
-            r->lines[i][r->positions[i]] = v[i] + ((SEND_SIGNS >> i) & 1u ? -send : send);
+            r->lines[i][r->positions[i]] = v[i] + ((r->signs >> i) & 1u ? -send : send);
             r->positions[i] = r->positions[i] + 1 == r->lengths[i] ? 0 : r->positions[i] + 1;
         }
     }
@@ -383,7 +432,10 @@ static bool ParamsValid(const maudReverb* r, const maudReverbParams* p)
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
         if (!(p->reverbTime[b] >= MIN_TIME) || !(p->reverbTime[b] <= MAX_TIME) ||
-            !(p->level[b] >= MIN_LEVEL) || !(p->level[b] <= MAX_LEVEL))
+            !(p->level[b] >= MIN_LEVEL) || !(p->level[b] <= MAX_LEVEL) ||
+            !(p->tailTime[b] == 0.0f ||
+              (p->tailTime[b] >= MIN_TIME && p->tailTime[b] <= MAX_TIME)) ||
+            !(p->tailLevel[b] >= MIN_LEVEL) || !(p->tailLevel[b] <= MAX_LEVEL))
         {
             return false;
         }
@@ -391,47 +443,93 @@ static bool ParamsValid(const maudReverb* r, const maudReverbParams* p)
     return p->delay >= 0.0f && (double)p->delay * r->rate < (double)r->delayLength;
 }
 
-// Takes new times and levels: designs what changed, at once if nothing
-// has run since the reverb was made or reset. Returns whether the bank
-// is to ramp.
-static bool Retarget(maudReverb* r, const maudReverbParams* p)
+// Takes a network's new times and levels: designs what changed, at once
+// if it has not run since made, reset or cleared; its filters ramp
+// otherwise when its times change.
+static void Retarget(const maudReverb* r, Network* n, const float* times, const float* levels)
 {
-    bool changed = !r->started;
-    bool leveled = !r->started;
+    bool changed = !n->started;
+    bool leveled = !n->started;
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
-        changed = changed || fabsf(p->reverbTime[b] - r->times[b]) > REFIT * r->times[b];
-        leveled = leveled || fabsf(p->level[b] - r->levels[b]) > RELEVEL;
+        changed = changed || fabsf(times[b] - n->times[b]) > REFIT * n->times[b];
+        leveled = leveled || fabsf(levels[b] - n->levels[b]) > RELEVEL;
     }
     if (changed)
     {
-        Design(r, p->reverbTime, &r->target);
-        memcpy(r->times, p->reverbTime, sizeof(r->times));
+        Design(r, n, times, &n->target);
+        memcpy(n->times, times, sizeof(n->times));
     }
     if (leveled)
     {
         double targets[MAUD_DIRECT_BANDS];
         double gains[MAUD_DIRECT_BANDS];
-        r->flat = true;
+        n->flat = true;
         for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
         {
-            targets[b] = (double)p->level[b];
-            r->flat = r->flat && p->level[b] == 0.0f;
+            targets[b] = (double)levels[b];
+            n->flat = n->flat && levels[b] == 0.0f;
         }
         maudSolveBandEq(&r->eqSetup, targets, gains);
-        maudDesignBandEq(&r->eqSetup, gains, &r->eqTarget);
-        memcpy(r->levels, p->level, sizeof(r->levels));
-        r->leveling = true;
+        maudDesignBandEq(&r->eqSetup, gains, &n->eqTarget);
+        memcpy(n->levels, levels, sizeof(n->levels));
+        n->leveling = true;
     }
-    if (!r->started)
+    n->ramp = changed && n->started;
+    if (!n->started)
     {
-        r->current = r->target;
-        r->eqCurrent = r->eqTarget;
-        r->leveling = false;
-        r->started = true;
+        n->current = n->target;
+        n->eqCurrent = n->eqTarget;
+        n->leveling = false;
+        n->started = true;
+    }
+}
+
+// Takes the tail's times and levels; returns whether its network runs in
+// this call. A band without a tail is silent in it, at the first slope's
+// time; with a tail in no band the send stops, and the network runs on
+// until its sound has fallen TAIL_RING_DB, then is cleared.
+static bool RetargetTail(maudReverb* r, const maudReverbParams* p, uint32_t frames)
+{
+    if (r->networkCount < 2)
+    {
         return false;
     }
-    return changed;
+    Network* n = &r->networks[1];
+    float times[MAUD_DIRECT_BANDS];
+    float levels[MAUD_DIRECT_BANDS];
+    bool any = false;
+    double longest = 0.0;
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        bool has = p->tailTime[b] > 0.0f;
+        any = any || has;
+        times[b] = has ? p->tailTime[b] : p->reverbTime[b];
+        levels[b] = has ? p->tailLevel[b] : MIN_LEVEL;
+        longest = fmax(longest, (double)times[b]);
+    }
+    if (any)
+    {
+        r->tailRunning = true;
+        r->tailLeft = (uint64_t)ceil(TAIL_RING_DB / 60.0 * longest * r->rate);
+    }
+    else
+    {
+        if (!r->tailRunning)
+        {
+            return false;
+        }
+        if (r->tailLeft <= frames)
+        {
+            Clear(n);
+            r->tailRunning = false;
+            return false;
+        }
+        r->tailLeft -= frames;
+        memcpy(times, n->times, sizeof(times));
+    }
+    Retarget(r, n, times, levels);
+    return true;
 }
 
 static void BlendEq(const maudBandEqFilters* from, const maudBandEqFilters* to, float t,
@@ -447,10 +545,8 @@ static void BlendEq(const maudBandEqFilters* from, const maudBandEqFilters* to, 
     }
 }
 
-// The send's frames [done, done + count) of frames, delayed by delay
-// samples and leveled (the levels moving across the call), into x.
-static void Feed(maudReverb* r, const float* in, uint32_t delay, uint32_t done, uint32_t count,
-                 uint32_t frames, float* x)
+// count frames of the send, delayed by delay samples, into x.
+static void Delay(maudReverb* r, const float* in, uint32_t delay, uint32_t count, float* x)
 {
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -459,6 +555,12 @@ static void Feed(maudReverb* r, const float* in, uint32_t delay, uint32_t done, 
         x[i] = r->delayLine[from >= r->delayLength ? from - r->delayLength : from];
         r->delayAt = r->delayAt + 1 == r->delayLength ? 0 : r->delayAt + 1;
     }
+}
+
+// Frames [done, done + count) of frames of the delayed send in x, leveled
+// for a network (the levels moving across the call).
+static void Level(Network* r, uint32_t done, uint32_t count, uint32_t frames, float* x)
+{
     if (r->flat && !r->leveling)
     {
         return;
@@ -468,6 +570,37 @@ static void Feed(maudReverb* r, const float* in, uint32_t delay, uint32_t done, 
     BlendEq(&r->eqCurrent, &r->eqTarget, (float)done / (float)frames, &from);
     BlendEq(&r->eqCurrent, &r->eqTarget, (float)(done + count) / (float)frames, &to);
     maudRunBandEq(&r->eqState, &from, &to, x, x, count);
+}
+
+// A network's frames [done, done + count) of frames, from its leveled
+// send in x, added into the bed; its filters ramp across the call in
+// steps of RAMP_FRAMES when its times change.
+static void Render(Network* n, const float* x, float* const* bed, uint32_t done, uint32_t count,
+                   uint32_t frames)
+{
+    for (uint32_t start = 0; start < count; start += RAMP_FRAMES)
+    {
+        uint32_t m = count - start < RAMP_FRAMES ? count - start : RAMP_FRAMES;
+        float* const segment[4] = {bed[0] + done + start, bed[1] + done + start,
+                                   bed[2] + done + start, bed[3] + done + start};
+        if (!n->ramp)
+        {
+            Run(n, &n->current, x + start, segment, m);
+            continue;
+        }
+        Bank at;
+        Blend(&n->current, &n->target, (float)(done + start + m) / (float)frames, &at);
+        Run(n, &at, x + start, segment, m);
+    }
+}
+
+// A network's filters and levels after a call: those it moved to.
+static void Settle(Network* n)
+{
+    n->current = n->target;
+    n->eqCurrent = n->eqTarget;
+    n->leveling = false;
+    n->ramp = false;
 }
 
 maudResult maudProcessReverb(maudReverb* reverb, const maudReverbParams* params, const float* in,
@@ -483,31 +616,33 @@ maudResult maudProcessReverb(maudReverb* reverb, const maudReverbParams* params,
     {
         return maud_success;
     }
-    bool ramp = Retarget(reverb, params);
+    Network* first = &reverb->networks[0];
+    Network* tail = &reverb->networks[1];
+    Retarget(reverb, first, params->reverbTime, params->level);
+    bool tailed = RetargetTail(reverb, params, frames);
     uint32_t delay = (uint32_t)lround((double)params->delay * reverb->rate);
     float x[CHUNK];
+    float y[CHUNK];
     for (uint32_t done = 0; done < frames; done += CHUNK)
     {
         uint32_t count = frames - done < CHUNK ? frames - done : CHUNK;
-        Feed(reverb, in + done, delay, done, count, frames, x);
-        for (uint32_t start = 0; start < count; start += RAMP_FRAMES)
+        Delay(reverb, in + done, delay, count, x);
+        if (tailed)
         {
-            uint32_t n = count - start < RAMP_FRAMES ? count - start : RAMP_FRAMES;
-            float* const segment[4] = {bed[0] + done + start, bed[1] + done + start,
-                                       bed[2] + done + start, bed[3] + done + start};
-            if (!ramp)
-            {
-                Run(reverb, &reverb->current, x + start, segment, n);
-                continue;
-            }
-            Bank at;
-            Blend(&reverb->current, &reverb->target, (float)(done + start + n) / (float)frames,
-                  &at);
-            Run(reverb, &at, x + start, segment, n);
+            memcpy(y, x, count * sizeof(float));
+        }
+        Level(first, done, count, frames, x);
+        Render(first, x, bed, done, count, frames);
+        if (tailed)
+        {
+            Level(tail, done, count, frames, y);
+            Render(tail, y, bed, done, count, frames);
         }
     }
-    reverb->current = reverb->target;
-    reverb->eqCurrent = reverb->eqTarget;
-    reverb->leveling = false;
+    Settle(first);
+    if (tailed)
+    {
+        Settle(tail);
+    }
     return maud_success;
 }

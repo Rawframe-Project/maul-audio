@@ -357,7 +357,7 @@ Changes what a platform spatializer does on an output device, as a user turning 
 
 ## `reverb.h`
 
-The parametric reverb: a feedback delay network whose decay follows reverberation times given per band (up to 800 Hz, 800 Hz to 8 kHz, above 8 kHz). It takes the host's mono reverb send and adds a diffuse tail into a first-order ambisonic bed, which the binaural and speaker decoders render. One per listener; it allocates nothing once made.
+The parametric reverb: a feedback delay network whose decay follows reverberation times given per band (up to 800 Hz, 800 Hz to 8 kHz, above 8 kHz). It takes the host's mono reverb send and adds a diffuse tail into a first-order ambisonic bed, which the binaural and speaker decoders render. Where a coupled space decays in two slopes, a reverb made with a tail renders the slower one too. One per listener; it allocates nothing once made.
 
 ```c
 maudReverbDef maudDefaultReverbDef(void);
@@ -377,7 +377,7 @@ Destroys a reverb. NULL is ignored.  @param reverb  The reverb. @par Thread safe
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudProcessReverb(maudReverb* reverb, const maudReverbParams* params, const float* in, float* const* bed, uint32_t frames);
 ```
-Runs frames of the send through the reverb, adding its tail into a first-order bed (four channels, ACN order, SN3D), the send delayed and leveled per band first. When the times or levels change they move to the new ones across the call (a new delay takes effect at once); refitting the filters then takes some tens of microseconds on the calling thread, bounded and without allocation.  @param reverb  The reverb. @param params  This call's params. @param in      frames samples of the send. @param bed     Four channels of frames samples, added to. @param frames  The frames; 0 does nothing. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or a time, level or delay out of range or not finite; nothing is written then. @par Thread safety Safe from any thread; the reverb is used by one thread at a time.
+Runs frames of the send through the reverb, adding its tail into a first-order bed (four channels, ACN order, SN3D), the send delayed and leveled per band first. When the times or levels change they move to the new ones across the call (a new delay takes effect at once); refitting the filters then takes some tens of microseconds on the calling thread, bounded and without allocation.  @param reverb  The reverb. @param params  This call's params. @param in      frames samples of the send. @param bed     Four channels of frames samples, added to. @param frames  The frames; 0 does nothing. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or a time, level or delay out of range or not finite (a tail's too); nothing is written then. @par Thread safety Safe from any thread; the reverb is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudResetReverb(maudReverb* reverb);

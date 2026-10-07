@@ -336,7 +336,9 @@ static void Tail(const maudReverbResult* result)
     CHECK(maudCreateReverb(&def, &r) == maud_success, "a reverb");
     maudReverbParams p = {{result->reverbTime[0], result->reverbTime[1], result->reverbTime[2]},
                           {result->level[0], result->level[1], result->level[2]},
-                          result->delay};
+                          result->delay,
+                          {0.0f, 0.0f, 0.0f},
+                          {0.0f, 0.0f, 0.0f}};
     memset(s_send, 0, sizeof(s_send));
     memset(s_tail, 0, sizeof(s_tail));
     s_send[0] = 1.0f;

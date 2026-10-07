@@ -432,3 +432,9 @@ format.
   estimate gives the slower one too (`tailTime` and `tailLevel` in
   `maudReverbResult`), which a second reverb renders; single-slope
   rooms keep their estimates exactly.
+- The reverb renders a slower second slope: a reverb made with `tail`
+  in its def runs a second network for `tailTime` and `tailLevel` in
+  `maudReverbParams` (the reverberation estimate's tail), and lets a
+  stopped tail decay before it stops running. The first slope's output
+  is unchanged; params written as positional initializers gain the two
+  fields (zero for none).

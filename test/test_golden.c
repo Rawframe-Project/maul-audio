@@ -201,7 +201,8 @@ static void MakeTail(Render* r, uint32_t block, float* left, float* right)
     }
     ClearBed(r);
     float* bed[4] = {r->bed[0], r->bed[1], r->bed[2], r->bed[3]};
-    const maudReverbParams params = {{1.2f, 0.9f, 0.5f}, {0.0f, 0.0f, 0.0f}, 0.02f};
+    const maudReverbParams params = {
+        {1.2f, 0.9f, 0.5f}, {0.0f, 0.0f, 0.0f}, 0.02f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     CHECK(maudProcessReverb(r->reverb, &params, r->mono, bed, BLOCK) == maud_success, "reverb");
     float* out[2] = {left, right};
     CHECK(maudDecodeBinaural(r->decoder, (const float* const*)bed, out, BLOCK) == maud_success,
