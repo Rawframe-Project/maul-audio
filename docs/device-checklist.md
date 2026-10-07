@@ -12,8 +12,12 @@ result goes in the release notes.
 | PipeWire | a second client adds and removes nodes (`test_pipewire`) | yes, by that client | the daemon stopped and started (`test_pipewire_restart`) |
 | PulseAudio | a sink loaded and unloaded with `pactl` (`test_pulse`) | yes, with `pactl` | the server stopped and started (`test_pulse`) |
 | ALSA | made-up endpoint lists, and card nodes a test directory gains and loses (`test_alsa_hotplug`) | not reported by ALSA | none (no service) |
-| Core Audio | an aggregate device over BlackHole made and destroyed (`test_coreaudio`) | yes, the system default set to it and back | not tested |
+| Core Audio | an aggregate device over BlackHole made and destroyed (`test_coreaudio`) | yes, the system default set to it and back | `coreaudiod` killed under a running stream (`test_coreaudio`, macOS cell) |
 | WASAPI | the notification callbacks called by the test; streams moved between the endpoints there are (`test_wasapi`) | the same | not tested |
+
+After `coreaudiod` restarts on the CI's BlackHole, a lone stream runs
+three to five times fast until another client starts the device; on
+real hardware, step 4 below checks the rate by ear.
 
 The WASAPI tests run under Wine in development and skip on the CI's
 Windows runner, which has no audio endpoint. Wine does not enforce COM
@@ -49,7 +53,8 @@ USB or Bluetooth headset):
      `pulseaudio -k`.
 
    Expect the devices removed and added again. Streams on a default
-   report suspended and then resumed; none crashes.
+   report suspended and then resumed; none crashes, and the tone keeps
+   its pitch (a stream running fast after the restart is a fault).
 5. Connect a Bluetooth headset and switch it between its music and
    call profiles (open a capture stream to force the call profile).
    Expect the format change reported (`maud_notifyStreamFormatChanged`)

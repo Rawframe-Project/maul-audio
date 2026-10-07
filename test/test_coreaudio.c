@@ -482,6 +482,54 @@ static void TestHotplug(maudContext* context)
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
 }
 
+// The audio server restarted under a running stream on the default
+// (MAUD_TEST_COREAUDIO_RESTART names the command, as the macOS CI cell's
+// `sudo killall coreaudiod`): the stream keeps playing and is not
+// suspended; the hotplug test after it shows the context still hears
+// the HAL. On the CI's BlackHole a lone stream then runs three to five
+// times fast until another client starts the device, whether or not
+// its unit is opened again, so the check is that it plays, not its
+// rate.
+static void TestServiceRestart(maudContext* context)
+{
+    const char* command = getenv("MAUD_TEST_COREAUDIO_RESTART");
+    if (command == nullptr)
+    {
+        return;
+    }
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    CHECK(system(command) == 0, "the audio server restarted");
+    // Each second for twenty, the blocks it played: again means more
+    // than 100 in a second after the first (a 256-frame period at 48 kHz
+    // makes about 188), not a few played before the server went.
+    bool again = false;
+    uint32_t last = atomic_load(&blocks.count);
+    for (int second = 1; second <= 20 && !again; ++second)
+    {
+        for (int tick = 0; tick < 100; ++tick)
+        {
+            maudNotification record;
+            while (maudNextNotification(context, &record) == maud_success)
+            {
+                printf("after the restart: notification %u, stream %u, device %u\n",
+                       (unsigned)record.kind, record.streamId.index1, record.deviceId.index1);
+            }
+            Sleep(10);
+        }
+        uint32_t now = atomic_load(&blocks.count);
+        printf("second %d after the restart: %u blocks\n", second, now - last);
+        again = second > 1 && now - last > 100;
+        last = now;
+    }
+    CHECK(again, "the stream plays again");
+    CHECK(Suspension(context, stream) == maud_suspendNone, "not suspended");
+    CHECK(Destroy(context, stream), "destroy");
+}
+
 // BlackHole's input hears its output: a stream captures what another
 // plays into it, at the device's rate, with a sound clock. A converted
 // input at another rate is refused.
@@ -980,6 +1028,7 @@ int main(void)
     TestXruns(context);
     TestExclusive(context);
     TestDefaultMoves(context);
+    TestServiceRestart(context);
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;

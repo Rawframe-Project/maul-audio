@@ -86,7 +86,10 @@ jobs:
         run: cmake --build build -j 4
       - name: Test
         run: |
-          if [ "$RUNNER_OS" = macOS ]; then export MAUD_REQUIRE_COREAUDIO=1; fi
+          if [ "$RUNNER_OS" = macOS ]; then
+            export MAUD_REQUIRE_COREAUDIO=1
+            export MAUD_TEST_COREAUDIO_RESTART="sudo killall coreaudiod"
+          fi
           ctest --test-dir build --output-on-failure
       - name: Package
         if: matrix.name == 'linux-shared'
