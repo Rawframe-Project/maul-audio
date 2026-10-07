@@ -27,11 +27,31 @@ thread where the platform provides none.
 ## Status
 
 Not released. The device layer works on Linux (PipeWire, PulseAudio,
-ALSA), Windows (WASAPI), macOS (Core Audio) and the web, with an
-offline backend for tests; the mobile backends come later. The spatial
-part has HRTF sets, a binaural effect per source, a third-order
-ambisonic bed with binaural and speaker decoders, and speaker panning
-for the library's channel layouts; the rest of it comes later.
+ALSA), Windows (WASAPI), macOS (Core Audio), iOS, Android (AAudio) and
+the web, with an offline backend for tests. Everything listed above is
+built; the API may still change before the first release.
+
+## Cost
+
+On one core of an AMD Ryzen 9 5900X (Linux, clang 20, Release; the
+figures in `bench/baseline.txt`), per 10 ms of 48 kHz audio:
+
+| Work | Time | One core in real time |
+|---|---|---|
+| A binaural source, moving | 17.3 us | about 580 sources |
+| A binaural source, still (with the near field) | 10.7 (13.2) us | about 940 (750) sources |
+| A source's direct effects (air absorption, a wall's transmission), moving | 8.3 us | about 1,200 sources |
+| A source into the third-order bed | 2.4 us | about 4,100 sources |
+| The bed decoded binaurally | 123 us | once per listener |
+| A reverb | 53 us | about 190 reverbs |
+| Noise suppression, mono (16 kHz, 48 kHz) | 45, 93 us | |
+| Echo cancellation, mono (16 kHz, 48 kHz) | 93, 287 us | |
+
+On the web, each feature linked alone costs a page, gzipped: a
+playback stream about 16 KB of WebAssembly and JavaScript, the
+binaural effect 28 KB, the reverb 30 KB, the voice processors 32 KB;
+the default HRTF set is a separate file of 854 KB, 636 KB gzipped,
+which the host fetches and hands in. The CI's web cell reports these.
 
 ## Building
 

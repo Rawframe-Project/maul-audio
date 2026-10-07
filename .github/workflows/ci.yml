@@ -224,5 +224,10 @@ jobs:
           done
       - name: Size
         # The static library's size, reported, not gated (family record
-        # 0013).
-        run: stat -c '%s bytes' build/libmaul-audio.a
+        # 0013), and what each feature costs a page: its program linked
+        # alone (bench/size_web.c), raw and gzipped, and the HRTF set.
+        run: |
+          stat -c '%s bytes' build/libmaul-audio.a
+          for f in build/maul-audio_size_*.wasm build/maul-audio_size_*.js data/hrtf/*.maudhrtf; do
+            echo "$f: $(stat -c %s "$f") bytes, $(gzip -9c "$f" | wc -c) gzipped"
+          done
