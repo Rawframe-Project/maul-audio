@@ -422,5 +422,8 @@ format.
   render through the system's spatial mixer (each object a point
   source, the bed passed through, the renderer chosen for headphones,
   built-in or other speakers, the listener's personalized HRTF from
-  macOS 13), with a mono or stereo bed; backends without an object
-  renderer refuse them.
+  macOS 13), with a mono or stereo bed, and the same on iOS; on
+  Windows through the endpoint's spatial audio object render stream
+  (the bed as static objects, each active object a dynamic object while
+  the user's spatial format has one to give); backends without an
+  object renderer refuse them.

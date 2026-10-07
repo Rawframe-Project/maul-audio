@@ -18,6 +18,7 @@
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
+#include "maul-audio/objects.h"
 #include "maul-audio/stream.h"
 
 #include <stdatomic.h>
@@ -549,6 +550,78 @@ static void TestDrainRescans(maudContext* context)
     CHECK(Drain(context, maud_notifyDeviceAdded) == real, "the drain rescans");
 }
 
+typedef struct Placed
+{
+    atomic_uint count;
+    atomic_uint mostOffered;
+} Placed;
+
+// Plays a tone in the bed and in an active object to the right.
+static void PlaceObject(const maudStreamBlock* block, void* user)
+{
+    Placed* placed = user;
+    maudStreamObject* object = &block->objects[0];
+    object->active = true;
+    object->position[0] = 2.0f;
+    for (uint32_t i = 0; i < block->frameCount; ++i)
+    {
+        float value = (i & 32u) != 0 ? 0.1f : -0.1f;
+        object->samples[i] = value;
+        block->output[2 * i] = value;
+        block->output[2 * i + 1] = value;
+    }
+    if (block->objectsAvailable > atomic_load(&placed->mostOffered))
+    {
+        atomic_store(&placed->mostOffered, block->objectsAvailable);
+    }
+    atomic_fetch_add(&placed->count, 1);
+}
+
+// An object stream runs on the endpoint's spatial render stream: the bed
+// plays, and the objects offered are at most what the endpoint says it
+// takes (none under Wine, or on Windows while no spatial format is on).
+// A bed of a layout the spatial stream has no objects for is refused.
+static void TestObjects(maudContext* context)
+{
+    maudDeviceId output = {0, 0};
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+                  maud_success &&
+              maudGetDeviceInfo(context, output, &info) == maud_success,
+          "the default output");
+    Placed placed = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.objectCount = 2;
+    def.callback = PlaceObject;
+    def.user = &placed;
+    maudStreamId stream = {0, 0};
+    maudResult result = maudCreateStream(context, &def, &stream);
+    printf("object stream: %s, the endpoint takes %u objects\n", maudResultName(result),
+           info.spatialObjects);
+    CHECK(result == maud_success && maudStartStream(context, stream) == maud_success,
+          "an object stream runs");
+    for (int tries = 0; tries < 300 && atomic_load(&placed.count) < 20; ++tries)
+    {
+        Sleep(10);
+    }
+    CHECK(atomic_load(&placed.count) >= 20, "its callback runs");
+    CHECK(atomic_load(&placed.mostOffered) <= info.spatialObjects,
+          "offered no more objects than the endpoint takes");
+    uint64_t position = 0;
+    CHECK(maudGetStreamPosition(context, stream, &position) == maud_success && position > 0,
+          "its clock advances");
+    CHECK(maudStopStream(context, stream) == maud_success &&
+              maudStartStream(context, stream) == maud_success,
+          "stops and starts again");
+    uint32_t before = atomic_load(&placed.count);
+    for (int tries = 0; tries < 300 && atomic_load(&placed.count) < before + 10; ++tries)
+    {
+        Sleep(10);
+    }
+    CHECK(atomic_load(&placed.count) >= before + 10, "and runs again");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 // Wine refuses exclusive use of every endpoint; Windows may give it, in
 // which case the stream says so and plays, or refuse it as the device or
 // the user's policy says. It never falls back to shared.
@@ -606,6 +679,7 @@ int main(void)
     TestVoiceInput(context);
     TestUnderrun(context);
     TestExclusive(context);
+    TestObjects(context);
     TestMove(context);
     TestNotifier(context);
     TestDrainRescans(context);

@@ -108,11 +108,12 @@ vad_core: voice_dsp
 voice: context_core
 voice_detector: allocator vad_core voice_dsp
 voice_dsp:
-wasapi_core: context_core device sample_convert wasapi_notify worker
+wasapi_core: context_core device sample_convert wasapi_notify wasapi_objects worker
 wasapi_exclusive: context_core sample_convert wasapi_core wasapi_format
 wasapi_format:
 wasapi_notify:
-wasapi_stream: clock context context_core period sample_convert thread voice wasapi_core wasapi_exclusive wasapi_format wasapi_voice worker xrun
+wasapi_objects: context context_core layout period
+wasapi_stream: clock context context_core period sample_convert thread voice wasapi_core wasapi_exclusive wasapi_format wasapi_objects wasapi_voice worker xrun
 wasapi_voice: context_core voice wasapi_core
 watertight:
 web_capture: clock context context_core follow period thread voice web_core web_devices xrun

@@ -10,6 +10,7 @@
 #include "device.h"
 #include "sample_convert.h"
 #include "wasapi_notify.h"
+#include "wasapi_objects.h"
 #include "worker.h"
 
 #include <audioclient.h>
@@ -59,6 +60,9 @@ typedef struct maudWasapiStream
     bool threadRunning;
     // The thread ended on a failure, as when the endpoint went away.
     atomic_bool failed;
+    // An object stream's spatial render stream, which it has in place of
+    // the client; its stream is NULL for other streams.
+    maudWasapiObjects objects;
 } maudWasapiStream;
 
 typedef struct maudWasapi

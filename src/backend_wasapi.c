@@ -322,6 +322,7 @@ static maudSpatialMark MarkStream(const maudStreamDef* def, const maudStreamForm
 }
 
 static const maudBackend s_wasapi = {
+    .rendersObjects = true,
     .markStream = MarkStream,
     .kind = maud_backendWasapi,
     .openContext = OpenContext,
