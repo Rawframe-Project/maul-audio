@@ -22,7 +22,9 @@ It owns no mixer, voices, decoders or game concepts: a host mixes,
 and the library moves its blocks to and from the device or renders
 the sources it is given. Nothing on the audio thread allocates, locks
 or waits, and the library starts no thread except a stream's audio
-thread where the platform provides none.
+thread where the platform provides none and, on Windows, one thread
+per context in COM's multithreaded apartment, on which every WASAPI
+call runs, so that the host's threads may be in any apartment.
 
 ## Status
 

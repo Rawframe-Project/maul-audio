@@ -22,7 +22,7 @@ backend_ios: backend context device focus follow ios_core ios_session ios_stream
 backend_offline: backend context_core device
 backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_stream
 backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
-backend_wasapi: backend context device layout wasapi_core wasapi_stream
+backend_wasapi: backend context device layout wasapi_apartment wasapi_core wasapi_stream
 backend_web: backend clock context device follow period thread web_capture web_core web_devices
 bake_file: allocator crc32 probe_bake probe_graph
 band_eq:
@@ -111,7 +111,8 @@ vad_core: voice_dsp
 voice: context_core
 voice_detector: allocator vad_core voice_dsp
 voice_dsp:
-wasapi_core: context_core device sample_convert wasapi_notify wasapi_objects worker
+wasapi_apartment: worker
+wasapi_core: context_core device sample_convert wasapi_apartment wasapi_notify wasapi_objects worker
 wasapi_exclusive: context_core sample_convert wasapi_core wasapi_format
 wasapi_format:
 wasapi_notify:

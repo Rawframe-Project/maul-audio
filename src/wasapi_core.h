@@ -9,6 +9,7 @@
 #include "context_core.h"
 #include "device.h"
 #include "sample_convert.h"
+#include "wasapi_apartment.h"
 #include "wasapi_notify.h"
 #include "wasapi_objects.h"
 #include "worker.h"
@@ -71,9 +72,9 @@ typedef struct maudWasapi
     IMMDeviceEnumerator* enumerator;
     maudWasapiNotifier notifier;
     bool registered;
-    // Keeps the multithreaded apartment alive while the context lives.
-    CO_MTA_USAGE_COOKIE apartment;
-    bool apartmentHeld;
+    // The thread every COM object of the backend's lives and is called
+    // on.
+    maudWasapiApartment apartment;
     // Room for a scan of as many endpoints as the context has devices.
     maudWasapiEndpoint* endpoints;
     maudDeviceSpec* specs;

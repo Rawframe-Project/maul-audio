@@ -279,6 +279,35 @@ static maudStreamId OpenStream(maudContext* context, maudStreamDef* def, Blocks*
     return stream;
 }
 
+typedef struct Where
+{
+    DWORD thread;
+    APTTYPE type;
+    HRESULT read;
+} Where;
+
+static void Locate(void* user)
+{
+    Where* where = user;
+    APTTYPEQUALIFIER qualifier = APTTYPEQUALIFIER_NONE;
+    where->thread = GetCurrentThreadId();
+    where->read = CoGetApartmentType(&where->type, &qualifier);
+}
+
+// The backend's COM calls run on a thread of the context's in the
+// multithreaded apartment, not on the caller's, whatever its apartment.
+static void TestApartment(maudContext* context)
+{
+    maudWasapi* wasapi = context->native;
+    Where where = {0, APTTYPE_STA, E_FAIL};
+    maudCallInWasapiApartment(&wasapi->apartment, Locate, &where);
+    CHECK(where.thread != 0 && where.thread != GetCurrentThreadId(), "a thread of its own");
+    CHECK(SUCCEEDED(where.read) && where.type == APTTYPE_MTA, "in the multithreaded apartment");
+    Where again = {0, APTTYPE_STA, E_FAIL};
+    maudCallInWasapiApartment(&wasapi->apartment, Locate, &again);
+    CHECK(again.thread == where.thread, "the same thread each call");
+}
+
 static void TestDevices(maudContext* context)
 {
     CHECK(maudGetContextBackend(context) == maud_backendWasapi, "WASAPI");
@@ -665,7 +694,8 @@ static void TestExclusive(maudContext* context)
 int main(void)
 {
     s_control = GetCurrentThreadId();
-    bool sta = getenv("MAUD_WASAPI_STA") != nullptr;
+    const char* staSwitch = getenv("MAUD_WASAPI_STA");
+    bool sta = staSwitch != nullptr && staSwitch[0] != '\0';
     if (sta)
     {
         APTTYPE type = APTTYPE_MTA;
@@ -692,6 +722,7 @@ int main(void)
         }
         return getenv("MAUD_REQUIRE_WASAPI") != nullptr ? 1 : SKIP;
     }
+    TestApartment(context);
     TestDevices(context);
     TestOutputStream(context);
     TestInputStream(context);

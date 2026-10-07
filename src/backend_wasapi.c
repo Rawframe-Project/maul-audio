@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The WASAPI backend's context and devices. The context holds the multithreaded
-// apartment open, so the host's threads call COM without initializing
-// it. Devices are the active endpoints, their formats read from the
+// The WASAPI backend's context and devices. Every COM call runs on the
+// context's apartment thread, in the multithreaded apartment, whatever
+// apartment the host's thread is in. Devices are the active endpoints, their formats read from the
 // property store without activating them; a notification raises a flag
 // and the drain lists endpoints and defaults again.
 
@@ -217,8 +217,10 @@ static maudResult Rescan(maudContext* context)
     return result;
 }
 
-static void Release(maudContext* context, maudWasapi* wasapi)
+// The context's COM objects, released on the apartment's thread.
+static void ReleaseObjects(void* user)
 {
+    maudWasapi* wasapi = user;
     if (wasapi->registered)
     {
         IMMDeviceEnumerator_UnregisterEndpointNotificationCallback(wasapi->enumerator,
@@ -228,12 +230,43 @@ static void Release(maudContext* context, maudWasapi* wasapi)
     {
         IMMDeviceEnumerator_Release(wasapi->enumerator);
     }
-    if (wasapi->apartmentHeld)
+}
+
+static void Release(maudContext* context, maudWasapi* wasapi)
+{
+    if (wasapi->apartment.joined)
     {
-        CoDecrementMTAUsage(wasapi->apartment);
+        maudCallInWasapiApartment(&wasapi->apartment, ReleaseObjects, wasapi);
     }
+    maudStopWasapiApartment(&wasapi->apartment);
     maudContextRelease(context, wasapi, wasapi->bytes, alignof(maudWasapi));
     context->native = nullptr;
+}
+
+// A context call run on the apartment's thread: its arguments and
+// result.
+typedef struct Call
+{
+    maudContext* context;
+    maudStreamSlot* slot;
+    bool active;
+    maudResult result;
+} Call;
+
+// The enumerator, its notifications, and the first scan.
+static void Open(void* user)
+{
+    Call* call = user;
+    maudWasapi* wasapi = call->context->native;
+    if (FAILED(CoCreateInstance(&s_clsidEnumerator, nullptr, CLSCTX_ALL, &s_iidEnumerator,
+                                (void**)&wasapi->enumerator)))
+    {
+        call->result = maud_errorUnsupported;
+        return;
+    }
+    wasapi->registered = SUCCEEDED(IMMDeviceEnumerator_RegisterEndpointNotificationCallback(
+        wasapi->enumerator, &wasapi->notifier.client));
+    call->result = Rescan(call->context);
 }
 
 static maudResult OpenContext(maudContext* context)
@@ -255,22 +288,18 @@ static maudResult OpenContext(maudContext* context)
     memset(wasapi->streams, 0, (size_t)streams * sizeof(maudWasapiStream));
     maudInitWasapiNotifier(&wasapi->notifier);
     context->native = wasapi;
-    wasapi->apartmentHeld = SUCCEEDED(CoIncrementMTAUsage(&wasapi->apartment));
-    if (!wasapi->apartmentHeld ||
-        FAILED(CoCreateInstance(&s_clsidEnumerator, nullptr, CLSCTX_ALL, &s_iidEnumerator,
-                                (void**)&wasapi->enumerator)))
+    if (!maudStartWasapiApartment(&wasapi->apartment))
     {
         Release(context, wasapi);
-        return maud_errorUnsupported;
+        return maud_errorPlatform;
     }
-    wasapi->registered = SUCCEEDED(IMMDeviceEnumerator_RegisterEndpointNotificationCallback(
-        wasapi->enumerator, &wasapi->notifier.client));
-    maudResult result = Rescan(context);
-    if (result != maud_success)
+    Call call = {.context = context, .result = maud_success};
+    maudCallInWasapiApartment(&wasapi->apartment, Open, &call);
+    if (call.result != maud_success)
     {
         Release(context, wasapi);
     }
-    return result;
+    return call.result;
 }
 
 static void CloseContext(maudContext* context)
@@ -278,15 +307,82 @@ static void CloseContext(maudContext* context)
     Release(context, context->native);
 }
 
+static void PumpCall(void* user)
+{
+    Call* call = user;
+    maudWasapi* wasapi = call->context->native;
+    if (maudTakeWasapiChanges(&wasapi->notifier))
+    {
+        maudResult result = Rescan(call->context);
+        (void)result;
+    }
+    maudWasapiResumeStreams(call->context);
+}
+
+// The drain crosses to the apartment's thread only when there is work:
+// a change reported, or a running stream to open again.
 static void Pump(maudContext* context)
 {
     maudWasapi* wasapi = context->native;
-    if (maudTakeWasapiChanges(&wasapi->notifier))
+    if (atomic_load_explicit(&wasapi->notifier.changed, memory_order_acquire) ||
+        maudWasapiStreamsToResume(context))
     {
-        maudResult result = Rescan(context);
-        (void)result;
+        Call call = {.context = context};
+        maudCallInWasapiApartment(&wasapi->apartment, PumpCall, &call);
     }
-    maudWasapiResumeStreams(context);
+}
+
+static void AttachCall(void* user)
+{
+    Call* call = user;
+    call->result = maudWasapiAttachStream(call->context, call->slot);
+}
+
+static maudResult AttachStream(maudContext* context, maudStreamSlot* slot)
+{
+    maudWasapi* wasapi = context->native;
+    Call call = {.context = context, .slot = slot};
+    maudCallInWasapiApartment(&wasapi->apartment, AttachCall, &call);
+    return call.result;
+}
+
+static void DetachCall(void* user)
+{
+    Call* call = user;
+    maudWasapiDetachStream(call->context, call->slot);
+}
+
+static void DetachStream(maudContext* context, maudStreamSlot* slot)
+{
+    maudWasapi* wasapi = context->native;
+    Call call = {.context = context, .slot = slot};
+    maudCallInWasapiApartment(&wasapi->apartment, DetachCall, &call);
+}
+
+static void ActiveCall(void* user)
+{
+    Call* call = user;
+    maudWasapiSetStreamActive(call->context, call->slot, call->active);
+}
+
+static void SetStreamActive(maudContext* context, maudStreamSlot* slot, bool active)
+{
+    maudWasapi* wasapi = context->native;
+    Call call = {.context = context, .slot = slot, .active = active};
+    maudCallInWasapiApartment(&wasapi->apartment, ActiveCall, &call);
+}
+
+static void RetargetCall(void* user)
+{
+    Call* call = user;
+    maudWasapiRetargetStream(call->context, call->slot);
+}
+
+static void RetargetStream(maudContext* context, maudStreamSlot* slot)
+{
+    maudWasapi* wasapi = context->native;
+    Call call = {.context = context, .slot = slot};
+    maudCallInWasapiApartment(&wasapi->apartment, RetargetCall, &call);
 }
 
 // Shared mode runs at the engine's rate: a native stream takes it, a
@@ -330,10 +426,10 @@ static const maudBackend s_wasapi = {
     .pump = Pump,
     .openStream = OpenStream,
     .exclusive = true,
-    .attachStream = maudWasapiAttachStream,
-    .detachStream = maudWasapiDetachStream,
-    .setStreamActive = maudWasapiSetStreamActive,
-    .retargetStream = maudWasapiRetargetStream,
+    .attachStream = AttachStream,
+    .detachStream = DetachStream,
+    .setStreamActive = SetStreamActive,
+    .retargetStream = RetargetStream,
     .reopensOnMove = true,
     .rendersOnCaller = false,
 };

@@ -28,7 +28,14 @@ family does not have.
   - The family's floating-point rules apply: no fast math and no
     implicit contraction; fused multiply-add only where the SIMD
     header spells it.
-- **Threads:** the library starts one thread, and only in one case: a
+- **Threads:** the library starts threads in two cases only. A
+  WASAPI context starts one thread in COM's multithreaded apartment
+  and joins it when the context is destroyed: every MMDevice, audio
+  client and spatial audio object is created, called and released
+  there while the calling thread waits, since a COM object called
+  from another apartment without marshalling is outside COM's rules,
+  and a host's main thread is often in a single-threaded apartment
+  (for drag and drop). It runs no application code. The other case is a
   stream in callback mode on a backend whose platform calls no audio
   thread of its own (WASAPI, ALSA, PulseAudio). CoreAudio, AAudio, the
   AudioWorklet and PipeWire own their audio threads; libpipewire

@@ -88,9 +88,11 @@ format.
   the engine's format, read without activating them; the console and
   communications roles' defaults; added, removed and changed devices
   and defaults through IMMNotificationClient, taken on the drain. The
-  context holds the multithreaded apartment open with
-  CoIncrementMTAUsage instead of initializing COM on the host's
-  threads.
+  context runs every COM call on a thread of its own in the
+  multithreaded apartment, named maud-wasapi-com, so a host may call
+  from a thread in any apartment (a main thread in a single-threaded
+  apartment, for drag and drop, included); the drain crosses to it only
+  when a device changed or a stream must be opened again.
 - Streams on WASAPI: shared mode, event-driven, at the engine's rate
   unless platform-converted; each running stream has one thread, named
   maud-wasapi, in MMCSS's "Pro Audio" class; a stream on a default is

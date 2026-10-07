@@ -590,15 +590,33 @@ void maudWasapiSetStreamActive(maudContext* context, maudStreamSlot* slot, bool 
     Start(entry);
 }
 
+// A live running stream whose thread ended on a failure, or that has
+// no client.
+static bool ToResume(maudContext* context, maudStreamSlot* slot)
+{
+    const maudWasapiStream* entry = EntryOf(context, slot);
+    bool ended = entry->threadRunning && atomic_load_explicit(&entry->failed, memory_order_acquire);
+    return slot->live && Running(slot) && (ended || !Connected(entry));
+}
+
+bool maudWasapiStreamsToResume(maudContext* context)
+{
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        if (ToResume(context, &context->streams.slots[i]))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 void maudWasapiResumeStreams(maudContext* context)
 {
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
-        const maudWasapiStream* entry = EntryOf(context, slot);
-        bool ended =
-            entry->threadRunning && atomic_load_explicit(&entry->failed, memory_order_acquire);
-        if (slot->live && Running(slot) && (ended || !Connected(entry)))
+        if (ToResume(context, slot))
         {
             maudWasapiRetargetStream(context, slot);
         }
