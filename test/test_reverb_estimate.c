@@ -451,6 +451,57 @@ static void TestFit(void)
     CHECK(fit.times[2] == 0.1f && fit.tailTimes[2] == 0.0f, "no energy: the floor, no tail");
 }
 
+typedef double Shape(double t);
+
+static double Bent(double t)
+{
+    return exp(-13.815510557964274 * t / 0.5) + 0.02 * exp(-13.815510557964274 * t / 1.0);
+}
+
+static double Deep(double t)
+{
+    return exp(-13.815510557964274 * t / 0.3) + 3e-4 * exp(-13.815510557964274 * t / 2.0);
+}
+
+static double Curved(double t)
+{
+    return exp(-13.815510557964274 * (t / 0.6) * (t / 0.6));
+}
+
+// The fit of one shape's bins.
+static maudReverbFit FitShape(Shape* shape)
+{
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        for (int b = 0; b < 3; ++b)
+        {
+            s_histograms[0].energy[b][i] = (float)shape(((double)i + 0.5) * 0.01);
+        }
+    }
+    s_histograms[0].truncated = INFINITY;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    return fit;
+}
+
+// Where two slopes stop and start: a bend one slope follows within
+// 1.5 dB stays one slope; a slow tail first heard below -25 dB is found
+// (one slope fitted to -20 dB would miss it); a decay that curves down,
+// which no two exponentials follow better, stays one slope.
+static void TestTailBounds(void)
+{
+    maudReverbFit bent = FitShape(Bent);
+    maudReverbFit deep = FitShape(Deep);
+    maudReverbFit curved = FitShape(Curved);
+    printf("bounds: bent %.3f s / %.3f s, deep %.3f s / %.3f s, curved %.3f s / %.3f s\n",
+           (double)bent.times[0], (double)bent.tailTimes[0], (double)deep.times[0],
+           (double)deep.tailTimes[0], (double)curved.times[0], (double)curved.tailTimes[0]);
+    CHECK(bent.tailTimes[0] == 0.0f, "a bend one slope follows stays one slope");
+    CHECK(deep.tailTimes[0] > 1.8f && deep.tailTimes[0] < 2.2f && deep.times[0] < 0.32f,
+          "a tail below -25 dB is found");
+    CHECK(curved.tailTimes[0] == 0.0f, "a decay curving down stays one slope");
+}
+
 // Two slopes' bins, 0.4 s and 2 s, the slower 20 dB down: each slope's
 // level makes the reverb give that slope's energy at the matching time.
 static void TestTailLevels(void)
@@ -684,6 +735,7 @@ int main(void)
     TestTruncated();
     TestFit();
     TestTailLevels();
+    TestTailBounds();
     TestCoupledRooms();
     TestRooms();
     TestBandsAndAir();
