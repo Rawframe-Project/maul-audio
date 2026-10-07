@@ -18,6 +18,7 @@
 #include "test_clock.h"
 #include "test_harness.h"
 #include "wasapi_core.h"
+#include "wasapi_stream.h"
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
@@ -536,6 +537,43 @@ static void TestMove(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+typedef struct Detach
+{
+    maudContext* context;
+    maudStreamSlot* slot;
+} Detach;
+
+// Drops a stream's client, as a failed reopening leaves it.
+static void DropClient(void* user)
+{
+    Detach* detach = user;
+    maudWasapiDetachStream(detach->context, detach->slot);
+}
+
+// The drain opens a running stream again when its thread ended on a
+// failure (an endpoint gone, as here made up) and when it has no client.
+static void TestResume(maudContext* context)
+{
+    maudWasapi* wasapi = context->native;
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 10), "it plays");
+    maudWasapiStream* entry = &wasapi->streams[stream.index1 - 1];
+    atomic_store(&entry->failed, true);
+    CHECK(WaitForBlocks(context, &blocks, atomic_load(&blocks.count) + 20) &&
+              !atomic_load(&entry->failed),
+          "a stream whose thread failed is opened again");
+    Detach detach = {context, &context->streams.slots[stream.index1 - 1]};
+    maudCallInWasapiApartment(&wasapi->apartment, DropClient, &detach);
+    CHECK(entry->client == nullptr, "a stream left without its client");
+    CHECK(WaitForBlocks(context, &blocks, atomic_load(&blocks.count) + 20) &&
+              entry->client != nullptr,
+          "is opened again too");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestNotifier(maudContext* context)
 {
     maudWasapi* wasapi = context->native;
@@ -731,6 +769,7 @@ int main(void)
     TestExclusive(context);
     TestObjects(context);
     TestMove(context);
+    TestResume(context);
     TestNotifier(context);
     TestDrainRescans(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
