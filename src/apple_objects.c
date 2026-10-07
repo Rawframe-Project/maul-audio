@@ -106,7 +106,7 @@ static bool SetProperty(AudioUnit mixer, AudioUnitPropertyID property, AudioUnit
 }
 
 // One input bus: its format, its callback, its source mode and no
-// distance attenuation (the reference distance at the mixer's farthest).
+// distance attenuation.
 static bool ConfigureBus(maudAppleObjects* objects, uint32_t bus, bool bed)
 {
     AudioUnit mixer = objects->mixer;
@@ -117,8 +117,11 @@ static bool ConfigureBus(maudAppleObjects* objects, uint32_t bus, bool bed)
         .inputProcRefCon = &objects->buses[bus],
     };
     UInt32 mode = bed ? kSpatialMixerSourceMode_Bypass : kSpatialMixerSourceMode_PointSource;
+    // No attenuation: the most is 0 dB. The reference distance stays at
+    // a metre, as the mixer renders a source within it as inside the
+    // head, the same on both sides.
     MixerDistanceParams distance = {
-        .mReferenceDistance = 10000.0f,
+        .mReferenceDistance = 1.0f,
         .mMaxDistance = 10000.0f,
         .mMaxAttenuation = 0.0f,
     };

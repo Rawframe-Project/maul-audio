@@ -974,7 +974,7 @@ static OSStatus ProbeTone(void* user, AudioUnitRenderActionFlags* flags, const A
     return noErr;
 }
 
-static void ProbeMixer(UInt32 algorithm, UInt32 outputType, UInt32 sourceMode)
+static void ProbeMixer(UInt32 algorithm, UInt32 outputType, UInt32 sourceMode, float reference)
 {
     AudioComponentDescription description = {
         .componentType = kAudioUnitType_Mixer,
@@ -1018,6 +1018,13 @@ static void ProbeMixer(UInt32 algorithm, UInt32 outputType, UInt32 sourceMode)
         AudioUnitSetProperty(mixer, kAudioUnitProperty_SpatialMixerOutputType,
                              kAudioUnitScope_Global, 0, &outputType, sizeof(outputType)),
     };
+    if (reference > 0.0f)
+    {
+        MixerDistanceParams distance = {reference, 10000.0f, 0.0f};
+        OSStatus set = AudioUnitSetProperty(mixer, kAudioUnitProperty_SpatialMixerDistanceParams,
+                                            kAudioUnitScope_Input, 0, &distance, sizeof(distance));
+        printf("probe reference %.0f: %d\n", (double)reference, (int)set);
+    }
     OSStatus initialized = AudioUnitInitialize(mixer);
     OSStatus azimuthSet = AudioUnitSetParameter(mixer, kSpatialMixerParam_Azimuth,
                                                 kAudioUnitScope_Input, 0, 90.0f, 0);
@@ -1074,11 +1081,15 @@ static void ProbeMixers(void)
     {
         for (int t = 0; t < 3; ++t)
         {
-            ProbeMixer(algorithms[a], types[t], kSpatialMixerSourceMode_PointSource);
+            ProbeMixer(algorithms[a], types[t], kSpatialMixerSourceMode_PointSource, 0.0f);
         }
     }
-    ProbeMixer(kSpatializationAlgorithm_EqualPowerPanning, kSpatialMixerOutputType_ExternalSpeakers,
-               kSpatialMixerSourceMode_SpatializeIfMono);
+    // The distance parameters: a reference at the farthest, and at a
+    // metre with no attenuation.
+    ProbeMixer(kSpatializationAlgorithm_UseOutputType, kSpatialMixerOutputType_ExternalSpeakers,
+               kSpatialMixerSourceMode_PointSource, 10000.0f);
+    ProbeMixer(kSpatializationAlgorithm_UseOutputType, kSpatialMixerOutputType_ExternalSpeakers,
+               kSpatialMixerSourceMode_PointSource, 1.0f);
 }
 
 int main(void)
