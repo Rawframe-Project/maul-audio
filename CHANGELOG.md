@@ -427,3 +427,8 @@ format.
   (the bed as static objects, each active object a dynamic object while
   the user's spatial format has one to give); backends without an
   object renderer refuse them.
+- Coupled rooms: where a band's estimated decay has two slopes, as a
+  room fed through a door by a livelier one does, the reverberation
+  estimate gives the slower one too (`tailTime` and `tailLevel` in
+  `maudReverbResult`), which a second reverb renders; single-slope
+  rooms keep their estimates exactly.

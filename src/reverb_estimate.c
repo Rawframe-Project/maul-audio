@@ -440,9 +440,224 @@ static bool Extend(double* energy, uint32_t bins, double* tail)
     return true;
 }
 
+// The decay's two-slope fit: times on a grid in log from MIN_TIME to
+// MAX_TIME, coarse first, then finer around the best; at each pair the
+// amplitudes by least squares in relative terms (each bin's error over
+// the decay there), kept non-negative.
+#define COARSE_TIMES 40u
+#define FINE_STEPS   8u
+// Two slopes where one misses by more than this (dB, RMS, to -40 dB)...
+#define ONE_SLOPE_MISS 1.5
+// ... two halve it, their times this far apart, the slower this share.
+#define SLOPE_RATIO    1.5
+#define MIN_TAIL_SHARE 0.001
+
+typedef struct Decay
+{
+    // The decay (its backward integral, 1 at the start) and its inverse,
+    // its bins down to -45 dB, and its crossing of -40 dB.
+    const double* decay;
+    const double* inverse;
+    uint32_t bins;
+    uint32_t end40;
+} Decay;
+
+typedef struct Slopes
+{
+    double fast;
+    double slow;
+    double fastAmount;
+    double slowAmount;
+} Slopes;
+
+// The grid's time at a (fractional) coarse step.
+static double TimeAt(double step)
+{
+    double span = maudLog((double)MAX_TIME / (double)MIN_TIME);
+    return (double)MIN_TIME * maudExp(span * step / (double)(COARSE_TIMES - 1u));
+}
+
+// A slope's decay over one bin.
+static double RateOf(double time)
+{
+    return maudExp(-13.815510557964274 * (double)BIN_SECONDS / time);
+}
+
+// The least squares of one (slow = 0) or two slopes: their amounts, and
+// the residual; an infinite residual where an amount would be negative.
+static double Solve(const Decay* d, Slopes* s)
+{
+    // Each slope's term at bin i over the decay there; a slope's value
+    // goes down by its rate a bin.
+    double fastRate = RateOf(s->fast);
+    double slowRate = s->slow > 0.0 ? RateOf(s->slow) : 0.0;
+    double aa = 0.0;
+    double ab = 0.0;
+    double bb = 0.0;
+    double ay = 0.0;
+    double by = 0.0;
+    double fast = 1.0;
+    double slow = s->slow > 0.0 ? 1.0 : 0.0;
+    for (uint32_t i = 0; i < d->bins; ++i)
+    {
+        double a = fast * d->inverse[i];
+        double b = slow * d->inverse[i];
+        aa += a * a;
+        ab += a * b;
+        bb += b * b;
+        ay += a;
+        by += b;
+        fast *= fastRate;
+        slow *= slowRate;
+    }
+    if (s->slow > 0.0)
+    {
+        double det = aa * bb - ab * ab;
+        if (!(det > 0.0))
+        {
+            return (double)INFINITY;
+        }
+        s->fastAmount = (ay * bb - by * ab) / det;
+        s->slowAmount = (by * aa - ay * ab) / det;
+    }
+    else
+    {
+        s->fastAmount = ay / aa;
+        s->slowAmount = 0.0;
+    }
+    if (s->fastAmount < 0.0 || s->slowAmount < 0.0)
+    {
+        return (double)INFINITY;
+    }
+    double residual = 0.0;
+    fast = s->fastAmount;
+    slow = s->slowAmount;
+    for (uint32_t i = 0; i < d->bins; ++i)
+    {
+        double r = (fast + slow) * d->inverse[i] - 1.0;
+        residual += r * r;
+        fast *= fastRate;
+        slow *= slowRate;
+    }
+    return residual;
+}
+
+// The best fit found so far, and where on the grid it lies.
+typedef struct Best
+{
+    Slopes slopes;
+    double residual;
+    double fast;
+    double slow;
+} Best;
+
+// Fits the slopes at grid steps fast and slow (none for one slope),
+// keeping them if they fit better.
+static void Try(const Decay* d, double fast, double slow, bool two, Best* best)
+{
+    Slopes s = {.fast = TimeAt(fast), .slow = two ? TimeAt(slow) : 0.0};
+    double r = Solve(d, &s);
+    if (r < best->residual)
+    {
+        *best = (Best){s, r, fast, slow};
+    }
+}
+
+// The best one slope (two = false) or two, on the coarse grid and then
+// within a coarse step of the best, FINE_STEPS to the step.
+static Slopes Search(const Decay* d, bool two)
+{
+    Best best = {.residual = (double)INFINITY};
+    for (uint32_t i = 0; i < COARSE_TIMES; ++i)
+    {
+        for (uint32_t j = two ? i + 1 : 0; j < (two ? COARSE_TIMES : 1u); ++j)
+        {
+            Try(d, (double)i, (double)j, two, &best);
+        }
+    }
+    if (!(best.residual < (double)INFINITY))
+    {
+        return best.slopes;
+    }
+    double fine = 1.0 / (double)FINE_STEPS;
+    double fastAt = best.fast;
+    double slowAt = best.slow;
+    int span = (int)FINE_STEPS;
+    for (int i = -span; i <= span; ++i)
+    {
+        for (int j = two ? -span : 0; j <= (two ? span : 0); ++j)
+        {
+            double fast = fastAt + i * fine;
+            double slow = slowAt + j * fine;
+            bool inside =
+                fast >= 0.0 && slow <= (double)(COARSE_TIMES - 1u) && (!two || slow > fast);
+            if (inside)
+            {
+                Try(d, fast, slow, two, &best);
+            }
+        }
+    }
+    return best.slopes;
+}
+
+// How far the slopes' decay is from the decay down to -40 dB (dB, RMS).
+static double Miss(const Decay* d, const Slopes* s)
+{
+    double sum = 0.0;
+    for (uint32_t i = 0; i < d->end40; ++i)
+    {
+        double t = (double)i * (double)BIN_SECONDS;
+        double model = s->fastAmount * maudExp(-13.815510557964274 * t / s->fast);
+        model += s->slow > 0.0 ? s->slowAmount * maudExp(-13.815510557964274 * t / s->slow) : 0.0;
+        double r = 10.0 * maudLog10(model / d->decay[i]);
+        sum += r * r;
+    }
+    return d->end40 > 0 ? sqrt(sum / (double)d->end40) : 0.0;
+}
+
+// Two slopes in place of the one fitted from -5 to -25 dB, where the
+// decay asks for them (the conditions above): the fit's band takes them.
+static void FitTail(const double* decay, uint32_t band, maudReverbFit* fit)
+{
+    double inverse[MAUD_REVERB_BINS];
+    Decay d = {
+        .decay = decay, .inverse = inverse, .bins = MAUD_REVERB_BINS, .end40 = MAUD_REVERB_BINS};
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        inverse[i] = decay[i] > 0.0 ? 1.0 / decay[i] : 0.0;
+        d.end40 = d.end40 == MAUD_REVERB_BINS && decay[i] < 1e-4 ? i : d.end40;
+        if (decay[i] < 3.1622776601683794e-5)
+        {
+            d.bins = i;
+            break;
+        }
+    }
+    if (d.bins < 10u || d.end40 < 2u)
+    {
+        return;
+    }
+    Slopes one = Search(&d, false);
+    Slopes two = Search(&d, true);
+    if (!(one.fast > 0.0) || !(two.fast > 0.0))
+    {
+        return;
+    }
+    double missOne = Miss(&d, &one);
+    double missTwo = Miss(&d, &two);
+    double share = two.slowAmount / (two.fastAmount + two.slowAmount);
+    if (missOne > ONE_SLOPE_MISS && missTwo <= missOne / 2.0 &&
+        two.slow >= SLOPE_RATIO * two.fast && share >= MIN_TAIL_SHARE)
+    {
+        fit->times[band] = (float)two.fast;
+        fit->tailTimes[band] = (float)two.slow;
+        fit->tailShares[band] = (float)share;
+    }
+}
+
 // A band's time from its first bins of energy (all of them unless rays
-// were cut short, the rest then filled in by Extend).
-static float Fit(const float* energy, uint32_t bins)
+// were cut short, the rest then filled in by Extend), and its two slopes
+// where it has them.
+static float Fit(const float* energy, uint32_t bins, uint32_t band, maudReverbFit* fit)
 {
     double extended[MAUD_REVERB_BINS];
     double total = 0.0;
@@ -471,17 +686,26 @@ static float Fit(const float* energy, uint32_t bins)
     {
         return MIN_TIME;
     }
+    double normalized[MAUD_REVERB_BINS];
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        normalized[i] = decay[i] / decay[0];
+    }
     for (uint32_t i = start; i < end; ++i)
     {
-        decay[i] = 10.0 * maudLog10(decay[i] / decay[0]);
+        decay[i] = 10.0 * maudLog10(normalized[i]);
     }
     double slope = Slope(decay, start, end);
-    return slope < 0.0 ? (float)fmin(fmax(-60.0 / slope, (double)MIN_TIME), (double)MAX_TIME)
-                       : MAX_TIME;
+    float time = slope < 0.0 ? (float)fmin(fmax(-60.0 / slope, (double)MIN_TIME), (double)MAX_TIME)
+                             : MAX_TIME;
+    fit->times[band] = time;
+    FitTail(normalized, band, fit);
+    return fit->times[band];
 }
 
-void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[MAUD_DIRECT_BANDS])
+void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, maudReverbFit* fit)
 {
+    *fit = (maudReverbFit){0};
     for (uint32_t h = 1; h < count; ++h)
     {
         for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
@@ -501,7 +725,7 @@ void maudFitReverb(maudReverbHistogram* histograms, uint32_t count, float times[
     uint32_t bins = cut < (float)MAUD_REVERB_BINS ? (uint32_t)cut : MAUD_REVERB_BINS;
     for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
     {
-        times[b] = Fit(histograms[0].energy[b], bins);
+        fit->times[b] = Fit(histograms[0].energy[b], bins, (uint32_t)b, fit);
     }
 }
 
@@ -518,12 +742,22 @@ void maudSumReverbFields(const maudReverbTrace* trace, maudReverbHistogram* hist
     }
 }
 
-void maudReverbLevels(const maudReverbHistogram* summed, const float* times, float at, float delay,
-                      float* levels)
+// The level (dB, -96 to 24) that makes the reverb at time at, decaying
+// in time, give energy traced (there, per 10 ms bin).
+static float LevelOf(double traced, double time, float at, float delay)
 {
     // The reverb's W energy per 10 ms bin at its start, for a unit
     // impulse (measured, the same for every time and rate).
     const double start = 0.0144;
+    double rate = 13.815510557964274 / time;
+    double reverb = start * maudExp(-rate * ((double)at - (double)delay));
+    double db = traced > 0.0 ? 10.0 * maudLog10(traced / reverb) : -96.0;
+    return (float)fmin(fmax(db, -96.0), 24.0);
+}
+
+void maudReverbLevels(const maudReverbHistogram* summed, const maudReverbFit* fit, float at,
+                      float delay, float* levels, float* tailLevels)
+{
     uint32_t last = (uint32_t)lround((double)at / (double)BIN_SECONDS);
     last = last < 1 ? 1 : last > MAUD_REVERB_BINS ? MAUD_REVERB_BINS : last;
     uint32_t first = last > 5 ? last - 5 : 0;
@@ -535,10 +769,29 @@ void maudReverbLevels(const maudReverbHistogram* summed, const float* times, flo
         {
             mean += (double)summed->energy[b][i] / (double)(last - first);
         }
-        double rate = 13.815510557964274 / (double)times[b];
-        double traced = mean * maudExp(-rate * ((double)at - centre));
-        double reverb = start * maudExp(-rate * ((double)at - (double)delay));
-        double db = traced > 0.0 ? 10.0 * maudLog10(traced / reverb) : -96.0;
-        levels[b] = (float)fmin(fmax(db, -96.0), 24.0);
+        double time = (double)fit->times[b];
+        double tail = (double)fit->tailTimes[b];
+        // The energy at the centre splits as the slopes' densities do
+        // there (an amount A of the decay at rate k gives A k exp(-k t)).
+        double share = 0.0;
+        if (tail > 0.0)
+        {
+            double tailAmount = (double)fit->tailShares[b];
+            double fastRate = 13.815510557964274 / time;
+            double tailRate = 13.815510557964274 / tail;
+            double fast = (1.0 - tailAmount) * fastRate * maudExp(-fastRate * centre);
+            double slow = tailAmount * tailRate * maudExp(-tailRate * centre);
+            share = slow / (fast + slow);
+        }
+        double rate = 13.815510557964274 / time;
+        levels[b] =
+            LevelOf(mean * (1.0 - share) * maudExp(-rate * ((double)at - centre)), time, at, delay);
+        tailLevels[b] = -96.0f;
+        if (tail > 0.0)
+        {
+            double tailRate = 13.815510557964274 / tail;
+            tailLevels[b] =
+                LevelOf(mean * share * maudExp(-tailRate * ((double)at - centre)), tail, at, delay);
+        }
     }
 }

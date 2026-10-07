@@ -274,6 +274,14 @@ extern "C"
         // nothing to reflect.
         float level[MAUD_DIRECT_BANDS];
         float delay;
+        // Where a band decays in two slopes, as a room fed through a door
+        // by a livelier one does, the slower slope: its time (0.1 to 20 s;
+        // 0 where the band has one slope) and its level for the same send
+        // (dB, -96 where there is none); reverbTime and level are then the
+        // faster slope's. A second reverb fed the same send at these times
+        // and levels renders it. Baked estimates carry none yet.
+        float tailTime[MAUD_DIRECT_BANDS];
+        float tailLevel[MAUD_DIRECT_BANDS];
     } maudReverbResult;
 
     /// Returns the default spatializer def: 256 sources, up to 64

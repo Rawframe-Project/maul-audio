@@ -270,7 +270,8 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
         .trace = {.air = {def->airAbsorption[0], def->airAbsorption[1], def->airAbsorption[2]},
                   .rays = def->reverbRays,
                   .maxBounces = REVERB_BOUNCES},
-        .reverb = {.reverbTime = {NO_REVERB, NO_REVERB, NO_REVERB}},
+        .reverb = {.reverbTime = {NO_REVERB, NO_REVERB, NO_REVERB},
+                   .tailLevel = {SILENT, SILENT, SILENT}},
         .reflectionDuration = def->reflectionDuration,
         .maxProbes = def->maxProbes,
         .maxProbePairs = def->maxProbePairs,
@@ -655,6 +656,8 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
         {
             s->reverb.reverbTime[b] = NO_REVERB;
             s->reverb.level[b] = SILENT;
+            s->reverb.tailTime[b] = 0.0f;
+            s->reverb.tailLevel[b] = SILENT;
         }
         s->reverb.delay = 0.0f;
         return maud_success;
@@ -685,11 +688,14 @@ uint32_t maudTraceFrom(maudSpatializer* s, maudVector3 position, maudReverbResul
     {
         TraceBatches(0, batches, s);
     }
-    maudFitReverb(s->histograms, batches, result->reverbTime);
+    maudReverbFit fit;
+    maudFitReverb(s->histograms, batches, &fit);
+    memcpy(result->reverbTime, fit.times, sizeof(fit.times));
+    memcpy(result->tailTime, fit.tailTimes, sizeof(fit.tailTimes));
     bool hybrid = s->reflections != nullptr;
     result->delay = hybrid ? s->reflectionDuration - REVERB_ONSET : 0.0f;
-    maudReverbLevels(&s->histograms[0], result->reverbTime,
-                     hybrid ? s->reflectionDuration : LEVEL_AT, result->delay, result->level);
+    maudReverbLevels(&s->histograms[0], &fit, hybrid ? s->reflectionDuration : LEVEL_AT,
+                     result->delay, result->level, result->tailLevel);
     return batches;
 }
 

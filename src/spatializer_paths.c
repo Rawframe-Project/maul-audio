@@ -245,6 +245,12 @@ bool maudBakedReverb(maudSpatializer* s, maudVector3 position)
     {
         return false;
     }
+    // A bake stores one slope per band so far.
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        s->reverb.tailTime[b] = 0.0f;
+        s->reverb.tailLevel[b] = -96.0f;
+    }
     bool hybrid = s->reflections != nullptr;
     s->reverb.delay = hybrid ? s->reflectionDuration - REVERB_ONSET : 0.0f;
     if (hybrid)

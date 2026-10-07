@@ -56,6 +56,14 @@ static maudAcousticScene* Box(float x, float y, float z)
 
 static maudReverbHistogram s_histograms[256];
 
+// The fitted times alone, as most checks take them.
+static void FitTimes(maudReverbHistogram* histograms, uint32_t count, float* times)
+{
+    maudReverbFit fit;
+    maudFitReverb(histograms, count, &fit);
+    memcpy(times, fit.times, sizeof(fit.times));
+}
+
 static void Estimate(maudAcousticScene* scene, const maudAcousticMaterial* materials,
                      maudVector3 listener, const float* air, uint32_t rays, float* times)
 {
@@ -75,7 +83,7 @@ static void Estimate(maudAcousticScene* scene, const maudAcousticMaterial* mater
     {
         maudTraceReverbBatch(&trace, b, &s_histograms[b]);
     }
-    maudFitReverb(s_histograms, batches, times);
+    FitTimes(s_histograms, batches, times);
 }
 
 static maudAcousticMaterial Material(float absorption, float scattering)
@@ -200,7 +208,7 @@ static void TestLimits(void)
     {
         maudTraceReverbBatch(&open, b, &s_histograms[b]);
     }
-    maudFitReverb(s_histograms, 2, times);
+    FitTimes(s_histograms, 2, times);
     CHECK(times[0] == 0.1f && times[2] == 0.1f, "an open field: the floor");
     maudAcousticScene* box = Box(5, 4, 3);
     maudAcousticMaterial lossless[6];
@@ -260,12 +268,12 @@ static void TestOrder(void)
     {
         maudTraceReverbBatch(&trace, b, &s_histograms[b]);
     }
-    maudFitReverb(s_histograms, 4, forward);
+    FitTimes(s_histograms, 4, forward);
     for (uint32_t b = 4; b-- > 0;)
     {
         maudTraceReverbBatch(&trace, b, &s_histograms[b]);
     }
-    maudFitReverb(s_histograms, 4, backward);
+    FitTimes(s_histograms, 4, backward);
     CHECK(forward[1] == backward[1], "the same times in any order");
     CHECK(maudReverbBatches(256) == 4 && maudReverbBatches(257) == 5 && maudReverbBatches(0) == 0,
           "batches of 64");
@@ -406,15 +414,16 @@ static void TestTruncated(void)
     }
     CHECK(s_histograms[0].truncated < 1.0f, "rays were cut");
     float times[3];
-    maudFitReverb(s_histograms, 16, times);
+    FitTimes(s_histograms, 16, times);
     printf("office cut at 64 bounces: %.3f s\n", (double)times[1]);
     CHECK(fabs((double)times[1] / 0.99 - 1.0) < 0.05, "the truncated decay's time");
     maudDestroyAcousticScene(box);
 }
 
-// Synthetic histograms: an exponential of 1.5 s; bins falling at 0.5 s
-// to -25 dB and then at 3 s, whose integral's -5 to -25 dB fit reads
-// 2.03 s (a fit to -15 dB would read 0.61 s).
+// Synthetic histograms: an exponential of 1.5 s, one slope; bins falling
+// at 0.5 s to -25 dB and then at 3 s, two slopes (one fitted from -5 to
+// -25 dB would read 2.03 s), the slower with a few percent of the
+// energy.
 static void TestFit(void)
 {
     for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
@@ -427,12 +436,179 @@ static void TestFit(void)
         s_histograms[0].energy[2][i] = 0.0f;
     }
     s_histograms[0].truncated = INFINITY;
-    float times[3];
-    maudFitReverb(s_histograms, 1, times);
-    printf("fits: exponential %.3f s, double slope %.3f s\n", (double)times[0], (double)times[1]);
-    CHECK(fabs((double)times[0] / 1.5 - 1.0) < 0.01, "an exponential's time");
-    CHECK(times[1] > 1.8f && times[1] < 2.3f, "the double slope's -5 to -25 dB");
-    CHECK(times[2] == 0.1f, "no energy: the floor");
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    printf("fits: exponential %.3f s, double slope %.3f s and %.3f s (%.1f %%)\n",
+           (double)fit.times[0], (double)fit.times[1], (double)fit.tailTimes[1],
+           100.0 * (double)fit.tailShares[1]);
+    CHECK(fabs((double)fit.times[0] / 1.5 - 1.0) < 0.01 && fit.tailTimes[0] == 0.0f &&
+              fit.tailShares[0] == 0.0f,
+          "an exponential: its time, no tail");
+    CHECK(fit.times[1] > 0.4f && fit.times[1] < 0.55f && fit.tailTimes[1] > 2.7f &&
+              fit.tailTimes[1] < 3.3f,
+          "the double slope's two times");
+    CHECK(fit.tailShares[1] > 0.02f && fit.tailShares[1] < 0.07f, "the slower's share");
+    CHECK(fit.times[2] == 0.1f && fit.tailTimes[2] == 0.0f, "no energy: the floor, no tail");
+}
+
+// Two slopes' bins, 0.4 s and 2 s, the slower 20 dB down: each slope's
+// level makes the reverb give that slope's energy at the matching time.
+static void TestTailLevels(void)
+{
+    const double k = 13.815510557964274;
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        double t = ((double)i + 0.5) * 0.01;
+        for (int b = 0; b < 3; ++b)
+        {
+            s_histograms[0].energy[b][i] = (float)(exp(-k * t / 0.4) + 0.01 * exp(-k * t / 2.0));
+        }
+    }
+    s_histograms[0].truncated = INFINITY;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    float levels[3];
+    float tailLevels[3];
+    maudReverbLevels(&s_histograms[0], &fit, 0.1f, 0.0f, levels, tailLevels);
+    // The reverb gives 0.0144 exp(-k (t - delay) / T) per bin at level 0.
+    double fast =
+        0.0144 * exp(-k * 0.1 / (double)fit.times[1]) * pow(10.0, (double)levels[1] / 10.0);
+    double slow =
+        0.0144 * exp(-k * 0.1 / (double)fit.tailTimes[1]) * pow(10.0, (double)tailLevels[1] / 10.0);
+    printf("tail levels: %.3f s at %.2f dB, %.3f s at %.2f dB\n", (double)fit.times[1],
+           (double)levels[1], (double)fit.tailTimes[1], (double)tailLevels[1]);
+    CHECK(fabs((double)fit.times[1] / 0.4 - 1.0) < 0.05 &&
+              fabs((double)fit.tailTimes[1] / 2.0 - 1.0) < 0.05,
+          "both times found");
+    CHECK(fabs(10.0 * log10(fast / exp(-k * 0.1 / 0.4))) < 1.0 &&
+              fabs(10.0 * log10(slow / (0.01 * exp(-k * 0.1 / 2.0)))) < 1.0,
+          "each slope's level gives its energy");
+}
+
+// Research 34's two rooms: one live (absorption 0.05 to 0.08), one
+// damped (0.4 to 0.6), 6 by 3 by 4 m each, joined by a door 1 m wide and
+// 2.1 m high. In the damped room the decay has the live room's slow
+// slope behind its own fast one, and two slopes follow it to -40 dB
+// within a few dB; in the live room one slope stays.
+static maudAcousticScene* CoupledRooms(void)
+{
+    static maudVector3 v[8 * 13];
+    static uint32_t indices[36 * 13];
+    static uint32_t materials[12 * 13];
+    static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
+                                       2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
+    static const float boxes[13][7] = {
+        {0, -0.1f, 0, 6, 0, 4, 0},
+        {6, -0.1f, 0, 12, 0, 4, 1},
+        {0, 3, 0, 6, 3.1f, 4, 0},
+        {6, 3, 0, 12, 3.1f, 4, 1},
+        {0, 0, -0.1f, 6, 3, 0, 0},
+        {6, 0, -0.1f, 12, 3, 0, 1},
+        {0, 0, 4, 6, 3, 4.1f, 0},
+        {6, 0, 4, 12, 3, 4.1f, 1},
+        {-0.1f, 0, 0, 0, 3, 4, 0},
+        {12, 0, 0, 12.1f, 3, 4, 1},
+        {5.95f, 0, 0, 6.05f, 3, 1.5f, 0},
+        {5.95f, 0, 2.5f, 6.05f, 3, 4, 0},
+        {5.95f, 2.1f, 1.5f, 6.05f, 3, 2.5f, 0},
+    };
+    for (uint32_t n = 0; n < 13; ++n)
+    {
+        const float* b = boxes[n];
+        for (uint32_t i = 0; i < 8; ++i)
+        {
+            v[n * 8 + i] =
+                (maudVector3){(i & 1) ? b[3] : b[0], (i & 2) ? b[4] : b[1], (i & 4) ? b[5] : b[2]};
+        }
+        for (uint32_t i = 0; i < 36; ++i)
+        {
+            indices[n * 36 + i] = n * 8 + faces[i];
+        }
+        for (uint32_t i = 0; i < 12; ++i)
+        {
+            materials[n * 12 + i] = (uint32_t)b[6];
+        }
+    }
+    maudMesh mesh = {v, 8 * 13, indices, materials, 12 * 13};
+    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    def.meshes = &mesh;
+    def.meshCount = 1;
+    maudAcousticScene* scene = nullptr;
+    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "the two rooms");
+    return scene;
+}
+
+// How far two slopes' decay is from a band's traced decay down to -40 dB
+// (dB, RMS).
+static double MissOf(const float* energy, float time, float tailTime, float share)
+{
+    double decay[MAUD_REVERB_BINS];
+    double sum = 0.0;
+    for (uint32_t i = MAUD_REVERB_BINS; i-- > 0;)
+    {
+        sum += (double)energy[i];
+        decay[i] = sum;
+    }
+    double squares = 0.0;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS && decay[i] / decay[0] >= 1e-4; ++i, ++n)
+    {
+        double t = (double)i * 0.01;
+        double model = (1.0 - (double)share) * exp(-13.815510557964274 * t / (double)time);
+        model +=
+            tailTime > 0.0f ? (double)share * exp(-13.815510557964274 * t / (double)tailTime) : 0.0;
+        double r = 10.0 * log10(model / (decay[i] / decay[0]));
+        squares += r * r;
+    }
+    return n > 0 ? sqrt(squares / (double)n) : 0.0;
+}
+
+static void TestCoupledRooms(void)
+{
+    maudAcousticScene* rooms = CoupledRooms();
+    maudAcousticMaterial materials[2] = {{{0.05f, 0.05f, 0.08f}, 0.3f, {0, 0, 0}},
+                                         {{0.4f, 0.5f, 0.6f}, 0.3f, {0, 0, 0}}};
+    const maudVector3 at[2] = {{8.1f, 1.5f, 2.0f}, {2.0f, 1.5f, 2.0f}};
+    for (int room = 0; room < 2; ++room)
+    {
+        maudReverbTrace trace = {maudSceneClosestHit,
+                                 maudSceneAnyHit,
+                                 rooms,
+                                 materials,
+                                 2,
+                                 {0, 0, 0},
+                                 at[room],
+                                 4096,
+                                 512,
+                                 0,
+                                 0};
+        uint32_t batches = maudReverbBatches(trace.rays);
+        for (uint32_t b = 0; b < batches; ++b)
+        {
+            maudTraceReverbBatch(&trace, b, &s_histograms[b]);
+        }
+        maudReverbFit fit;
+        maudFitReverb(s_histograms, batches, &fit);
+        for (int b = 0; b < 2; ++b)
+        {
+            double miss = MissOf(s_histograms[0].energy[b], fit.times[b], fit.tailTimes[b],
+                                 fit.tailShares[b]);
+            printf("%s room, band %d: %.3f s, tail %.3f s (%.2f %%), %.2f dB from the decay\n",
+                   room == 0 ? "damped" : "live", b, (double)fit.times[b], (double)fit.tailTimes[b],
+                   100.0 * (double)fit.tailShares[b], miss);
+            if (room == 0)
+            {
+                CHECK(fit.times[b] < 0.35f && fit.tailTimes[b] > 0.7f && fit.tailTimes[b] < 1.6f,
+                      "the damped room's own slope and the live room's behind it");
+                CHECK(miss < 4.5, "two slopes follow the decay to -40 dB");
+            }
+        }
+        if (room == 1)
+        {
+            CHECK(fit.tailTimes[1] == 0.0f, "the live room keeps one slope");
+        }
+    }
+    maudDestroyAcousticScene(rooms);
 }
 
 static uint64_t Hash(uint64_t hash, const void* bytes, size_t size)
@@ -480,11 +656,14 @@ static void TestSealed(void)
         hash = Hash(hash, s_histograms[b].energy, sizeof(s_histograms[b].energy));
     }
     hash = Hash(hash, field, (size_t)batches * 4 * 3 * 100 * sizeof(float));
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, batches, &fit);
     float times[3];
-    maudFitReverb(s_histograms, batches, times);
+    memcpy(times, fit.times, sizeof(times));
     maudSumReverbFields(&trace, s_histograms, batches);
     float levels[3];
-    maudReverbLevels(&s_histograms[0], times, 0.1f, 0.0f, levels);
+    float tailLevels[3];
+    maudReverbLevels(&s_histograms[0], &fit, 0.1f, 0.0f, levels, tailLevels);
     hash = Hash(hash, times, sizeof(times));
     hash = Hash(hash, levels, sizeof(levels));
     printf("sealed: %.4f / %.4f / %.4f s, %.3f / %.3f / %.3f dB, hash %016llx\n", (double)times[0],
@@ -504,6 +683,8 @@ int main(void)
     TestBlocked();
     TestTruncated();
     TestFit();
+    TestTailLevels();
+    TestCoupledRooms();
     TestRooms();
     TestBandsAndAir();
     TestLimits();
