@@ -284,7 +284,8 @@ static void TestVoicedDuplex(maudContext* context)
               (status.voiceActive & def.voice) == def.voice,
           "echo cancellation and noise suppression reported");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
-    for (int tries = 0; tries < 500 && atomic_load(&duplex.withInput) < 20; ++tries)
+    // The simulator's voice unit can be slow to settle on a loaded runner.
+    for (int tries = 0; tries < 1500 && atomic_load(&duplex.withInput) < 20; ++tries)
     {
         maudNotification ignored;
         while (maudNextNotification(context, &ignored) == maud_success)

@@ -141,10 +141,19 @@ static bool Configure(maudAppleObjects* objects, maudDeviceForm form)
     UInt32 algorithm = kSpatializationAlgorithm_UseOutputType;
     UInt32 type = OutputType(form);
     UInt32 slice = MAUD_APPLE_OBJECT_SLICE;
+    // The speakers the mixer renders for: without a layout it renders as
+    // for one, the same on every channel.
+    AudioChannelLayout layout = {
+        .mChannelLayoutTag = objects->core->period.channelCount == 1
+                                 ? kAudioChannelLayoutTag_Mono
+                                 : kAudioChannelLayoutTag_Stereo,
+    };
     if (!SetProperty(mixer, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0, &buses,
                      sizeof(buses)) ||
         !SetProperty(mixer, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &output,
                      sizeof(output)) ||
+        !SetProperty(mixer, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0,
+                     &layout, sizeof(layout)) ||
         !SetProperty(mixer, kAudioUnitProperty_SpatialMixerOutputType, kAudioUnitScope_Global, 0,
                      &type, sizeof(type)) ||
         !SetProperty(mixer, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0,
