@@ -71,6 +71,10 @@ builds the Spatial part alone, `-DMAUL_AUDIO_SPATIAL=OFF` the Device
 part alone. Neither part's code uses the other's, so a host links only
 what it uses.
 
+Device churn a CI runner cannot simulate (a real headset plugged in,
+the audio service restarted on Windows or macOS) is checked by hand
+before a release, following `docs/device-checklist.md`.
+
 ## Design
 
 The rules every Maul library follows are in `docs/conventions.md` and
