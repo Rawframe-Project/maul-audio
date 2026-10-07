@@ -44,8 +44,9 @@ device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq
 direct_step:
 duplex: context context_core stream_open
-echo_canceller: allocator echo_filter real_fft
+echo_canceller: allocator echo_filter echo_suppressor real_fft
 echo_filter: allocator real_fft
+echo_suppressor: allocator real_fft voice_dsp
 fft:
 focus: backend context context_core notify
 follow: backend context context_core notify
@@ -66,7 +67,7 @@ lifecycle: backend context context_core follow
 magls: allocator fft hrtf_core least_squares spherical_harmonics
 near_field: near_field_table
 near_field_table:
-noise_suppressor: allocator real_fft
+noise_suppressor: allocator real_fft voice_dsp
 notify: backend context context_core invariant
 occlusion:
 octave_eq: least_squares

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The echo canceller's linear stage: a render of noise heard through a
-// fixed room response (10 ms late, 60 ms long) is taken down 25 dB or
-// more within two seconds at 16 kHz and at 48 kHz, and it reports
-// having adapted with a low leakage; a near end of noise at about the
-// echo's level comes through at its level with the echo 12 dB under it,
-// and the filter holds between its bursts (the residual is the
-// suppressor's); the output lags by exactly one block and does not
-// depend on how the frames are cut; a
-// silent render leaves the capture as the notch leaves it; refusals;
-// and no allocation while processing. (Its quality on recorded speech
-// is measured outside the tests, against Speex's.)
+// The echo canceller: a render of noise heard through a fixed room
+// response (10 ms late, 60 ms long) is taken down 50 dB or more within
+// three seconds at 16 kHz and at 48 kHz, and it reports having adapted
+// with a low leakage; a near end of noise at about the echo's level
+// (the hardest double talk) comes through within 3 dB with the rest 6
+// dB under it, and the echo stays down 30 dB between its bursts; with
+// nothing played, tone bursts keep their level within a decibel while
+// the noise between them falls; the output lags by exactly two blocks
+// and does not depend on how the frames are cut; refusals; and no
+// allocation while processing. (Its quality on recorded speech is
+// measured outside the tests, against Speex's.)
 
 #include "test_harness.h"
 
@@ -135,11 +135,11 @@ static void TestConverges(uint32_t rate, uint32_t block)
     int before = s_allocations;
     maudEchoState state = Run(c, s_capture, frames, rate / 100);
     CHECK(s_allocations == before, "no allocation while processing");
-    // The output lags by a block: compare it with the echo a block back.
-    double erle = 10.0 * log10(Energy(s_echo, 3 * rate - block, frames - block) /
+    // The output lags by two blocks: compare it with the echo two back.
+    double erle = 10.0 * log10(Energy(s_echo, 3 * rate - 2 * block, frames - 2 * block) /
                                Energy(s_capture, 3 * rate, frames));
     printf("%u Hz: %.1f dB taken from the echo, leakage %.4f\n", rate, erle, (double)state.leakage);
-    CHECK(erle > 25.0, "the echo taken down 25 dB or more");
+    CHECK(erle > 50.0, "the echo taken down 50 dB or more");
     CHECK(state.adapted && state.leakage < 0.05f && state.frames == frames, "adapted, little left");
     maudDestroyEchoCanceller(c);
 }
@@ -147,7 +147,7 @@ static void TestConverges(uint32_t rate, uint32_t block)
 static void TestDoubleTalk(void)
 {
     const uint32_t rate = 16000;
-    const uint32_t block = 128;
+    const uint32_t block = 256;
     uint32_t frames = rate * SECONDS;
     Scene(rate, frames, true);
     maudEchoCanceller* c = Create(rate);
@@ -182,9 +182,9 @@ static void TestDoubleTalk(void)
     printf("double talk: the near end at %+.2f dB, the rest %.1f dB under it; between, %.1f dB "
            "taken\n",
            level, rest, held);
-    CHECK(fabs(level) < 1.0, "the near end comes through");
-    CHECK(rest < -12.0, "with little echo left over it");
-    CHECK(held > 20.0, "and the filter holds between its bursts");
+    CHECK(fabs(level) < 3.0, "the near end comes through");
+    CHECK(rest < -6.0, "with little echo left over it");
+    CHECK(held > 30.0, "and the filter holds between its bursts");
     maudDestroyEchoCanceller(c);
 }
 
@@ -210,30 +210,59 @@ static void TestFraming(void)
     maudDestroyEchoCanceller(b);
 }
 
-// With nothing played, the capture comes out as the notch leaves it: a
-// tone at 1 kHz keeps its level.
-static void TestSilentRender(void)
+// With nothing played: speech-like bursts (a 1 kHz tone, 0.2 s on and
+// off) over quiet noise keep their level within a decibel while the
+// noise between them falls; the first two blocks out are silence.
+static void TestNearAlone(void)
 {
     const uint32_t rate = 16000;
-    uint32_t frames = rate;
+    const uint32_t lag = 256;
+    uint32_t frames = 3 * rate;
+    s_state = 3u;
     for (uint32_t i = 0; i < frames; ++i)
     {
+        bool on = (i / (rate / 5)) % 2 == 1;
+        float tone = 0.1f * sinf(2.0f * 3.14159265f * 1000.0f * (float)i / (float)rate);
         s_render[i] = 0.0f;
-        s_capture[i] = 0.1f * sinf(2.0f * 3.14159265f * 1000.0f * (float)i / (float)rate);
+        s_near[i] = on ? tone : 0.0f;
+        s_capture[i] = s_near[i] + 0.003f * Gaussian();
         s_other[i] = s_capture[i];
     }
     maudEchoCanceller* c = Create(rate);
-    (void)Run(c, s_capture, frames, 160);
-    double change = 10.0 * log10(Energy(s_capture, rate / 2, frames) /
-                                 Energy(s_other, rate / 2 - 128, frames - 128));
-    printf("no render: a 1 kHz tone changed by %.2f dB\n", change);
-    CHECK(fabs(change) < 0.5, "the capture kept");
+    maudEchoState state = Run(c, s_capture, frames, 160);
+    double kept = 0.0;
+    double near = 0.0;
+    double gapOut = 0.0;
+    double gapIn = 0.0;
+    for (uint32_t i = rate; i < frames; ++i)
+    {
+        // Away from the bursts' edges, where the gain moves.
+        uint32_t into = (i - lag) % (rate / 5);
+        if (into < rate / 50 || into > rate / 5 - rate / 50)
+        {
+            continue;
+        }
+        bool on = s_near[i - lag] != 0.0f;
+        double out = (double)s_capture[i] * (double)s_capture[i];
+        double in = (double)s_other[i - lag] * (double)s_other[i - lag];
+        kept += on ? out : 0.0;
+        near += on ? in : 0.0;
+        gapOut += on ? 0.0 : out;
+        gapIn += on ? 0.0 : in;
+    }
+    double change = 10.0 * log10(kept / near);
+    double fell = 10.0 * log10(gapIn / gapOut);
+    printf("no render: the bursts changed by %+.2f dB, the noise between them down %.1f dB\n",
+           change, fell);
+    CHECK(fabs(change) < 1.0, "the near end kept");
+    CHECK(fell > 5.0, "the noise taken down");
+    CHECK(state.speechProbability > 0.1f && state.speechProbability <= 1.0f, "a probability");
     bool silent = true;
-    for (uint32_t i = 0; i < 128; ++i)
+    for (uint32_t i = 0; i < lag; ++i)
     {
         silent = silent && s_capture[i] == 0.0f;
     }
-    CHECK(silent && s_capture[129] != 0.0f, "a block late: the first block out is silence");
+    CHECK(silent && s_capture[lag + 1] != 0.0f, "two blocks late: the first two out are silence");
     maudDestroyEchoCanceller(c);
 }
 
@@ -253,6 +282,9 @@ static void TestRefused(void)
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a path too long");
     def.tailSeconds = NAN;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a path not a number");
+    def = maudDefaultEchoCancellerDef();
+    def.floorDb = -50.0f;
+    CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a floor too deep");
     c = Create(16000);
     float x = 0.0f;
     CHECK(maudCancelEcho(nullptr, &x, &x, 1, nullptr) == maud_errorInvalid, "no canceller");
@@ -269,7 +301,7 @@ int main(void)
     TestConverges(48000, 512);
     TestDoubleTalk();
     TestFraming();
-    TestSilentRender();
+    TestNearAlone();
     TestRefused();
     return s_failures == 0 ? 0 : 1;
 }

@@ -99,6 +99,7 @@ set(MAUL_AUDIO_DEVICE_SOURCES
     src/follow.c
     src/echo_canceller.c
     src/echo_filter.c
+    src/echo_suppressor.c
     src/form.c
     src/gain_control.c
     src/lifecycle.c

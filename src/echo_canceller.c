@@ -7,12 +7,18 @@
 // capture goes through a DC notch (Speex's, two poles at radius 0.982
 // at 16 kHz) and both signals through a pre-emphasis (0.6 at 16 kHz,
 // which measured best between 0.4 and 0.9), the linear stage
-// (echo_filter.h) takes the echo out, and the output is de-emphasized.
-// The notch's and the pre-emphasis' coefficients keep their responses
-// in hertz at any rate. The output lags the input by a block.
+// (echo_filter.h) takes the echo out, the output and the echo estimate
+// are de-emphasized, and the suppressor (echo_suppressor.h) takes the
+// noise and the echo left down. The notch's and the pre-emphasis'
+// coefficients keep their responses in hertz at any rate. Blocks are
+// the smallest power of two lasting 8 ms or more: 128 frames at 16 kHz,
+// 512 at 48 kHz (measured, shorter blocks at 48 kHz cost the
+// suppressor's frequency resolution more than the filter gained). The
+// output lags the input by two blocks.
 
 #include "allocator.h"
 #include "echo_filter.h"
+#include "echo_suppressor.h"
 #include "real_fft.h"
 
 #include "maul-audio/voice.h"
@@ -25,6 +31,8 @@
 #define MAX_RATE        384000u
 #define MIN_TAIL        0.05f
 #define MAX_TAIL        1.0f
+#define MIN_FLOOR_DB    (-40.0f)
+#define MAX_FLOOR_DB    (-6.0f)
 // The block's shortest length, in seconds.
 #define MIN_BLOCK 0.008
 // At 16 kHz: the notch's radius and the pre-emphasis.
@@ -39,12 +47,15 @@ struct maudEchoCanceller
     uint32_t block;
     maudRealFft fft;
     maudEchoFilter filter;
-    // A block of the capture and of the render gathering, the last
-    // block's output going out, and where in the block the stream is.
+    maudEchoSuppressor suppressor;
+    // A block of the capture and of the render gathering, of the filter's
+    // output and echo estimate, and of the output going out; where in the
+    // block the stream is.
     float* capture;
     float* render;
-    float* output;
+    float* linear;
     float* echo;
+    float* output;
     uint32_t at;
     // The notch's radius, its gain's denominator and its state; the
     // pre-emphasis and the last samples it saw and gave.
@@ -56,6 +67,7 @@ struct maudEchoCanceller
     float lastCapture;
     float lastRender;
     float lastOutput;
+    float lastEcho;
     uint64_t frames;
 };
 
@@ -65,6 +77,7 @@ maudEchoCancellerDef maudDefaultEchoCancellerDef(void)
         .cookie = ECHO_DEF_COOKIE,
         .sampleRate = 48000,
         .tailSeconds = 0.2f,
+        .floorDb = -15.0f,
         .allocator = {nullptr, nullptr, nullptr},
     };
 }
@@ -73,7 +86,8 @@ static bool DefValid(const maudEchoCancellerDef* def)
 {
     return def->cookie == ECHO_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && def->tailSeconds >= MIN_TAIL &&
-           def->tailSeconds <= MAX_TAIL && maudIsAllocatorValid(&def->allocator);
+           def->tailSeconds <= MAX_TAIL && def->floorDb >= MIN_FLOOR_DB &&
+           def->floorDb <= MAX_FLOOR_DB && maudIsAllocatorValid(&def->allocator);
 }
 
 // The smallest power of two of frames lasting MIN_BLOCK or more.
@@ -91,6 +105,7 @@ typedef struct Layout
 {
     size_t fft;
     size_t filter;
+    size_t suppressor;
     size_t floats;
     size_t total;
 } Layout;
@@ -103,7 +118,8 @@ static Layout LayoutOf(uint32_t block, uint32_t partitions, double rate)
     l.fft = maudLayoutAdd(&layout, maudRealFftBytes(2 * block), 1, alignof(double));
     l.filter =
         maudLayoutAdd(&layout, maudEchoFilterBytes(block, partitions, rate), 1, alignof(double));
-    l.floats = maudLayoutAdd(&layout, 4 * (size_t)block, sizeof(float), alignof(float));
+    l.suppressor = maudLayoutAdd(&layout, maudEchoSuppressorBytes(block, rate), 1, alignof(double));
+    l.floats = maudLayoutAdd(&layout, 5 * (size_t)block, sizeof(float), alignof(float));
     l.total = layout.overflow ? 0 : layout.size;
     return l;
 }
@@ -143,12 +159,15 @@ maudResult maudCreateEchoCanceller(const maudEchoCancellerDef* def,
     };
     maudInitRealFft(&c->fft, 2 * block, memory + l.fft);
     maudInitEchoFilter(&c->filter, block, partitions, rate, &c->fft, memory + l.filter);
+    maudInitEchoSuppressor(&c->suppressor, block, rate, (double)def->floorDb, &c->fft,
+                           memory + l.suppressor);
     float* f = (float*)(memory + l.floats);
-    c->capture = f;
-    c->render = f + block;
-    c->output = f + 2 * (size_t)block;
-    c->echo = f + 3 * (size_t)block;
-    memset(f, 0, 4 * (size_t)block * sizeof(float));
+    float** blocks[5] = {&c->capture, &c->render, &c->linear, &c->echo, &c->output};
+    for (int i = 0; i < 5; ++i)
+    {
+        *blocks[i] = f + (size_t)i * block;
+    }
+    memset(f, 0, 5 * (size_t)block * sizeof(float));
     *cancellerOut = c;
     return maud_success;
 }
@@ -182,17 +201,21 @@ static void Front(maudEchoCanceller* c)
     }
 }
 
-// A gathered block through the front, the filter and the de-emphasis,
-// into the output.
+// A gathered block through the front, the filter, the de-emphasis and
+// the suppressor, into the output.
 static void Block(maudEchoCanceller* c)
 {
     Front(c);
-    maudRunEchoFilter(&c->filter, c->render, c->capture, c->output, c->echo);
+    maudRunEchoFilter(&c->filter, c->render, c->capture, c->linear, c->echo);
     for (uint32_t i = 0; i < c->block; ++i)
     {
-        c->output[i] += c->preemph * c->lastOutput;
-        c->lastOutput = c->output[i];
+        c->linear[i] += c->preemph * c->lastOutput;
+        c->lastOutput = c->linear[i];
+        c->echo[i] += c->preemph * c->lastEcho;
+        c->lastEcho = c->echo[i];
     }
+    maudRunEchoSuppressor(&c->suppressor, c->linear, c->echo, c->filter.bandLeak,
+                          c->filter.binsPerBand, c->output);
 }
 
 maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture, const float* render,
@@ -217,8 +240,10 @@ maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture, const fl
     c->frames += frameCount;
     if (stateOut != nullptr)
     {
-        *stateOut = (maudEchoState){
-            .leakage = (float)c->filter.leak, .adapted = c->filter.adapted, .frames = c->frames};
+        *stateOut = (maudEchoState){.leakage = (float)c->filter.leak,
+                                    .adapted = c->filter.adapted,
+                                    .speechProbability = (float)c->suppressor.frameProbability,
+                                    .frames = c->frames};
     }
     return maud_success;
 }

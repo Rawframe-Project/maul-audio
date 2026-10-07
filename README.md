@@ -10,8 +10,9 @@ It has two parts, each usable without the other:
 - **Device:** playback, capture and duplex streams on every platform,
   device enumeration and hotplug, default-device following, typed
   device loss, format and latency reporting, a stream clock, platform
-  voice processing, and an offline backend for tests and rendering to
-  memory.
+  voice processing and the library's own (voice activity, gain
+  control, noise suppression, echo cancellation), and an offline
+  backend for tests and rendering to memory.
 - **Spatial:** HRTF binaural rendering, ambisonics, speaker panning,
   air absorption, directivity, occlusion and transmission, reverb,
   reflections and propagation around geometry, and deterministic

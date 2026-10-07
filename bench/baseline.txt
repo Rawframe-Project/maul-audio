@@ -31,7 +31,7 @@ instanced.moving.ms 0.3446
 noise.16k.mono.us 45.49
 noise.48k.mono.us 93.39
 noise.48k.stereo.us 103.7
-# The echo canceller's rows (0.2 s path, linear stage): the best of
-# three runs, load about 140.
-echo.16k.us 65.47
-echo.48k.us 168.4
+# The echo canceller's rows (0.2 s path, with its suppressor): the
+# best of three runs, load about 40 to 100.
+echo.16k.us 92.81
+echo.48k.us 287.3

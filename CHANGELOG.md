@@ -446,5 +446,15 @@ format.
   stage: a multidelay block frequency-domain adaptive filter with
   leakage-driven rates, proportionate steps and two paths, behind a DC
   notch and a pre-emphasis, at any rate from 8 to 384 kHz, on mono
-  capture with the render aligned by the host. The suppressor for its
-  residual echo and noise follows.
+  capture with the render aligned by the host.
+- The echo canceller's suppressor: one gain per frequency against the
+  noise and the echo the filter leaves, under a speech presence from
+  SNRs smoothed over Bark bands and a frame probability, floored by the
+  noise's floor (`floorDb`, -15 dB by default) and an echo floor that
+  speech moves from -40 to -15 dB. The canceller now lags by two blocks
+  and reports `speechProbability`; a host runs it in place of the noise
+  suppressor. Its filter's steps have a floor of a hundredth of the
+  render's mean power, so a band-limited render played at a higher rate
+  leaves its empty bins alone. On the AEC Challenge's synthetic clips it
+  reaches Speex with its preprocessor in near-end intelligibility and
+  echo taken (median) at 16 and at 48 kHz.

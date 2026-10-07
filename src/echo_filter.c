@@ -25,6 +25,8 @@
 // The leakage's floor (as a share of the echo) and its first value.
 #define LEAK_FLOOR 0.005
 #define LEAK_START 0.25
+// The step's power floor, as a share of the render's mean power.
+#define POWER_FLOOR 0.01
 // The block's length the measured constants were set for, in seconds.
 #define MEASURED_BLOCK (128.0 / 16000.0)
 
@@ -305,7 +307,10 @@ static void Shares(maudEchoFilter* f)
 }
 
 // The background's step: each bin's rate, each partition's share of it,
-// over the render's power smoothed over the filter.
+// over the render's power smoothed over the filter plus a hundredth of
+// its mean over the bins (so that bins the render leaves empty, as a
+// band-limited stream played at a higher rate does, do not take steps
+// from rounding noise).
 static void Adapt(maudEchoFilter* f, double rer, double startRate)
 {
     const float* newest = Partition(f->render, f->bins, f->head);
@@ -316,6 +321,12 @@ static void Adapt(maudEchoFilter* f, double rer, double startRate)
                    (double)newest[2 * k + 1] * (double)newest[2 * k + 1];
         f->slowPower[k] = (1.0 - smooth) * f->slowPower[k] + smooth * p + 1e-10;
     }
+    double mean = 0.0;
+    for (uint32_t k = 0; k < f->bins; ++k)
+    {
+        mean += f->slowPower[k];
+    }
+    double floorPower = POWER_FLOOR * mean / f->bins;
     for (uint32_t k = 0; k < f->bins; ++k)
     {
         float er = f->errorSpectrum[2 * k];
@@ -330,7 +341,7 @@ static void Adapt(maudEchoFilter* f, double rer, double startRate)
         {
             const float* x = Partition(f->render, f->bins, (f->head + m) % f->partitions);
             float* w = f->background + (size_t)m * 2 * f->bins + 2 * k;
-            double step = mu * f->shares[m] / f->slowPower[k];
+            double step = mu * f->shares[m] / (f->slowPower[k] + floorPower);
             float xr = x[2 * k];
             float xi = x[2 * k + 1];
             w[0] += (float)(step * (double)(er * xr + ei * xi));

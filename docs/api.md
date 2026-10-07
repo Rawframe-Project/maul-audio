@@ -712,7 +712,7 @@ Suppresses noise in interleaved frames in place, in any count; the output does n
 ```c
 maudEchoCancellerDef maudDefaultEchoCancellerDef(void);
 ```
-Returns the default echo canceller def: 48,000, a path of 0.2 s, the default allocator.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default echo canceller def: 48,000, a path of 0.2 s, a noise floor of -15 dB, the default allocator.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateEchoCanceller(const maudEchoCancellerDef* def, maudEchoCanceller** cancellerOut);
@@ -727,7 +727,7 @@ Destroys an echo canceller. NULL is ignored.  @param canceller  The echo cancell
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture, const float* render, uint32_t frameCount, maudEchoState* stateOut);
 ```
-Takes the echo of the render out of the capture, in place, in any count of frames; the output does not depend on how the frames are cut. It works in blocks of the smallest power of two of frames lasting 8 ms or more (128 at 16,000, 512 at 48,000) and lags the input by one: the first block out is silence.  @param canceller   The echo canceller. @param capture     frameCount mono frames of the capture; may be NULL when frameCount is 0. @param render      frameCount mono frames of what was played, aligned with the capture; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL echo canceller, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The echo canceller is used by one thread at a time.
+Takes the echo of the render out of the capture, in place, in any count of frames; the output does not depend on how the frames are cut. It works in blocks of the smallest power of two of frames lasting 8 ms or more (128 at 16,000, 512 at 48,000) and lags the input by two: the first two blocks out are silence.  @param canceller   The echo canceller. @param capture     frameCount mono frames of the capture; may be NULL when frameCount is 0. @param render      frameCount mono frames of what was played, aligned with the capture; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL echo canceller, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The echo canceller is used by one thread at a time.
 
 ---
 

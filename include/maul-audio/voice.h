@@ -272,11 +272,14 @@ extern "C"
 
     // An echo canceller: it takes out of the capture what the render
     // played into it, as a call's far end heard through the device's
-    // loudspeaker. Ahead of a multidelay block frequency-domain adaptive
-    // filter, a DC notch on the capture and a pre-emphasis on both; the
-    // filter's rates follow the echo's leakage into its output, and it
-    // adapts in a background copy the output takes over only when it does
-    // better. The host gives it the render already aligned with the
+    // loudspeaker, and the noise with it. Ahead of a multidelay block
+    // frequency-domain adaptive filter, a DC notch on the capture and a
+    // pre-emphasis on both; the filter's rates follow the echo's leakage
+    // into its output, and it adapts in a background copy the output
+    // takes over only when it does better. After it, one gain per
+    // frequency against the noise and the echo the filter leaves, under
+    // the probability of speech. A host runs it in place of the noise
+    // suppressor, and gives it the render already aligned with the
     // capture (the stream's latencies), both mono at one rate.
     typedef struct maudEchoCancellerDef
     {
@@ -285,6 +288,9 @@ extern "C"
         uint32_t sampleRate;
         // The longest echo path it learns, in seconds, from 0.05 to 1.
         float tailSeconds;
+        // The most it takes noise down, in dB, from -40 to -6 (the echo
+        // left, down to -40 dB where no one speaks).
+        float floorDb;
         maudAllocator allocator;
     } maudEchoCancellerDef;
 
@@ -296,6 +302,8 @@ extern "C"
         float leakage;
         // Whether it has learnt the echo path once.
         bool adapted;
+        // The probability that the last frame held speech, 0.1 to 1.
+        float speechProbability;
         // The frames processed so far.
         uint64_t frames;
     } maudEchoState;
@@ -303,7 +311,7 @@ extern "C"
     typedef struct maudEchoCanceller maudEchoCanceller;
 
     /// Returns the default echo canceller def: 48,000, a path of 0.2 s,
-    /// the default allocator.
+    /// a noise floor of -15 dB, the default allocator.
     ///
     /// @return The def, with a valid cookie.
     /// @par Thread safety
@@ -334,7 +342,7 @@ extern "C"
     /// count of frames; the output does not depend on how the frames are
     /// cut. It works in blocks of the smallest power of two of frames
     /// lasting 8 ms or more (128 at 16,000, 512 at 48,000) and lags the
-    /// input by one: the first block out is silence.
+    /// input by two: the first two blocks out are silence.
     ///
     /// @param canceller   The echo canceller.
     /// @param capture     frameCount mono frames of the capture; may be NULL

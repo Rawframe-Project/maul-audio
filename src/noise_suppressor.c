@@ -19,6 +19,7 @@
 
 #include "allocator.h"
 #include "real_fft.h"
+#include "voice_dsp.h"
 
 #include "maul-audio/voice.h"
 
@@ -261,45 +262,6 @@ void maudDestroyNoiseSuppressor(maudNoiseSuppressor* suppressor)
     }
 }
 
-// The exponential integral E1(x) for x > 0: its series below 1, its
-// continued fraction above (as Numerical Recipes' expint, n = 1).
-static double ExpIntegral(double x)
-{
-    if (x < 1.0)
-    {
-        double sum = 0.0;
-        double term = 1.0;
-        for (int k = 1; k < 40; ++k)
-        {
-            term *= -x / k;
-            sum -= term / k;
-            if (fabs(term) < 1e-12 * fabs(sum))
-            {
-                break;
-            }
-        }
-        return -0.57721566490153286 - log(x) + sum;
-    }
-    double b = x + 1.0;
-    double c = 1e300;
-    double d = 1.0 / b;
-    double h = d;
-    for (int i = 1; i < 100; ++i)
-    {
-        double a = -(double)i * i;
-        b += 2.0;
-        d = 1.0 / (a * d + b);
-        c = b + a / c;
-        double delta = c * d;
-        h *= delta;
-        if (fabs(delta - 1.0) < 1e-12)
-        {
-            break;
-        }
-    }
-    return h * exp(-x);
-}
-
 // A bin's speech presence probability, guarded against stagnation.
 static double Presence(maudNoiseSuppressor* s, uint32_t k)
 {
@@ -318,7 +280,7 @@ static float BinGain(maudNoiseSuppressor* s, uint32_t k, double p)
                 (1.0 - ALPHA_XI) * fmax(gamma - 1.0, 0.0);
     xi = fmax(xi, XI_MIN);
     double v = gamma * xi / (1.0 + xi);
-    double gainH1 = fmin(xi / (1.0 + xi) * exp(0.5 * ExpIntegral(fmax(v, 1e-10))), 1.0);
+    double gainH1 = fmin(xi / (1.0 + xi) * exp(0.5 * maudExpIntegral(fmax(v, 1e-10))), 1.0);
     s->lastGain[k] = gainH1;
     s->lastGamma[k] = gamma;
     double g = pow(gainH1, p) * pow(s->floor, 1.0 - p);
