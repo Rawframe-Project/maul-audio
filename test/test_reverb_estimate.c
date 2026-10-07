@@ -562,7 +562,7 @@ static double MissOf(const float* energy, float time, float tailTime, float shar
     return n > 0 ? sqrt(squares / (double)n) : 0.0;
 }
 
-// Research 34's two rooms (coupled_rooms.h): in the damped room the
+// The two coupled rooms (coupled_rooms.h): in the damped room the
 // decay has the live room's slow slope behind its own fast one, and two
 // slopes follow it to -40 dB within a few dB; in the live room one slope
 // stays.

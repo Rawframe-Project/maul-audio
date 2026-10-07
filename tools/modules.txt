@@ -44,6 +44,8 @@ device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq
 direct_step:
 duplex: context context_core stream_open
+echo_canceller: allocator echo_filter real_fft
+echo_filter: allocator real_fft
 fft:
 focus: backend context context_core notify
 follow: backend context context_core notify

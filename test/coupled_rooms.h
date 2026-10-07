@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Two coupled rooms for the reverberation tests (research 34's): one
-// live, x 0 to 6 m, one damped, x 6 to 12 m, 3 m high and 4 m deep,
-// walls 0.1 m thick, joined by a door at x 6, z 1.5 to 2.5 m, up to
-// 2.1 m. Material 0 is the live room's, 1 the damped room's;
-// CoupledMaterials gives research 34's (absorption 0.05 to 0.08, and 0.4
-// to 0.6). A decay in the damped room has the live room's slow slope
-// behind its own fast one.
+// Two coupled rooms for the reverberation tests: one live, x 0 to 6 m,
+// one damped, x 6 to 12 m, 3 m high and 4 m deep, walls 0.1 m thick,
+// joined by a door at x 6, z 1.5 to 2.5 m, up to 2.1 m. Material 0 is
+// the live room's, 1 the damped room's; CoupledMaterials gives them
+// their absorption (0.05 to 0.08, and 0.4 to 0.6). A decay in the damped
+// room has the live room's slow slope behind its own fast one.
 
 #ifndef MAUL_AUDIO_TEST_COUPLED_ROOMS_H
 #define MAUL_AUDIO_TEST_COUPLED_ROOMS_H

@@ -270,6 +270,89 @@ extern "C"
                                                          float* frames, uint32_t frameCount,
                                                          maudNoiseState* stateOut);
 
+    // An echo canceller: it takes out of the capture what the render
+    // played into it, as a call's far end heard through the device's
+    // loudspeaker. Ahead of a multidelay block frequency-domain adaptive
+    // filter, a DC notch on the capture and a pre-emphasis on both; the
+    // filter's rates follow the echo's leakage into its output, and it
+    // adapts in a background copy the output takes over only when it does
+    // better. The host gives it the render already aligned with the
+    // capture (the stream's latencies), both mono at one rate.
+    typedef struct maudEchoCancellerDef
+    {
+        uint32_t cookie;
+        // The frames' rate, from 8,000 to 384,000.
+        uint32_t sampleRate;
+        // The longest echo path it learns, in seconds, from 0.05 to 1.
+        float tailSeconds;
+        maudAllocator allocator;
+    } maudEchoCancellerDef;
+
+    // What an echo canceller has learnt.
+    typedef struct maudEchoState
+    {
+        // The share of the echo it estimates that is still in its output,
+        // 0.005 to 1: high while it learns or after the path changes.
+        float leakage;
+        // Whether it has learnt the echo path once.
+        bool adapted;
+        // The frames processed so far.
+        uint64_t frames;
+    } maudEchoState;
+
+    typedef struct maudEchoCanceller maudEchoCanceller;
+
+    /// Returns the default echo canceller def: 48,000, a path of 0.2 s,
+    /// the default allocator.
+    ///
+    /// @return The def, with a valid cookie.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_API maudEchoCancellerDef maudDefaultEchoCancellerDef(void);
+
+    /// Creates an echo canceller.
+    ///
+    /// @param def            The def, from maudDefaultEchoCancellerDef.
+    /// @param cancellerOut   Receives the echo canceller; NULL on failure.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a
+    ///         def out of range; `maud_errorCapacity` when the allocator
+    ///         fails.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_NODISCARD MAUD_API maudResult maudCreateEchoCanceller(const maudEchoCancellerDef* def,
+                                                               maudEchoCanceller** cancellerOut);
+
+    /// Destroys an echo canceller. NULL is ignored.
+    ///
+    /// @param canceller  The echo canceller.
+    /// @par Thread safety
+    /// Safe from any thread; the echo canceller is used by one thread at a
+    /// time.
+    MAUD_API void maudDestroyEchoCanceller(maudEchoCanceller* canceller);
+
+    /// Takes the echo of the render out of the capture, in place, in any
+    /// count of frames; the output does not depend on how the frames are
+    /// cut. It works in blocks of the smallest power of two of frames
+    /// lasting 8 ms or more (128 at 16,000, 512 at 48,000) and lags the
+    /// input by one: the first block out is silence.
+    ///
+    /// @param canceller   The echo canceller.
+    /// @param capture     frameCount mono frames of the capture; may be NULL
+    ///                    when frameCount is 0.
+    /// @param render      frameCount mono frames of what was played, aligned
+    ///                    with the capture; may be NULL when frameCount is
+    ///                    0.
+    /// @param frameCount  How many.
+    /// @param stateOut    Receives the state after them; may be NULL.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL echo
+    ///         canceller, or NULL frames with a frameCount.
+    /// @par Thread safety
+    /// Real-time safe: no allocation, lock or wait. The echo canceller is
+    /// used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture,
+                                                      const float* render, uint32_t frameCount,
+                                                      maudEchoState* stateOut);
+
 #ifdef __cplusplus
 }
 #endif

@@ -2,7 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The voice processing's cost per 10 ms block: the noise suppressor at
-// 16 and 48 kHz, mono and stereo, on white noise with tone bursts.
+// 16 and 48 kHz, mono and stereo, on white noise with tone bursts; the
+// echo canceller at 16 and 48 kHz with a 0.2 s path, on a render of
+// noise and its echo.
 // Prints the best of five runs in microseconds per block, each row
 // beside its recorded baseline.
 
@@ -21,6 +23,7 @@
 #define BLOCKS 3000
 
 static float s_frames[2 * 480 * 10];
+static float s_render[480];
 
 static double Seconds(void)
 {
@@ -68,10 +71,51 @@ static void Run(uint32_t rate, maudChannelLayout layout, uint32_t channels, cons
     maudDestroyNoiseSuppressor(s);
 }
 
+static void RunEcho(uint32_t rate, const char* key)
+{
+    maudEchoCancellerDef def = maudDefaultEchoCancellerDef();
+    def.sampleRate = rate;
+    maudEchoCanceller* c = nullptr;
+    if (maudCreateEchoCanceller(&def, &c) != maud_success)
+    {
+        return;
+    }
+    uint32_t block = rate / 100;
+    uint32_t state = 1;
+    float echo = 0.0f;
+    double best = 1e9;
+    for (int run = 0; run < 5; ++run)
+    {
+        double start = Seconds();
+        for (int b = 0; b < BLOCKS; ++b)
+        {
+            for (uint32_t i = 0; i < block; ++i)
+            {
+                state = state * 1664525u + 1013904223u;
+                s_render[i] = ((float)(state >> 8) / 16777216.0f - 0.5f) * 0.2f;
+                echo = 0.9f * echo + 0.05f * s_render[i];
+                s_frames[i] = echo;
+            }
+            if (maudCancelEcho(c, s_frames, s_render, block, nullptr) != maud_success)
+            {
+                return;
+            }
+        }
+        double elapsed = Seconds() - start;
+        best = elapsed < best ? elapsed : best;
+    }
+    double micro = best / BLOCKS * 1e6;
+    printf("echo canceller,   %3u kHz, mono      %7.2f us per 10 ms block\n", rate / 1000, micro);
+    Against(key, micro, false);
+    maudDestroyEchoCanceller(c);
+}
+
 int main(void)
 {
     Run(16000, maud_layoutMono, 1, "noise.16k.mono.us");
     Run(48000, maud_layoutMono, 1, "noise.48k.mono.us");
     Run(48000, maud_layoutStereo, 2, "noise.48k.stereo.us");
+    RunEcho(16000, "echo.16k.us");
+    RunEcho(48000, "echo.48k.us");
     return 0;
 }

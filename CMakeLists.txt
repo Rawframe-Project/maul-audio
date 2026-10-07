@@ -97,6 +97,8 @@ set(MAUL_AUDIO_DEVICE_SOURCES
     src/duplex.c
     src/focus.c
     src/follow.c
+    src/echo_canceller.c
+    src/echo_filter.c
     src/form.c
     src/gain_control.c
     src/lifecycle.c
@@ -358,6 +360,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(voice_detector)
     maul_add_test(gain_control)
     maul_add_test(noise_suppressor)
+    maul_add_test(echo_canceller)
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)

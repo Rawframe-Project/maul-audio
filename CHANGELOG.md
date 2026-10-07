@@ -442,3 +442,9 @@ format.
   levels, blended apart from the first slope's, and the bake format
   goes to version 2 (tail sections after the levels); version 1 files
   still load, without tails, and save again in version 2.
+- An echo canceller (`maudEchoCanceller` in `voice.h`), its linear
+  stage: a multidelay block frequency-domain adaptive filter with
+  leakage-driven rates, proportionate steps and two paths, behind a DC
+  notch and a pre-emphasis, at any rate from 8 to 384 kHz, on mono
+  capture with the render aligned by the host. The suppressor for its
+  residual echo and noise follows.
