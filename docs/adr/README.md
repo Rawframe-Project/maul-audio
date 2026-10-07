@@ -34,6 +34,8 @@ stays, marked superseded.
 | [0016](0016-handles.md) | Roots are pointers, what they own are generation-checked ids | Accepted |
 | [0017](0017-threads.md) | No threads of the library's own, platform threads by contract, typed thread safety | Accepted |
 | [0018](0018-asynchronous-requests.md) | Asynchronous requests: an id now, exactly one completion later | Accepted |
+| [0019](0019-guide-snippets-run-by-tests.md) | The guide's snippets are built and run by tests | Accepted |
+| [0020](0020-parts-with-their-own-sources.md) | A part with its own sources lives beside src/ | Accepted |
 
 ## Template
 

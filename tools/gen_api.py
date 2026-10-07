@@ -52,6 +52,7 @@ def collect(lines):
     comment = []
     decl = re.compile(r"^\s*(?:" + cmake_setting("MAUL_MACRO_PREFIX") + r"_API\s+)?[A-Za-z_][A-Za-z0-9_ \*]*\b"
                       + PREFIX + r"[A-Za-z0-9_]+\s*\(")
+    first_name = re.compile(r"^\s*" + PREFIX + r"[A-Za-z0-9_]+\s*\(")
     depth = 0  # brace depth; declarations live at the extern "C" level
     i = 0
     while i < len(lines):
@@ -61,10 +62,15 @@ def collect(lines):
             comment.append(stripped[3:].strip())
             i += 1
             continue
-        if (depth <= 1 and decl.match(lines[i]) and not stripped.startswith("typedef")
+        # A long declaration may break after its result type, which
+        # clang-format puts on a line of its own: read the two as one.
+        line, j = lines[i], i
+        if (depth <= 1 and i + 1 < len(lines) and re.match(r"^\s*[A-Za-z_][A-Za-z0-9_ \*]*$", code)
+                and first_name.match(lines[i + 1])):
+            line, j = lines[i].rstrip() + " " + lines[i + 1].strip(), i + 1
+        if (depth <= 1 and decl.match(line) and not stripped.startswith("typedef")
                 and not stripped.startswith("#")):
-            sig = stripped
-            j = i
+            sig = line.strip()
             while not re.search(r"[;{]\s*$", sig.split("//")[0].rstrip()) and j < len(lines) - 1:
                 j += 1
                 sig += " " + lines[j].strip()

@@ -150,6 +150,12 @@ and `.gitattributes`.
 - Each library declares its module graph in `tools/modules.txt`: every
   module and the modules it may use. No module may include the header
   of a module the graph does not allow, and the graph has no cycles.
+- A part built as a library of its own from its own sources (a
+  renderer on another Maul library, say) lives in a directory beside
+  `src/`, its sources in `DIR/src` and its public headers in
+  `DIR/include`, and is listed in `tools/source-dirs.txt`. The rules
+  for `src/` hold there too, and its sources include their own headers
+  and public ones alone, never the library's internals.
 - Every `.c` file includes its own header first, then other internal
   headers, then public headers (`"lib/x.h"`), then system headers
   (`<...>`), one blank line between groups, each group sorted.
@@ -347,8 +353,12 @@ completion pairing.
   and ThreadSanitizer, with warnings as errors on GCC and Clang.
 - Long-running soaks and fuzzing campaigns stay out of the default
   CTest set and run on a schedule.
+- Every C snippet of `docs/guide.md` is built and run by a test, as
+  written, in `test/test_guide*.c` (a whole program waiting for its
+  user is built only); a fragment no test can build everywhere is
+  marked `<!-- guide: not run: REASON -->` right above its fence.
 
-Checked by: CI.
+Checked by: CI; `tools/check_guide.py` for the guide's snippets.
 
 ## 14. Performance
 

@@ -17,6 +17,8 @@
 #   nothing inside a condition;
 # - C file names are snake_case.
 #
+# Directories listed in tools/source-dirs.txt hold more of the library's
+# sources, in DIR/src, which the rules for src/ hold too.
 # Directories listed in tools/external-dirs.txt hold data from outside
 # (the Unicode Character Database, for example) and are not checked.
 #
@@ -137,6 +139,24 @@ def external_dirs():
 EXTERNAL = external_dirs()
 
 
+def source_dirs():
+    """The directories tools/source-dirs.txt lists beside src/, each holding
+    more of the library's own sources in DIR/src and its headers in
+    DIR/include (a part built as a library of its own)."""
+    path = os.path.join(ROOT, "tools", "source-dirs.txt")
+    if not os.path.exists(path):
+        return []
+    result = []
+    for line in open(path, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if line:
+            result.append(os.path.normpath(line))
+    return result
+
+
+SOURCE_DIRS = source_dirs()
+
+
 def walk(top, suffixes):
     for folder, dirs, files in os.walk(os.path.join(ROOT, top)):
         if os.path.relpath(folder, ROOT) in EXTERNAL:
@@ -184,10 +204,11 @@ def main():
     findings = []
     bans = dict(FAMILY_BANS)
     bans.update(library_bans())
-    for top in C_DIRS:
+    library = tuple(os.path.join(top, "src") + os.sep for top in SOURCE_DIRS) + ("src" + os.sep,)
+    for top in C_DIRS + [top for top in SOURCE_DIRS if top not in C_DIRS]:
         for path in walk(top, (".c", ".h", ".m")):
             rel = os.path.relpath(path, ROOT)
-            check_c_file(path, rel, rel.startswith("src" + os.sep), bans, findings)
+            check_c_file(path, rel, rel.startswith(library), bans, findings)
     for path in walk(".", TEXT_SUFFIXES):
         rel = os.path.relpath(path, ROOT)
         for number, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
