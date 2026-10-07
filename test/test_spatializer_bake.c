@@ -154,7 +154,10 @@ static bool Same(const maudReverbResult* a, const maudReverbResult* b)
 // Two coupled rooms, probes 1 m apart along both through the door: on a
 // probe in the damped room a baked estimate has the live one's two
 // slopes; between probes there it keeps the tail, its time and level
-// near the live estimate's.
+// near the live estimate's. Where a probe without a tail (just inside the
+// door, where the live room's slope holds) meets ones with it, the tail
+// fades (that probe weighs in at -96 dB) and keeps the time of the probes
+// that have it.
 static void TestCoupled(void)
 {
     maudAcousticScene* rooms = CoupledRooms();
@@ -198,6 +201,21 @@ static void TestCoupled(void)
               fabs((double)a.tailTime[1] / (double)b.tailTime[1] - 1.0) < 0.25 &&
               fabs((double)a.tailLevel[1] - (double)b.tailLevel[1]) < 3.0,
           "between probes, the tail near the live one");
+    maudReverbResult door = At(baked, 6.5f, 1.5f, 2.0f);
+    maudReverbResult near = At(baked, 7.5f, 1.5f, 2.0f);
+    maudReverbResult far = At(baked, 8.5f, 1.5f, 2.0f);
+    maudReverbResult edge = At(baked, 7.0f, 1.5f, 2.0f);
+    printf("the tail's edge: %.3f s at %.2f dB, between %.3f s at %.2f dB and none\n",
+           (double)edge.tailTime[1], (double)edge.tailLevel[1], (double)near.tailTime[1],
+           (double)near.tailLevel[1]);
+    float shortest = fminf(near.tailTime[1], far.tailTime[1]);
+    float longest = fmaxf(near.tailTime[1], far.tailTime[1]);
+    CHECK(door.tailTime[1] == 0.0f && near.tailTime[1] > 0.0f &&
+              edge.tailTime[1] >= shortest * 0.999f && edge.tailTime[1] <= longest * 1.001f,
+          "at the tail's edge, the time of the probes with it");
+    CHECK(edge.tailLevel[1] < fminf(near.tailLevel[1], far.tailLevel[1]) - 10.0f &&
+              edge.tailLevel[1] > -96.0f,
+          "and its level faded");
     maudDestroySpatializer(baked);
     maudDestroySpatializer(live);
     maudDestroyAcousticScene(rooms);
