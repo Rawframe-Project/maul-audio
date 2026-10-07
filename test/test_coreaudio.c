@@ -15,7 +15,6 @@
 #include "maul-audio/objects.h"
 #include "maul-audio/stream.h"
 
-#include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudio.h>
 #include <math.h>
 #include <pthread.h>
@@ -956,142 +955,6 @@ static void TestObjects(maudContext* context)
           "a bed wider than stereo");
 }
 
-// A temporary diagnostic: AUSpatialMixer alone, rendered offline with
-// a mono tone at azimuth 90, for each algorithm and output type, printing
-// what each side gets and whether the parameters hold.
-static OSStatus ProbeTone(void* user, AudioUnitRenderActionFlags* flags, const AudioTimeStamp* time,
-                          UInt32 bus, UInt32 frames, AudioBufferList* data)
-{
-    (void)flags;
-    (void)bus;
-    (void)user;
-    float* out = data->mBuffers[0].mData;
-    for (UInt32 i = 0; i < frames; ++i)
-    {
-        out[i] = (float)(0.25 * sin(2.0 * 3.141592653589793 * 440.0 *
-                                    (time->mSampleTime + (double)i) / 48000.0));
-    }
-    return noErr;
-}
-
-static void ProbeMixer(UInt32 algorithm, UInt32 outputType, UInt32 sourceMode, float reference)
-{
-    AudioComponentDescription description = {
-        .componentType = kAudioUnitType_Mixer,
-        .componentSubType = kAudioUnitSubType_SpatialMixer,
-        .componentManufacturer = kAudioUnitManufacturer_Apple,
-    };
-    AudioUnit mixer = nullptr;
-    OSStatus made =
-        AudioComponentInstanceNew(AudioComponentFindNext(nullptr, &description), &mixer);
-    AudioStreamBasicDescription mono = {
-        .mSampleRate = 48000.0,
-        .mFormatID = kAudioFormatLinearPCM,
-        .mFormatFlags =
-            kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved,
-        .mBytesPerPacket = 4,
-        .mFramesPerPacket = 1,
-        .mBytesPerFrame = 4,
-        .mChannelsPerFrame = 1,
-        .mBitsPerChannel = 32,
-    };
-    AudioStreamBasicDescription stereo = mono;
-    stereo.mChannelsPerFrame = 2;
-    UInt32 buses = 1;
-    AURenderCallbackStruct callback = {.inputProc = ProbeTone};
-    AudioChannelLayout layout = {.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo};
-    OSStatus steps[8] = {
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_ElementCount, kAudioUnitScope_Input, 0,
-                             &buses, sizeof(buses)),
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0,
-                             &mono, sizeof(mono)),
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0,
-                             &stereo, sizeof(stereo)),
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output,
-                             0, &layout, sizeof(layout)),
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0,
-                             &callback, sizeof(callback)),
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_SpatializationAlgorithm,
-                             kAudioUnitScope_Input, 0, &algorithm, sizeof(algorithm)),
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_SpatialMixerSourceMode,
-                             kAudioUnitScope_Input, 0, &sourceMode, sizeof(sourceMode)),
-        AudioUnitSetProperty(mixer, kAudioUnitProperty_SpatialMixerOutputType,
-                             kAudioUnitScope_Global, 0, &outputType, sizeof(outputType)),
-    };
-    if (reference > 0.0f)
-    {
-        MixerDistanceParams distance = {reference, 10000.0f, 0.0f};
-        OSStatus set = AudioUnitSetProperty(mixer, kAudioUnitProperty_SpatialMixerDistanceParams,
-                                            kAudioUnitScope_Input, 0, &distance, sizeof(distance));
-        printf("probe reference %.0f: %d\n", (double)reference, (int)set);
-    }
-    OSStatus initialized = AudioUnitInitialize(mixer);
-    OSStatus azimuthSet = AudioUnitSetParameter(mixer, kSpatialMixerParam_Azimuth,
-                                                kAudioUnitScope_Input, 0, 90.0f, 0);
-    OSStatus distanceSet = AudioUnitSetParameter(mixer, kSpatialMixerParam_Distance,
-                                                 kAudioUnitScope_Input, 0, 2.0f, 0);
-    static float left[512];
-    static float right[512];
-    struct
-    {
-        UInt32 count;
-        AudioBuffer buffers[2];
-    } list = {2, {{1, sizeof(left), left}, {1, sizeof(right), right}}};
-    double energy[2] = {0.0, 0.0};
-    OSStatus rendered = noErr;
-    for (int pass = 0; pass < 40 && rendered == noErr; ++pass)
-    {
-        AudioTimeStamp time = {.mSampleTime = pass * 512.0,
-                               .mFlags = kAudioTimeStampSampleTimeValid};
-        AudioUnitRenderActionFlags flags = 0;
-        list.buffers[0].mDataByteSize = sizeof(left);
-        list.buffers[1].mDataByteSize = sizeof(right);
-        rendered = AudioUnitRender(mixer, &flags, &time, 0, 512, (AudioBufferList*)&list);
-        for (int i = 0; pass >= 10 && i < 512; ++i)
-        {
-            energy[0] += (double)left[i] * (double)left[i];
-            energy[1] += (double)right[i] * (double)right[i];
-        }
-    }
-    AudioUnitParameterValue azimuth = -1.0f;
-    OSStatus azimuthGot = AudioUnitGetParameter(mixer, kSpatialMixerParam_Azimuth,
-                                                kAudioUnitScope_Input, 0, &azimuth);
-    printf("probe algorithm %u output %u mode %u: made %d, steps", (unsigned)algorithm,
-           (unsigned)outputType, (unsigned)sourceMode, (int)made);
-    for (int i = 0; i < 8; ++i)
-    {
-        printf(" %d", (int)steps[i]);
-    }
-    printf(", init %d, set %d %d, render %d, azimuth %d %.1f: left %.3f right %.3f\n",
-           (int)initialized, (int)azimuthSet, (int)distanceSet, (int)rendered, (int)azimuthGot,
-           (double)azimuth, energy[0], energy[1]);
-    AudioUnitUninitialize(mixer);
-    AudioComponentInstanceDispose(mixer);
-}
-
-static void ProbeMixers(void)
-{
-    static const UInt32 algorithms[] = {kSpatializationAlgorithm_UseOutputType,
-                                        kSpatializationAlgorithm_EqualPowerPanning,
-                                        kSpatializationAlgorithm_HRTFHQ};
-    static const UInt32 types[] = {kSpatialMixerOutputType_Headphones,
-                                   kSpatialMixerOutputType_BuiltInSpeakers,
-                                   kSpatialMixerOutputType_ExternalSpeakers};
-    for (int a = 0; a < 3; ++a)
-    {
-        for (int t = 0; t < 3; ++t)
-        {
-            ProbeMixer(algorithms[a], types[t], kSpatialMixerSourceMode_PointSource, 0.0f);
-        }
-    }
-    // The distance parameters: a reference at the farthest, and at a
-    // metre with no attenuation.
-    ProbeMixer(kSpatializationAlgorithm_UseOutputType, kSpatialMixerOutputType_ExternalSpeakers,
-               kSpatialMixerSourceMode_PointSource, 10000.0f);
-    ProbeMixer(kSpatializationAlgorithm_UseOutputType, kSpatialMixerOutputType_ExternalSpeakers,
-               kSpatialMixerSourceMode_PointSource, 1.0f);
-}
-
 int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
@@ -1099,7 +962,6 @@ int main(void)
         return SKIP;
     }
     s_control = pthread_self();
-    ProbeMixers();
     CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole made the default output");
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
