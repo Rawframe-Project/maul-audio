@@ -196,6 +196,10 @@ maudResult maudBakeProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
                sizeof(estimate.reverbTime));
         memcpy(bake->levels + (size_t)p * MAUD_DIRECT_BANDS, estimate.level,
                sizeof(estimate.level));
+        memcpy(bake->tailTimes + (size_t)p * MAUD_DIRECT_BANDS, estimate.tailTime,
+               sizeof(estimate.tailTime));
+        memcpy(bake->tailLevels + (size_t)p * MAUD_DIRECT_BANDS, estimate.tailLevel,
+               sizeof(estimate.tailLevel));
         if (fieldFloats > 0)
         {
             maudSumReverbFields(&s->trace, s->histograms, batches);
@@ -240,16 +244,9 @@ bool maudBakedReverb(maudSpatializer* s, maudVector3 position)
         return false;
     }
     float* field = s->reflections != nullptr ? s->histograms[0].field : nullptr;
-    if (!maudInterpolateBake(graph, bake, s->anyHit, s->rayContext, position, s->reverb.reverbTime,
-                             s->reverb.level, field))
+    if (!maudInterpolateBake(graph, bake, s->anyHit, s->rayContext, position, &s->reverb, field))
     {
         return false;
-    }
-    // A bake stores one slope per band so far.
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
-    {
-        s->reverb.tailTime[b] = 0.0f;
-        s->reverb.tailLevel[b] = -96.0f;
     }
     bool hybrid = s->reflections != nullptr;
     s->reverb.delay = hybrid ? s->reflectionDuration - REVERB_ONSET : 0.0f;

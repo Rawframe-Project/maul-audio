@@ -16,7 +16,8 @@
 #include <math.h>
 #include <string.h>
 
-#define VERSION      1u
+// Written; version 1 (without tails) is still read.
+#define VERSION      2u
 #define LAYER_REVERB 1u
 #define LAYER_FIELDS 2u
 #define MIN_RANGE    0.1f
@@ -32,6 +33,7 @@ static const uint8_t MAGIC[8] = {'M', 'A', 'U', 'D', 'B', 'A', 'K', 'E'};
 
 typedef struct Header
 {
+    uint32_t version;
     uint32_t probes;
     uint32_t links;
     float range;
@@ -48,6 +50,8 @@ typedef struct Layout
     uint64_t neighbours;
     uint64_t times;
     uint64_t levels;
+    uint64_t tailTimes;
+    uint64_t tailLevels;
     uint64_t fields;
     uint64_t end;
 } Layout;
@@ -101,6 +105,11 @@ static void Measure(const Header* h, Layout* l)
     at += reverb ? (uint64_t)h->probes * 12 : 0;
     l->levels = at;
     at += reverb ? (uint64_t)h->probes * 12 : 0;
+    bool tails = reverb && h->version >= 2;
+    l->tailTimes = at;
+    at += tails ? (uint64_t)h->probes * 12 : 0;
+    l->tailLevels = at;
+    at += tails ? (uint64_t)h->probes * 12 : 0;
     l->fields = at;
     at += (uint64_t)h->probes * FieldFloats(h) * 4;
     l->end = at;
@@ -111,10 +120,13 @@ static Header HeaderOf(const maudProbeGraph* graph, const maudProbeBake* bake, u
 {
     bool baked = bake != nullptr && bake->memory != nullptr;
     bool fields = baked && bake->fieldFloats > 0;
-    return (Header){
-        graph->count,       graph->links,
-        graph->range,       baked ? (fields ? LAYER_REVERB | LAYER_FIELDS : LAYER_REVERB) : 0,
-        fields ? order : 0, fields ? bins : 0};
+    return (Header){VERSION,
+                    graph->count,
+                    graph->links,
+                    graph->range,
+                    baked ? (fields ? LAYER_REVERB | LAYER_FIELDS : LAYER_REVERB) : 0,
+                    fields ? order : 0,
+                    fields ? bins : 0};
 }
 
 size_t maudBakeFileBytes(const maudProbeGraph* graph, const maudProbeBake* bake,
@@ -166,6 +178,8 @@ void maudWriteBakeFile(const maudProbeGraph* graph, const maudProbeBake* bake, u
     {
         PutFloats(out + l.times, bake->times, (uint64_t)h.probes * MAUD_DIRECT_BANDS);
         PutFloats(out + l.levels, bake->levels, (uint64_t)h.probes * MAUD_DIRECT_BANDS);
+        PutFloats(out + l.tailTimes, bake->tailTimes, (uint64_t)h.probes * MAUD_DIRECT_BANDS);
+        PutFloats(out + l.tailLevels, bake->tailLevels, (uint64_t)h.probes * MAUD_DIRECT_BANDS);
     }
     if (h.layers & LAYER_FIELDS)
     {
@@ -224,12 +238,13 @@ static bool HeaderValid(const uint8_t* data, size_t size, Header* h, Layout* l, 
     {
         return false;
     }
-    if (U32(data + 8) != VERSION)
+    uint32_t version = U32(data + 8);
+    if (version < 1 || version > VERSION)
     {
         *why = maud_errorUnsupported;
         return false;
     }
-    *h = (Header){U32(data + 12), U32(data + 16), F32(data + 20),
+    *h = (Header){version,        U32(data + 12), U32(data + 16), F32(data + 20),
                   U32(data + 24), U32(data + 28), U32(data + 32)};
     bool fields = h->layers == (LAYER_REVERB | LAYER_FIELDS);
     if (!(h->range >= MIN_RANGE && h->range <= MAX_RANGE) ||
@@ -288,6 +303,16 @@ static bool ValuesValid(const uint8_t* data, const Header* h, const Layout* l)
             return false;
         }
     }
+    uint64_t tails = h->version >= 2 ? values : 0;
+    for (uint64_t i = 0; i < tails; ++i)
+    {
+        float t = F32(data + l->tailTimes + 4 * i);
+        float v = F32(data + l->tailLevels + 4 * i);
+        if (!(t == 0.0f || (t >= MIN_TIME && t <= MAX_TIME)) || !(v >= MIN_LEVEL && v <= MAX_LEVEL))
+        {
+            return false;
+        }
+    }
     uint64_t perProbe = FieldFloats(h);
     uint64_t w = (uint64_t)MAUD_DIRECT_BANDS * h->bins;
     for (uint64_t i = 0; i < (uint64_t)h->probes * perProbe; ++i)
@@ -326,6 +351,9 @@ static void Fill(const uint8_t* data, const Header* h, const Layout* l, maudProb
     {
         bake->times[i] = F32(data + l->times + 4 * i);
         bake->levels[i] = F32(data + l->levels + 4 * i);
+        bool tail = h->version >= 2;
+        bake->tailTimes[i] = tail ? F32(data + l->tailTimes + 4 * i) : 0.0f;
+        bake->tailLevels[i] = tail ? F32(data + l->tailLevels + 4 * i) : MIN_LEVEL;
     }
     for (uint64_t i = 0; i < (uint64_t)h->probes * FieldFloats(h); ++i)
     {

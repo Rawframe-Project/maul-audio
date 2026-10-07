@@ -24,6 +24,10 @@ typedef struct maudProbeBake
     uint32_t fieldFloats;
     float* times;
     float* levels;
+    // The slower slope's, as maudReverbResult's tail: 0 s and -96 dB for
+    // none.
+    float* tailTimes;
+    float* tailLevels;
     float* fields;
     void* memory;
     size_t bytes;
@@ -35,11 +39,14 @@ bool maudCreateProbeBake(const maudAllocator* allocator, uint32_t count, uint32_
                          maudProbeBake* bake);
 void maudReleaseProbeBake(const maudAllocator* allocator, maudProbeBake* bake);
 
-// The bake's values at a point: times and levels (3 each) and, if the
-// bake has fields and field is not NULL, the field. False when no probe
+// The bake's values at a point, as a reverberation estimate's: times,
+// levels and the tail's (3 each) and, if the bake has fields and field is
+// not NULL, the field. Each slope is blended apart, times in log and
+// levels in dB; a probe without a tail weighs in at -96 dB, and the
+// tail's time is blended over the probes with one. False when no probe
 // is in sight (nothing written).
 bool maudInterpolateBake(const maudProbeGraph* graph, const maudProbeBake* bake,
-                         maudAnyHitFn* anyHit, void* context, maudVector3 point, float* times,
-                         float* levels, float* field);
+                         maudAnyHitFn* anyHit, void* context, maudVector3 point,
+                         maudReverbResult* result, float* field);
 
 #endif // MAUL_AUDIO_SRC_PROBE_BAKE_H

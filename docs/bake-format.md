@@ -1,8 +1,9 @@
 # The Maul Audio bake format
 
 A `.maudbake` file holds one baked probe set: its probes, the links
-between them, and per probe the reverberation times and levels and,
-when the bake was made with reflections, the energy field.
+between them, and per probe the reverberation times and levels (and
+the slower slope's, where a coupled space adds one) and, when the bake
+was made with reflections, the energy field.
 `maudSaveProbeSet` writes it and `maudLoadProbeSet` reads it; the same
 set saves to the same bytes on every platform. The loader treats it as
 hostile input.
@@ -15,7 +16,7 @@ the file.
 | Offset | Type | Field | Rule |
 |---|---|---|---|
 | 0 | 8 bytes | magic | `MAUDBAKE` |
-| 8 | uint32 | version | 1 |
+| 8 | uint32 | version | 2 (1, without tails, is still read) |
 | 12 | uint32 | probeCount | 0 to the loading spatializer's maxProbes |
 | 16 | uint32 | linkCount | 0 to the loading spatializer's maxProbePairs |
 | 20 | float32 | range | 0.1 to 1,000: the longest link, in metres |
@@ -40,7 +41,12 @@ From offset 40, in this order, with nothing between:
    seconds, low band first, each 0.1 to 20.
 5. **Levels** (layer 1): for each probe, three float32 levels in dB, each -96 to
    24.
-6. **Fields** (layer 2): for each probe, (`fieldOrder` + 1)^2 channels
+6. **Tail times** (layer 1, version 2): for each probe, three float32
+   times of the slower slope in seconds, each 0 (none in the band) or
+   0.1 to 20.
+7. **Tail levels** (layer 1, version 2): for each probe, three float32
+   levels of the slower slope in dB, each -96 to 24.
+8. **Fields** (layer 2): for each probe, (`fieldOrder` + 1)^2 channels
    in ACN order, for each channel three bands, for each band
    `fieldBins` float32 energies in 10 ms bins, each finite and at least
    0 for channel 0.
@@ -58,4 +64,5 @@ and the response's 10 ms bins. A file of probes and links loads into
 any spatializer with room for it. A file that is
 well formed but does not fit is refused with `maud_errorCapacity`
 (counts) or `maud_errorUnsupported` (fields, or another version); one
-that is not well formed with `maud_errorInvalid`.
+that is not well formed with `maud_errorInvalid`. A version 1 file
+loads with no tails; saved again, it is written in version 2.

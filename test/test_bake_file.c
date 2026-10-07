@@ -6,8 +6,9 @@
 // write again to the same bytes; every malformed part is refused as
 // invalid (magic, size, checksum, range, layers, a neighbour out of
 // range, a self link, a falling row, a link listed from one end only, a
-// link longer than the range, a point, a time, a level and a field out
-// of range), another version as unsupported, counts past the limits as
+// link longer than the range, a point, a time, a level, a tail's time and
+// level and a field out of range), another version as unsupported
+// (version 1, without tails, still reads), counts past the limits as
 // capacity, and fields of another layout as unsupported.
 
 #include "allocator.h"
@@ -74,6 +75,9 @@ static maudProbeBake Bake(uint32_t count)
     {
         b.times[i] = 0.3f + 0.01f * (float)i;
         b.levels[i] = -6.0f + 0.5f * (float)i;
+        // Every other band with a tail.
+        b.tailTimes[i] = i % 2 == 0 ? 1.2f + 0.01f * (float)i : 0.0f;
+        b.tailLevels[i] = i % 2 == 0 ? -20.0f + 0.1f * (float)i : -96.0f;
     }
     for (uint32_t i = 0; i < count * FIELD; ++i)
     {
@@ -198,6 +202,36 @@ static void TestRoundTrip(const maudProbeGraph* g, const maudProbeBake* b, const
     free(bare.bytes);
 }
 
+// Version 1, without tails: the file less its tails' sections reads as
+// the same set with none.
+static void TestVersion1(const maudProbeBake* b, const File* f)
+{
+    size_t tails = Times(f) + 24 * (size_t)f->probes;
+    size_t cut = 24 * (size_t)f->probes;
+    File old = {malloc(f->size), f->size - cut, f->probes, f->links};
+    memcpy(old.bytes, f->bytes, tails);
+    memcpy(old.bytes + tails, f->bytes + tails + cut, f->size - tails - cut);
+    Put(old.bytes + 8, 1);
+    Seal(&old);
+    maudProbeGraph rg;
+    maudProbeBake rb;
+    CHECK(maudReadBakeFile(old.bytes, old.size, &s_limits, &s_allocator, &rg, &rb) == maud_success,
+          "version 1 read");
+    size_t values = (size_t)f->probes * 3;
+    bool none = true;
+    for (size_t i = 0; i < values; ++i)
+    {
+        none = none && rb.tailTimes[i] == 0.0f && rb.tailLevels[i] == -96.0f;
+    }
+    CHECK(memcmp(rb.times, b->times, values * sizeof(float)) == 0 &&
+              memcmp(rb.levels, b->levels, values * sizeof(float)) == 0 &&
+              memcmp(rb.fields, b->fields, values / 3 * FIELD * sizeof(float)) == 0 && none,
+          "version 1: the same set, no tails");
+    maudReleaseProbeGraph(&s_allocator, &rg);
+    maudReleaseProbeBake(&s_allocator, &rb);
+    free(old.bytes);
+}
+
 // A row's entry replaced by a probe in range it is not linked to, the
 // row still rising: listed from one end only.
 static bool OneEnded(File* c, const maudProbeGraph* g)
@@ -271,8 +305,11 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     c.bytes[0] ^= 1;
     Expect(&c, maud_errorInvalid, "magic");
     c = Changed(f);
-    Put(c.bytes + 8, 2);
-    Expect(&c, maud_errorUnsupported, "another version");
+    Put(c.bytes + 8, 3);
+    Expect(&c, maud_errorUnsupported, "a later version");
+    c = Changed(f);
+    Put(c.bytes + 8, 0);
+    Expect(&c, maud_errorUnsupported, "version 0");
     c = Changed(f);
     c.size -= 1;
     Expect(&c, maud_errorInvalid, "a byte short");
@@ -317,10 +354,16 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     PutFloat(c.bytes + Times(&c) + 12 * (size_t)f->probes, 30.0f);
     Expect(&c, maud_errorInvalid, "a level");
     c = Changed(f);
-    PutFloat(c.bytes + Times(&c) + 24 * (size_t)f->probes, -1.0f);
+    PutFloat(c.bytes + Times(&c) + 24 * (size_t)f->probes, 0.05f);
+    Expect(&c, maud_errorInvalid, "a tail's time");
+    c = Changed(f);
+    PutFloat(c.bytes + Times(&c) + 36 * (size_t)f->probes, 30.0f);
+    Expect(&c, maud_errorInvalid, "a tail's level");
+    c = Changed(f);
+    PutFloat(c.bytes + Times(&c) + 48 * (size_t)f->probes, -1.0f);
     Expect(&c, maud_errorInvalid, "a negative W");
     c = Changed(f);
-    PutFloat(c.bytes + Times(&c) + 24 * (size_t)f->probes + 4 * 3 * BINS, INFINITY);
+    PutFloat(c.bytes + Times(&c) + 48 * (size_t)f->probes + 4 * 3 * BINS, INFINITY);
     Expect(&c, maud_errorInvalid, "a field not finite");
     const maudBakeLimits fewProbes = {f->probes - 1, 64, ORDER, BINS};
     const maudBakeLimits fewLinks = {64, f->links - 1, ORDER, BINS};
@@ -346,6 +389,7 @@ int main(void)
     printf("file: %u probes, %u links, %zu bytes\n", g.count, g.links, f.size);
     TestRoundTrip(&g, &b, &f);
     TestRefused(&g, &b, &f);
+    TestVersion1(&b, &f);
     free(f.bytes);
     maudReleaseProbeBake(&s_allocator, &b);
     maudReleaseProbeGraph(&s_allocator, &g);

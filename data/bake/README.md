@@ -11,3 +11,9 @@ bake's promise of input-deterministic output; setting
 `MAUD_WRITE_GOLDEN` while running the test rewrites it, which only a
 deliberate change to the bake may do. It is also the bake fuzz
 target's seed, behind a 0x03 byte.
+
+## `office-v1.maudbake`
+
+The same bake in version 1 of the format, before tails, as the library
+wrote it until tails came: the test requires that it still loads and
+gives the same estimates.

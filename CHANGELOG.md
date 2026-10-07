@@ -438,3 +438,7 @@ format.
   stopped tail decay before it stops running. The first slope's output
   is unchanged; params written as positional initializers gain the two
   fields (zero for none).
+- Bakes carry the slower slope: probes store the tail's times and
+  levels, blended apart from the first slope's, and the bake format
+  goes to version 2 (tail sections after the levels); version 1 files
+  still load, without tails, and save again in version 2.

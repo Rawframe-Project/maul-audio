@@ -26,6 +26,10 @@ bool maudCreateProbeBake(const maudAllocator* allocator, uint32_t count, uint32_
         maudLayoutAdd(&layout, (size_t)count * MAUD_DIRECT_BANDS, sizeof(float), alignof(float));
     size_t levels =
         maudLayoutAdd(&layout, (size_t)count * MAUD_DIRECT_BANDS, sizeof(float), alignof(float));
+    size_t tailTimes =
+        maudLayoutAdd(&layout, (size_t)count * MAUD_DIRECT_BANDS, sizeof(float), alignof(float));
+    size_t tailLevels =
+        maudLayoutAdd(&layout, (size_t)count * MAUD_DIRECT_BANDS, sizeof(float), alignof(float));
     size_t fields =
         maudLayoutAdd(&layout, (size_t)count * fieldFloats, sizeof(float), alignof(float));
     if (layout.overflow)
@@ -42,6 +46,8 @@ bool maudCreateProbeBake(const maudAllocator* allocator, uint32_t count, uint32_
     unsigned char* base = bake->memory;
     bake->times = (float*)(base + times);
     bake->levels = (float*)(base + levels);
+    bake->tailTimes = (float*)(base + tailTimes);
+    bake->tailLevels = (float*)(base + tailLevels);
     bake->fields = fieldFloats > 0 ? (float*)(base + fields) : nullptr;
     return true;
 }
@@ -78,9 +84,30 @@ static uint32_t Weights(const maudPathEnd* end, double* weights)
     return n;
 }
 
+// The tail's blend in a band: its level in dB (-96 for a probe without
+// one) and its time in log over the probes with one, their weights
+// renormalised; 0 s and -96 dB where none has one.
+static void BlendTail(const maudProbeBake* bake, const maudPathEnd* end, const double* weights,
+                      uint32_t n, int b, maudReverbResult* result)
+{
+    double logTime = 0.0;
+    double level = 0.0;
+    double weight = 0.0;
+    for (uint32_t k = 0; k < n; ++k)
+    {
+        size_t at = (size_t)end->probes[k] * MAUD_DIRECT_BANDS + (size_t)b;
+        bool has = bake->tailTimes[at] > 0.0f;
+        level += weights[k] * (has ? (double)bake->tailLevels[at] : -96.0);
+        logTime += has ? weights[k] * maudLog((double)bake->tailTimes[at]) : 0.0;
+        weight += has ? weights[k] : 0.0;
+    }
+    result->tailTime[b] = weight > 0.0 ? (float)maudExp(logTime / weight) : 0.0f;
+    result->tailLevel[b] = weight > 0.0 ? (float)level : -96.0f;
+}
+
 bool maudInterpolateBake(const maudProbeGraph* graph, const maudProbeBake* bake,
-                         maudAnyHitFn* anyHit, void* context, maudVector3 point, float* times,
-                         float* levels, float* field)
+                         maudAnyHitFn* anyHit, void* context, maudVector3 point,
+                         maudReverbResult* result, float* field)
 {
     maudPathEnd end;
     maudAttachPath(graph, graph->range, point, anyHit, context, &end);
@@ -100,8 +127,9 @@ bool maudInterpolateBake(const maudProbeGraph* graph, const maudProbeBake* bake,
             logTime += weights[k] * maudLog((double)bake->times[at]);
             level += weights[k] * (double)bake->levels[at];
         }
-        times[b] = (float)maudExp(logTime);
-        levels[b] = (float)level;
+        result->reverbTime[b] = (float)maudExp(logTime);
+        result->level[b] = (float)level;
+        BlendTail(bake, &end, weights, n, b, result);
     }
     if (field != nullptr && bake->fieldFloats > 0)
     {

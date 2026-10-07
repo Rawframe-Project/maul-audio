@@ -15,13 +15,16 @@
 // saves to the same bytes; a file with fields loads only where they
 // match; the office's bake is, byte for byte, the shipped one in
 // data/bake (MAUD_WRITE_GOLDEN set rewrites it), and on the web, which
-// has no file system, its hash.
+// has no file system, its hash; the shipped version 1 bake, before
+// tails, still loads and gives the same estimates. In two coupled rooms
+// a bake carries the slower slope.
 
 // fopen and getenv read and rewrite the shipped bake; the C runtime's
 // warning that they are unsafe is about the Annex K alternatives, which
 // the family does not use.
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "coupled_rooms.h"
 #include "test_harness.h"
 
 #include "maul-audio/scene.h"
@@ -143,7 +146,61 @@ static maudReverbResult At(maudSpatializer* s, float x, float y, float z)
 static bool Same(const maudReverbResult* a, const maudReverbResult* b)
 {
     return memcmp(a->reverbTime, b->reverbTime, sizeof(a->reverbTime)) == 0 &&
-           memcmp(a->level, b->level, sizeof(a->level)) == 0 && a->delay == b->delay;
+           memcmp(a->level, b->level, sizeof(a->level)) == 0 && a->delay == b->delay &&
+           memcmp(a->tailTime, b->tailTime, sizeof(a->tailTime)) == 0 &&
+           memcmp(a->tailLevel, b->tailLevel, sizeof(a->tailLevel)) == 0;
+}
+
+// Two coupled rooms, probes 1 m apart along both through the door: on a
+// probe in the damped room a baked estimate has the live one's two
+// slopes; between probes there it keeps the tail, its time and level
+// near the live estimate's.
+static void TestCoupled(void)
+{
+    maudAcousticScene* rooms = CoupledRooms();
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.anyHit = maudSceneAnyHit;
+    def.closestHit = maudSceneClosestHit;
+    def.rayContext = rooms;
+    def.reverbRays = 4096;
+    def.probeSetCapacity = 1;
+    maudSpatializer* baked = nullptr;
+    maudSpatializer* live = nullptr;
+    CHECK(maudCreateSpatializer(&def, &baked) == maud_success &&
+              maudCreateSpatializer(&def, &live) == maud_success,
+          "spatializers in two rooms");
+    CHECK(maudSetMaterials(baked, CoupledMaterials, 2) == maud_success &&
+              maudSetMaterials(live, CoupledMaterials, 2) == maud_success,
+          "their materials");
+    static maudVector3 points[12];
+    for (int i = 0; i < 12; ++i)
+    {
+        points[i] = (maudVector3){(float)i + 0.5f, 1.5f, 2.0f};
+    }
+    maudProbeSetDef set = maudDefaultProbeSetDef();
+    set.points = points;
+    set.pointCount = 12;
+    set.range = 1.5f;
+    maudProbeSetId id = {0, 0};
+    CHECK(maudCreateProbeSet(baked, &set, &id) == maud_success &&
+              maudBakeProbeSet(baked, id) == maud_success &&
+              maudUseBakedReverb(baked, id) == maud_success,
+          "probes through the door, baked");
+    maudReverbResult a = At(baked, 8.5f, 1.5f, 2.0f);
+    maudReverbResult b = At(live, 8.5f, 1.5f, 2.0f);
+    CHECK(Same(&a, &b) && a.tailTime[1] > 0.0f, "on a probe, the live estimate's two slopes");
+    a = At(baked, 9.0f, 1.5f, 2.0f);
+    b = At(live, 9.0f, 1.5f, 2.0f);
+    printf("between probes: tail %.3f s at %.2f dB baked, %.3f s at %.2f dB live\n",
+           (double)a.tailTime[1], (double)a.tailLevel[1], (double)b.tailTime[1],
+           (double)b.tailLevel[1]);
+    CHECK(a.tailTime[1] > 0.0f &&
+              fabs((double)a.tailTime[1] / (double)b.tailTime[1] - 1.0) < 0.25 &&
+              fabs((double)a.tailLevel[1] - (double)b.tailLevel[1]) < 3.0,
+          "between probes, the tail near the live one");
+    maudDestroySpatializer(baked);
+    maudDestroySpatializer(live);
+    maudDestroyAcousticScene(rooms);
 }
 
 static void TestReverb(maudAcousticScene* scene)
@@ -403,7 +460,7 @@ static void TestGolden(maudAcousticScene* scene)
         hash = (hash ^ bytes[i]) * 1099511628211u;
     }
     printf("golden: %zu bytes, hash %016llx\n", size, (unsigned long long)hash);
-    CHECK(hash == 0x3c3cd93cdb68581cu, "the shipped bake's hash");
+    CHECK(hash == 0xd5029c358e533970u, "the shipped bake's hash");
 #ifndef __EMSCRIPTEN__
     const char* path = MAUD_DATA_DIR "/bake/office.maudbake";
     if (getenv("MAUD_WRITE_GOLDEN") != nullptr)
@@ -421,6 +478,32 @@ static void TestGolden(maudAcousticScene* scene)
     }
     CHECK(read == size && memcmp(golden, bytes, size) == 0, "the shipped bake, byte for byte");
     free(golden);
+    // The same bake in version 1, before tails: it loads, and gives the
+    // same estimates (the office decays in one slope).
+    in = fopen(MAUD_DATA_DIR "/bake/office-v1.maudbake", "rb");
+    uint8_t* old = malloc(2 * size);
+    size_t oldSize = in != nullptr ? fread(old, 1, 2 * size, in) : 0;
+    if (in != nullptr)
+    {
+        fclose(in);
+    }
+    maudSpatializer* earlier = nullptr;
+    maudProbeSetId loaded = {0, 0};
+    CHECK(maudCreateSpatializer(&def, &earlier) == maud_success &&
+              maudSetMaterials(earlier, m, 6) == maud_success &&
+              maudLoadProbeSet(earlier, old, oldSize, &loaded) == maud_success &&
+              maudUseBakedReverb(earlier, loaded) == maud_success,
+          "version 1 loads");
+    bool same = true;
+    for (int i = 0; i < 4; ++i)
+    {
+        maudReverbResult a = At(s, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
+        maudReverbResult b = At(earlier, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
+        same = same && Same(&a, &b) && a.tailTime[1] == 0.0f;
+    }
+    CHECK(same, "version 1: the same estimates");
+    maudDestroySpatializer(earlier);
+    free(old);
 #endif
     free(bytes);
     maudDestroySpatializer(s);
@@ -428,6 +511,7 @@ static void TestGolden(maudAcousticScene* scene)
 
 int main(void)
 {
+    TestCoupled();
     maudAcousticScene* scene = Office();
     TestReverb(scene);
     TestReflections(scene);
