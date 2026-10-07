@@ -70,7 +70,12 @@ static OSStatus Render(void* user, AudioUnitRenderActionFlags* flags, const Audi
     bool running = atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning;
     atomic_store_explicit(&core->renderingThread, maudCurrentThread(), memory_order_release);
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
-    if (running)
+    OSStatus status = noErr;
+    if (running && entry->objects.mixer != nullptr)
+    {
+        status = maudRenderAppleObjects(&entry->objects, flags, time, frames, data);
+    }
+    else if (running)
     {
         maudPullPeriod(&core->period, out, frames);
     }
@@ -85,7 +90,7 @@ static OSStatus Render(void* user, AudioUnitRenderActionFlags* flags, const Audi
     int64_t latency = entry->sessionLatency + HostNanoseconds(ios, time) - maudNowNanoseconds();
     maudStampOutputClock(core, latency > 0 ? latency : 0);
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
-    return noErr;
+    return status;
 }
 
 // Spreads frames of `from` channels over `to`, in place, back to front
@@ -225,6 +230,8 @@ static void Disconnect(maudContext* context, maudIosStream* entry)
     {
         entry->voicePartner->voicePartner = nullptr;
     }
+    // The unit is gone, so the mixer renders no more.
+    maudCloseAppleObjects(context, &entry->objects);
     maudStreamCore* core = entry->core;
     const maudIos* owner = entry->owner;
     *entry = (maudIosStream){.core = core, .owner = owner};
@@ -299,11 +306,22 @@ static maudResult Connect(maudContext* context, maudIosStream* entry)
         return maud_errorPlatform;
     }
     entry->sessionLatency = maudIosSessionLatency(input);
-    // RemoteIO processes nothing; Voice-Processing I/O is the session's
-    // voice mode, a later slice.
+    // RemoteIO processes nothing; only a voiced duplex stream runs on
+    // Voice-Processing I/O.
     if (input)
     {
         maudReportVoice(entry->core, maud_voiceNone);
+    }
+    // An object stream renders through the spatial mixer, for what the
+    // route leads to.
+    if (entry->core->def.objectCount > 0)
+    {
+        const maudDeviceSlot* device = maudFindDevice(context, entry->core->binding.current);
+        return maudAppleObjectsFit(entry->core)
+                   ? maudOpenAppleObjects(context, entry->core,
+                                          device != nullptr ? device->info.form : maud_formUnknown,
+                                          &entry->objects)
+                   : maud_errorUnsupported;
     }
     return maud_success;
 }

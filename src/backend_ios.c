@@ -40,6 +40,10 @@ static maudDeviceSpec DefaultSpec(const maudIos* ios, maudDirection direction, m
                 .minSampleRate = ios->rate,
                 .maxSampleRate = ios->rate,
                 .form = form,
+                // An object stream renders through the system's spatial
+                // mixer, which takes any number of objects.
+                .spatializer = output ? maud_spatializerOn : maud_spatializerUnknown,
+                .spatialObjects = output ? MAUD_MAX_STREAM_OBJECTS : 0,
             },
         .name = name,
         .nameLength = maudCutUtf8(name, ios->context->def.limits.deviceTextBytes),
@@ -236,6 +240,7 @@ static maudResult RequestFocus(maudContext* context, maudFocusRequest request, m
 }
 
 static const maudBackend s_ios = {
+    .rendersObjects = true,
     .kind = maud_backendCoreAudio,
     .openContext = OpenContext,
     .closeContext = CloseContext,

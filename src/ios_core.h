@@ -7,6 +7,7 @@
 #ifndef MAUL_AUDIO_SRC_IOS_CORE_H
 #define MAUL_AUDIO_SRC_IOS_CORE_H
 
+#include "apple_objects.h"
 #include "context_core.h"
 #include "device.h"
 
@@ -52,6 +53,9 @@ typedef struct maudIosStream
     // The sample time the next IO cycle should start at, or a negative
     // value before the first: a later start skipped cycles.
     Float64 nextSampleTime;
+    // An object stream's spatial mixer, which renders for the unit; its
+    // mixer is NULL for other streams.
+    maudAppleObjects objects;
 } maudIosStream;
 
 // What the context's streams need of the session: outputs and inputs

@@ -16,6 +16,7 @@
 #include "maul-audio/device.h"
 #include "maul-audio/focus.h"
 #include "maul-audio/notification.h"
+#include "maul-audio/objects.h"
 #include "maul-audio/stream.h"
 
 #import <AVFAudio/AVFAudio.h>
@@ -344,6 +345,62 @@ static void TestCapture(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+typedef struct Placed
+{
+    atomic_uint count;
+    atomic_uint offered;
+} Placed;
+
+// An object to the right playing a tone; the bed stays silent.
+static void PlaceObject(const maudStreamBlock* block, void* user)
+{
+    Placed* placed = user;
+    maudStreamObject* object = &block->objects[0];
+    object->active = true;
+    object->position[0] = 2.0f;
+    for (uint32_t i = 0; i < block->frameCount; ++i)
+    {
+        object->samples[i] = (i & 32u) != 0 ? 0.25f : -0.25f;
+    }
+    atomic_store(&placed->offered, block->objectsAvailable);
+    atomic_fetch_add(&placed->count, 1);
+}
+
+// An object stream renders through the system's spatial mixer in front
+// of RemoteIO, which takes every object; outputs say so. A bed wider
+// than stereo is refused.
+static void TestObjects(maudContext* context)
+{
+    maudDeviceId output = {0, 0};
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+                  maud_success &&
+              maudGetDeviceInfo(context, output, &info) == maud_success &&
+              info.spatializer == maud_spatializerOn &&
+              info.spatialObjects == MAUD_MAX_STREAM_OBJECTS,
+          "the output takes objects");
+    Placed placed = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.objectCount = 2;
+    def.callback = PlaceObject;
+    def.user = &placed;
+    maudStreamId stream = {0, 0};
+    maudResult result = maudCreateStream(context, &def, &stream);
+    printf("object stream: %s\n", maudResultName(result));
+    CHECK(result == maud_success && maudStartStream(context, stream) == maud_success,
+          "an object stream runs");
+    for (int tries = 0; tries < 500 && atomic_load(&placed.count) < 20; ++tries)
+    {
+        Sleep(10);
+    }
+    CHECK(atomic_load(&placed.count) >= 20 && atomic_load(&placed.offered) == 2,
+          "its callback runs, offered every object");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    def.layout = maud_layoutQuad;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
+          "a bed wider than stereo");
+}
+
 int main(void)
 {
     s_control = pthread_self();
@@ -358,6 +415,7 @@ int main(void)
     maudDeviceInfo output = {0};
     TestDevices(context, &output);
     TestOutput(context, &output);
+    TestObjects(context);
     TestInterruptions(context);
     TestRoute(context);
     TestCapture(context);
