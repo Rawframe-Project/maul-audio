@@ -4,7 +4,10 @@
 // The WASAPI backend's devices against what COM itself reports, its
 // notifications, whose callbacks the test calls itself (wine delivers
 // none), and its streams. Without an audio endpoint the test is
-// skipped, unless MAUD_REQUIRE_WASAPI is set.
+// skipped, unless MAUD_REQUIRE_WASAPI is set. With MAUD_WASAPI_STA set,
+// the test's thread enters a single-threaded apartment first, as a
+// host's main thread does for drag and drop: the context, its devices
+// and its streams then work from there too.
 
 // getenv reads the test's switches; the C runtime's warning that it is
 // unsafe is about its result's lifetime, which the test does not keep.
@@ -622,7 +625,8 @@ static void TestObjects(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
-// Wine refuses exclusive use of every endpoint; Windows may give it, in
+// Wine refuses exclusive use of every endpoint (its PulseAudio driver as
+// unsupported, its ALSA one failing to open the device); Windows may give it, in
 // which case the stream says so and plays, or refuse it as the device or
 // the user's policy says. It never falls back to shared.
 static void TestExclusive(maudContext* context)
@@ -637,12 +641,13 @@ static void TestExclusive(maudContext* context)
     def.callback = CountBlocks;
     def.user = &blocks;
     maudResult result = maudCreateStream(context, &def, &stream);
+    printf("exclusive output: %s\n", maudResultName(result));
     if (UnderWine())
     {
-        CHECK(result == maud_errorUnsupported, "Wine refuses exclusive use");
+        CHECK(result == maud_errorUnsupported || result == maud_errorPlatform,
+              "Wine refuses exclusive use");
         return;
     }
-    printf("exclusive output: %s\n", maudResultName(result));
     CHECK(result == maud_success || result == maud_errorUnsupported || result == maud_errorPlatform,
           "exclusive use is given or refused");
     if (result == maud_success)
@@ -660,6 +665,16 @@ static void TestExclusive(maudContext* context)
 int main(void)
 {
     s_control = GetCurrentThreadId();
+    bool sta = getenv("MAUD_WASAPI_STA") != nullptr;
+    if (sta)
+    {
+        APTTYPE type = APTTYPE_MTA;
+        APTTYPEQUALIFIER qualifier = APTTYPEQUALIFIER_NONE;
+        CHECK(SUCCEEDED(OleInitialize(nullptr)) &&
+                  SUCCEEDED(CoGetApartmentType(&type, &qualifier)) &&
+                  (type == APTTYPE_STA || type == APTTYPE_MAINSTA),
+              "the test's thread in a single-threaded apartment");
+    }
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendWasapi;
     maudContext* context = nullptr;
@@ -670,6 +685,10 @@ int main(void)
         if (context != nullptr)
         {
             CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        }
+        if (sta)
+        {
+            OleUninitialize();
         }
         return getenv("MAUD_REQUIRE_WASAPI") != nullptr ? 1 : SKIP;
     }
@@ -684,5 +703,9 @@ int main(void)
     TestNotifier(context);
     TestDrainRescans(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    if (sta)
+    {
+        OleUninitialize();
+    }
     return s_failures == 0 ? 0 : 1;
 }
