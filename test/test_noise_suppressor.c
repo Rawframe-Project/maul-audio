@@ -271,6 +271,12 @@ static void TestRefused(void)
     def = maudDefaultNoiseSuppressorDef();
     def.highPassHz = 10.0f;
     CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_errorInvalid, "a corner out of range");
+    def.highPassHz = 400.0f;
+    CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_success, "the highest corner");
+    maudDestroyNoiseSuppressor(s);
+    def = maudDefaultNoiseSuppressorDef();
+    def.layout = maud_layoutNone;
+    CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_errorInvalid, "no channels");
     def = maudDefaultNoiseSuppressorDef();
     def.cookie = 0;
     CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_errorInvalid, "no cookie");

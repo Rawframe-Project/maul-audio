@@ -285,6 +285,13 @@ static void TestRefused(void)
     def = maudDefaultEchoCancellerDef();
     def.floorDb = -50.0f;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a floor too deep");
+    // The highest rate, the longest path and the shallowest floor.
+    def = maudDefaultEchoCancellerDef();
+    def.sampleRate = 384000;
+    def.tailSeconds = 1.0f;
+    def.floorDb = -6.0f;
+    CHECK(maudCreateEchoCanceller(&def, &c) == maud_success, "every bound's upper end taken");
+    maudDestroyEchoCanceller(c);
     c = Create(16000);
     float x = 0.0f;
     CHECK(maudCancelEcho(nullptr, &x, &x, 1, nullptr) == maud_errorInvalid, "no canceller");

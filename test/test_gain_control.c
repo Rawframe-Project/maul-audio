@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The automatic gain control on synthetic speech and noise: quiet and
-// loud speech brought toward the target, noise kept under its ceiling,
-// the gain's pace, the limiter, layouts, chunking and allocation.
+// loud speech brought toward the target and held in pauses, noise kept
+// under its ceiling, the gain's pace, the limiter, layouts, chunking and
+// allocation.
 
 #include "test_harness.h"
 #include "test_signals.h"
@@ -170,6 +171,29 @@ static void TestShortRuns(void)
     CHECK(fabsf(levels[1] - levels[0]) <= 1.0f, "short loud bursts leave the speech level be");
 }
 
+// Very quiet speech for 1.5 s, too short for the gain to reach its
+// target, then the room alone: the gain rises during the speech and
+// holds once it stops.
+static void TestHoldInPauses(void)
+{
+    Signal signal = MakeSignal(48000, 12.0);
+    AddNoise(&signal, -80, 77);
+    AddSpeech(&signal, -60, 1.0, 2.5);
+    maudGainControlDef def = maudDefaultGainControlDef();
+    Trace trace = Control(&signal, &def);
+    bool held = true;
+    for (uint32_t f = 300; f < trace.frames; ++f)
+    {
+        held = held && trace.gainDb[f] <= trace.gainDb[f - 1];
+    }
+    printf("held: %.2f dB at 3 s, %.2f dB at the end, the target %.2f dB\n",
+           (double)trace.gainDb[300], (double)trace.last.gainDb,
+           (double)(def.targetDbfs - trace.last.speechDbfs));
+    CHECK(trace.gainDb[300] > 1.0f && held, "the gain rose with speech and holds without it");
+    free(trace.gainDb);
+    FreeSignal(&signal);
+}
+
 // The limiter turns its gain down over many cycles, not sample by
 // sample: a sine pushed past the ceiling keeps its shape (a crest
 // factor near the square root of 2) instead of being flattened.
@@ -322,6 +346,17 @@ static void TestDefs(void)
     def = maudDefaultGainControlDef();
     def.sampleRate = 384001;
     CHECK(maudCreateGainControl(&def, &gain) == maud_errorInvalid, "a rate too high");
+    // Every bound's upper end.
+    def = maudDefaultGainControlDef();
+    def.targetDbfs = -6.0f;
+    def.minGainDb = 0.0f;
+    def.maxGainDb = 60.0f;
+    def.initialGainDb = 60.0f;
+    def.maxChangeDbPerSecond = 30.0f;
+    def.maxNoiseDbfs = -20.0f;
+    def.aggressiveness = 3;
+    CHECK(maudCreateGainControl(&def, &gain) == maud_success, "every bound's upper end taken");
+    maudDestroyGainControl(gain);
     def = maudDefaultGainControlDef();
     def.cookie = 0;
     CHECK(maudCreateGainControl(&def, &gain) == maud_errorInvalid, "no cookie");
@@ -340,6 +375,7 @@ int main(void)
     TestTarget();
     TestRange();
     TestShortRuns();
+    TestHoldInPauses();
     TestLimiterShape();
     TestNoise();
     TestPace();
