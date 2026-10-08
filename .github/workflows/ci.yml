@@ -95,6 +95,36 @@ jobs:
         if: matrix.name == 'linux-shared'
         run: cmake --install build --prefix "$PWD/package"
 
+  # Each fuzz target runs for one minute on every push, from the shipped
+  # files as seeds: the HRTF set behind a 0x01 byte, the bakes behind a
+  # 0x03 (CMakeLists.txt says what the bytes choose). The loaders are
+  # the Spatial part's, so the Device part is not built.
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install compilers
+        timeout-minutes: 15
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends clang-20 libclang-rt-20-dev ninja-build
+      - name: Build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON \
+            -D${PREFIX}_DEVICE=OFF -D${PREFIX}_BUILD_TESTS=OFF -D${PREFIX}_BUILD_BENCH=OFF \
+            -D${PREFIX}_BUILD_SAMPLES=OFF -D${PREFIX}_WERROR=ON
+          cmake --build build
+      - name: Run
+        run: |
+          mkdir -p corpus-fuzz_hrtf corpus-fuzz_bake
+          { printf '\001'; cat data/hrtf/sadie2-ku100-48k.maudhrtf; } > corpus-fuzz_hrtf/seed
+          { printf '\003'; cat data/bake/office.maudbake; } > corpus-fuzz_bake/seed
+          { printf '\003'; cat data/bake/office-v1.maudbake; } > corpus-fuzz_bake/seed-v1
+          for target in build/fuzz_*; do
+            "$target" -max_total_time=60 "corpus-$(basename $target)"
+          done
+
   windows-clang-cl:
     name: windows-clang-cl
     runs-on: windows-latest
