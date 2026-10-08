@@ -42,8 +42,10 @@ if (made != maud_success)
 
 The native backend is the platform's: PipeWire, then PulseAudio, then
 ALSA on Linux; WASAPI on Windows; Core Audio on macOS and iOS; AAudio on
-Android; Web Audio in a browser. `maudGetContextBackend` says which
-one opened. `maudDestroyContext` stops and destroys its streams.
+Android; Web Audio in a browser. A build with a private backend, a
+console's for instance, tries it first (docs/private-backends.md).
+`maudGetContextBackend` says which one opened. `maudDestroyContext`
+stops and destroys its streams.
 
 ## Devices
 

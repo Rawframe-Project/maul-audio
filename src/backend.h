@@ -104,4 +104,8 @@ const maudBackend* maudGetAaudioBackend(void);
 // The web backend, in Emscripten builds.
 const maudBackend* maudGetWebBackend(void);
 
+// The private backend, in builds with MAUL_AUDIO_PRIVATE_BACKEND: written
+// outside the library (docs/private-backends.md) against this header.
+const maudBackend* maudGetPrivateBackend(void);
+
 #endif // MAUL_AUDIO_SRC_BACKEND_H

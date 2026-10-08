@@ -129,16 +129,20 @@ static void TestInvalidDefsAreRefused(void)
     def = OfflineDef(&counter);
     def.backend = 200;
     CheckRefused(&def, "unknown backend");
-    def.backend = maud_backendWeb + 1;
+    def.backend = maud_backendPrivate + 1;
     CheckRefused(&def, "one past the last backend");
-    // The last backend is known: made where it runs, unsupported
-    // elsewhere, never refused as invalid.
-    maudContextDef known = maudDefaultContextDef();
-    known.backend = maud_backendWeb;
-    maudContext* web = nullptr;
-    maudResult made = maudCreateContext(&known, &web);
-    CHECK(made == maud_success || made == maud_errorUnsupported, "the web backend is known");
-    CHECK(web == nullptr || maudDestroyContext(web) == maud_success, "destroyed");
+    // The last backends are known: made where they are built,
+    // unsupported elsewhere, never refused as invalid.
+    const maudBackendKind last[2] = {maud_backendWeb, maud_backendPrivate};
+    for (int i = 0; i < 2; ++i)
+    {
+        maudContextDef known = maudDefaultContextDef();
+        known.backend = last[i];
+        maudContext* made = nullptr;
+        maudResult result = maudCreateContext(&known, &made);
+        CHECK(result == maud_success || result == maud_errorUnsupported, "a known backend");
+        CHECK(made == nullptr || maudDestroyContext(made) == maud_success, "destroyed");
+    }
     def = OfflineDef(&counter);
     def.androidJavaVm = &counter;
     CheckRefused(&def, "a Java VM without an Android Context");

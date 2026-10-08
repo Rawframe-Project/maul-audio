@@ -59,6 +59,11 @@ else()
     set(MAUL_AUDIO_IOS_DEFAULT OFF)
 endif()
 option(MAUL_AUDIO_IOS "Build the iOS backend" ${MAUL_AUDIO_IOS_DEFAULT})
+# A backend kept outside the library, as a console's is: a directory
+# whose backend.cmake adds its sources to maul-audio
+# (docs/private-backends.md).
+set(MAUL_AUDIO_PRIVATE_BACKEND "" CACHE PATH
+    "A directory outside the library holding a private backend's backend.cmake")
 # Backends belong to the Device part.
 if(NOT MAUL_AUDIO_DEVICE)
     foreach(backend PIPEWIRE PULSE ALSA WASAPI COREAUDIO AAUDIO IOS)
@@ -262,6 +267,16 @@ if(MAUL_AUDIO_PULSE)
     target_link_libraries(maul-audio PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
+# The private backend, built into the library from outside it.
+if(MAUL_AUDIO_DEVICE AND NOT MAUL_AUDIO_PRIVATE_BACKEND STREQUAL "")
+    if(NOT EXISTS "${MAUL_AUDIO_PRIVATE_BACKEND}/backend.cmake")
+        message(FATAL_ERROR "MAUL_AUDIO_PRIVATE_BACKEND: no backend.cmake in "
+                            "${MAUL_AUDIO_PRIVATE_BACKEND}")
+    endif()
+    include("${MAUL_AUDIO_PRIVATE_BACKEND}/backend.cmake")
+    target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_PRIVATE_BACKEND=1)
+endif()
+
 # Each running PulseAudio or ALSA stream has a library thread.
 if(MAUL_AUDIO_PULSE OR MAUL_AUDIO_ALSA)
     target_sources(maul-audio PRIVATE src/worker.c)
@@ -360,6 +375,9 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(follow WHITEBOX)
     maul_add_test(form WHITEBOX)
     maul_add_test(stream_open WHITEBOX)
+    if(NOT MAUL_AUDIO_PRIVATE_BACKEND STREQUAL "")
+        maul_add_test(private_backend)
+    endif()
     # The worker thread, where a backend builds it.
     if(MAUL_AUDIO_WASAPI OR MAUL_AUDIO_PULSE OR MAUL_AUDIO_ALSA)
         maul_add_test(worker WHITEBOX)

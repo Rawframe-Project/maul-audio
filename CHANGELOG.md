@@ -465,6 +465,11 @@ format.
   checklist runs) and `sample_binaural` (a source circling the
   listener, rendered to a WAV file with the Spatial part alone), built
   when `MAUL_AUDIO_BUILD_SAMPLES` is on, as it is at the top level.
+- Private backends (maud-0002): `MAUL_AUDIO_PRIVATE_BACKEND` names a
+  directory outside the library whose backend, a console's for
+  instance, is built in, asked for as `maud_backendPrivate` and tried
+  first as the native backend; `docs/private-backends.md` states the
+  contract, and `test/private_backend/` proves it from outside `src/`.
 - A guide, `docs/guide.md`, to both parts, whose snippets
   `test/test_guide.c` builds and runs and `tools/check_guide.py` keeps
   equal to the guide in CI.

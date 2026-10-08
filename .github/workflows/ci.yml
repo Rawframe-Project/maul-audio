@@ -92,6 +92,16 @@ jobs:
             export MAUD_TEST_COREAUDIO_RESTART="sudo killall coreaudiod"
           fi
           ctest --test-dir build --output-on-failure
+      - name: Private backend
+        # A backend built from outside src/ (docs/private-backends.md): it
+        # takes the native slot, so only its test and the context's run.
+        if: matrix.name == 'linux-device-only'
+        run: |
+          cmake -B build-private -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.extra }} \
+            -D${PREFIX}_PRIVATE_BACKEND="$PWD/test/private_backend"
+          cmake --build build-private -j 4 --target test_private_backend test_context
+          ctest --test-dir build-private -R "^(private_backend|context)$" --output-on-failure
       - name: Package
         if: matrix.name == 'linux-shared'
         run: cmake --install build --prefix "$PWD/package"
