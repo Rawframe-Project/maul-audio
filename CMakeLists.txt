@@ -410,6 +410,19 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
                 "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/lsan-alsa.supp")
         endif()
     endif()
+    # A host stalled inside a step, under a native stream that latches the
+    # spatializer's results: both parts', a device's, and not the web's,
+    # whose callback runs on the stalled thread itself.
+    if(MAUL_AUDIO_SPATIAL AND NOT EMSCRIPTEN)
+        maul_add_test(stall)
+        set_tests_properties(stall PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+        # Its stream may open ALSA's default PCM on a machine without
+        # sound, where libasound leaks.
+        if(MAUL_AUDIO_SANITIZE AND MAUL_AUDIO_ALSA)
+            set_tests_properties(stall PROPERTIES ENVIRONMENT
+                "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/lsan-alsa.supp")
+        endif()
+    endif()
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)

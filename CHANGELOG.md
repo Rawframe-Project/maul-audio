@@ -472,6 +472,9 @@ format.
   contract, and `test/private_backend/` proves it from outside `src/`.
 - The guide's "In a browser" states how a web stream's frames reach
   its worklet, isolated or not, with the latency measured each way.
+- A test of a stalled host (`test/test_stall.c`): a native stream
+  latching the spatializer's results keeps playing, short and without
+  an underrun, while the host stalls 50 ms inside a step.
 - A guide, `docs/guide.md`, to both parts, whose snippets
   `test/test_guide.c` builds and runs and `tools/check_guide.py` keeps
   equal to the guide in CI.
