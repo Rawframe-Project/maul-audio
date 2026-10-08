@@ -8,7 +8,8 @@
 // the reverb's tests); a field from one direction gives every channel W
 // times that direction's harmonic, sample for sample, a silent band
 // included; the same field
-// gives the same response; a silent field a silent one.
+// gives the same response; a silent field a silent one, whatever the
+// scratch held.
 
 #include "reflection_response.h"
 #include "spherical_harmonics.h"
@@ -232,6 +233,12 @@ static void TestSilence(void)
         s_field[i] = 0.0f;
     }
     s_out[0][100] = 3.0f;
+    // The scratch holds anything: nothing of it reaches the response.
+    size_t scratch = maudResponseScratch(RATE);
+    for (size_t i = 0; i < scratch; ++i)
+    {
+        s_scratch[i] = (double)NAN;
+    }
     Build(1);
     bool silent = true;
     for (int c = 0; c < 4; ++c)

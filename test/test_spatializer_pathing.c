@@ -7,12 +7,15 @@
 // direction the corner's within a degree, its transmission the
 // diffraction of the corner's 72.8 degree turn in every band; a source
 // that does not ask, one in plain sight and one past maxPaths are not;
-// the same results when the tasks run one at a time in reverse. A block
+// the same results when the tasks run one at a time in reverse; a
+// cardioid's directivity is the path's leaving direction's. A block
 // letting a quarter through (two faces at a half): the transmission is
 // the energy sum of the corner's diffraction and what passes, raised by
 // the straight line's shorter spread, and the direction blends the two
 // arrivals by their energy. A wall closing the corridor after the set
-// was made: its links are found blocked and no path is left. A
+// was made: its links are found blocked and no path is left; a pillar
+// put up blocking one row of links: the path goes around it; every
+// link blocked, more than the search lists: no path. A
 // destroyed set's id is stale and its paths stop.
 
 #include "test_harness.h"
@@ -26,10 +29,24 @@
 // The scene the rays see, switched under a spatializer by the tests.
 static maudAcousticScene* s_current;
 
+// When set, every ray from a probe (a point at half metres in x and z)
+// is blocked: each link of every path found, a source's and the
+// listener's own rays left clear.
+static bool s_linksBlocked;
+
+static bool AtProbe(maudVector3 p)
+{
+    return p.x - floorf(p.x) == 0.5f && p.z - floorf(p.z) == 0.5f;
+}
+
 static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
 {
     (void)context;
     maudSceneAnyHit(rays, count, occluded, s_current);
+    for (uint32_t i = 0; i < count && s_linksBlocked; ++i)
+    {
+        occluded[i] = AtProbe(rays[i].origin) ? 1 : occluded[i];
+    }
 }
 
 static void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
@@ -38,15 +55,24 @@ static void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, vo
     maudSceneClosestHit(rays, count, hits, s_current);
 }
 
-// The corridor, closed across leg A at x = 10 if asked.
-static maudAcousticScene* Corridor(bool closed)
+enum
+{
+    OPEN,
+    // Closed across leg A at x = 10.
+    CLOSED,
+    // A pillar at x = 10 against the inside wall, blocking the row of
+    // probes nearest it and leaving the two others.
+    PILLAR,
+};
+
+static maudAcousticScene* Corridor(int extra)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
     static const uint32_t materials[24] = {0};
     uint32_t indices[72];
     maudVector3 v[16];
-    const maudVector3 low[2] = {{0.0f, 0.0f, 3.0f}, {9.9f, 0.0f, -1.0f}};
+    const maudVector3 low[2] = {{0.0f, 0.0f, 3.0f}, {9.9f, 0.0f, extra == PILLAR ? 2.0f : -1.0f}};
     const maudVector3 high[2] = {{17.0f, 3.0f, 20.0f}, {10.1f, 3.0f, 3.5f}};
     for (uint32_t b = 0; b < 2; ++b)
     {
@@ -61,7 +87,8 @@ static maudAcousticScene* Corridor(bool closed)
             indices[b * 36 + k] = b * 8 + faces[k];
         }
     }
-    maudMesh mesh = {v, closed ? 16u : 8u, indices, materials, closed ? 24u : 12u};
+    bool two = extra != OPEN;
+    maudMesh mesh = {v, two ? 16u : 8u, indices, materials, two ? 24u : 12u};
     maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
@@ -95,6 +122,9 @@ typedef struct World
 } World;
 
 static maudPose s_listener = {{18.5f, 1.5f, 12.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+
+// When set, the source around the corner is a cardioid facing +x.
+static bool s_cardioid;
 
 // Sources: around the corner; the same not asking; in sight; around
 // the corner again, past maxPaths.
@@ -143,6 +173,16 @@ static World Build(bool reversed, float transmission)
         maudSourceDef sd = maudDefaultSourceDef();
         sd.pathing = i != 1;
         maudPose pose = {at[i], {0.0f, 0.0f, 0.0f, 1.0f}};
+        if (s_cardioid && i == 0)
+        {
+            for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+            {
+                sd.directivity.weight[b] = 0.5f;
+                sd.directivity.power[b] = 1.0f;
+            }
+            // A quarter turn to the right about +y: ahead (-z) to +x.
+            pose.orientation = (maudQuaternion){0.0f, -0.70710678f, 0.0f, 0.70710678f};
+        }
         CHECK(maudCreateSource(w.s, &sd, &w.sources[i]) == maud_success &&
                   maudSetSourcePose(w.s, w.sources[i], &pose) == maud_success,
               "a source");
@@ -238,8 +278,9 @@ static void CheckThrough(const maudDirectResult* opaque)
 
 int main(void)
 {
-    maudAcousticScene* scene = Corridor(false);
-    maudAcousticScene* closed = Corridor(true);
+    maudAcousticScene* scene = Corridor(OPEN);
+    maudAcousticScene* closed = Corridor(CLOSED);
+    maudAcousticScene* pillar = Corridor(PILLAR);
     s_current = scene;
     World w = Build(false, 0.0f);
     maudDirectResult r[4];
@@ -258,6 +299,20 @@ int main(void)
               fabsf(turned[0].direction.z - r[0].direction.x) < 1e-4f,
           "arriving in the listener's frame");
     CheckThrough(&r[0]);
+    // A cardioid facing +x: the sound leaves along the path, towards the
+    // corner, at 7.8 degrees off its axis (gain 0.995), not along the
+    // straight line through the block at 40 degrees (0.883).
+    s_cardioid = true;
+    World facing = Build(false, 0.0f);
+    s_cardioid = false;
+    maudDirectResult aimed[4];
+    Step(&facing, aimed);
+    double leaving = 0.5 + 0.5 * 11.0 / sqrt(11.0 * 11.0 + 1.5 * 1.5);
+    printf("cardioid around the corner: %.4f, %.4f along the path\n",
+           (double)aimed[0].directivity[1], leaving);
+    CHECK(aimed[0].pathed && fabs((double)aimed[0].directivity[1] - leaving) < 0.005,
+          "a pathed source's directivity along the path");
+    maudDestroySpatializer(facing.s);
     World other = Build(true, 0.0f);
     maudDirectResult again[4];
     Step(&other, again);
@@ -267,7 +322,18 @@ int main(void)
     s_current = closed;
     Step(&w, r);
     CHECK(!r[0].pathed, "a closed corridor, no path");
+    // A pillar put up after the set was made: the link it blocks is
+    // found and left out, and the path goes around it.
+    s_current = pillar;
+    Step(&w, r);
+    printf("around the pillar: pathed %d, %.3f m\n", (int)r[0].pathed, (double)r[0].distance);
+    CHECK(r[0].pathed, "a blocked link, a path around it");
     s_current = scene;
+    // Every link blocked: more than the search keeps a list of.
+    s_linksBlocked = true;
+    Step(&w, r);
+    s_linksBlocked = false;
+    CHECK(!r[0].pathed, "every link blocked, no path");
     // A destroyed set: its id stale, its paths gone.
     CHECK(maudDestroyProbeSet(w.s, w.set) == maud_success, "destroyed");
     CHECK(maudSetPathing(w.s, w.set) == maud_errorStale, "a destroyed set's id is stale");
@@ -279,6 +345,7 @@ int main(void)
           "pathing off; NULL");
     maudDestroySpatializer(w.s);
     maudDestroyAcousticScene(closed);
+    maudDestroyAcousticScene(pillar);
     maudDestroyAcousticScene(scene);
     return s_failures == 0 ? 0 : 1;
 }

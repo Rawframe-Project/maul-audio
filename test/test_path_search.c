@@ -5,7 +5,8 @@
 // what Bellman-Ford finds over the same links and ends, its vertices
 // run from the listener to the source through linked probes; a blocked
 // link is left out; ends that see no probe find no path, and neither
-// does one through more probes than a path holds.
+// does one through more probes than a path holds; an end attaches to
+// the set's probes only.
 
 #include "allocator.h"
 #include "path_search.h"
@@ -219,6 +220,19 @@ static void TestTooLong(void)
     maudPathEnd to;
     maudAttachPath(&g, g.range, (maudVector3){-0.5f, 0.0f, 0.0f}, nullptr, nullptr, &from);
     maudAttachPath(&g, g.range, (maudVector3){99.5f, 0.0f, 0.0f}, nullptr, nullptr, &to);
+    bool within = from.count > 0;
+    for (uint32_t k = 0; k < from.count; ++k)
+    {
+        within = within && from.probes[k] < g.count;
+    }
+    CHECK(within, "an end attached to probes of the set only");
+    // Every probe of the line in range: the nearest are kept, nearest
+    // first.
+    maudPathEnd wide;
+    maudAttachPath(&g, 1000.0f, (maudVector3){40.2f, 0.0f, 0.0f}, nullptr, nullptr, &wide);
+    CHECK(wide.count == MAUD_PATH_ATTACH && wide.probes[0] == 40 && wide.probes[1] == 41 &&
+              wide.probes[2] == 39,
+          "a hundred probes in range: the nearest, in order");
     maudVector3 v[MAUD_PATH_VERTICES];
     uint32_t probes[MAUD_PATH_VERTICES];
     CHECK(maudSearchPath(&search, &g, &from, &to, (maudVector3){-0.5f, 0.0f, 0.0f},

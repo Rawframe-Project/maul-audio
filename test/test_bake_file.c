@@ -5,11 +5,13 @@
 // of probes and links alone, write and read back to the same memory and
 // write again to the same bytes; every malformed part is refused as
 // invalid (magic, size, checksum, range, layers, a neighbour out of
-// range, a self link, a falling row, a link listed from one end only, a
-// link longer than the range, a point, a time, a level, a tail's time and
-// level and a field out of range), another version as unsupported
+// range, a self link, a falling row, rows not spanning the links, a
+// link listed from one end only, a link longer than the range, a
+// point, a time, a level, a tail's time and level and a field out of
+// range), another version as unsupported
 // (version 1, without tails, still reads), counts past the limits as
-// capacity, and fields of another layout as unsupported.
+// capacity, and fields of another layout as unsupported; a failing
+// allocator is a capacity error with nothing leaked.
 
 #include "allocator.h"
 #include "bake_file.h"
@@ -30,6 +32,31 @@ enum
 };
 
 static const maudAllocator s_allocator = {nullptr, nullptr, nullptr};
+
+static long s_live;
+static long s_failAfter = -1;
+
+static void* CountedAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    if (s_failAfter == 0)
+    {
+        return nullptr;
+    }
+    s_failAfter -= s_failAfter > 0 ? 1 : 0;
+    s_live++;
+    return malloc(size);
+}
+
+static void CountedFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    s_live--;
+    free(memory);
+}
 
 // Two rows of probes 2 m apart with a wall between them over x < 1.5:
 // some pairs within range are linked, some are not.
@@ -339,6 +366,12 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     Put(c.bytes + Neighbours(&c) + 4, first);
     Expect(&c, maud_errorInvalid, "a falling row");
     c = Changed(f);
+    Put(c.bytes + Rows(&c), 1);
+    Expect(&c, maud_errorInvalid, "rows not starting at 0");
+    c = Changed(f);
+    Put(c.bytes + Rows(&c) + 4 * (size_t)f->probes, 2 * f->links - 1);
+    Expect(&c, maud_errorInvalid, "rows not ending at the links");
+    c = Changed(f);
     CHECK(OneEnded(&c, g), "a pair in range unlinked");
     Expect(&c, maud_errorInvalid, "a link from one end");
     c = Changed(f);
@@ -381,6 +414,24 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
           "no file, a short one");
 }
 
+// The set's block failing, then the bake's: a capacity error with
+// nothing leaked.
+static void TestFailingAllocator(const File* f)
+{
+    const maudAllocator counted = {CountedAlloc, CountedFree, nullptr};
+    for (long failAt = 0; failAt < 2; ++failAt)
+    {
+        s_failAfter = failAt;
+        maudProbeGraph rg;
+        maudProbeBake rb;
+        CHECK(maudReadBakeFile(f->bytes, f->size, &s_limits, &counted, &rg, &rb) ==
+                      maud_errorCapacity &&
+                  s_live == 0,
+              "a failing allocator is a capacity error, nothing leaked");
+    }
+    s_failAfter = -1;
+}
+
 int main(void)
 {
     maudProbeGraph g = Graph();
@@ -390,6 +441,7 @@ int main(void)
     TestRoundTrip(&g, &b, &f);
     TestRefused(&g, &b, &f);
     TestVersion1(&b, &f);
+    TestFailingAllocator(&f);
     free(f.bytes);
     maudReleaseProbeBake(&s_allocator, &b);
     maudReleaseProbeGraph(&s_allocator, &g);

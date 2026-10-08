@@ -2,12 +2,14 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Probe sets (whitebox): in an L-shaped corridor every pair within range
-// is linked exactly when a ray between them is clear, each row
-// ascending, symmetric and measured; the set is the same byte for byte
-// when the tasks run one item at a time in reverse; generation over a
+// is linked exactly when a ray between them is clear, the points given
+// in any order, each row ascending, symmetric and measured; the set is
+// the same byte for byte when the tasks run one item at a time in
+// reverse; generation over a
 // mezzanine and a low shelf puts a probe on each storey and none under
-// the shelf; without an any-hit query every pair within range is
-// linked; the limits and a missing closest-hit query are refused.
+// the shelf, and on a tower's top eight storeys only; without an
+// any-hit query every pair within range is linked; the limits and a
+// missing closest-hit query are refused.
 
 #include "allocator.h"
 #include "probe_graph.h"
@@ -20,7 +22,7 @@
 
 enum
 {
-    MAX_BOXES = 4
+    MAX_BOXES = 10
 };
 
 static maudVector3 s_vertices[8 * MAX_BOXES];
@@ -162,6 +164,19 @@ static void TestCorridor(void)
     maudProbeGraph plain;
     CHECK(maudBuildProbeGraph(&q, &def, &plain) == maud_success, "built");
     CheckLinks(scene, &plain, def.range);
+    // The same points shuffled (a stride of 50, prime to the 111 of
+    // them): linked alike.
+    static maudVector3 shuffled[400];
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        shuffled[i] = points[(i * 50u) % count];
+    }
+    maudProbeSetDef mixed = {.points = shuffled, .pointCount = count, .range = 3.0f};
+    maudProbeGraph other;
+    CHECK(count == 111 && maudBuildProbeGraph(&q, &mixed, &other) == maud_success,
+          "built from shuffled points");
+    CheckLinks(scene, &other, mixed.range);
+    maudReleaseProbeGraph(&s_allocator, &other);
     q.enqueueTask = Reverse;
     q.finishTask = Finish;
     maudProbeGraph reversed;
@@ -231,6 +246,9 @@ static void TestGeneration(void)
     maudReleaseProbeGraph(&s_allocator, &g);
     q.maxProbes = 23;
     CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorCapacity, "past maxProbes");
+    q.maxProbes = 24;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "at maxProbes");
+    maudReleaseProbeGraph(&s_allocator, &g);
     q.maxProbes = 4096;
     q.closestHit = nullptr;
     CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorState, "no closest-hit query");
@@ -239,9 +257,40 @@ static void TestGeneration(void)
     maudDestroyAcousticScene(scene);
 }
 
+// A tower of ten storeys over one column: probes on the top eight, the
+// most a column holds, in a box flat along z (one row of columns).
+static void TestTower(void)
+{
+    for (int f = 0; f < 10; ++f)
+    {
+        float y = 3.0f * (float)f;
+        Box((maudVector3){0.0f, y - 0.2f, 0.0f}, (maudVector3){1.0f, y, 1.0f});
+    }
+    maudAcousticScene* scene = Scene();
+    maudProbeSetDef def = {.boxMin = {0.0f, -1.0f, 0.5f},
+                           .boxMax = {1.0f, 30.0f, 0.5f},
+                           .spacing = 1.0f,
+                           .height = 1.5f,
+                           .range = 2.0f};
+    CHECK(maudProbeSetDefValid(&def), "a box flat along z");
+    maudProbeQueries q = Queries(scene);
+    maudProbeGraph g;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "generated");
+    float lowest = INFINITY;
+    for (uint32_t i = 0; i < g.count; ++i)
+    {
+        lowest = fminf(lowest, g.points[i].y);
+    }
+    printf("tower: %u probes, the lowest at %.1f m\n", g.count, (double)lowest);
+    CHECK(g.count == 8 && fabsf(lowest - 7.5f) < 1e-4f, "the top eight storeys");
+    maudReleaseProbeGraph(&s_allocator, &g);
+    maudDestroyAcousticScene(scene);
+}
+
 int main(void)
 {
     TestCorridor();
     TestGeneration();
+    TestTower();
     return s_failures == 0 ? 0 : 1;
 }
