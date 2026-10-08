@@ -465,6 +465,6 @@ format.
   checklist runs) and `sample_binaural` (a source circling the
   listener, rendered to a WAV file with the Spatial part alone), built
   when `MAUL_AUDIO_BUILD_SAMPLES` is on, as it is at the top level.
-- A guide, `docs/guide.md`, to the Device part, whose snippets
+- A guide, `docs/guide.md`, to both parts, whose snippets
   `test/test_guide.c` builds and runs and `tools/check_guide.py` keeps
   equal to the guide in CI.

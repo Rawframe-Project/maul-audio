@@ -82,9 +82,11 @@ before a release, following `docs/device-checklist.md`.
 
 ## Guide
 
-`docs/guide.md` walks through the Device part: a context and its
-devices, a stream, notifications, the offline backend and the voice
-processors. Its snippets are built and run by `test/test_guide.c`.
+`docs/guide.md` walks through both parts: a context and its devices,
+a stream, notifications, the offline backend and the voice processors;
+then an HRTF set, the binaural effect, the ambisonic bed, direct
+effects, the reverb and the spatializer. Its snippets are built and run
+by `test/test_guide.c`.
 
 ## Design
 

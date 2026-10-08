@@ -1,9 +1,12 @@
 # Maul Audio guide
 
 Maul Audio moves audio between a host and the platform's devices, and
-renders sound in space. This guide walks through the Device part: a
+renders sound in space. This guide walks through the Device part (a
 context and its devices, a stream, the notifications that keep a host
-current, the offline backend tests run on, and the voice processors.
+current, the offline backend tests run on, and the voice processors),
+then the Spatial part (an HRTF set, the binaural effect, the ambisonic
+bed, direct effects, the reverb, and the spatializer that drives them
+from a scene). The parts build and work apart.
 `docs/api.md` lists every function; each header says what its
 functions take and return.
 
@@ -229,6 +232,152 @@ maudDestroyEchoCanceller(canceller);
 The voice detector (`maudDetectVoice`) and the gain control
 (`maudApplyGainControl`) follow the same shape.
 
+## An HRTF set
+
+The Spatial part renders for headphones through an HRTF set: the
+library's own format, which `tools/sofa_to_maudhrtf.py` makes from a
+SOFA file. The host reads the file (the library opens none) and hands
+the bytes over; the loader treats them as hostile, bounded and checked:
+
+```c
+maudHrtfDef def = maudDefaultHrtfDef();
+def.bytes = bytes;          // the file's bytes, the host's to keep or free
+def.byteCount = byteCount;
+maudHrtf* hrtf = NULL;
+maudResult result = maudLoadHrtf(&def, &hrtf);
+// maud_errorInvalid: a damaged or foreign file; maud_errorUnsupported: a newer version.
+```
+
+The set in `data/hrtf/` (SADIE II, a KU100 dummy head, Apache 2.0) is
+the default. One set serves every effect that uses it.
+
+## A source for headphones
+
+The binaural effect renders one mono source for both ears, moving
+smoothly between calls:
+
+```c
+maudBinauralDef def = maudDefaultBinauralDef();   // the near field on
+def.hrtf = hrtf;
+maudBinaural* effect = NULL;
+maudResult result = maudCreateBinaural(&def, &effect);
+maudBinauralParams params = {{2.0f, 0.0f, -1.0f}, 0.5f};   // ahead and right; its gain
+float* ears[2] = {left, right};
+if (result == maud_success)
+{
+    result = maudProcessBinaural(effect, &params, mono, ears, 480);
+}
+```
+
+Positions are in metres in the listener's frame: +x right, +y up, -z
+ahead. The gain is the host's (its distance curve): the effect applies
+none of its own.
+
+## Many sources: the ambisonic bed
+
+Distant sources and ambience are cheaper through a bed: each source is
+encoded into it, the bed turns with the listener's head, and one
+decoder renders it for the ears (or `maudDecodeToSpeakers` for a
+speaker layout):
+
+```c
+uint32_t order = 3;
+maudPanSource was = {{0.0f, 0.0f, -1.0f}, 1.0f};   // where it was at the last call
+maudPanSource now = {{1.0f, 0.0f, -1.0f}, 1.0f};   // and is at this one's end
+maudResult result = maudEncodeAmbisonic(order, &was, &now, mono, bed, 480);
+maudQuaternion head = {0.0f, 0.0f, 0.0f, 1.0f};   // the listener's turn, from its pose
+if (result == maud_success)
+{
+    result = maudRotateAmbisonic(order, &head, &head, bed, 480);
+}
+maudBinauralDecoderDef def = maudDefaultBinauralDecoderDef();
+def.hrtf = hrtf;
+def.order = order;
+maudBinauralDecoder* decoder = NULL;
+if (result == maud_success)
+{
+    result = maudCreateBinauralDecoder(&def, &decoder);
+}
+float* ears[2] = {left, right};
+if (result == maud_success)
+{
+    result = maudDecodeBinaural(decoder, (const float* const*)bed, ears, 480);
+}
+maudDestroyBinauralDecoder(decoder);
+```
+
+A bed of order `order` has `maudGetAmbisonicChannelCount(order)`
+channels (16 at the third), in ACN order with SN3D weights, which other
+ambisonic tools read.
+
+## What the path does to a source
+
+The direct effect filters a source by what lies between it and the
+listener: air over the distance, a wall's occlusion and transmission,
+and the source's directivity, in three bands:
+
+```c
+maudDirectEffectDef def = maudDefaultDirectEffectDef();
+maudDirectEffect* effect = NULL;
+maudResult result = maudCreateDirectEffect(&def, &effect);
+maudDirectParams params = maudDefaultDirectParams();   // a clear path
+params.distance = 30.0f;          // air absorbs the highs over 30 m
+params.occlusion = 1.0f;          // behind a wall...
+params.transmission[0] = 0.3f;    // ...that lets some lows through
+params.transmission[1] = 0.1f;
+params.transmission[2] = 0.02f;
+if (result == maud_success)
+{
+    result = maudProcessDirect(effect, &params, mono, filtered, 480);
+}
+maudDestroyDirectEffect(effect);
+```
+
+## The room: the reverb
+
+The reverb takes a send and adds the room's late sound to a first-order
+bed, decaying in three bands as the params say:
+
+```c
+maudReverbDef def = maudDefaultReverbDef();   // 48 kHz
+def.maxDelay = 0.1f;                          // the longest send delay it will take, s
+maudReverb* reverb = NULL;
+maudResult result = maudCreateReverb(&def, &reverb);
+maudReverbParams params = {
+    .reverbTime = {1.8f, 1.2f, 0.6f},   // seconds to fall 60 dB: lows, mids, highs
+    .level = {-12.0f, -12.0f, -18.0f},  // the send's level per band, dB
+    .delay = 0.02f,                     // the send's delay, s
+};
+if (result == maud_success)
+{
+    result = maudProcessReverb(reverb, &params, mono, bed, 480);   // four channels
+}
+maudDestroyReverb(reverb);
+```
+
+## The spatializer: from a scene
+
+Rather than set every effect's params by hand, a host can let the
+spatializer compute them from its world (`maul-audio/spatializer.h`),
+in two sides, as Steam Audio splits them:
+
+- **The simulation side** runs on the host's tasks, at a rate the host
+  picks: it updates sources and the listener, traces rays through the
+  host's own scene (the host answers closest-hit and any-hit queries,
+  so level geometry is not copied), and finds occlusion, transmission,
+  reflections, the reverb's times and paths around corners. Probe sets
+  bake the static part offline, input-deterministic, into a file a
+  host ships (`maudBakeProbeSet`, `maudSaveProbeSet`,
+  `maudLoadProbeSet`).
+- **The rendering side** runs on the audio thread: `maudLatchResults`
+  takes the latest published results, never torn, and
+  `maudGetDirectResult` and `maudGetReverbResult` give each source's
+  direct params and the listener's reverb params for the effects above.
+
+Every count (sources, rays, probes, triangles) is a limit the host sets;
+going past one is a typed result, never unbounded work. The header
+documents each call; `test/test_spatializer*.c` run whole scenes.
+
 ## Building and using it
 
 ```sh
@@ -240,4 +389,6 @@ cmake --install build --prefix /usr/local
 
 A host finds the package with `find_package(maul-audio)` and links
 `maul-audio::maul-audio`; `-DMAUL_AUDIO_SPATIAL=OFF` builds the Device
-part alone. `samples/devices.c` puts the calls above together.
+part alone, `-DMAUL_AUDIO_DEVICE=OFF` the Spatial part. The samples put
+the calls above together: `samples/devices.c` for the Device part,
+`samples/binaural.c` for the Spatial part.

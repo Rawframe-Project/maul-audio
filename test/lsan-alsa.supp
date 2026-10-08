@@ -1,0 +1,6 @@
+# libasound's leaks when it fails to open a PCM on a machine without a
+# sound card or server (the CI's runners): snd_pcm_open's own blocks and
+# its configuration tree. The library itself allocates nothing under
+# maudAlsaAttachStream (its memory is the context's), so only
+# libasound's blocks match.
+leak:maudAlsaAttachStream

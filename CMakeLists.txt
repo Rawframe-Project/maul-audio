@@ -363,8 +363,21 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(gain_control)
     maul_add_test(noise_suppressor)
     maul_add_test(echo_canceller)
-    # The guide's snippets (docs/guide.md), as written there.
-    maul_add_test(guide)
+    # The guide's snippets (docs/guide.md), as written there: both parts'.
+    if(MAUL_AUDIO_SPATIAL)
+        maul_add_test(guide)
+        maul_audio_test_data(guide)
+        # Node's own file system, so the web reads the HRTF set too.
+        if(EMSCRIPTEN)
+            target_link_options(test_guide PRIVATE -sNODERAWFS=1)
+        endif()
+        # Its stream may open ALSA's default PCM on a machine without
+        # sound, where libasound leaks.
+        if(MAUL_AUDIO_SANITIZE AND MAUL_AUDIO_ALSA)
+            set_tests_properties(guide PROPERTIES ENVIRONMENT
+                "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/lsan-alsa.supp")
+        endif()
+    endif()
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)
