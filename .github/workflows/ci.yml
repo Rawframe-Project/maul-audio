@@ -19,9 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install tools
+        timeout-minutes: 15
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q clang-20 clang-tidy-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
+          sudo apt-get install -y -q --no-install-recommends clang-20 clang-tidy-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
           pip install clang-format==22.1.5 >/dev/null
       - name: clang-format
         run: |
@@ -67,10 +68,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install compilers
+        # Without recommends (clang's alone pull 50 MB of llvm-dev); the
+        # sanitizer cells need clang's runtime, which only a recommend
+        # brought. A mirror that stalls fails the step for a rerun.
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q gcc-14 g++-14 clang-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
+          sudo apt-get install -y -q --no-install-recommends gcc-14 g++-14 clang-20 libclang-rt-20-dev ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
       - name: Install BlackHole
         # The runners have no audio hardware; the CoreAudio test plays
         # into this virtual device.
