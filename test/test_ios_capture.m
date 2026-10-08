@@ -100,7 +100,14 @@ static bool Near(double rate, double expected)
     bool within = rate > expected * 0.94 && rate < expected * 1.02;
     if (!within)
     {
-        printf("measured %.0f frames/s, expected %.0f\n", rate, expected);
+        // What the session was doing, for a simulator whose input stalls
+        // now and then.
+        AVAudioSession* session = [AVAudioSession sharedInstance];
+        printf("measured %.0f frames/s, expected %.0f; session at %.0f Hz, IO buffer %.4f s, "
+               "input %s with %ld channels, latency %.4f s\n",
+               rate, expected, session.sampleRate, session.IOBufferDuration,
+               session.inputAvailable ? "available" : "unavailable",
+               (long)session.inputNumberOfChannels, session.inputLatency);
     }
     return within;
 }

@@ -187,6 +187,10 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
       - name: Build
         run: cmake --build build -j 4
+      - name: Audio devices
+        # The simulator's microphone is the runner's default input: which
+        # device that is, for the capture test's occasional stalls.
+        run: system_profiler SPAudioDataType | sed -n '1,80p'
       - name: Test
         run: ctest --test-dir build --output-on-failure --timeout 300
 
