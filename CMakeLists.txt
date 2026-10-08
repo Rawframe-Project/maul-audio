@@ -363,6 +363,8 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(gain_control)
     maul_add_test(noise_suppressor)
     maul_add_test(echo_canceller)
+    # The guide's snippets (docs/guide.md), as written there.
+    maul_add_test(guide)
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)

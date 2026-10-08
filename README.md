@@ -80,6 +80,12 @@ Device churn a CI runner cannot simulate (a real headset plugged in,
 the audio service restarted on Windows or macOS) is checked by hand
 before a release, following `docs/device-checklist.md`.
 
+## Guide
+
+`docs/guide.md` walks through the Device part: a context and its
+devices, a stream, notifications, the offline backend and the voice
+processors. Its snippets are built and run by `test/test_guide.c`.
+
 ## Design
 
 The rules every Maul library follows are in `docs/conventions.md` and
