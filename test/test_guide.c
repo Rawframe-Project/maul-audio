@@ -12,6 +12,9 @@
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
 #endif
+// fopen reads the HRTF set; the C runtime's warning that it is unsafe
+// is about fopen_s's checks, which a test path does not need.
+#define _CRT_SECURE_NO_WARNINGS
 
 #include "test_harness.h"
 
