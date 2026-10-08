@@ -367,6 +367,9 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     if(MAUL_AUDIO_SPATIAL)
         maul_add_test(guide)
         maul_audio_test_data(guide)
+        # Its stream plays on the test daemon, which other tests plug,
+        # unplug and restart.
+        set_tests_properties(guide PROPERTIES RESOURCE_LOCK pipewire-daemon)
         # Node's own file system, so the web reads the HRTF set too.
         if(EMSCRIPTEN)
             target_link_options(test_guide PRIVATE -sNODERAWFS=1)
