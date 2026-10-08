@@ -73,6 +73,11 @@ family does not have.
   macOS; AVFAudio and AudioToolbox on
   iOS; AAudio on Android (API 30 and later); Web Audio with an
   AudioWorklet on the web.
+- **Litmus test:** no engine concept is named in the public API: any
+  C or C++ program can use the library, a game, a DAW-style tool or a
+  voice app. `tools/check_litmus.py` refuses, in CI, the public
+  headers' identifiers that name one (an engine's worlds, entities,
+  components or assets, or its audio side: mixers, buses, emitters).
 - **Commit areas:** `aaudio`, `alsa`, `ambisonics`, `api`, `bake`,
   `bench`, `build`, `capture`, `ci`, `coreaudio`, `device`, `docs`,
   `hrtf`, `occlusion`, `offline`, `panning`, `pipewire`, `pulse`,
