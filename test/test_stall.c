@@ -14,6 +14,9 @@
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
 #endif
+// getenv reads the test's switches; the C runtime's warning that it is
+// unsafe is about its result's lifetime, which the test does not keep.
+#define _CRT_SECURE_NO_WARNINGS
 
 #include "test_harness.h"
 
