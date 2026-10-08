@@ -25,10 +25,10 @@ apartments.
 
 ## By hand, before a release
 
-Use a build with tests (`ctest` passes first). Run a host that plays a
-tone on the default output and records from the default input, and
-logs every notification with its kind, device and stream. A sample
-host is not shipped; the tests' helpers show the calls.
+Use a build with tests (`ctest` passes first). Run `sample_devices
+600` (samples/devices.c): it lists the devices, plays a quiet tone on
+the default output, and prints every notification with its kind,
+device and stream, and the stream's latency when it moves.
 
 On each platform, with two outputs at least (built-in speakers and a
 USB or Bluetooth headset):

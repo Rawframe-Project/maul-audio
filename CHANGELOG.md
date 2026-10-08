@@ -460,3 +460,8 @@ format.
   leaves its empty bins alone. On the AEC Challenge's synthetic clips it
   reaches Speex with its preprocessor in near-end intelligibility and
   echo taken (median) at 16 and at 48 kHz.
+- Samples: `sample_devices` (the devices, a tone on the default output,
+  every notification and the latency as it moves; the host the device
+  checklist runs) and `sample_binaural` (a source circling the
+  listener, rendered to a WAV file with the Spatial part alone), built
+  when `MAUL_AUDIO_BUILD_SAMPLES` is on, as it is at the top level.

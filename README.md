@@ -71,6 +71,11 @@ builds the Spatial part alone, `-DMAUL_AUDIO_SPATIAL=OFF` the Device
 part alone. Neither part's code uses the other's, so a host links only
 what it uses.
 
+Two samples show the parts in use: `sample_devices` lists the devices,
+plays a tone on the default output and prints every notification;
+`sample_binaural` renders a source circling the listener to a WAV file
+with the shipped HRTF set, without a device.
+
 Device churn a CI runner cannot simulate (a real headset plugged in,
 the audio service restarted on Windows or macOS) is checked by hand
 before a release, following `docs/device-checklist.md`.
