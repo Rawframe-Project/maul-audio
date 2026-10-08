@@ -68,14 +68,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install compilers
-        # Without recommends (clang's alone pull 50 MB of llvm-dev); the
-        # sanitizer cells need clang's runtime, which only a recommend
-        # brought. A mirror that stalls fails the step for a rerun.
+        # Without recommends (clang's alone pull 50 MB of llvm-dev), naming
+        # what only a recommend brought: clang's sanitizer runtime and
+        # llvm-symbolizer for the sanitizer cells, and PipeWire's client
+        # configuration (pipewire-bin), which every PipeWire system has;
+        # without it libpipewire leaks on its own failed setup. A mirror
+        # that stalls fails the step for a rerun.
         if: runner.os == 'Linux'
         timeout-minutes: 15
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends gcc-14 g++-14 clang-20 libclang-rt-20-dev ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
+          sudo apt-get install -y -q --no-install-recommends gcc-14 g++-14 clang-20 libclang-rt-20-dev llvm-20 ninja-build \
+            libpipewire-0.3-dev pipewire-bin libpulse-dev libasound2-dev
       - name: Install BlackHole
         # The runners have no audio hardware; the CoreAudio test plays
         # into this virtual device.
