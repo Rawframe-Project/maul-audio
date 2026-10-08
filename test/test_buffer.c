@@ -2,13 +2,15 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Interleaving and deinterleaving: exact copies in the documented order,
-// and refusals of invalid arguments.
+// with nothing written past an array, and refusals of invalid
+// arguments.
 
 #include "test_harness.h"
 
 #include "maul-audio/buffer.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define FRAMES       37
@@ -20,23 +22,25 @@ static float Sample(uint32_t channel, uint32_t frame)
     return (float)(channel * 1000u + frame) + 0.25f;
 }
 
+// Each array on the heap at its exact size, so that a write past one
+// is caught under the address sanitizer.
 static void CheckRoundTrip(uint32_t channelCount)
 {
-    static float planar[MAX_CHANNELS][FRAMES];
-    static float back[MAX_CHANNELS][FRAMES];
-    static float interleaved[MAX_CHANNELS * FRAMES];
-    const float* in[MAX_CHANNELS];
-    float* out[MAX_CHANNELS];
+    float* planar[MAX_CHANNELS];
+    float* back[MAX_CHANNELS];
+    float* interleaved = malloc(sizeof(float) * channelCount * FRAMES);
     for (uint32_t c = 0; c < channelCount; ++c)
     {
+        planar[c] = malloc(sizeof(float) * FRAMES);
+        back[c] = calloc(FRAMES, sizeof(float));
         for (uint32_t i = 0; i < FRAMES; ++i)
         {
             planar[c][i] = Sample(c, i);
         }
-        in[c] = planar[c];
-        out[c] = back[c];
     }
-    CHECK(maudInterleave(in, channelCount, FRAMES, interleaved) == maud_success, "interleave");
+    CHECK(maudInterleave((const float* const*)planar, channelCount, FRAMES, interleaved) ==
+              maud_success,
+          "interleave");
     bool ordered = true;
     for (uint32_t i = 0; i < FRAMES; ++i)
     {
@@ -46,14 +50,17 @@ static void CheckRoundTrip(uint32_t channelCount)
         }
     }
     CHECK(ordered, "frame i, channel c at i * channelCount + c");
-    memset(back, 0, sizeof(back));
-    CHECK(maudDeinterleave(interleaved, channelCount, FRAMES, out) == maud_success, "deinterleave");
+    CHECK(maudDeinterleave(interleaved, channelCount, FRAMES, back) == maud_success,
+          "deinterleave");
     bool exact = true;
     for (uint32_t c = 0; c < channelCount; ++c)
     {
-        exact = exact && memcmp(back[c], planar[c], sizeof(planar[c])) == 0;
+        exact = exact && memcmp(back[c], planar[c], sizeof(float) * FRAMES) == 0;
+        free(planar[c]);
+        free(back[c]);
     }
     CHECK(exact, "round trip is exact");
+    free(interleaved);
 }
 
 static void TestRoundTripsEveryChannelCount(void)
