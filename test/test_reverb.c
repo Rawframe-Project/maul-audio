@@ -331,6 +331,13 @@ static void TestBehaviour(void)
     maudReverb* none = (maudReverb*)&def;
     def.sampleRate = 32000.0f;
     CHECK(maudCreateReverb(&def, &none) == maud_errorInvalid && none == nullptr, "32 kHz");
+    float ends[2] = {44100.0f, 384000.0f};
+    for (int i = 0; i < 2; ++i)
+    {
+        def.sampleRate = ends[i];
+        CHECK(maudCreateReverb(&def, &none) == maud_success, "the rates' ends taken");
+        maudDestroyReverb(none);
+    }
     def = maudDefaultReverbDef();
     def.cookie = 0;
     CHECK(maudCreateReverb(&def, &none) == maud_errorInvalid, "no cookie");

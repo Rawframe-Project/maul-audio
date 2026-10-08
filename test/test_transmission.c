@@ -151,8 +151,11 @@ static void TestWalk(void)
           "a clear path walks nothing");
     s_farMaterial = 7;
     r = Result(s, id, 2.0f, -10.0f);
-    s_farMaterial = 1;
     CHECK(Bands(&r, 0.0f, 0.0f, 0.0f), "an unknown material lets nothing through");
+    s_farMaterial = 2;
+    r = Result(s, id, 2.0f, -10.0f);
+    s_farMaterial = 1;
+    CHECK(Bands(&r, 0.0f, 0.0f, 0.0f), "nor the index just past the table");
     CHECK(maudDestroySource(s, id) == maud_success, "destroy");
     maudSourceId quiet = Source(s, false);
     s_closest = 0;

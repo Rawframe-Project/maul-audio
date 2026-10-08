@@ -421,6 +421,24 @@ static void TestTruncated(void)
     maudDestroyAcousticScene(box);
 }
 
+// A histogram cut short at 0.5 s whose bins do not fall: nothing to
+// extend it from, so the time is the ceiling, not a decay made up past
+// the cut.
+static void TestNoDecay(void)
+{
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            s_histograms[0].energy[b][i] = i < 50 ? 1.0f + 0.01f * (float)i : 0.0f;
+        }
+    }
+    s_histograms[0].truncated = 0.5f;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    CHECK(fit.times[0] == 20.0f && fit.times[1] == 20.0f, "rising bins cut short: the ceiling");
+}
+
 // Synthetic histograms: an exponential of 1.5 s, one slope; bins falling
 // at 0.5 s to -25 dB and then at 3 s, two slopes (one fitted from -5 to
 // -25 dB would read 2.03 s), the slower with a few percent of the
@@ -684,6 +702,7 @@ int main(void)
     TestBlocked();
     TestTruncated();
     TestFit();
+    TestNoDecay();
     TestTailLevels();
     TestTailBounds();
     TestCoupledRooms();

@@ -60,6 +60,8 @@ int main(void)
     CHECK(isfinite(maudExp(709.0)) && fabs(maudExp(709.0) / exp(709.0) - 1.0) < 1e-12 &&
               maudExp(-708.0) > 0.0 && fabs(maudExp(-708.0) / exp(-708.0) - 1.0) < 1e-12,
           "the range's ends computed, not cut");
+    maudSinCos(1e6, &s, &c);
+    CHECK(fabs(s - sin(1e6)) < 1e-9 && fabs(c - cos(1e6)) < 1e-9, "the range's end computed");
     maudSinCos(1e7, &s, &c);
     CHECK(isnan(maudExp((double)NAN)) && maudExp(-HUGE_VAL) == 0.0 && isnan(s) && isnan(c),
           "NaN through, infinity to 0, out of range");
