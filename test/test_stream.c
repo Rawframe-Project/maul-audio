@@ -375,6 +375,8 @@ static void TestStreamLimitAndStaleIds(void)
     CHECK(maudStartStream(context, first) == maud_errorStale, "start stale");
     float frames[2];
     CHECK(maudRenderStream(context, first, frames, 1) == maud_errorStale, "render stale");
+    maudStreamClock clock = {0};
+    CHECK(maudGetStreamClock(context, first, &clock) == maud_errorStale, "a stale stream's clock");
     maudStreamId reused = Open(context, &def);
     CHECK(reused.index1 == first.index1 && reused.generation != first.generation,
           "a reused slot gets a new generation");
@@ -382,6 +384,10 @@ static void TestStreamLimitAndStaleIds(void)
     CHECK(maudStartStream(context, (maudStreamId){0, 0}) == maud_errorStale, "null id");
     CHECK(maudStartStream(context, (maudStreamId){99, 1}) == maud_errorStale, "out of range");
     CHECK(maudGetContextMisuse(context) == 0, "stale ids are not misuse");
+    maudStreamId junk = {7, 7};
+    CHECK(maudCreateStream(nullptr, &def, &junk) == maud_errorInvalid && junk.index1 == 0 &&
+              junk.generation == 0 && maudCreateStream(context, &def, nullptr) == maud_errorInvalid,
+          "a refused stream's id cleared; no id to write");
     (void)second;
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }

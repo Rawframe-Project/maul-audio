@@ -295,6 +295,16 @@ static void TestRefusals(void)
     def = maudDefaultOfflineDeviceDef();
     def.sampleRate = 400000;
     CHECK(maudAddOfflineDevice(context, &def, &id) == maud_errorInvalid, "rate out of range");
+    // On a context of its own, the room here being counted.
+    maudContext* spare = Offline(16);
+    def.sampleRate = 384000;
+    def.direction = maud_directionInput;
+    maudDeviceInfo highest = {0};
+    CHECK(maudAddOfflineDevice(spare, &def, &id) == maud_success &&
+              maudGetDeviceInfo(spare, id, &highest) == maud_success &&
+              highest.nativeSampleRate == 384000 && highest.spatializer == maud_spatializerUnknown,
+          "the highest rate taken; an input's spatializer unknown");
+    CHECK(maudDestroyContext(spare) == maud_success, "destroy the spare");
     def = maudDefaultOfflineDeviceDef();
     def.nameLength = 3;
     CHECK(maudAddOfflineDevice(context, &def, &id) == maud_errorInvalid, "length without name");
@@ -354,8 +364,8 @@ static void TestRouteChanges(void)
     CHECK(maudAddOfflineDevice(context, &def, &device) == maud_success, "add");
     maudDeviceInfo info = {0};
     CHECK(maudGetDeviceInfo(context, device, &info) == maud_success &&
-              info.form == maud_formSpeakers,
-          "it reports its form");
+              info.form == maud_formSpeakers && info.spatializer == maud_spatializerNone,
+          "it reports its form, and no spatializer on an output");
     Blocks blocks = {0};
     maudStreamId stream = OpenOutput(context, device, maud_roleGeneral, &blocks);
     while (maudNextNotification(context, &(maudNotification){0}) == maud_success)
@@ -379,6 +389,8 @@ static void TestRouteChanges(void)
           "the stream stays on it");
     CHECK(maudSetOfflineDeviceForm(context, device, maud_formDigital + 1) == maud_errorInvalid,
           "an unknown form");
+    CHECK(maudSetOfflineDeviceForm(context, device, maud_formDigital) == maud_success,
+          "the last form");
     def.form = maud_formDigital + 1;
     CHECK(maudAddOfflineDevice(context, &def, &device) == maud_errorInvalid,
           "an unknown form in a def");

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Channel layouts: counts, speakers in the Windows mask order, and the
-// BS.2051 positions.
+// Channel layouts: counts, speakers in the Windows mask order, the
+// BS.2051 positions, and (whitebox) the layout for a channel count.
 
+#include "layout.h"
 #include "test_harness.h"
 
 #include "maul-audio/layout.h"
@@ -50,10 +51,26 @@ static void TestOutOfRangeChannelsReportNothing(void)
     CHECK(maudGetLayoutSpeaker(maud_layout7Point1Point4, 12) == maud_speakerNone, "past 7.1.4");
     CHECK(maudGetLayoutSpeaker(maud_layoutNone, 0) == maud_speakerNone, "none layout");
     CHECK(maudGetLayoutSpeaker(200, 0) == maud_speakerNone, "unknown layout");
+    CHECK(maudGetLayoutSpeaker(maud_layout7Point1Point4 + 1, 0) == maud_speakerNone,
+          "one past the last layout");
     maudSpeakerPosition position = maudGetLayoutSpeakerPosition(maud_layoutQuad, 4);
     CHECK(position.azimuthDegrees == 0.0f && position.elevationDegrees == 0.0f, "past quad");
     position = maudGetLayoutSpeakerPosition(9, 0);
     CHECK(position.azimuthDegrees == 0.0f && position.elevationDegrees == 0.0f, "unknown");
+}
+
+// The layout for a channel count, the last one's included (whitebox).
+static void TestLayoutForCount(void)
+{
+    bool each = true;
+    for (uint32_t layout = maud_layoutMono; layout <= maud_layout7Point1Point4; ++layout)
+    {
+        uint32_t channels = maudGetLayoutChannelCount(layout);
+        each = each && maudLayoutWithChannels(channels) == layout;
+    }
+    CHECK(each && maudLayoutWithChannels(12) == maud_layout7Point1Point4 &&
+              maudLayoutWithChannels(3) == maud_layoutNone,
+          "each count's layout; none for a count without one");
 }
 
 static bool At(maudChannelLayout layout, uint32_t channel, float azimuth, float elevation)
@@ -82,5 +99,6 @@ int main(void)
     TestSpeakersFollowTheMaskOrder();
     TestOutOfRangeChannelsReportNothing();
     TestPositionsFollowBs2051();
+    TestLayoutForCount();
     return s_failures == 0 ? 0 : 1;
 }
