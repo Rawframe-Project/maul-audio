@@ -354,6 +354,7 @@ endif()
 # The Device part's tests.
 if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(context)
+    maul_add_test(focus WHITEBOX)
     maul_add_test(stream)
     maul_add_test(objects)
     maul_add_test(device)

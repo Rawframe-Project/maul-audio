@@ -57,6 +57,9 @@ int main(void)
     maudSinCos(0.0, &s, &c);
     CHECK(maudExp(0.0) == 1.0 && maudLog(1.0) == 0.0 && s == 0.0 && c == 1.0, "exact points");
     CHECK(maudExp(800.0) == HUGE_VAL && maudExp(-800.0) == 0.0, "overflow and underflow");
+    CHECK(isfinite(maudExp(709.0)) && fabs(maudExp(709.0) / exp(709.0) - 1.0) < 1e-12 &&
+              maudExp(-708.0) > 0.0 && fabs(maudExp(-708.0) / exp(-708.0) - 1.0) < 1e-12,
+          "the range's ends computed, not cut");
     maudSinCos(1e7, &s, &c);
     CHECK(isnan(maudExp((double)NAN)) && maudExp(-HUGE_VAL) == 0.0 && isnan(s) && isnan(c),
           "NaN through, infinity to 0, out of range");

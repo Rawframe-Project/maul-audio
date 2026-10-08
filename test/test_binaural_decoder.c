@@ -273,6 +273,12 @@ static void TestMisuse(const maudHrtf* hrtf)
     def.order = 1;
     def.maxFrames = 0;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "no frames");
+    def.maxFrames = 16385;
+    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "too many frames");
+    def.maxFrames = 16384;
+    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_success, "the most frames");
+    maudDestroyBinauralDecoder(none);
+    none = nullptr;
     def.maxFrames = 64;
     def.cookie = 0;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "no cookie");
@@ -286,6 +292,9 @@ static void TestMisuse(const maudHrtf* hrtf)
     CHECK(maudDecodeBinaural(decoder, bed, out, 64) == maud_errorInvalid, "a missing channel");
     bed[3] = s_bed[3];
     CHECK(maudDecodeBinaural(decoder, bed, out, 65) == maud_errorInvalid, "too many frames");
+    CHECK(maudDecodeBinaural(decoder, nullptr, out, 64) == maud_errorInvalid, "no bed");
+    float* noEar[2] = {s_left, nullptr};
+    CHECK(maudDecodeBinaural(decoder, bed, noEar, 64) == maud_errorInvalid, "no right ear");
     CHECK(s_left[0] == 7.0f, "nothing written by a bad call");
     CHECK(maudDecodeBinaural(decoder, nullptr, out, 0) == maud_success, "no frames");
     CHECK(maudResetBinauralDecoder(nullptr) == maud_errorInvalid, "reset nothing");

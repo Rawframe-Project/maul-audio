@@ -262,9 +262,13 @@ static void TestMisuse(void)
     CHECK(maudEncodeAmbisonic(4, &source, &source, in, bed, 4) == maud_errorInvalid, "order 4");
     CHECK(maudEncodeAmbisonic(1, &source, &source, nullptr, bed, 4) == maud_errorInvalid,
           "no input");
+    CHECK(maudEncodeAmbisonic(1, &source, &source, in, nullptr, 4) == maud_errorInvalid, "no bed");
     maudQuaternion zero = {0.0f, 0.0f, 0.0f, 0.0f};
     maudQuaternion none = {0.0f, 0.0f, 0.0f, 1.0f};
     CHECK(maudRotateAmbisonic(1, &zero, &none, bed, 4) == maud_errorInvalid, "a zero quaternion");
+    maudQuaternion nan = {NAN, 0.0f, 0.0f, 1.0f};
+    CHECK(maudRotateAmbisonic(1, &none, &nan, bed, 4) == maud_errorInvalid, "a NaN quaternion");
+    CHECK(maudRotateAmbisonic(1, &none, &none, nullptr, 4) == maud_errorInvalid, "no bed");
     CHECK(maudRotateAmbisonic(0, &none, &none, bed, 4) == maud_errorInvalid, "order 0");
     CHECK(channel[0] == 7.0f && channel[3] == 7.0f, "nothing written by a bad call");
     CHECK(maudGetAmbisonicGains(2, source.direction, nullptr) == maud_errorInvalid, "no gains");

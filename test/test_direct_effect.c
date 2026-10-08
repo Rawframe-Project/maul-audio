@@ -126,6 +126,27 @@ static void TestPassThrough(void)
         ramped = ramped && fabsf(out[n] - gain * in[n]) < 1e-6f;
     }
     CHECK(ramped, "the host's gain ramps across a call");
+    // Leaving a clear path: behind a wall that keeps the lows and stops
+    // the highs, a high tone is filtered from the block the wall starts
+    // in, not passed on at the loudest band's level as a flat filter's
+    // would be.
+    float high[256];
+    for (int n = 0; n < 256; ++n)
+    {
+        high[n] = sinf(2.5f * (float)n);
+    }
+    params = maudDefaultDirectParams();
+    params.occlusion = 1.0f;
+    params.transmission[0] = 0.3f;
+    params.transmission[1] = 0.1f;
+    params.transmission[2] = 0.02f;
+    CHECK(maudProcessDirect(effect, &params, high, out, 256) == maud_success, "behind a wall");
+    float loudest = 0.0f;
+    for (int n = 224; n < 256; ++n)
+    {
+        loudest = fmaxf(loudest, fabsf(out[n]));
+    }
+    CHECK(loudest < 0.15f, "the wall's highs heard in the block it starts");
     maudDestroyDirectEffect(effect);
 }
 
@@ -294,6 +315,10 @@ static void TestAir(void)
     CHECK(maudGetAirAbsorption(20.0f, 10.0f, dry) == maud_success && dry[2] != air[2],
           "humidity matters");
     CHECK(maudGetAirAbsorption(60.0f, 50.0f, dry) == maud_errorInvalid, "too hot");
+    CHECK(maudGetAirAbsorption(50.0f, 100.0f, dry) == maud_success &&
+              maudGetAirAbsorption(-20.0f, 10.0f, dry) == maud_success,
+          "the standard's ends taken");
+    CHECK(maudGetAirAbsorption(20.0f, 100.5f, dry) == maud_errorInvalid, "too humid");
     CHECK(maudGetAirAbsorption(20.0f, NAN, dry) == maud_errorInvalid, "no humidity");
 }
 
@@ -313,6 +338,10 @@ static void TestDirectivity(void)
     CHECK(maudGetDirectivity(&pattern, (maudVector3){0.0f, 0.0f, 0.0f}, d) == maud_success &&
               d[1] == 1.0f,
           "a zero direction is ahead");
+    maudDirectivityPattern flat = {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 0.0f}};
+    CHECK(maudGetDirectivity(&flat, (maudVector3){0.0f, 0.0f, 1.0f}, d) == maud_success &&
+              d[2] == 1.0f,
+          "a power of 0: the same all round");
     pattern.weight[0] = 1.5f;
     CHECK(maudGetDirectivity(&pattern, (maudVector3){0.0f, 0.0f, -1.0f}, d) == maud_errorInvalid,
           "a weight above 1");
@@ -329,6 +358,12 @@ static void TestMisuse(void)
     params = maudDefaultDirectParams();
     params.gain = -1.0f;
     CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_errorInvalid, "a negative gain");
+    params.gain = 0.0f;
+    CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_success, "a gain of 0");
+    for (int n = 0; n < 8; ++n)
+    {
+        out[n] = 9.0f;
+    }
     params = maudDefaultDirectParams();
     params.distance = INFINITY;
     CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_errorInvalid, "infinite");

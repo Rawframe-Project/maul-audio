@@ -756,6 +756,9 @@ static void TestMisuse(const maudHrtf* hrtf)
     CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "no frames");
     def.maxFrames = 16385;
     CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "too many frames");
+    def.maxFrames = 16384;
+    CHECK(maudCreateBinaural(&def, &none) == maud_success, "the most frames");
+    maudDestroyBinaural(none);
     def.maxFrames = 64;
     float radii[3] = {0.049f, 0.151f, NAN};
     for (int i = 0; i < 3; ++i)

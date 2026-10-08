@@ -340,6 +340,90 @@ static void TestCraftedFiles(void)
     CHECK(maudGetHrtfInfo(nullptr, &(maudHrtfInfo){0}) == maud_errorInvalid, "no set");
 }
 
+// A file of one ring at the horizon with directions azimuths, 8 taps, a
+// one-byte license, and the given rate, distance and name, sealed; in a
+// buffer the caller frees.
+static unsigned char* Build(uint32_t rate, uint32_t directions, float distance, const char* name,
+                            size_t nameBytes, size_t* countOut)
+{
+    size_t count = 48 + nameBytes + 1 + 8 + (size_t)directions * (4 + 2 * 8 * 2);
+    unsigned char* bytes = calloc(count, 1);
+    if (bytes == nullptr)
+    {
+        return nullptr;
+    }
+    memcpy(bytes, "MAUDHRTF", 8);
+    Put32(bytes + 8, 2);
+    Put32(bytes + 12, rate);
+    Put32(bytes + 16, 8);
+    Put32(bytes + 20, 1);
+    Put32(bytes + 24, directions);
+    PutFloat(bytes + 28, 1.0f / 32768.0f);
+    PutFloat(bytes + 32, distance);
+    Put32(bytes + 36, (uint32_t)nameBytes);
+    Put32(bytes + 40, 1);
+    memcpy(bytes + 48, name, nameBytes);
+    unsigned char* at = bytes + 48 + nameBytes;
+    *at++ = 'L';
+    PutFloat(at, 0.0f);
+    Put32(at + 4, directions);
+    at += 8 + (size_t)directions * 4;
+    for (size_t d = 0; d < 2u * directions; ++d)
+    {
+        at[d * 16] = 0x00;
+        at[d * 16 + 1] = 0x40;
+    }
+    Put32(bytes + 44, maudCrc32(bytes + 48, count - 48));
+    *countOut = count;
+    return bytes;
+}
+
+static maudResult LoadBuilt(uint32_t rate, uint32_t directions, float distance, const char* name,
+                            size_t nameBytes, uint32_t maxDirections)
+{
+    size_t count = 0;
+    unsigned char* bytes = Build(rate, directions, distance, name, nameBytes, &count);
+    if (bytes == nullptr)
+    {
+        return maud_errorCapacity;
+    }
+    maudHrtfDef def = maudDefaultHrtfDef();
+    def.bytes = bytes;
+    def.byteCount = count;
+    def.maxDirections = maxDirections;
+    def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
+    maudHrtf* hrtf = nullptr;
+    maudResult result = maudLoadHrtf(&def, &hrtf);
+    maudDestroyHrtf(hrtf);
+    free(bytes);
+    return result;
+}
+
+// What the format allows is taken, to its ends: characters of every
+// length in the name, the highest rate, distance, name length and
+// direction count, and a def's limit met exactly. Text that is not
+// UTF-8 in two more ways is refused.
+static void TestBounds(void)
+{
+    const char text[] = "T\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\xF4\x8F\xBF\xBF";
+    CHECK(LoadBuilt(48000, 4, 1.5f, text, sizeof(text) - 1, 65536) == maud_success,
+          "characters of two, three and four bytes, U+10FFFF the last");
+    CHECK(LoadBuilt(48000, 4, 1.5f, "T\x80", 2, 65536) == maud_errorInvalid,
+          "a continuation byte with no lead");
+    CHECK(LoadBuilt(48000, 4, 1.5f, "T\xE2\x82\x41", 4, 65536) == maud_errorInvalid,
+          "a character whose last byte does not continue it");
+    CHECK(LoadBuilt(384000, 4, 100.0f, "T", 1, 65536) == maud_success,
+          "the highest rate and distance");
+    char name[256];
+    memset(name, 'n', sizeof(name));
+    CHECK(LoadBuilt(48000, 4, 1.5f, name, 256, 65536) == maud_success, "the longest name");
+    CHECK(LoadBuilt(48000, 1, 1.5f, "T", 1, 1) == maud_success, "one direction, the def's limit");
+    CHECK(LoadBuilt(48000, 4, 1.5f, "T", 1, 4) == maud_success, "four, the def's limit");
+    CHECK(LoadBuilt(48000, 5, 1.5f, "T", 1, 4) == maud_errorCapacity, "five, past it");
+    CHECK(LoadBuilt(48000, 65536, 1.5f, "T", 1, 65536) == maud_success,
+          "the most directions, in one ring");
+}
+
 // Seeded mutations of the small file, half of them sealed again so they
 // reach the checks past the checksum: each loads or is refused, and what
 // loads is well-formed by the reader's own account.
@@ -448,6 +532,7 @@ int main(void)
     TestShippedSet();
     TestCraftedFiles();
     TestMutations();
+    TestBounds();
     TestResampler();
     TestFailingAllocator();
     CHECK(s_live == 0, "every block returned");
