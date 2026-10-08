@@ -6,9 +6,10 @@
 // a full wall at z = -9.5. One ray gives 0 or 1; a volumetric source
 // passing the half-wall's edge turns from occluded to clear steadily and
 // within the research's error of the exact share of its sphere; points
-// the source itself cannot see do not count; the task hooks, split any
-// way, give the same bytes as a serial step, in batches of at most 64;
-// without a query every path is clear.
+// the source itself cannot see do not count, and one that sees none is
+// occluded; sources side by side count only their own samples; the
+// task hooks, split any way, give the same bytes as a serial step, in
+// batches of at most 64; without a query every path is clear.
 
 #include "test_harness.h"
 
@@ -20,6 +21,8 @@
 #define PI 3.14159265358979323846
 
 static bool s_fullWall;
+// Every ray blocked, as for a source buried in solid geometry.
+static bool s_buried;
 static long s_rays;
 static uint32_t s_largestBatch;
 
@@ -48,8 +51,8 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
     s_largestBatch = count > s_largestBatch ? count : s_largestBatch;
     for (uint32_t i = 0; i < count; ++i)
     {
-        occluded[i] =
-            Crosses(&rays[i], -5.0, true) || (s_fullWall && Crosses(&rays[i], -9.5, false));
+        occluded[i] = s_buried || Crosses(&rays[i], -5.0, true) ||
+                      (s_fullWall && Crosses(&rays[i], -9.5, false));
     }
 }
 
@@ -244,10 +247,37 @@ static void TestNoQuery(void)
     CHECK(maudCreateSpatializer(&bad, &none) == maud_errorInvalid, "too many points");
 }
 
+// Two volumetric sources side by side in the samples' buffer, one clear
+// beside the half-wall and one wholly behind it: each counts only its
+// own samples.
+static void TestNeighbours(void)
+{
+    maudSpatializer* s = Create(false, true);
+    maudSourceId first = Source(s, maud_occlusionVolumetric, 32);
+    maudSourceId second = Source(s, maud_occlusionVolumetric, 32);
+    maudVector3 origin = {0.0f, 0.0f, 0.0f};
+    maudPose behind = {{-5.0f, 0.0f, -10.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    maudDirectResult r = {0};
+    CHECK(maudSetSourcePose(s, second, &behind) == maud_success &&
+              Occlusion(s, first, (maudVector3){5.0f, 0.0f, -10.0f}, origin) == 0.0f &&
+              maudGetDirectResult(s, second, &r) == maud_success && r.occlusion == 1.0f,
+          "the first clear, the second occluded");
+    CHECK(maudSetSourcePose(s, first, &behind) == maud_success &&
+              Occlusion(s, second, (maudVector3){5.0f, 0.0f, -10.0f}, origin) == 0.0f &&
+              maudGetDirectResult(s, first, &r) == maud_success && r.occlusion == 1.0f,
+          "and the other way round");
+    s_buried = true;
+    CHECK(Occlusion(s, second, (maudVector3){5.0f, 0.0f, -10.0f}, origin) == 1.0f,
+          "a source that sees none of its sphere: occluded");
+    s_buried = false;
+    maudDestroySpatializer(s);
+}
+
 int main(void)
 {
     TestRay();
     TestVolumetric();
+    TestNeighbours();
     TestSplit();
     TestNoQuery();
     return s_failures == 0 ? 0 : 1;

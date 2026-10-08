@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 typedef struct Blocks
 {
@@ -313,6 +314,9 @@ static void* Run(void* unused)
         return nullptr;
     }
     setvbuf(stdout, nullptr, _IOLBF, 0);
+    // The checks' diagnostics go to stderr, which simctl drops on a CI
+    // runner: into the same file.
+    dup2(fileno(stdout), STDERR_FILENO);
     s_control = pthread_self();
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;

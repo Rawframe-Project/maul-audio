@@ -8,7 +8,9 @@
 // normals and materials); a ray onto a box's top lands at the exact
 // distance; a quarter turn about +y carries +x to -z; changes wait for
 // a commit; ties go to the static scene, then the lower slot; limits,
-// stale ids and transforms out of range are refused.
+// stale ids and transforms out of range are refused; a freed slot is
+// taken again under a new id; an allocator that fails at any of the
+// scene's blocks is a capacity error with nothing leaked.
 
 #include "test_harness.h"
 
@@ -69,6 +71,33 @@ static const maudInstanceTransform s_transforms[4] = {
 
 static Box s_unit;
 static Box s_floor;
+
+static long s_live;
+static long s_allocations;
+static long s_failAfter = -1;
+
+static void* CountedAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    if (s_failAfter == 0)
+    {
+        return nullptr;
+    }
+    s_failAfter -= s_failAfter > 0 ? 1 : 0;
+    s_live++;
+    s_allocations++;
+    return malloc(size);
+}
+
+static void CountedFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    s_live--;
+    free(memory);
+}
 
 static maudAcousticScene* Instanced(void)
 {
@@ -288,6 +317,14 @@ static void TestRefused(void)
     CHECK(maudCreateSceneInstance(scene, 0, &t, &id) == maud_success &&
               maudCreateSceneInstance(scene, 0, &t, &other) == maud_errorCapacity,
           "past the capacity");
+    CHECK(maudDestroySceneInstance(scene, id) == maud_success &&
+              maudCreateSceneInstance(scene, 0, &t, &other) == maud_success &&
+              maudDestroySceneInstance(scene, id) == maud_errorStale,
+          "the freed slot taken again, the old id stale");
+    t.scale = 1000.0f;
+    CHECK(maudMoveSceneInstance(scene, other, &t) == maud_success, "the largest scale");
+    t.scale = 1000.5f;
+    CHECK(maudMoveSceneInstance(scene, other, &t) == maud_errorInvalid, "past it");
     const maudSceneInstanceId none = {0, 0};
     CHECK(maudDestroySceneInstance(scene, none) == maud_errorInvalid &&
               maudCommitAcousticScene(nullptr) == maud_errorInvalid,
@@ -296,8 +333,40 @@ static void TestRefused(void)
     def.maxTriangles = 11;
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorCapacity, "past maxTriangles");
     def.maxTriangles = 12;
+    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "maxTriangles met exactly");
+    maudDestroyAcousticScene(scene);
     def.instanceCapacity = 65537;
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid, "too many instances");
+}
+
+// A static mesh with no triangles may leave its arrays out; every
+// allocation the scene makes fails in turn.
+static void TestFailingAllocator(void)
+{
+    maudMesh empty = {0};
+    maudMesh meshes[2] = {s_floor.mesh, empty};
+    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    def.meshes = meshes;
+    def.meshCount = 2;
+    def.instanceMeshes = &s_unit.mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 2;
+    def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
+    maudAcousticScene* scene = nullptr;
+    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "the scene");
+    maudDestroyAcousticScene(scene);
+    long blocks = s_allocations;
+    CHECK(blocks > 3 && s_live == 0, "made of several blocks, all returned");
+    for (long failAt = 0; failAt < blocks; ++failAt)
+    {
+        s_failAfter = failAt;
+        scene = (maudAcousticScene*)&def;
+        CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorCapacity && scene == nullptr &&
+                  s_live == 0,
+              "any block failing is a capacity error, nothing leaked");
+    }
+    s_failAfter = -1;
+    CHECK(s_live == 0, "every block returned");
 }
 
 int main(void)
@@ -308,5 +377,6 @@ int main(void)
     TestExactAndTurn();
     TestTies();
     TestRefused();
+    TestFailingAllocator();
     return s_failures == 0 ? 0 : 1;
 }

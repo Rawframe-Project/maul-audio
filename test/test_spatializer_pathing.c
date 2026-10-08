@@ -133,9 +133,10 @@ static World Build(bool reversed, float transmission)
           "a set in use");
     const maudVector3 at[4] = {
         {6.0f, 1.5f, 1.5f}, {6.0f, 1.5f, 1.5f}, {18.5f, 1.5f, 5.0f}, {8.0f, 1.5f, 1.0f}};
-    // The one not asking takes the first slot, so that were it pathed it
-    // would take the only path a step allows.
-    const int order[4] = {1, 0, 2, 3};
+    // The one not asking takes the first slot and the one in sight the
+    // second, so that were either pathed it would take the only path a
+    // step allows.
+    const int order[4] = {1, 2, 0, 3};
     for (int n = 0; n < 4; ++n)
     {
         int i = order[n];

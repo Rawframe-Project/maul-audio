@@ -169,12 +169,20 @@ static void TestMisuse(maudSpatializer* s)
               maudCreateProbeSet(blind, &def, &set) == maud_errorCapacity,
           "no sets asked for");
     maudDestroySpatializer(blind);
+    maudProbeSetId junk = {7, 7};
+    CHECK(maudCreateProbeSet(nullptr, &def, &junk) == maud_errorInvalid && junk.index1 == 0 &&
+              junk.generation == 0 &&
+              maudCreateProbeSet(nullptr, &def, nullptr) == maud_errorInvalid,
+          "a refused set's id cleared; no id to write");
     sd.probeSetCapacity = 65;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "too many sets");
     sd.probeSetCapacity = 1;
     sd.maxProbes = 0;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "no probes");
     sd.maxProbes = 1;
+    sd.maxProbePairs = 1u << 24;
+    CHECK(maudCreateSpatializer(&sd, &blind) == maud_success, "the most pairs");
+    maudDestroySpatializer(blind);
     sd.maxProbePairs = (1u << 24) + 1;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "too many pairs");
 }
