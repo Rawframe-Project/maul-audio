@@ -154,6 +154,31 @@ On backends whose platform reports through a loop the library owns
 reconnects to a service that restarted, so a host that drains regularly
 keeps the device table current.
 
+## In a browser
+
+The web backend plays each stream through an AudioWorklet, which takes
+128 frames a quantum. The library renders ahead on the page's main
+thread, from the browser's event loop, up to a fill target: the
+browser's `baseLatency` plus two quanta, growing by one for each
+quantum the worklet plays short. The frames cross to the worklet one of
+two ways:
+
+- On a cross-origin isolated page, served with
+  `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp`, through a
+  SharedArrayBuffer ring the worklet reads directly.
+- Elsewhere, as chunks posted to the worklet's message port.
+
+While the main thread keeps up, the two cost the same: headless Chrome
+reported 152 to 159 ms of output latency either way (its own
+`outputLatency` most of it; the fill target held at 2,304 frames, 48 ms
+at 48 kHz). Posted chunks depend on the message queue as well as the
+main thread: on a loaded machine, two runs out of five without
+isolation played quanta short until the target reached its ceiling of
+4,096 frames (196 ms of latency), where the ring held its target in
+every run. A page that can be isolated should be; `maudGetStreamClock`
+reports the latency a stream actually has.
+
 ## The offline backend
 
 The offline backend plays to no hardware: the host renders a stream on

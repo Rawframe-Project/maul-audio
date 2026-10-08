@@ -336,6 +336,9 @@ static void Measure(double now)
     }
     maudStreamFormat format;
     CHECK(maudGetStreamFormat(s_context, s_stream, &format) == maud_success, "format");
+    // What the docs quote for each transport, isolated or not.
+    printf("output latency %.1f ms, fill target %d frames\n",
+           (double)clock.latencyNanoseconds / 1e6, Target());
     if (!(s_best > format.sampleRate * 0.94 && s_best < format.sampleRate * 1.02))
     {
         printf("measured %.0f frames/s, expected %u\n", s_best, format.sampleRate);
