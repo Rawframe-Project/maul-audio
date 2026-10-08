@@ -159,8 +159,10 @@ jobs:
 
   ios:
     # iOS in the simulator: every test through simctl spawn, on an iPhone
-    # of the newest runtime. The simulator plays through the runner's
-    # output, which BlackHole provides.
+    # of the newest runtime. The simulator's microphone and speaker are
+    # the runner's default input and output, which BlackHole is made:
+    # the runner's own virtual sound device stalled the capture tests
+    # one run in a few.
     name: ios-simulator
     runs-on: macos-15
     steps:
@@ -187,10 +189,12 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
       - name: Build
         run: cmake --build build -j 4
-      - name: Audio devices
-        # The simulator's microphone is the runner's default input: which
-        # device that is, for the capture test's occasional stalls.
-        run: system_profiler SPAudioDataType | sed -n '1,80p'
+      - name: BlackHole as the default devices
+        run: |
+          clang -std=c2x -Wall -Werror test/ios/default_device.c -framework CoreAudio \
+            -framework CoreFoundation -o "$RUNNER_TEMP/default_device"
+          "$RUNNER_TEMP/default_device" BlackHole2ch_UID
+          system_profiler SPAudioDataType | grep -B1 -A2 "Default"
       - name: Test
         run: ctest --test-dir build --output-on-failure --timeout 300
 
