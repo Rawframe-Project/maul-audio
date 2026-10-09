@@ -87,7 +87,7 @@ errors.
 | Internal function shared across files | `P` + PascalCase, no `_` | `m3PrepareContacts` |
 | `static` function | PascalCase | `UpdatePairs` |
 | Local variable, parameter, struct field | camelCase | `bodyIndex`, `pairCount` |
-| Out-parameter | camelCase ending in `Out` | `windowIdOut`, `neededOut` |
+| Out-parameter | camelCase ending in `Out` | `windowOut`, `neededOut` |
 | File-scope `static` variable | `s_` + camelCase | `s_propertyTable` |
 
 - Verbs are consistent across the family: `Get`, `Set`, `Is`, `Has`,
@@ -95,7 +95,10 @@ errors.
   `Overlap`, `Collide`, `Validate`, `Next`.
 - Acronyms are written as words: `Aabb`, `Utf8`, `Id`, `Ccd`.
 - Math functions take their mathematical names (`Atan2`, `Hash64`).
-- Struct fields that hold ids end in `Id`: `bodyId`, `shapeIdA`.
+- A field, parameter or out-parameter whose type is a typed id is
+  named for what it names, without `Id`: `owner`, `window`,
+  `windowOut`. Maul2D and Maul3D keep the `Id` names their released
+  API holds (`bodyId`, `shapeIdA`).
 - Create functions take their owner first, then the def, then any
   geometry, and end with the out-parameter for the new id.
 - The same concept has the same name in every library. When one
