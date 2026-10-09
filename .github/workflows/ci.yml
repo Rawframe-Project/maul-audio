@@ -115,13 +115,14 @@ jobs:
       - name: Package
         # Installed, then consumed by a project that knows only the
         # package (samples/minimal), through CMake and pkg-config.
-        if: matrix.name == 'linux-shared' || matrix.name == 'linux-gcc-14'
+        if: matrix.name == 'linux-shared' || matrix.name == 'linux-gcc-14' || matrix.name == 'macos-clang'
         run: |
           cmake --install build --prefix "$PWD/package"
           cmake -S samples/minimal -B build-minimal -DCMAKE_C_COMPILER=${{ matrix.cc }} \
             -DCMAKE_PREFIX_PATH="$PWD/package"
           cmake --build build-minimal
           LD_LIBRARY_PATH="$PWD/package/lib" ./build-minimal/minimal
+          [ "$RUNNER_OS" = Linux ] || exit 0
           static=$([ "${{ matrix.name }}" = linux-gcc-14 ] && echo --static || true)
           ${{ matrix.cc }} -std=c17 samples/minimal/main.c -o minimal-pc \
             $(PKG_CONFIG_PATH="$PWD/package/lib/pkgconfig" pkg-config $static --cflags --libs maul-audio)
@@ -171,6 +172,14 @@ jobs:
         run: cmake --build build --config Release -j 4
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      # The static install, consumed by a project that knows only the
+      # package (samples/minimal), compiled by MSVC's cl.
+      - name: Package
+        run: |
+          cmake --install build --config Release --prefix "$PWD/package"
+          cmake -S samples/minimal -B build-minimal -DCMAKE_PREFIX_PATH="$PWD/package"
+          cmake --build build-minimal --config Release
+          ./build-minimal/Release/minimal.exe
       # The public headers alone under MSVC's cl, as C17 and C++17 with
       # /W4 /WX, which cannot build the library itself (family record 0008).
       - name: Headers under MSVC
