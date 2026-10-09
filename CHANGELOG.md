@@ -8,6 +8,12 @@ format.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-09
+
+The first release: device I/O on every desktop, mobile and web
+platform with an offline backend, the library's own voice processing,
+and the Spatial part from HRTF rendering to baked propagation.
+
 ### Added
 
 - The library skeleton: the build, the family rules and tools, the

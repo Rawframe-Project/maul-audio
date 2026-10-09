@@ -28,10 +28,15 @@ call runs, so that the host's threads may be in any apartment.
 
 ## Status
 
-Not released. The device layer works on Linux (PipeWire, PulseAudio,
-ALSA), Windows (WASAPI), macOS (Core Audio), iOS, Android (AAudio) and
-the web, with an offline backend for tests. Everything listed above is
-built; the API may still change before the first release.
+Version 0.1.0, the first release. The device layer works on Linux
+(PipeWire, PulseAudio, ALSA), Windows (WASAPI), macOS (Core Audio),
+iOS, Android (AAudio) and the web, with an offline backend for tests,
+and a private backend (a console's) can join at configure time.
+Everything listed above is built and tested in CI; WASAPI's device
+tests, which need an endpoint the Windows runners lack, run under Wine
+before each commit, and `docs/device-checklist.md` lists what is
+checked by hand on real hardware. Before 1.0.0 any minor release may
+change the API, the ABI and the data formats.
 
 ## Cost
 
