@@ -43,7 +43,7 @@ static void Suspend(maudContext* context, maudStreamSlot* slot, maudSuspendReaso
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifyStreamSuspended,
                                       .reason = reason,
-                                      .streamId = maudStreamIdOf(context, slot),
+                                      .stream = maudStreamIdOf(context, slot),
                                   });
 }
 
@@ -62,7 +62,7 @@ static bool TakeDeviceRate(maudContext* context, maudStreamSlot* slot)
     atomic_store_explicit(&core->blockRate, core->format.sampleRate, memory_order_release);
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifyStreamFormatChanged,
-                                      .streamId = maudStreamIdOf(context, slot),
+                                      .stream = maudStreamIdOf(context, slot),
                                       .sampleRate = core->format.sampleRate,
                                   });
     return true;
@@ -100,7 +100,7 @@ static void Wait(maudContext* context, maudStreamSlot* slot, maudSuspendReason r
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifyStreamSuspended,
                                       .reason = reason,
-                                      .streamId = maudStreamIdOf(context, slot),
+                                      .stream = maudStreamIdOf(context, slot),
                                   });
 }
 
@@ -128,7 +128,7 @@ static void Resume(maudContext* context, maudStreamSlot* slot)
     Publish(context, slot);
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifyStreamResumed,
-                                      .streamId = maudStreamIdOf(context, slot),
+                                      .stream = maudStreamIdOf(context, slot),
                                   });
 }
 
@@ -139,8 +139,8 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
     core->binding.current = device;
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifyStreamMoved,
-                                      .deviceId = device,
-                                      .streamId = id,
+                                      .device = device,
+                                      .stream = id,
                                   });
     // A backend whose streams are bound to one endpoint reopens them on
     // every move; the others only when the rate changed.

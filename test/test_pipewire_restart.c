@@ -62,7 +62,7 @@ static bool WaitForStream(maudContext* context, maudNotificationKind kind, maudS
     {
         while (maudNextNotification(context, recordOut) == maud_success)
         {
-            if (recordOut->kind == kind && SameStream(recordOut->streamId, stream))
+            if (recordOut->kind == kind && SameStream(recordOut->stream, stream))
             {
                 return true;
             }

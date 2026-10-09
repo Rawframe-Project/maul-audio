@@ -521,8 +521,8 @@ static void TestMove(maudContext* context)
     while (maudNextNotification(context, &record) == maud_success)
     {
         moved = moved ||
-                (record.kind == maud_notifyStreamMoved && record.streamId.index1 == stream.index1 &&
-                 record.deviceId.index1 == other.index1);
+                (record.kind == maud_notifyStreamMoved && record.stream.index1 == stream.index1 &&
+                 record.device.index1 == other.index1);
     }
     CHECK(moved, "it moves with the default");
     const maudWasapi* wasapi = context->native;

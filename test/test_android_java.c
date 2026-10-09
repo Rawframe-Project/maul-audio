@@ -273,7 +273,7 @@ static void TestPermission(maudContext* context)
         while (maudNextNotification(context, &record) == maud_success)
         {
             resumed = resumed || (record.kind == maud_notifyStreamResumed &&
-                                  record.streamId.index1 == stream.index1);
+                                  record.stream.index1 == stream.index1);
         }
         Sleep(10);
     }

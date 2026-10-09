@@ -62,7 +62,7 @@ int main(void)
     while (maudNextNotification(context, &record) == maud_success)
     {
         told = told || (record.kind == maud_notifyStreamFormatChanged &&
-                        record.streamId.index1 == stream.index1 && record.sampleRate == 44100);
+                        record.stream.index1 == stream.index1 && record.sampleRate == 44100);
     }
     maudStreamFormat format = {0};
     CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&

@@ -84,7 +84,7 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, maudDeviceI
         while (maudNextNotification(context, recordOut) == maud_success)
         {
             if (recordOut->kind == kind &&
-                (device.index1 == 0 || SameDevice(recordOut->deviceId, device)))
+                (device.index1 == 0 || SameDevice(recordOut->device, device)))
             {
                 return true;
             }
@@ -336,7 +336,7 @@ static void TestHotplug(maudContext* context)
     maudDeviceId any = {0, 0};
     CHECK(WaitFor(context, maud_notifyDeviceAdded, any, &record), "it is added");
     maudDeviceId plugged = FindByKey(context, maud_directionOutput, "maud-pulse-hotplug");
-    CHECK(SameDevice(record.deviceId, plugged), "by its name");
+    CHECK(SameDevice(record.device, plugged), "by its name");
     maudDeviceInfo info = {0};
     CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success &&
               info.form == maud_formHeadphones,

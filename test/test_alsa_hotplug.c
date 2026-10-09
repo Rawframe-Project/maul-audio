@@ -118,7 +118,7 @@ static void TestSync(maudContext* context)
     maudNotification record = {0};
     CHECK(maudNextNotification(context, &record) == maud_success &&
               record.kind == maud_notifyRouteChanged && record.form == maud_formDigital &&
-              record.deviceId.index1 == ids[1].index1,
+              record.device.index1 == ids[1].index1,
           "a route change, naming the device and its form");
     CHECK(maudGetDeviceInfo(context, ids[1], &info) == maud_success &&
               info.form == maud_formDigital,

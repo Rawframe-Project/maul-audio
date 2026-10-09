@@ -165,8 +165,8 @@ int main(int argc, char** argv)
         while (maudNextNotification(context, &record) == maud_success)
         {
             printf("%6.2f s  %-22s device %u.%u, stream %u, reason %u, %u Hz\n", tick / 20.0,
-                   KindName(record.kind), record.deviceId.index1, record.deviceId.generation,
-                   record.streamId.index1, (unsigned)record.reason, record.sampleRate);
+                   KindName(record.kind), record.device.index1, record.device.generation,
+                   record.stream.index1, (unsigned)record.reason, record.sampleRate);
         }
         maudStreamClock clock = {0};
         // The latency when first known, then each time it moves by more

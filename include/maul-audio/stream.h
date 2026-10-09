@@ -287,7 +287,7 @@ extern "C"
     /// @param context      The context.
     /// @param def          The def, from maudDefaultStreamDef, with a
     ///                     callback.
-    /// @param streamIdOut  Receives the stream's id; the null id on failure.
+    /// @param streamOut    Receives the stream's id; the null id on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def
     ///         without its cookie or callback, or a value out of range;
     ///         `maud_errorUnsupported` for what the backend cannot do (the
@@ -299,7 +299,7 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudCreateStream(maudContext* context,
                                                         const maudStreamDef* def,
-                                                        maudStreamId* streamIdOut);
+                                                        maudStreamId* streamOut);
 
     /// Destroys a stream. Its id becomes stale. On a platform backend its
     /// callback has returned for the last time when this returns.

@@ -329,14 +329,14 @@ static bool WaitForMove(maudContext* context, maudStreamId stream, maudDeviceId 
         maudNotification record;
         while (maudNextNotification(context, &record) == maud_success)
         {
-            bool here = record.deviceId.index1 == device.index1 &&
-                        record.deviceId.generation == device.generation;
+            bool here = record.device.index1 == device.index1 &&
+                        record.device.generation == device.generation;
             defaulted = defaulted || (record.kind == maud_notifyDefaultChanged && here &&
                                       record.direction == maud_directionOutput);
             moved = moved || (record.kind == maud_notifyStreamMoved && here &&
-                              record.streamId.index1 == stream.index1);
+                              record.stream.index1 == stream.index1);
             reformatted = reformatted || (record.kind == maud_notifyStreamFormatChanged &&
-                                          record.streamId.index1 == stream.index1);
+                                          record.stream.index1 == stream.index1);
         }
         Sleep(10);
     }
@@ -421,16 +421,16 @@ static maudDeviceId WaitFor(maudContext* context, maudNotificationKind kind, mau
             size_t length = 0;
             if (record.kind == maud_notifyDeviceAdded)
             {
-                aggregate = maudGetDeviceKey(context, record.deviceId, key, sizeof(key) - 1,
+                aggregate = maudGetDeviceKey(context, record.device, key, sizeof(key) - 1,
                                              &length) == maud_success &&
                             strcmp(key, AGGREGATE_UID) == 0 &&
                             record.direction == maud_directionOutput;
             }
-            bool streamMatches = record.streamId.index1 == stream.index1 && stream.index1 != 0;
+            bool streamMatches = record.stream.index1 == stream.index1 && stream.index1 != 0;
             if (record.kind == kind &&
                 (aggregate || streamMatches || kind == maud_notifyDeviceRemoved))
             {
-                return record.deviceId.index1 != 0 ? record.deviceId : (maudDeviceId){1, 0};
+                return record.device.index1 != 0 ? record.device : (maudDeviceId){1, 0};
             }
         }
         Sleep(10);
@@ -516,7 +516,7 @@ static void TestServiceRestart(maudContext* context)
             while (maudNextNotification(context, &record) == maud_success)
             {
                 printf("after the restart: notification %u, stream %u, device %u\n",
-                       (unsigned)record.kind, record.streamId.index1, record.deviceId.index1);
+                       (unsigned)record.kind, record.stream.index1, record.device.index1);
             }
             Sleep(10);
         }

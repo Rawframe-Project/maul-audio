@@ -198,9 +198,9 @@ MAUD_NODISCARD MAUD_API maudResult maudGetDeviceKey(const maudContext* context, 
 Copies a device's persistent key, UTF-8, without a terminating NUL: the same for the same device after it is unplugged and plugged again, and across restarts where the platform allows, so a host may store it.  @param context    The context. @param device     The device. @param bytesOut   Receives the key. May be NULL when capacity is 0. @param capacity   The room in bytesOut. @param lengthOut  Receives the key's length in bytes. @return `maud_success`; `maud_errorCapacity` when the key does not fit, with nothing copied and lengthOut set; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where one is required. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
-MAUD_NODISCARD MAUD_API maudResult maudGetDefaultDevice(const maudContext* context, maudDirection direction, maudDeviceRole role, maudDeviceId* deviceIdOut);
+MAUD_NODISCARD MAUD_API maudResult maudGetDefaultDevice(const maudContext* context, maudDirection direction, maudDeviceRole role, maudDeviceId* deviceOut);
 ```
-Reports the default device of a direction for a role.  @param context      The context. @param direction    Output or input. @param role         The role. @param deviceIdOut  Receives the device; the null id when there is none. @return `maud_success`; `maud_empty` when the direction has no device; `maud_errorInvalid` for a NULL pointer or an unknown direction or role. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Reports the default device of a direction for a role.  @param context      The context. @param direction    Output or input. @param role         The role. @param deviceOut    Receives the device; the null id when there is none. @return `maud_success`; `maud_empty` when the direction has no device; `maud_errorInvalid` for a NULL pointer or an unknown direction or role. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ## `direct.h`
 
@@ -331,9 +331,9 @@ maudOfflineDeviceDef maudDefaultOfflineDeviceDef(void);
 Returns the default offline device def: an output, stereo, at 48,000, of unknown form, with an empty name and key.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ```c
-MAUD_NODISCARD MAUD_API maudResult maudAddOfflineDevice(maudContext* context, const maudOfflineDeviceDef* def, maudDeviceId* deviceIdOut);
+MAUD_NODISCARD MAUD_API maudResult maudAddOfflineDevice(maudContext* context, const maudOfflineDeviceDef* def, maudDeviceId* deviceOut);
 ```
-Adds a device to an offline context. If its direction had no device it becomes the default for both roles, and streams waiting for one move to it.  @param context      An offline context. @param def          The def, from maudDefaultOfflineDeviceDef. @param deviceIdOut  Receives the device's id; the null id on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer where one is required, a def without its cookie, or a value out of range; `maud_errorCapacity` past the device limit or the name and key limit; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` on a thread rendering one of the context's streams. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Adds a device to an offline context. If its direction had no device it becomes the default for both roles, and streams waiting for one move to it.  @param context      An offline context. @param def          The def, from maudDefaultOfflineDeviceDef. @param deviceOut    Receives the device's id; the null id on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer where one is required, a def without its cookie, or a value out of range; `maud_errorCapacity` past the device limit or the name and key limit; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` on a thread rendering one of the context's streams. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudRemoveOfflineDevice(maudContext* context, maudDeviceId device);
@@ -591,9 +591,9 @@ maudStreamDef maudDefaultStreamDef(void);
 Returns the default stream def: an output stream in callback mode, stereo, at the device's native rate, with the backend's default period, following the general role's default device, and no callback.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
 
 ```c
-MAUD_NODISCARD MAUD_API maudResult maudCreateStream(maudContext* context, const maudStreamDef* def, maudStreamId* streamIdOut);
+MAUD_NODISCARD MAUD_API maudResult maudCreateStream(maudContext* context, const maudStreamDef* def, maudStreamId* streamOut);
 ```
-Creates a stream, stopped, and allocates everything it will use.  @param context      The context. @param def          The def, from maudDefaultStreamDef, with a callback. @param streamIdOut  Receives the stream's id; the null id on failure. @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def without its cookie or callback, or a value out of range; `maud_errorUnsupported` for what the backend cannot do (the offline backend has only pull mode and no converter); `maud_errorCapacity` past the stream or period limit or when the allocator fails; `maud_errorState` on a thread rendering one of the context's streams. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Creates a stream, stopped, and allocates everything it will use.  @param context      The context. @param def          The def, from maudDefaultStreamDef, with a callback. @param streamOut    Receives the stream's id; the null id on failure. @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def without its cookie or callback, or a value out of range; `maud_errorUnsupported` for what the backend cannot do (the offline backend has only pull mode and no converter); `maud_errorCapacity` past the stream or period limit or when the allocator fails; `maud_errorState` on a thread rendering one of the context's streams. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudDestroyStream(maudContext* context, maudStreamId stream);

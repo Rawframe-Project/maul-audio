@@ -139,13 +139,13 @@ static void TestDefaultChangeMovesFollowingStreams(void)
     maudStreamId fixed = OpenOutput(context, first, maud_roleGeneral, &pinned);
     maudDeviceId second = AddDevice(context, maud_directionOutput, 44100, "Second");
     maudNotification record = Expect(context, maud_notifyDeviceAdded, "added");
-    CHECK(Same(record.deviceId, second) && record.direction == maud_directionOutput, "added id");
+    CHECK(Same(record.device, second) && record.direction == maud_directionOutput, "added id");
     ExpectDrained(context, "a second device changes no default");
     CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, second) == maud_success, "set");
     record = Expect(context, maud_notifyDefaultChanged, "default changed");
-    CHECK(Same(record.deviceId, second) && record.role == maud_roleGeneral, "new default");
+    CHECK(Same(record.device, second) && record.role == maud_roleGeneral, "new default");
     record = Expect(context, maud_notifyStreamMoved, "follower moved");
-    CHECK(SameStream(record.streamId, follower) && Same(record.deviceId, second), "moved where");
+    CHECK(SameStream(record.stream, follower) && Same(record.device, second), "moved where");
     record = Expect(context, maud_notifyStreamFormatChanged, "native rate changed");
     CHECK(record.sampleRate == 44100, "to the new device's rate");
     ExpectDrained(context, "the pinned stream stays");
@@ -178,7 +178,7 @@ static void TestRolesAreFollowedSeparately(void)
           "set communications");
     Expect(context, maud_notifyDefaultChanged, "communications default");
     maudNotification record = Expect(context, maud_notifyStreamMoved, "voice moved");
-    CHECK(SameStream(record.streamId, voice), "the voice stream");
+    CHECK(SameStream(record.stream, voice), "the voice stream");
     ExpectDrained(context, "same rate, no format change");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
@@ -197,13 +197,13 @@ static void TestLossSuspendsPinnedStreamsAndMovesFollowers(void)
     Expect(context, maud_notifyDeviceAdded, "added");
     CHECK(maudRemoveOfflineDevice(context, first) == maud_success, "unplug the default");
     maudNotification record = Expect(context, maud_notifyDeviceRemoved, "removed");
-    CHECK(Same(record.deviceId, first), "removed id");
+    CHECK(Same(record.device, first), "removed id");
     record = Expect(context, maud_notifyStreamSuspended, "pinned suspended");
-    CHECK(SameStream(record.streamId, pinned) && record.reason == maud_suspendDeviceLost, "lost");
+    CHECK(SameStream(record.stream, pinned) && record.reason == maud_suspendDeviceLost, "lost");
     record = Expect(context, maud_notifyDefaultChanged, "general default passes on");
-    CHECK(Same(record.deviceId, speakers) && record.role == maud_roleGeneral, "to speakers");
+    CHECK(Same(record.device, speakers) && record.role == maud_roleGeneral, "to speakers");
     record = Expect(context, maud_notifyStreamMoved, "follower moved");
-    CHECK(SameStream(record.streamId, follower), "the follower");
+    CHECK(SameStream(record.stream, follower), "the follower");
     record = Expect(context, maud_notifyDefaultChanged, "communications default passes on");
     CHECK(record.role == maud_roleCommunications, "communications");
     ExpectDrained(context, "nothing else");
@@ -232,7 +232,7 @@ static void TestFollowersWaitForADevice(void)
     CHECK(maudRemoveOfflineDevice(context, only) == maud_success, "unplug the last output");
     Expect(context, maud_notifyDeviceRemoved, "removed");
     maudNotification record = Expect(context, maud_notifyDefaultChanged, "no general default");
-    CHECK(record.deviceId.index1 == 0, "null default");
+    CHECK(record.device.index1 == 0, "null default");
     record = Expect(context, maud_notifyStreamSuspended, "follower waits");
     CHECK(record.reason == maud_suspendNoDevice, "no device");
     Expect(context, maud_notifyDefaultChanged, "no communications default");
@@ -251,11 +251,11 @@ static void TestFollowersWaitForADevice(void)
     maudDeviceId back = AddDevice(context, maud_directionOutput, 48000, "Back");
     Expect(context, maud_notifyDeviceAdded, "added");
     record = Expect(context, maud_notifyDefaultChanged, "it becomes the default");
-    CHECK(Same(record.deviceId, back), "the new device");
+    CHECK(Same(record.device, back), "the new device");
     record = Expect(context, maud_notifyStreamMoved, "follower moved");
-    CHECK(SameStream(record.streamId, follower), "first follower");
+    CHECK(SameStream(record.stream, follower), "first follower");
     record = Expect(context, maud_notifyStreamResumed, "follower resumed");
-    CHECK(SameStream(record.streamId, follower), "first follower resumed");
+    CHECK(SameStream(record.stream, follower), "first follower resumed");
     Expect(context, maud_notifyStreamMoved, "late stream moved");
     Expect(context, maud_notifyStreamResumed, "late stream resumed");
     Expect(context, maud_notifyDefaultChanged, "communications default");
@@ -374,7 +374,7 @@ static void TestRouteChanges(void)
     CHECK(maudSetOfflineDeviceForm(context, device, maud_formHeadphones) == maud_success,
           "plug headphones");
     maudNotification record = Expect(context, maud_notifyRouteChanged, "a route record");
-    CHECK(Same(record.deviceId, device) && record.direction == maud_directionOutput &&
+    CHECK(Same(record.device, device) && record.direction == maud_directionOutput &&
               record.form == maud_formHeadphones,
           "naming the device and its new form");
     CHECK(maudGetDeviceInfo(context, device, &info) == maud_success &&
@@ -427,7 +427,7 @@ static void TestSpatializerChanges(void)
               maud_success,
           "a spatial format turned on");
     maudNotification record = Expect(context, maud_notifySpatializerChanged, "a record");
-    CHECK(Same(record.deviceId, output) && record.direction == maud_directionOutput,
+    CHECK(Same(record.device, output) && record.direction == maud_directionOutput,
           "naming the device");
     CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
               info.spatializer == maud_spatializerOn && info.headTracking &&

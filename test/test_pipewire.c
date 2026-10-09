@@ -211,12 +211,12 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, const char*
         maudNotification record;
         while (maudNextNotification(context, &record) == maud_success)
         {
-            bool matches = key == nullptr ? record.deviceId.index1 == deviceOut->index1 &&
-                                                record.deviceId.generation == deviceOut->generation
-                                          : KeyIs(context, record.deviceId, key);
+            bool matches = key == nullptr ? record.device.index1 == deviceOut->index1 &&
+                                                record.device.generation == deviceOut->generation
+                                          : KeyIs(context, record.device, key);
             if (record.kind == kind && matches)
             {
-                *deviceOut = record.deviceId;
+                *deviceOut = record.device;
                 return true;
             }
         }
@@ -747,8 +747,8 @@ static bool WaitForStream(maudContext* context, maudNotificationKind kind, maudS
     {
         while (maudNextNotification(context, recordOut) == maud_success)
         {
-            if (recordOut->kind == kind && recordOut->streamId.index1 == stream.index1 &&
-                recordOut->streamId.generation == stream.generation)
+            if (recordOut->kind == kind && recordOut->stream.index1 == stream.index1 &&
+                recordOut->stream.generation == stream.generation)
             {
                 return true;
             }

@@ -8,6 +8,13 @@ format.
 
 ## [Unreleased]
 
+### Changed
+
+- maudNotification's `deviceId` and `streamId` fields are now `device`
+  and `stream`, as the family names a typed id for what it names; the
+  out-parameters `deviceIdOut` and `streamIdOut` are now `deviceOut`
+  and `streamOut`, which changes no caller.
+
 ## [0.1.2] - 2026-10-09
 
 An Android context with a small device limit can be created.
