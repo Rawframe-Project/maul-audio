@@ -20,7 +20,7 @@ backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
 backend_coreaudio: backend context coreaudio_core coreaudio_form coreaudio_stream device layout
 backend_ios: backend context device focus follow ios_core ios_session ios_stream layout
 backend_offline: backend context_core device
-backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_stream
+backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_parse pipewire_stream
 backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
 backend_wasapi: backend context device layout wasapi_apartment wasapi_core wasapi_stream
 backend_web: backend clock context device follow period thread web_capture web_core web_devices
@@ -80,7 +80,8 @@ pathing: allocator direct_step path_refine path_search probe_graph
 pipewire_api:
 pipewire_card: context context_core device form pipewire_core
 pipewire_core: context_core pipewire_api
-pipewire_stream: clock context context_core period pipewire_core thread xrun
+pipewire_parse:
+pipewire_stream: clock context context_core period pipewire_core pipewire_parse thread xrun
 portable_math:
 probe_bake: allocator path_search portable_math probe_graph
 probe_graph: allocator

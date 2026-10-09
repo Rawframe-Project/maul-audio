@@ -191,13 +191,13 @@ if(MAUL_AUDIO_PIPEWIRE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(MAUL_AUDIO_PW REQUIRED libpipewire-0.3)
     target_sources(maul-audio PRIVATE src/backend_pipewire.c src/pipewire_api.c
-        src/pipewire_card.c src/pipewire_stream.c)
+        src/pipewire_card.c src/pipewire_parse.c src/pipewire_stream.c)
     target_include_directories(maul-audio SYSTEM PRIVATE ${MAUL_AUDIO_PW_INCLUDE_DIRS})
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_PIPEWIRE=1)
     # PipeWire's headers use POSIX and GNU declarations (ssize_t, locale_t)
     # that a strict C23 build hides.
     set_source_files_properties(src/backend_pipewire.c src/pipewire_api.c src/pipewire_card.c
-        src/pipewire_stream.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
+        src/pipewire_parse.c src/pipewire_stream.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE)
     # PipeWire's method macros compare a uint32_t version with an int
     # inside the code they expand to; the comparison is theirs.
     set_source_files_properties(src/backend_pipewire.c src/pipewire_card.c src/pipewire_stream.c
@@ -446,6 +446,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
             target_include_directories(test_pipewire_route SYSTEM PRIVATE
                 ${MAUL_AUDIO_PW_INCLUDE_DIRS})
             target_compile_definitions(test_pipewire_route PRIVATE _GNU_SOURCE)
+            maul_add_test(pipewire_parse WHITEBOX)
+            target_include_directories(test_pipewire_parse SYSTEM PRIVATE
+                ${MAUL_AUDIO_PW_INCLUDE_DIRS})
+            target_compile_definitions(test_pipewire_parse PRIVATE _GNU_SOURCE)
         endif()
         # Both use the one test daemon, and the second one restarts it.
         set_tests_properties(pipewire pipewire_restart PROPERTIES SKIP_RETURN_CODE 77

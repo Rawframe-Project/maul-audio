@@ -4,10 +4,14 @@
 // PipeWire card routes without a card: Route params built as a card's
 // Device emits them are read into a direction, a profile device and the
 // form of the port type, and a node on that profile device takes the
-// route's form over its own form factor.
+// route's form over its own form factor, in its device's info too, until
+// the card goes.
 
 #include "pipewire_card.h"
 #include "test_harness.h"
+
+#include "maul-audio/context.h"
+#include "maul-audio/device.h"
 
 #include <spa/param/route.h>
 #include <spa/pod/builder.h>
@@ -130,10 +134,74 @@ static void TestStore(void)
           "but still takes a known one's change");
 }
 
+static int s_destroyed;
+
+static void Destroyed(struct pw_proxy* proxy)
+{
+    (void)proxy;
+    s_destroyed++;
+}
+
+static maudDeviceForm FormOf(const maudContext* context, maudDeviceId device)
+{
+    maudDeviceInfo info = {0};
+    return maudGetDeviceInfo(context, device, &info) == maud_success ? info.form : maud_formUnknown;
+}
+
+// A jack switch on a card reaches the device of the node on its profile
+// device, and a card that goes leaves the node its own form factor.
+static void TestApply(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendOffline;
+    maudContext* context = nullptr;
+    maudDeviceId device = {0, 0};
+    CHECK(maudCreateContext(&def, &context) == maud_success &&
+              maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
+                  maud_success,
+          "a device");
+    maudPipewireNode node = {.device = device,
+                             .direction = maud_directionOutput,
+                             .factorForm = maud_formSpeakers,
+                             .hasCard = true,
+                             .cardId = 40,
+                             .profileDevice = 3,
+                             .used = true};
+    maudPipewireCard card = {.globalId = 40, .used = true};
+    spa_list_init(&card.listener.link);
+    maudPipewire pipewire = {.api = {.proxyDestroy = Destroyed},
+                             .context = context,
+                             .nodes = &node,
+                             .nodeCapacity = 1,
+                             .cards = &card,
+                             .cardCapacity = 1};
+    node.owner = &pipewire;
+    card.owner = &pipewire;
+    uint8_t buffer[1024];
+    maudPipewireTakeRoute(
+        &card, SPA_PARAM_Route,
+        BuildRoute(buffer, sizeof(buffer), SPA_DIRECTION_OUTPUT, 3, "headphones"));
+    CHECK(FormOf(context, device) == maud_formHeadphones, "the route's form reaches the device");
+    maudPipewireTakeRoute(&card, SPA_PARAM_Profile,
+                          BuildRoute(buffer, sizeof(buffer), SPA_DIRECTION_OUTPUT, 3, "speaker"));
+    CHECK(FormOf(context, device) == maud_formHeadphones, "only a Route param is a route");
+    maudPipewireCard other = {.owner = &pipewire, .globalId = 41, .used = true};
+    maudPipewireTakeRoute(&other, SPA_PARAM_Route,
+                          BuildRoute(buffer, sizeof(buffer), SPA_DIRECTION_OUTPUT, 3, "speaker"));
+    CHECK(FormOf(context, device) == maud_formHeadphones, "another card's route leaves it");
+    maudPipewireRemoveCard(&pipewire, 41);
+    CHECK(s_destroyed == 0 && card.used, "an unknown card is not forgotten");
+    maudPipewireRemoveCard(&pipewire, 40);
+    CHECK(s_destroyed == 1 && !card.used && FormOf(context, device) == maud_formSpeakers,
+          "a card that goes leaves its node's own form factor");
+    CHECK(maudDestroyContext(context) == maud_success, "destroyed");
+}
+
 int main(void)
 {
     TestRead();
     TestStore();
     TestNodeForm();
+    TestApply();
     return s_failures == 0 ? 0 : 1;
 }
