@@ -8,7 +8,8 @@
 // Over the stall the callback stays short, keeps the last whole step,
 // and the stream keeps running without an underrun. Each step's results
 // say which step made them (the wall is up on odd steps), so a torn
-// read shows. Without a device that opens, the test is skipped, unless
+// read shows. Without a device that opens, or with a stream the
+// platform suspends for want of one, the test is skipped, unless
 // MAUD_REQUIRE_PIPEWIRE or MAUD_REQUIRE_COREAUDIO is set.
 
 #if !defined(_WIN32)
@@ -193,6 +194,22 @@ int main(void)
     {
         Drain(context);
         Pause(10);
+    }
+    // A platform with no output device opens the stream suspended (the
+    // Windows runners): nothing to stall under there.
+    maudStreamStatus first = {0};
+    CHECK(maudGetStreamStatus(context, shared->stream, &first) == maud_success, "status");
+    if (atomic_load(&shared->blocks) < 10 && !required && first.suspension != maud_suspendNone)
+    {
+        printf("skipped: the stream is suspended (reason %d)\n", (int)first.suspension);
+        CHECK(maudDestroyContext(context) == maud_success, "destroyed");
+        maudDestroySpatializer(shared->spatializer);
+        return s_failures == 0 ? SKIP : 1;
+    }
+    if (atomic_load(&shared->blocks) < 10)
+    {
+        printf("%u blocks; started %d, suspension %d\n", atomic_load(&shared->blocks),
+               (int)first.started, (int)first.suspension);
     }
     CHECK(atomic_load(&shared->blocks) >= 10, "the stream runs");
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
