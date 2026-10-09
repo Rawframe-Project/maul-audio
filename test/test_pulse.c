@@ -382,6 +382,8 @@ static void TestOutputStream(maudContext* context)
     CHECK(Corked() == 0, "uncorked while it runs");
     CHECK(Run("pactl list sink-inputs | grep -q 'node.latency = \"256/48000\"'"),
           "a period of latency asked for");
+    CHECK(Run("pactl list sink-inputs | grep -q 'Channel Map: front-left,front-right'"),
+          "stereo's positions");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(Near(MeasureRate(context, stream), 48000.0), "at the sink's rate");
@@ -432,6 +434,24 @@ static void TestInputStream(maudContext* context)
 // A duplex stream whose input device runs at 44.1 kHz, its output at
 // 48 kHz: the input half cannot be required at the output's rate, so
 // the server converts it, and both arrive in each callback.
+// A mono stream says so to the server: MONO, not a front channel.
+static void TestMono(maudContext* context)
+{
+    Blocks blocks = {.periodFrames = 256};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.layout = maud_layoutMono;
+    def.periodFrames = 256;
+    def.callback = CountBlocks;
+    def.user = &blocks;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudStartStream(context, stream) == maud_success,
+          "a mono stream");
+    CHECK(WaitForBlocks(context, &blocks, 5), "it plays");
+    CHECK(Run("pactl list sink-inputs | grep -q 'Channel Map: mono'"), "as mono");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestDuplexConverted(maudContext* context)
 {
     CHECK(Run("pactl load-module module-null-sink media.class=Audio/Source/Virtual "
@@ -574,6 +594,7 @@ int main(void)
     TestDevices(context);
     TestHotplug(context);
     TestOutputStream(context);
+    TestMono(context);
     TestUnderrun(context);
     TestExclusiveRefused(context);
     TestInputStream(context);
