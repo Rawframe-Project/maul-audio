@@ -78,29 +78,6 @@ static void Render(maudAlsaStream* entry, float* samples, uint32_t frames, bool 
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
 }
 
-// Copies frames from one channel order to the other: to the PCM's for
-// playback, from it for capture.
-static void Reorder(const maudAlsaStream* entry, uint32_t frames, bool output)
-{
-    uint32_t channels = entry->core->period.channelCount;
-    for (uint32_t f = 0; f < frames; ++f)
-    {
-        float* stream = entry->samples + (size_t)f * channels;
-        float* pcm = entry->reordered + (size_t)f * channels;
-        for (uint32_t c = 0; c < channels; ++c)
-        {
-            if (output)
-            {
-                pcm[c] = stream[entry->order[c]];
-            }
-            else
-            {
-                stream[entry->order[c]] = pcm[c];
-            }
-        }
-    }
-}
-
 // Writes what the PCM can take: first what an earlier write left
 // pending, then newly rendered frames.
 static snd_pcm_sframes_t WriteOut(maudAlsaStream* entry, snd_pcm_sframes_t avail)
@@ -116,7 +93,8 @@ static snd_pcm_sframes_t WriteOut(maudAlsaStream* entry, snd_pcm_sframes_t avail
             Render(entry, entry->samples, frames, true);
             if (entry->reordered != nullptr)
             {
-                Reorder(entry, frames, true);
+                maudAlsaReorder(entry->order, entry->core->period.channelCount, frames,
+                                entry->samples, entry->reordered, true);
             }
             entry->pendingOffset = 0;
             entry->pendingFrames = frames;
@@ -149,7 +127,8 @@ static snd_pcm_sframes_t ReadIn(maudAlsaStream* entry, snd_pcm_sframes_t avail)
         }
         if (entry->reordered != nullptr)
         {
-            Reorder(entry, (uint32_t)moved, false);
+            maudAlsaReorder(entry->order, entry->core->period.channelCount, (uint32_t)moved,
+                            entry->samples, entry->reordered, false);
         }
         Render(entry, entry->samples, (uint32_t)moved, false);
         avail -= moved;

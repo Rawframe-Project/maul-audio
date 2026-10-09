@@ -14,8 +14,27 @@ static bool Same(const uint8_t* order, const uint8_t* expected, uint32_t count)
     return memcmp(order, expected, count) == 0;
 }
 
+// Frames move between the stream's order and the PCM's, both ways, and
+// only the frames asked for.
+static void TestReorder(void)
+{
+    // A PCM in the order FR FL C: pcm[0] carries stream channel 1.
+    const uint8_t order[3] = {1, 0, 2};
+    float stream[2 * 3] = {1, 2, 3, 4, 5, 6};
+    float pcm[3 * 3] = {0};
+    pcm[6] = pcm[7] = pcm[8] = -1.0f;
+    maudAlsaReorder(order, 3, 2, stream, pcm, true);
+    const float played[9] = {2, 1, 3, 5, 4, 6, -1, -1, -1};
+    CHECK(memcmp(pcm, played, sizeof(played)) == 0, "playback into the PCM's order");
+    float captured[2 * 3] = {0};
+    maudAlsaReorder(order, 3, 2, captured, pcm, false);
+    const float back[6] = {1, 2, 3, 4, 5, 6};
+    CHECK(memcmp(captured, back, sizeof(back)) == 0, "capture back into the stream's");
+}
+
 int main(void)
 {
+    TestReorder();
     uint8_t order[MAUD_ALSA_MAX_CHANNELS];
     static const uint8_t identity[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
     CHECK(maudAlsaChannelOrder(maud_layoutStereo, nullptr, 2, order) && Same(order, identity, 2),
