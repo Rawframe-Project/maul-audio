@@ -8,6 +8,10 @@ format.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-09
+
+The static package can be consumed.
+
 ### Fixed
 
 - The installed static library could not be consumed: its CMake

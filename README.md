@@ -28,7 +28,7 @@ call runs, so that the host's threads may be in any apartment.
 
 ## Status
 
-Version 0.1.0, the first release. The device layer works on Linux
+Version 0.1.1. The device layer works on Linux
 (PipeWire, PulseAudio, ALSA), Windows (WASAPI), macOS (Core Audio),
 iOS, Android (AAudio) and the web, with an offline backend for tests,
 and a private backend (a console's) can join at configure time.
