@@ -1,7 +1,9 @@
 #!/bin/bash
 # Starts or stops a private PipeWire daemon, its PulseAudio server and
 # WirePlumber for the PipeWire and PulseAudio tests, with one null sink
-# and one null source and no other device, all under one directory.
+# and one null source and no other device, all under one directory, on
+# a session bus of their own (WirePlumber exits without one, and a CI
+# runner has none).
 # The tests reach it with XDG_RUNTIME_DIR=<dir>/run, and the restart
 # tests stop and start it with this script (MAUD_TEST_PIPEWIRE_STOP and
 # MAUD_TEST_PIPEWIRE_START).
@@ -14,6 +16,7 @@ dir=$2
 export XDG_RUNTIME_DIR=$dir/run
 export XDG_CONFIG_HOME=$dir/config
 export XDG_STATE_HOME=$dir/state
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$dir/run/bus
 
 running() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
@@ -33,6 +36,10 @@ start)
     for m in alsa libcamera v4l2; do
         echo "${m}_monitor.enabled = false" > "$dir/config/wireplumber/main.lua.d/85-maud-no-$m.lua"
     done
+    if ! running "$dir/dbus.pid"; then
+        rm -f "$dir/run/bus"
+        dbus-daemon --session --fork --address="$DBUS_SESSION_BUS_ADDRESS" --print-pid=1 > "$dir/dbus.pid"
+    fi
     start pipewire 1
     start pipewire-pulse 0
     start wireplumber 2
@@ -43,7 +50,7 @@ start)
     fi
     ;;
 stop)
-    for name in wireplumber pipewire-pulse pipewire; do
+    for name in wireplumber pipewire-pulse pipewire dbus; do
         pid_file=$dir/$name.pid
         if running "$pid_file"; then
             kill "$(cat "$pid_file")"

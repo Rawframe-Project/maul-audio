@@ -833,15 +833,24 @@ int main(void)
     }
     TestTheDaemonsDevices(context);
     Helper helper;
-    CHECK(StartHelper(&helper), "the test's own client");
-    TestHotplugAndDefaults(context, &helper);
+    // Without a session manager the metadata never comes: the tests that
+    // write it fail here rather than crash.
+    bool helped = StartHelper(&helper);
+    CHECK(helped, "the test's own client, with the session manager's metadata");
+    if (helped)
+    {
+        TestHotplugAndDefaults(context, &helper);
+    }
     TestOutputStream(context);
     TestInputStream(context);
     TestDuplexStream(context);
     TestXruns(context);
     TestExclusiveRefused(context);
     TestDestroyWhileRendering(context);
-    TestStreamsMoveAndAreLost(context, &helper);
+    if (helped)
+    {
+        TestStreamsMoveAndAreLost(context, &helper);
+    }
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;

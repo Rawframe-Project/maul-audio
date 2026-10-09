@@ -76,8 +76,9 @@ jobs:
         # llvm-symbolizer for the sanitizer cells, and PipeWire's client
         # configuration (pipewire-bin), which every PipeWire system has;
         # without it libpipewire leaks on its own failed setup. The
-        # daemon, its PulseAudio server and WirePlumber run the PipeWire
-        # and PulseAudio tests. A mirror that stalls fails the step for a
+        # daemon, its PulseAudio server, WirePlumber and a session bus
+        # for it run the PipeWire and PulseAudio tests, which drive the
+        # server with pactl. A mirror that stalls fails the step for a
         # rerun.
         if: runner.os == 'Linux'
         timeout-minutes: 15
@@ -85,7 +86,7 @@ jobs:
           sudo apt-get $APT_OPTIONS update -q
           sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends gcc-14 g++-14 clang-20 libclang-rt-20-dev llvm-20 ninja-build \
             libpipewire-0.3-dev pipewire-bin libpulse-dev libasound2-dev \
-            pipewire pipewire-pulse wireplumber
+            pipewire pipewire-pulse wireplumber dbus-daemon pulseaudio-utils
       - name: Install BlackHole
         # The runners have no audio hardware; the CoreAudio test plays
         # into this virtual device.
@@ -121,6 +122,9 @@ jobs:
           fi
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log
           if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
+      - name: Sound server logs
+        if: failure() && runner.os == 'Linux'
+        run: tail -n 40 "$RUNNER_TEMP"/pw/*.log || true
       - name: Private backend
         # A backend built from outside src/ (docs/private-backends.md): it
         # takes the native slot, so only its test and the context's run.
