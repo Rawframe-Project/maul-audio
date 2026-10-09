@@ -213,21 +213,22 @@ int main(void)
     }
     CHECK(atomic_load(&shared->blocks) >= 10, "the stream runs");
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    maudStreamStatus status = {0};
     for (unsigned step = 1; step <= STEPS; ++step)
     {
         atomic_store(&shared->step, step);
         CHECK(maudSimulateDirect(shared->spatializer, &listener) == maud_success, "a step");
         Drain(context);
         Pause(5);
+        // The underruns over the stall, read about 50 ms after it, once
+        // the platform has had time to report a late one: a window as
+        // narrow as that, since some platforms (the iOS simulator) report
+        // an underrun now and then with no stall at all.
+        if (step == STALLED_STEP + 10)
+        {
+            CHECK(maudGetStreamStatus(context, shared->stream, &status) == maud_success, "status");
+        }
     }
-    // Let the stream run past the stall before reading its counters.
-    for (int i = 0; i < 10; ++i)
-    {
-        Drain(context);
-        Pause(10);
-    }
-    maudStreamStatus status;
-    CHECK(maudGetStreamStatus(context, shared->stream, &status) == maud_success, "status");
     double periodMs = 1000.0 * format.periodFrames / format.sampleRate;
     unsigned during = shared->blocksAfter - shared->blocksBefore;
     long long longest = atomic_load(&shared->longestInStall);
