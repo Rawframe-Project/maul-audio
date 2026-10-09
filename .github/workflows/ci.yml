@@ -75,14 +75,17 @@ jobs:
         # what only a recommend brought: clang's sanitizer runtime and
         # llvm-symbolizer for the sanitizer cells, and PipeWire's client
         # configuration (pipewire-bin), which every PipeWire system has;
-        # without it libpipewire leaks on its own failed setup. A mirror
-        # that stalls fails the step for a rerun.
+        # without it libpipewire leaks on its own failed setup. The
+        # daemon, its PulseAudio server and WirePlumber run the PipeWire
+        # and PulseAudio tests. A mirror that stalls fails the step for a
+        # rerun.
         if: runner.os == 'Linux'
         timeout-minutes: 15
         run: |
           sudo apt-get $APT_OPTIONS update -q
           sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends gcc-14 g++-14 clang-20 libclang-rt-20-dev llvm-20 ninja-build \
-            libpipewire-0.3-dev pipewire-bin libpulse-dev libasound2-dev
+            libpipewire-0.3-dev pipewire-bin libpulse-dev libasound2-dev \
+            pipewire pipewire-pulse wireplumber
       - name: Install BlackHole
         # The runners have no audio hardware; the CoreAudio test plays
         # into this virtual device.
@@ -99,12 +102,25 @@ jobs:
       - name: Build
         run: cmake --build build -j 4
       - name: Test
+        # On Linux the server tests run against a private PipeWire daemon
+        # with null devices (tools/pipewire_daemon.sh), as the runners
+        # have no sound server. A skipped test fails the step: a platform
+        # that failed to start would otherwise pass with nothing tested.
         run: |
+          set -o pipefail
+          if [ "$RUNNER_OS" = Linux ]; then
+            daemon="$PWD/tools/pipewire_daemon.sh"
+            "$daemon" start "$RUNNER_TEMP/pw"
+            export XDG_RUNTIME_DIR="$RUNNER_TEMP/pw/run" MAUD_REQUIRE_PIPEWIRE=1 MAUD_REQUIRE_PULSE=1
+            export MAUD_TEST_PIPEWIRE_STOP="$daemon stop $RUNNER_TEMP/pw"
+            export MAUD_TEST_PIPEWIRE_START="$daemon start $RUNNER_TEMP/pw"
+          fi
           if [ "$RUNNER_OS" = macOS ]; then
             export MAUD_REQUIRE_COREAUDIO=1
             export MAUD_TEST_COREAUDIO_RESTART="sudo killall coreaudiod"
           fi
-          ctest --test-dir build --output-on-failure
+          ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Private backend
         # A backend built from outside src/ (docs/private-backends.md): it
         # takes the native slot, so only its test and the context's run.
@@ -114,7 +130,9 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.extra }} \
             -D${PREFIX}_PRIVATE_BACKEND="$PWD/test/private_backend"
           cmake --build build-private -j 4 --target test_private_backend test_context
-          ctest --test-dir build-private -R "^(private_backend|context)$" --output-on-failure
+          set -o pipefail
+          ctest --test-dir build-private -R "^(private_backend|context)$" --output-on-failure 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       - name: Package
         # Installed, then consumed by a project that knows only the
         # package (samples/minimal), through CMake and pkg-config.
@@ -174,7 +192,15 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j 4
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        # The hosted runners have no audio endpoint, and CI installs no
+        # driver to make one: the WASAPI tests and the stall test, which
+        # plays through WASAPI, are left out here and run under Wine in
+        # the lane's gate and on real Windows by the device checklist.
+        # Any other skipped test fails the step.
+        run: |
+          set -o pipefail
+          ctest --test-dir build -C Release --output-on-failure -E "^(wasapi|wasapi_sta|stall)$" 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
       # The static install, consumed by a project that knows only the
       # package (samples/minimal), compiled by MSVC's cl.
       - name: Package
@@ -230,7 +256,12 @@ jobs:
           "$RUNNER_TEMP/default_device" BlackHole2ch_UID
           system_profiler SPAudioDataType | grep -B1 -A2 "Default"
       - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 300
+        # A skipped test fails the step: a platform that failed to start
+        # would otherwise pass with nothing tested.
+        run: |
+          set -o pipefail
+          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
 
   android:
     # The AAudio backend in the emulator, Android 11 (the oldest the
@@ -281,7 +312,12 @@ jobs:
       - name: Build
         run: cmake --build build -j 4
       - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 300
+        # A skipped test fails the step: a platform that failed to start
+        # would otherwise pass with nothing tested.
+        run: |
+          set -o pipefail
+          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
+          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
 
   web:
     name: web-emscripten

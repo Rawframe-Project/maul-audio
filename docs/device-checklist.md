@@ -19,9 +19,9 @@ After `coreaudiod` restarts on the CI's BlackHole, a lone stream runs
 three to five times fast until another client starts the device; on
 real hardware, step 4 below checks the rate by ear.
 
-The WASAPI tests run under Wine in development and skip on the CI's
-Windows runner, which has no audio endpoint. Wine does not enforce COM
-apartments.
+The WASAPI tests run under Wine in development; the CI's Windows job
+leaves them out by name, with the stall test, as its runner has no
+audio endpoint. Wine does not enforce COM apartments.
 
 ## By hand, before a release
 
