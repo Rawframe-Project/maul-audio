@@ -9,7 +9,7 @@ alsa_api:
 alsa_chmap:
 alsa_core: alsa_api alsa_chmap alsa_scan context_core worker
 alsa_scan: alsa_api context_core device
-alsa_stream: alsa_chmap alsa_core clock context context_core period thread worker xrun
+alsa_stream: alsa_api alsa_chmap alsa_core clock context context_core period thread worker xrun
 alsa_watch:
 ambisonic_rotation:
 apple_objects: context context_core period

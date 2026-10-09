@@ -136,9 +136,8 @@ static snd_pcm_sframes_t ReadIn(maudAlsaStream* entry, snd_pcm_sframes_t avail)
     return 0;
 }
 
-// Moves what the PCM can take or has, recovering from an xrun; a
-// recovered capture is started again. False when the PCM failed past
-// recovery, as when its card went away.
+// Moves what the PCM can take or has, recovering from an xrun
+// (maudAlsaRecover). False when the PCM failed past recovery.
 static bool Transfer(maudAlsaStream* entry)
 {
     const maudAlsaApi* api = entry->api;
@@ -148,22 +147,25 @@ static bool Transfer(maudAlsaStream* entry)
     {
         result = output ? WriteOut(entry, result) : ReadIn(entry, result);
     }
-    if (result >= 0 || result == -EAGAIN)
-    {
-        return true;
-    }
+    return result >= 0 || result == -EAGAIN ||
+           maudAlsaRecover(api, entry->pcm, entry->core, result);
+}
+
+bool maudAlsaRecover(const maudAlsaApi* api, snd_pcm_t* pcm, maudStreamCore* core,
+                     snd_pcm_sframes_t result)
+{
     // -EPIPE is an xrun: the PCM ran dry, or overflowed.
     if (result == -EPIPE)
     {
-        maudCountXrun(entry->core);
+        maudCountXrun(core);
     }
-    if (api->pcmRecover(entry->pcm, (int)result, 1) < 0)
+    if (api->pcmRecover(pcm, (int)result, 1) < 0)
     {
         return false;
     }
-    if (!output)
+    if (core->def.direction == maud_directionInput)
     {
-        api->pcmStart(entry->pcm);
+        api->pcmStart(pcm);
     }
     return true;
 }

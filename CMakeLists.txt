@@ -470,6 +470,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
             target_include_directories(test_alsa_chmap SYSTEM PRIVATE
                 ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
             target_compile_definitions(test_alsa_chmap PRIVATE _GNU_SOURCE)
+            maul_add_test(alsa_recover WHITEBOX)
+            target_include_directories(test_alsa_recover SYSTEM PRIVATE
+                ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
+            target_compile_definitions(test_alsa_recover PRIVATE _GNU_SOURCE)
             maul_add_test(alsa_hotplug WHITEBOX)
             target_include_directories(test_alsa_hotplug SYSTEM PRIVATE
                 ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
