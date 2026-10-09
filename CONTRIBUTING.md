@@ -32,6 +32,11 @@ was wrong and why the change is right. The full rules are in the
 conventions. A pull request carries one topic, and its title follows
 the same form as a commit subject.
 
+## Releases
+
+A release follows the checklist in the conventions (section 15) and,
+where the library has one, its own steps in `docs/releasing.md`.
+
 ## Reporting bugs
 
 A report with a small program that reproduces the problem is the most

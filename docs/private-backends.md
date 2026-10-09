@@ -3,8 +3,8 @@
 A platform whose audio API is under a non-disclosure agreement, a
 console's for instance, cannot have its backend in this repository.
 Such a backend lives in the studio's own repository and joins the
-library when it is configured; the library is not forked (decision
-maud-0068... see below).
+library when it is configured; the library is not forked (record
+[maud-0002](adr/maud-0002-private-backends.md)).
 
 ## Building one in
 

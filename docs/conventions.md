@@ -38,7 +38,7 @@ Checked by: review.
 | `src/` | Implementation and internal headers. |
 | `test/` | Test suites, one executable per suite. |
 | `bench/` | Benchmarks. |
-| `samples/` | Small standalone programs that use the installed package. |
+| `samples/` | Programs that use the library as a host does: standalone ones built against the installed package, and ones built in the tree that run as tests. |
 | `testbed/` | Interactive or visual tools. Not part of the library. |
 | `tools/` | Developer scripts, command-line tools and generators. |
 | `cmake/` | CMake modules and package templates. |
@@ -209,6 +209,8 @@ file-scope state).
   review round names, phase or slice labels, dates, version stamps,
   "was/used to" stories or changelogs. History lives in git and in
   `CHANGELOG.md`; design reasoning lives in `docs/adr/`.
+- A design record cited as `P-NNNN` exists in `docs/adr/` and is
+  listed in the library's index of records, `docs/adr/P.md`.
 - No `TODO` or `FIXME` comments. Open an issue instead.
 - No comparisons with other libraries in code comments.
 - No em dash character anywhere in the repository.
@@ -224,7 +226,7 @@ file-scope state).
 MUNI_NODISCARD muniUtf8Result muniValidateUtf8(const char* bytes, size_t length);
 ```
 
-Checked by: `tools/check_docs.py` (public documentation);
+Checked by: `tools/check_docs.py` (public documentation, records);
 `tools/check_source.py` (SPDX line, history markers, `TODO`, `FIXME`,
 em dash, `/* */` comments); review (content).
 
@@ -386,9 +388,27 @@ recognizes).
 - `CHANGELOG.md` follows Keep a Changelog. Every user-visible change
   adds a line under `[Unreleased]` in the same commit, in the section
   order Added, Changed, Deprecated, Removed, Fixed, Security.
-- Releases are tags `vX.Y.Z` on `main`. Before a release, the family
-  drift check (`family_sync.py --check`, run from the family's docs
-  repository) reports no difference for the library.
+- Releases are tags `vX.Y.Z` on `main`, made by following the release
+  checklist below in order. A library with steps of its own (a size
+  budget, recorded runs on devices) lists them in its
+  `docs/releasing.md`, linked from its README, and takes them between
+  steps 4 and 5.
+
+The release checklist:
+
+1. `CHANGELOG.md`: `[Unreleased]` becomes `[X.Y.Z] - YYYY-MM-DD`, with
+   a line saying what the release is, and an empty `[Unreleased]`
+   starts above it.
+2. The `PP_VERSION_*` macros are `X.Y.Z`, and the README's status
+   names the release.
+3. The family drift check (`family_sync.py --check`, run from the
+   family's docs repository) reports no difference for the library.
+4. These changes are one commit, `release: X.Y.Z`, and CI is green on
+   it in every job.
+5. An annotated tag `vX.Y.Z` on that commit is pushed, and a release
+   on the hosting site carries the changelog section as its notes.
+6. A library that pins this one (a seam check, a fetched dependency)
+   moves its pin in a commit of its own when it needs the release.
 
 Checked by: review; the release checklist.
 
