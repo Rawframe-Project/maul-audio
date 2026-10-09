@@ -158,6 +158,7 @@ int main(int argc, char** argv)
     }
     printf("Playing a tone on the default output for %d s.\n", seconds);
     int64_t lastLatency = -1;
+    uint64_t lastUnderruns = 0;
     for (int tick = 0; tick < seconds * 20; ++tick)
     {
         maudNotification record;
@@ -176,6 +177,14 @@ int main(int argc, char** argv)
         {
             printf("%6.2f s  latency %.1f ms\n", tick / 20.0, clock.latencyNanoseconds / 1e6);
             lastLatency = clock.latencyNanoseconds;
+        }
+        // Underruns as the platform reveals them.
+        maudStreamStatus status = {0};
+        if (maudGetStreamStatus(context, stream, &status) == maud_success &&
+            status.underruns != lastUnderruns)
+        {
+            printf("%6.2f s  underruns %llu\n", tick / 20.0, (unsigned long long)status.underruns);
+            lastUnderruns = status.underruns;
         }
         Pause(50);
     }

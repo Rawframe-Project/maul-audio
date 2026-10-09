@@ -28,7 +28,8 @@ apartments.
 Use a build with tests (`ctest` passes first). Run `sample_devices
 600` (samples/devices.c): it lists the devices, plays a quiet tone on
 the default output, and prints every notification with its kind,
-device and stream, and the stream's latency when it moves.
+device and stream, the stream's latency when it moves, and its
+underrun count when it grows.
 
 On each platform, with two outputs at least (built-in speakers and a
 USB or Bluetooth headset):
@@ -63,6 +64,15 @@ USB or Bluetooth headset):
 6. On Windows, run steps 1 to 4 from a host whose main thread called
    `OleInitialize` first (a single-threaded apartment), as a window
    with drag and drop does.
+7. On Linux, with no sound server running (`systemctl --user stop
+   pipewire pipewire-pulse`, or no PulseAudio), so that ALSA opens the
+   card itself: run `sample_devices 600`, which must list the card's
+   endpoints, then suspend the process for a second (`kill -STOP`,
+   then `kill -CONT`). Expect the tone back without a stuck stream,
+   and an underrun counted; then unplug a USB card under a stream and
+   expect `maud_suspendDeviceLost`. The tests' ALSA runs through
+   PipeWire's plugin, which absorbs a stall without an xrun and has no
+   cards, so this is where ALSA's recovery and card scan run.
 
 Record for each step: the platform and version, the devices, the
 notifications seen, and anything else heard (a click, a gap, a stuck
