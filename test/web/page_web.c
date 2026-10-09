@@ -22,6 +22,7 @@
 #include <emscripten/em_js.h>
 #include <emscripten/emscripten.h>
 #include <emscripten/eventloop.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -70,6 +71,9 @@ static maudStreamId s_capture;
 static maudStreamId s_voiced;
 static uint32_t s_captured;
 static float s_loudest;
+// Captured samples that were not finite numbers (a ring read past its
+// end gives NaN).
+static uint32_t s_notFinite;
 static maudStreamClock s_captureClock;
 static uint32_t s_capturedAtStop;
 // The browser refuses the microphone on this run.
@@ -100,13 +104,15 @@ static void IgnoreBlocks(const maudStreamBlock* block, void* user)
     (void)user;
 }
 
-// Counts captured blocks and keeps the loudest sample.
+// Counts captured blocks and their samples that are not finite, and
+// keeps the loudest sample.
 static void CaptureBlocks(const maudStreamBlock* block, void* user)
 {
     (void)user;
     uint32_t samples = block->frameCount * maudGetLayoutChannelCount(block->layout);
     for (uint32_t i = 0; block->input != nullptr && i < samples; ++i)
     {
+        s_notFinite += isfinite(block->input[i]) ? 0u : 1u;
         float sample = block->input[i] < 0.0f ? -block->input[i] : block->input[i];
         s_loudest = sample > s_loudest ? sample : s_loudest;
     }
@@ -304,6 +310,7 @@ static void CheckCapture(uint32_t rate)
     }
     CHECK(s_captured > 100, "the microphone's blocks arrive");
     CHECK(s_loudest > 0.1f, "with the fake device's sound");
+    CHECK(s_notFinite == 0, "every sample a finite number");
 }
 
 // Three windows of two seconds, long enough that the browser's bursts
@@ -481,6 +488,27 @@ static maudStreamId OpenOn(maudDirection direction, maudDeviceId device, maudRes
 // The browser's fake devices are listed by name; while the Default
 // output plays, another output device is refused; a capture opens on the
 // second fake microphone.
+// Every listed device has its direction's layout: the browser plays in
+// stereo and captures in mono.
+static void CheckLayouts(void)
+{
+    for (maudDirection direction = maud_directionOutput; direction <= maud_directionInput;
+         ++direction)
+    {
+        maudDeviceId ids[8];
+        uint32_t count = 0;
+        CHECK(maudGetDevices(s_context, direction, ids, 8, &count) == maud_success, "list");
+        for (uint32_t i = 0; i < count && i < 8; ++i)
+        {
+            maudDeviceInfo info = {0};
+            CHECK(maudGetDeviceInfo(s_context, ids[i], &info) == maud_success &&
+                      info.nativeLayout ==
+                          (direction == maud_directionOutput ? maud_layoutStereo : maud_layoutMono),
+                  "stereo outputs and mono inputs");
+        }
+    }
+}
+
 static void ChooseDevices(void)
 {
     maudDeviceId output = Named(maud_directionOutput, "Fake Audio Output 1");
@@ -614,6 +642,7 @@ static void Step_(void* user)
     case stepDevices:
         if (Listed(maud_directionOutput) == 3 && Listed(maud_directionInput) == 3)
         {
+            CheckLayouts();
             ChooseDevices();
             s_since = now;
             s_step = stepDeviceCapture;
