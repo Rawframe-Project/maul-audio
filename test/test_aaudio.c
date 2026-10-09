@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The AAudio backend on the device or emulator it runs on: the default
-// output and input; an output stream's blocks, rate, clock, stopping and
+// output and input, and the default output alone in a context of one
+// device; an output stream's blocks, rate, clock, stopping and
 // starting, and its converted and refused rates; xruns; exclusive
 // streams; and capture as far as the device lets the shell record. An
 // emulator plays without a host audio connection but refuses the
@@ -291,6 +292,7 @@ static void TestXruns(maudContext* context)
     printf("xruns after a stall: %llu under, %llu over\n", (unsigned long long)status.underruns,
            (unsigned long long)status.overruns);
     CHECK(status.underruns >= 1 && status.overruns == 0, "the stall counted as an underrun");
+    CHECK(status.underruns < atomic_load(&blocks.count) / 2, "underruns counted, not callbacks");
     CHECK(Destroy(context, stream), "destroy");
 }
 
@@ -380,6 +382,27 @@ static void TestCapture(maudContext* context)
     CHECK(Destroy(context, stream), "destroy");
 }
 
+// A context of one device lists the default output alone.
+static void TestDeviceLimit(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.limits.devices = 1;
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&def, &context) == maud_success, "a context of one device");
+    if (context == nullptr)
+    {
+        return;
+    }
+    maudDeviceId ids[4];
+    uint32_t outputs = 0;
+    uint32_t inputs = 0;
+    CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &outputs) == maud_success &&
+              maudGetDevices(context, maud_directionInput, ids, 4, &inputs) == maud_success &&
+              outputs == 1 && inputs == 0,
+          "the default output alone");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 int main(void)
 {
     s_control = pthread_self();
@@ -403,5 +426,6 @@ int main(void)
     TestExclusive(context);
     TestCapture(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    TestDeviceLimit();
     return s_failures == 0 ? 0 : 1;
 }

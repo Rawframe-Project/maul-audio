@@ -4,12 +4,13 @@
 // The AAudio backend's Java half, in an application in the emulator
 // (tools/build_android_app.sh, tools/run_android_app.sh): a context
 // given the activity's Java VM and the activity lists the speaker and
-// the microphone beside the defaults, with their forms, and leaves the
-// emulator's internal endpoints out; a stream pinned to the speaker
-// plays; an input stream waits for the microphone permission, which the
-// library asks for, and leaves the wait when the runner grants it; one
-// handle without the other is refused; audio focus is held when asked
-// for, follows what another request (the test's own, through AudioManager)
+// the microphone beside the defaults, with their forms and the keys
+// Android's own listing gives them, and leaves the emulator's internal
+// endpoints out; a stream pinned to the speaker plays; an input stream
+// waits for the microphone permission, which the library asks for,
+// leaves the wait when the runner grants it, and captures; one handle
+// without the other is refused; audio focus is held when asked for,
+// follows what another request (the test's own, through AudioManager)
 // does to it, and is released. The test runs on a thread of its own,
 // which the library attaches to the VM only while it calls Java.
 
@@ -18,6 +19,7 @@
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
 #include "maul-audio/focus.h"
+#include "maul-audio/layout.h"
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
@@ -39,6 +41,7 @@ typedef struct Run
 
 static Run s_run;
 static atomic_uint s_blocks;
+static atomic_uint s_captured;
 
 static void Sleep(int milliseconds)
 {
@@ -52,6 +55,10 @@ static void Silence(const maudStreamBlock* block, void* user)
     if (block->output != nullptr)
     {
         memset(block->output, 0, (size_t)block->frameCount * 2 * sizeof(float));
+    }
+    if (block->input != nullptr && block->output == nullptr)
+    {
+        atomic_fetch_add(&s_captured, 1);
     }
     atomic_fetch_add(&s_blocks, 1);
 }
@@ -78,12 +85,98 @@ static maudDeviceId Named(const maudContext* context, maudDirection direction, c
         printf("%s: %s [%s] %u Hz (%u to %u), form %u\n",
                direction == maud_directionOutput ? "output" : "input", text, key,
                info.nativeSampleRate, info.minSampleRate, info.maxSampleRate, (unsigned)info.form);
+        // A device Android lists no rates or channel counts for takes the
+        // default output's.
+        CHECK(info.minSampleRate >= 8000 && info.minSampleRate <= info.nativeSampleRate &&
+                  info.nativeSampleRate <= info.maxSampleRate &&
+                  maudGetLayoutChannelCount(info.nativeLayout) >= 1,
+              "its rates and channels");
         if (strcmp(text, name) == 0)
         {
             found = ids[i];
         }
     }
     return found;
+}
+
+// The key Android's own listing gives the first device of type: its
+// type and address, or its product name when it has no address. Asks
+// AudioManager.getDevices through the test's own JNI.
+static bool JavaKey(int type, bool input, char* key, size_t size)
+{
+    JavaVM* vm = s_run.vm;
+    JNIEnv* env = nullptr;
+    if ((*vm)->AttachCurrentThread(vm, &env, nullptr) != JNI_OK)
+    {
+        return false;
+    }
+    jclass contextType = (*env)->FindClass(env, "android/content/Context");
+    jmethodID service = (*env)->GetMethodID(env, contextType, "getSystemService",
+                                            "(Ljava/lang/String;)Ljava/lang/Object;");
+    jobject manager =
+        (*env)->CallObjectMethod(env, s_run.activity, service, (*env)->NewStringUTF(env, "audio"));
+    jclass managerType = (*env)->FindClass(env, "android/media/AudioManager");
+    jmethodID list =
+        (*env)->GetMethodID(env, managerType, "getDevices", "(I)[Landroid/media/AudioDeviceInfo;");
+    // GET_DEVICES_INPUTS 1, GET_DEVICES_OUTPUTS 2.
+    jobjectArray devices =
+        (jobjectArray)(*env)->CallObjectMethod(env, manager, list, input ? 1 : 2);
+    jclass infoType = (*env)->FindClass(env, "android/media/AudioDeviceInfo");
+    jmethodID typeOf = (*env)->GetMethodID(env, infoType, "getType", "()I");
+    jmethodID addressOf = (*env)->GetMethodID(env, infoType, "getAddress", "()Ljava/lang/String;");
+    jmethodID productOf =
+        (*env)->GetMethodID(env, infoType, "getProductName", "()Ljava/lang/CharSequence;");
+    jmethodID text = (*env)->GetMethodID(env, (*env)->FindClass(env, "java/lang/Object"),
+                                         "toString", "()Ljava/lang/String;");
+    bool found = false;
+    jsize count = devices != nullptr ? (*env)->GetArrayLength(env, devices) : 0;
+    for (jsize i = 0; i < count && !found; ++i)
+    {
+        jobject device = (*env)->GetObjectArrayElement(env, devices, i);
+        if ((*env)->CallIntMethod(env, device, typeOf) != type)
+        {
+            continue;
+        }
+        jstring address = (jstring)(*env)->CallObjectMethod(env, device, addressOf);
+        jobject product = (*env)->CallObjectMethod(env, device, productOf);
+        jstring productText =
+            product != nullptr ? (jstring)(*env)->CallObjectMethod(env, product, text) : nullptr;
+        const char* where =
+            address != nullptr ? (*env)->GetStringUTFChars(env, address, nullptr) : nullptr;
+        bool useProduct = where == nullptr || where[0] == '\0';
+        if (useProduct && where != nullptr)
+        {
+            (*env)->ReleaseStringUTFChars(env, address, where);
+        }
+        if (useProduct)
+        {
+            address = productText;
+            where = productText != nullptr ? (*env)->GetStringUTFChars(env, productText, nullptr)
+                                           : nullptr;
+        }
+        snprintf(key, size, "%d:%s", type, where != nullptr ? where : "");
+        if (where != nullptr)
+        {
+            (*env)->ReleaseStringUTFChars(env, address, where);
+        }
+        found = true;
+    }
+    bool thrown = (*env)->ExceptionCheck(env);
+    (*env)->ExceptionClear(env);
+    (*vm)->DetachCurrentThread(vm);
+    return found && !thrown;
+}
+
+// A device's key is the one Android's listing gives it.
+static bool KeyedAsJava(const maudContext* context, maudDeviceId id, int type, bool input)
+{
+    char key[128] = {0};
+    char wanted[128] = {0};
+    size_t length = 0;
+    bool ok = maudGetDeviceKey(context, id, key, sizeof(key) - 1, &length) == maud_success &&
+              JavaKey(type, input, wanted, sizeof(wanted));
+    printf("key %s, Android's %s\n", key, wanted);
+    return ok && strlen(wanted) > 2 && strcmp(key, wanted) == 0;
 }
 
 static void TestDevices(maudContext* context, maudDeviceId* speaker)
@@ -94,6 +187,10 @@ static void TestDevices(maudContext* context, maudDeviceId* speaker)
     maudDeviceId microphone = Named(context, maud_directionInput, "Microphone", &inputs);
     CHECK(speaker->index1 != 0 && microphone.index1 != 0, "the speaker and the microphone");
     CHECK(outputs == 2 && inputs == 2, "beside the defaults, and nothing internal");
+    // AudioDeviceInfo TYPE_BUILTIN_SPEAKER 2 (the emulator's has no
+    // address, so its product names it), TYPE_BUILTIN_MIC 15.
+    CHECK(KeyedAsJava(context, *speaker, 2, false) && KeyedAsJava(context, microphone, 15, true),
+          "keyed by their addresses, or their product names");
     maudDeviceInfo info = {0};
     CHECK(maudGetDeviceInfo(context, *speaker, &info) == maud_success &&
               info.form == maud_formSpeakers,
@@ -159,6 +256,15 @@ static void TestPermission(maudContext* context)
               maudStartStream(context, stream) == maud_success,
           "an input stream");
     CHECK(Suspension(context, stream) == maud_suspendPermission, "waits for the microphone");
+    for (int tries = 0; tries < 30; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    CHECK(Suspension(context, stream) == maud_suspendPermission, "and goes on waiting");
     printf("adb: pm grant %s android.permission.RECORD_AUDIO\n", MAUD_TEST_PACKAGE);
     bool resumed = false;
     for (int tries = 0; tries < 1500 && !resumed; ++tries)
@@ -173,6 +279,16 @@ static void TestPermission(maudContext* context)
     }
     CHECK(resumed && Suspension(context, stream) != maud_suspendPermission,
           "granted, it leaves the wait");
+    atomic_store(&s_captured, 0);
+    for (int tries = 0; tries < 300 && atomic_load(&s_captured) < 20; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    CHECK(atomic_load(&s_captured) >= 20, "and captures");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed");
 }
 

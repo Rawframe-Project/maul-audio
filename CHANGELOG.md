@@ -8,6 +8,13 @@ format.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Android, a context whose device limit was too small to hold the
+  default input crashed when it was created: the backend pointed the
+  input's default at a device it had not listed. A context of one
+  device now lists the default output alone.
+
 ## [0.1.1] - 2026-10-09
 
 The static package can be consumed.
