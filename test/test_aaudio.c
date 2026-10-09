@@ -228,6 +228,11 @@ static void TestOutputStream(maudContext* context)
     CHECK(Near(MeasureRate(context, stream), (double)info.nativeSampleRate), "at its rate");
     CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
           "its clock maps frames to host time");
+    // The emulator's backlog, which the lane's gate reads to restart an
+    // emulator before it reaches TEST_CLOCK_MAX_LATENCY.
+    maudStreamClock heard = {0};
+    CHECK(maudGetStreamClock(context, stream, &heard) == maud_success, "clock");
+    printf("output latency %.3f s\n", (double)heard.latencyNanoseconds / 1e9);
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
     uint64_t before = 0;
