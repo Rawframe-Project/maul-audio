@@ -426,6 +426,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(lifecycle)
     if(NOT MAUL_AUDIO_BUILD_SHARED)
         maul_add_test(sample_convert WHITEBOX)
+        maul_add_test(xrun WHITEBOX)
     endif()
     # The stamp races a writer thread; Emscripten builds have none.
     if(NOT EMSCRIPTEN)

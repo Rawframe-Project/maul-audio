@@ -32,16 +32,6 @@ static maudAaudioStream* EntryOf(maudContext* context, const maudStreamSlot* slo
     return &aaudio->streams[slot - context->streams.slots];
 }
 
-// Counts the xruns AAudio saw since the last callback.
-static void CountXruns(maudAaudioStream* entry, AAudioStream* stream)
-{
-    int32_t xruns = AAudioStream_getXRunCount(stream);
-    for (; entry->xruns < xruns; ++entry->xruns)
-    {
-        maudCountXrun(entry->core);
-    }
-}
-
 // Stamps the stream's clock. AAudio's timestamp gives the time a frame
 // was heard or captured; the buffer's first frame is the frames written
 // before it (output) or read before it (input) away from that frame.
@@ -84,7 +74,7 @@ static aaudio_data_callback_result_t Move(AAudioStream* stream, void* user, void
     maudAaudioStream* entry = user;
     maudStreamCore* core = entry->core;
     bool output = core->def.direction == maud_directionOutput;
-    CountXruns(entry, stream);
+    maudCountXrunsTo(core, &entry->xruns, AAudioStream_getXRunCount(stream));
     bool running = atomic_load_explicit(&core->state, memory_order_acquire) == maud_streamRunning;
     atomic_store_explicit(&core->renderingThread, maudCurrentThread(), memory_order_release);
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
