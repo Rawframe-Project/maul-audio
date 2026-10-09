@@ -155,7 +155,8 @@ and `.gitattributes`.
   `src/`, its sources in `DIR/src` and its public headers in
   `DIR/include`, and is listed in `tools/source-dirs.txt`. The rules
   for `src/` hold there too, and its sources include their own headers
-  and public ones alone, never the library's internals.
+  and public ones alone, never the library's internals. The API
+  reference gives each part's headers a section of their own.
 - Every `.c` file includes its own header first, then other internal
   headers, then public headers (`"lib/x.h"`), then system headers
   (`<...>`), one blank line between groups, each group sorted.

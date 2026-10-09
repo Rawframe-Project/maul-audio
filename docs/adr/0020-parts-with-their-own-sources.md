@@ -18,11 +18,14 @@ the directory in `tools/source-dirs.txt`. The family's checks read the
 list: the source rules for `src/` hold in `DIR/src`, the length rules
 measure its files (named by their path), its headers count toward the
 structure limits, and its sources include their own headers and public
-ones alone, never the library's internals. A library without the file
+ones alone, never the library's internals. The API reference
+(`tools/gen_api.py`) lists each part's headers, `DIR/include/NAME`, in
+a section of its own after the library's. A library without the file
 is checked as before.
 
 ## Consequences
 
 Every source a library ships keeps the family's rules, through the same
-shared checks, with one line per part. A part cannot reach into its
-library's internals, so it stays as separable as its own build target.
+shared checks, with one line per part, and its reference lists the
+part's functions. A part cannot reach into its library's internals, so
+it stays as separable as its own build target.

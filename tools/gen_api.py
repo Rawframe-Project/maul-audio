@@ -4,6 +4,8 @@
 # header. Plain text extraction with no compiler, so the reference
 # shows exactly what the headers say. The same script serves every Maul
 # library; it reads the library's name and prefix from CMakeLists.txt.
+# A part tools/source-dirs.txt lists (DIR/src and DIR/include, family
+# record 0020) gets a section of its own for each DIR/include/NAME.
 #
 # Usage: python3 tools/gen_api.py  (from the repository root)
 
@@ -29,10 +31,26 @@ HEADER_DIR = os.path.join(ROOT, "include", LIB)
 FIRST = ["base.h"]
 
 
-def header_order():
-    names = [n for n in os.listdir(HEADER_DIR) if n.endswith(".h") and n != LIB + ".h"]
+def header_order(folder, umbrella):
+    names = [n for n in os.listdir(folder) if n.endswith(".h") and n != umbrella + ".h"]
     rest = sorted(n for n in names if n not in FIRST)
     return [n for n in FIRST if n in names] + rest
+
+
+def parts():
+    """(name, header directory) of each part's DIR/include/NAME, for the
+    directories tools/source-dirs.txt lists, in its order."""
+    path = os.path.join(ROOT, "tools", "source-dirs.txt")
+    if not os.path.exists(path):
+        return []
+    result = []
+    for line in open(path, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        include = os.path.join(ROOT, os.path.normpath(line), "include") if line else ""
+        if include and os.path.isdir(include):
+            result += [(name, os.path.join(include, name)) for name in sorted(os.listdir(include))
+                       if os.path.isdir(os.path.join(include, name))]
+    return result
 
 
 def summary(lines):
@@ -76,7 +94,7 @@ def collect(lines):
                 sig += " " + lines[j].strip()
             inline = sig.split("//")[0].rstrip().endswith("{")
             sig = re.sub(r"\s+", " ", sig.split("//")[0]).strip()
-            sig = re.sub(r"^" + cmake_setting("MAUL_MACRO_PREFIX") + r"_API\s+", "", sig)
+            sig = re.sub(r"^" + cmake_setting("MAUL_MACRO_PREFIX") + r"(?:_[A-Z0-9]+)*_API\s+", "", sig)
             if inline:
                 sig = sig[:-1].rstrip() + ";"
                 depth += 1
@@ -100,20 +118,26 @@ def main():
         "",
     ]
     total = 0
-    headers = header_order()
-    for name in headers:
-        lines = open(os.path.join(HEADER_DIR, name)).read().split("\n")
-        entries = collect(lines)
-        if not entries:
-            continue
-        out += ["## `" + name + "`", "", summary(lines), ""]
-        for comment, sig in entries:
-            out += ["```c", sig, "```"]
-            if comment:
-                out.append(" ".join(comment))
-            out.append("")
-            total += 1
-    out += ["---", "", "%d functions across %d headers." % (total, len(headers)), ""]
+    headers = 0
+    sections = [(None, HEADER_DIR, LIB, "## ")] + [(name, folder, name, "### ") for name, folder in parts()]
+    for part, folder, umbrella, level in sections:
+        names = header_order(folder, umbrella)
+        headers += len(names)
+        if part is not None:
+            out += ["## The `" + part + "` part", ""]
+        for name in names:
+            lines = open(os.path.join(folder, name)).read().split("\n")
+            entries = collect(lines)
+            if not entries:
+                continue
+            out += [level + "`" + name + "`", "", summary(lines), ""]
+            for comment, sig in entries:
+                out += ["```c", sig, "```"]
+                if comment:
+                    out.append(" ".join(comment))
+                out.append("")
+                total += 1
+    out += ["---", "", "%d functions across %d headers." % (total, headers), ""]
     dest = os.path.join(ROOT, "docs", "api.md")
     open(dest, "w").write("\n".join(out))
     print("wrote %s (%d functions)" % (dest, total))
