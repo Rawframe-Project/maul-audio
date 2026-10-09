@@ -8,6 +8,10 @@ format.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-09
+
+An Android context with a small device limit can be created.
+
 ### Fixed
 
 - On Android, a context whose device limit was too small to hold the

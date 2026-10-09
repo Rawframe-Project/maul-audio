@@ -19,7 +19,7 @@ extern "C"
 // The library version. CMake reads it from here.
 #define MAUD_VERSION_MAJOR 0
 #define MAUD_VERSION_MINOR 1
-#define MAUD_VERSION_PATCH 1
+#define MAUD_VERSION_PATCH 2
 
 // MAUD_API marks the public functions: dllexport or dllimport in a
 // shared Windows build (maul_audio_EXPORTS is defined while building
