@@ -415,7 +415,9 @@ cmake --install build --prefix /usr/local
 ```
 
 A host finds the package with `find_package(maul-audio)` and links
-`maul-audio::maul-audio`; `-DMAUL_AUDIO_SPATIAL=OFF` builds the Device
-part alone, `-DMAUL_AUDIO_DEVICE=OFF` the Spatial part. The samples put
-the calls above together: `samples/devices.c` for the Device part,
-`samples/binaural.c` for the Spatial part.
+`maul-audio::maul-audio`, or asks pkg-config for `maul-audio` (with
+`--static` for the static library); `samples/minimal` is such a host,
+a project that knows only the installed package. `-DMAUL_AUDIO_SPATIAL=OFF`
+builds the Device part alone, `-DMAUL_AUDIO_DEVICE=OFF` the Spatial
+part. The samples put the calls above together: `samples/devices.c`
+for the Device part, `samples/binaural.c` for the Spatial part.

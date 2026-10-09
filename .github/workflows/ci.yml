@@ -113,8 +113,19 @@ jobs:
           cmake --build build-private -j 4 --target test_private_backend test_context
           ctest --test-dir build-private -R "^(private_backend|context)$" --output-on-failure
       - name: Package
-        if: matrix.name == 'linux-shared'
-        run: cmake --install build --prefix "$PWD/package"
+        # Installed, then consumed by a project that knows only the
+        # package (samples/minimal), through CMake and pkg-config.
+        if: matrix.name == 'linux-shared' || matrix.name == 'linux-gcc-14'
+        run: |
+          cmake --install build --prefix "$PWD/package"
+          cmake -S samples/minimal -B build-minimal -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_PREFIX_PATH="$PWD/package"
+          cmake --build build-minimal
+          LD_LIBRARY_PATH="$PWD/package/lib" ./build-minimal/minimal
+          static=$([ "${{ matrix.name }}" = linux-gcc-14 ] && echo --static || true)
+          ${{ matrix.cc }} -std=c17 samples/minimal/main.c -o minimal-pc \
+            $(PKG_CONFIG_PATH="$PWD/package/lib/pkgconfig" pkg-config $static --cflags --libs maul-audio)
+          LD_LIBRARY_PATH="$PWD/package/lib" ./minimal-pc
 
   # Each fuzz target runs for one minute on every push, from the shipped
   # files as seeds: the HRTF set behind a 0x01 byte, the bakes behind a

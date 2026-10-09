@@ -8,6 +8,15 @@ format.
 
 ## [Unreleased]
 
+### Fixed
+
+- The installed static library could not be consumed: its CMake
+  package named Threads::Threads without finding Threads, and its
+  pkg-config file listed none of the system libraries it links (libm,
+  libdl, the platform's audio frameworks). Both now name them, and
+  CI and the gate build `samples/minimal`, a project that knows only
+  the installed package, against it.
+
 ## [0.1.0] - 2026-10-09
 
 The first release: device I/O on every desktop, mobile and web
