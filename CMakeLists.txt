@@ -497,6 +497,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         add_test(NAME wasapi_sta COMMAND test_wasapi)
         set_tests_properties(wasapi_sta PROPERTIES SKIP_RETURN_CODE 77
             ENVIRONMENT MAUD_WASAPI_STA=1 RESOURCE_LOCK wasapi-endpoints)
+        if(NOT MAUL_AUDIO_BUILD_SHARED)
+            maul_add_test(wasapi_voice WHITEBOX)
+            target_link_libraries(test_wasapi_voice PRIVATE ole32)
+        endif()
     endif()
     # The iOS backend in the simulator, in Objective-C to read the
     # session's category.
