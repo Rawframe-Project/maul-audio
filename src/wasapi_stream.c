@@ -77,16 +77,6 @@ static void Render(maudWasapiStream* entry, float* out, const float* in, uint32_
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
 }
 
-// A performance-counter time in 100-nanosecond units as host
-// nanoseconds, or fallback when it is 0 or more than a second from now
-// (wine's counter times overflow).
-static int64_t CounterTime(UINT64 counter, int64_t now, int64_t fallback)
-{
-    int64_t time = (int64_t)counter * 100;
-    bool plausible = counter != 0 && time > now - 1000000000 && time < now + 1000000000;
-    return plausible ? time : fallback;
-}
-
 // How far from now the next frame written is heard: the device's
 // position, at the performance-counter time it was read, is behind the
 // frames written by what is still to play. 0 when the clock cannot say.
@@ -103,7 +93,7 @@ static int64_t OutputLatency(const maudWasapiStream* entry)
     uint64_t heard = position * rate / entry->clockFrequency;
     int64_t ahead = entry->written > heard ? (int64_t)(entry->written - heard) : 0;
     int64_t now = maudNowNanoseconds();
-    return CounterTime(counter, now, now) - now + ahead * 1000000000 / rate;
+    return maudWasapiCounterTime(counter, now, now) - now + ahead * 1000000000 / rate;
 }
 
 // Fills the render buffer's free space.
@@ -209,7 +199,8 @@ static HRESULT Drain(maudWasapiStream* entry)
             // chunks were captured later by what came before them.
             uint32_t rate = entry->core->format.sampleRate;
             int64_t now = maudNowNanoseconds();
-            int64_t start = CounterTime(counter, now, now - (int64_t)frames * 1000000000 / rate);
+            int64_t start =
+                maudWasapiCounterTime(counter, now, now - (int64_t)frames * 1000000000 / rate);
             int64_t captured = start + (int64_t)done * 1000000000 / rate;
             Render(entry, nullptr, samples, chunk, now - captured);
             done += chunk;
