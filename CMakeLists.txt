@@ -490,11 +490,13 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_add_test(wasapi WHITEBOX)
         target_compile_definitions(test_wasapi PRIVATE _WIN32_WINNT=0x0A00)
         target_link_libraries(test_wasapi PRIVATE ole32)
-        set_tests_properties(wasapi PROPERTIES SKIP_RETURN_CODE 77)
+        # Both runs move streams between the system's endpoints and make
+        # them the default, so they never run at once.
+        set_tests_properties(wasapi PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK wasapi-endpoints)
         # The same with the host's thread in a single-threaded apartment.
         add_test(NAME wasapi_sta COMMAND test_wasapi)
         set_tests_properties(wasapi_sta PROPERTIES SKIP_RETURN_CODE 77
-            ENVIRONMENT MAUD_WASAPI_STA=1)
+            ENVIRONMENT MAUD_WASAPI_STA=1 RESOURCE_LOCK wasapi-endpoints)
     endif()
     # The iOS backend in the simulator, in Objective-C to read the
     # session's category.
