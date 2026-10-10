@@ -89,7 +89,7 @@ probe_sets: allocator probe_bake probe_graph
 pulse_api:
 pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core period pulse_core thread worker xrun
-real_fft:
+real_fft: allocator
 reflection_response: fft
 reflections: allocator ambisonics partitioned reflection_response reverb_estimate
 reverb: allocator band_eq octave_eq

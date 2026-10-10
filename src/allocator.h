@@ -35,7 +35,7 @@ void maudRelease(const maudAllocator* allocator, void* memory, size_t size, size
 #endif
 
 // The gaps a layout records; parts past them get none.
-#define MAUD_LAYOUT_GAPS 16
+#define MAUD_LAYOUT_GAPS 32
 
 // A block being laid out: its size so far, whether a part did not fit
 // in size_t, and under AddressSanitizer the gaps after its parts.
