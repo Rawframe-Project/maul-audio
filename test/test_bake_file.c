@@ -207,16 +207,35 @@ static void Expect(File* c, maudResult want, const char* what)
     free(c->bytes);
 }
 
+// Whether two graphs hold the same probes and links, array by array
+// (their blocks' padding is not theirs to compare).
+static bool SameGraph(const maudProbeGraph* a, const maudProbeGraph* b)
+{
+    return a->count == b->count && a->links == b->links &&
+           memcmp(a->points, b->points, (size_t)a->count * sizeof(maudVector3)) == 0 &&
+           memcmp(a->offsets, b->offsets, ((size_t)a->count + 1) * sizeof(uint32_t)) == 0 &&
+           memcmp(a->neighbours, b->neighbours, 2 * (size_t)a->links * sizeof(uint32_t)) == 0 &&
+           memcmp(a->lengths, b->lengths, 2 * (size_t)a->links * sizeof(float)) == 0;
+}
+
+// Whether two bakes hold the same results, array by array.
+static bool SameBake(const maudProbeBake* a, const maudProbeBake* b)
+{
+    size_t bands = (size_t)a->count * MAUD_DIRECT_BANDS * sizeof(float);
+    return a->count == b->count && a->fieldFloats == b->fieldFloats &&
+           memcmp(a->times, b->times, bands) == 0 && memcmp(a->levels, b->levels, bands) == 0 &&
+           memcmp(a->tailTimes, b->tailTimes, bands) == 0 &&
+           memcmp(a->tailLevels, b->tailLevels, bands) == 0 &&
+           memcmp(a->fields, b->fields, (size_t)a->count * a->fieldFloats * sizeof(float)) == 0;
+}
+
 static void TestRoundTrip(const maudProbeGraph* g, const maudProbeBake* b, const File* f)
 {
     maudProbeGraph rg;
     maudProbeBake rb;
     CHECK(maudReadBakeFile(f->bytes, f->size, &s_limits, &s_allocator, &rg, &rb) == maud_success,
           "read back");
-    CHECK(rg.bytes == g->bytes && memcmp(rg.memory, g->memory, g->bytes) == 0 &&
-              rg.range == g->range && rb.bytes == b->bytes &&
-              memcmp(rb.memory, b->memory, b->bytes) == 0,
-          "the same memory");
+    CHECK(SameGraph(&rg, g) && rg.range == g->range && SameBake(&rb, b), "the same memory");
     File again = Write(&rg, &rb);
     CHECK(again.size == f->size && memcmp(again.bytes, f->bytes, f->size) == 0, "the same bytes");
     free(again.bytes);

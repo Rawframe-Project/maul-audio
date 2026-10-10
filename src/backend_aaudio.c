@@ -17,6 +17,7 @@
 #include "aaudio_core.h"
 #include "aaudio_java.h"
 #include "aaudio_stream.h"
+#include "allocator.h"
 #include "backend.h"
 #include "context.h"
 #include "device.h"
@@ -271,17 +272,28 @@ static maudAaudio* Allocate(maudContext* context)
 {
     uint32_t streams = context->def.limits.streams;
     uint32_t devices = context->def.limits.devices;
-    size_t bytes = sizeof(maudAaudio) + (size_t)streams * sizeof(maudAaudioStream) +
-                   (size_t)devices * (sizeof(maudDeviceSpec) + sizeof(maudAaudioEndpoint));
-    maudAaudio* aaudio = maudContextAllocate(context, bytes, alignof(maudAaudio));
-    if (aaudio == nullptr)
+    maudLayout layout = {0};
+    (void)maudLayoutAdd(&layout, 1, sizeof(maudAaudio), alignof(maudAaudio));
+    size_t entries =
+        maudLayoutAdd(&layout, streams, sizeof(maudAaudioStream), alignof(maudAaudioStream));
+    size_t specs = maudLayoutAdd(&layout, devices, sizeof(maudDeviceSpec), alignof(maudDeviceSpec));
+    size_t endpoints =
+        maudLayoutAdd(&layout, devices, sizeof(maudAaudioEndpoint), alignof(maudAaudioEndpoint));
+    unsigned char* block =
+        layout.overflow ? nullptr : maudContextAllocate(context, layout.size, alignof(maudAaudio));
+    if (block == nullptr)
     {
         return nullptr;
     }
-    *aaudio = (maudAaudio){.context = context, .bytes = bytes};
-    aaudio->streams = (maudAaudioStream*)(aaudio + 1);
-    aaudio->specs = (maudDeviceSpec*)(aaudio->streams + streams);
-    aaudio->endpoints = (maudAaudioEndpoint*)(aaudio->specs + devices);
+    maudLayoutPoison(&layout, block);
+    maudAaudio* aaudio = (maudAaudio*)block;
+    *aaudio = (maudAaudio){
+        .context = context,
+        .streams = (maudAaudioStream*)(block + entries),
+        .specs = (maudDeviceSpec*)(block + specs),
+        .endpoints = (maudAaudioEndpoint*)(block + endpoints),
+        .bytes = layout.size,
+    };
     memset(aaudio->streams, 0, (size_t)streams * sizeof(maudAaudioStream));
     atomic_init(&aaudio->signals.changed, false);
     atomic_init(&aaudio->signals.focus, 0);

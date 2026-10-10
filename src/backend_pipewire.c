@@ -7,6 +7,7 @@
 // deadline for the round trips of creation. Registry events become
 // device table changes; the default metadata names the defaults.
 
+#include "allocator.h"
 #include "backend.h"
 #include "context.h"
 #include "device.h"
@@ -559,24 +560,33 @@ static maudResult OpenContext(maudContext* context)
 {
     uint32_t capacity = context->def.limits.devices;
     uint32_t streams = context->def.limits.streams;
-    size_t bytes = sizeof(maudPipewire) +
-                   (size_t)capacity * (sizeof(maudPipewireNode) + sizeof(maudPipewireCard)) +
-                   (size_t)streams * sizeof(maudPipewireStream);
-    maudPipewire* pipewire = maudContextAllocate(context, bytes, alignof(maudPipewire));
-    if (pipewire == nullptr)
+    maudLayout layout = {0};
+    (void)maudLayoutAdd(&layout, 1, sizeof(maudPipewire), alignof(maudPipewire));
+    size_t nodes =
+        maudLayoutAdd(&layout, capacity, sizeof(maudPipewireNode), alignof(maudPipewireNode));
+    size_t cards =
+        maudLayoutAdd(&layout, capacity, sizeof(maudPipewireCard), alignof(maudPipewireCard));
+    size_t entries =
+        maudLayoutAdd(&layout, streams, sizeof(maudPipewireStream), alignof(maudPipewireStream));
+    unsigned char* block = layout.overflow
+                               ? nullptr
+                               : maudContextAllocate(context, layout.size, alignof(maudPipewire));
+    if (block == nullptr)
     {
         return maud_errorCapacity;
     }
+    maudLayoutPoison(&layout, block);
+    maudPipewire* pipewire = (maudPipewire*)block;
     *pipewire = (maudPipewire){
         .context = context,
-        .nodes = (maudPipewireNode*)(pipewire + 1),
+        .nodes = (maudPipewireNode*)(block + nodes),
+        .cards = (maudPipewireCard*)(block + cards),
+        .streams = (maudPipewireStream*)(block + entries),
         .clock = {.graphRate = MAUD_PIPEWIRE_FALLBACK_RATE},
         .nodeCapacity = capacity,
         .cardCapacity = capacity,
-        .bytes = bytes,
+        .bytes = layout.size,
     };
-    pipewire->cards = (maudPipewireCard*)(pipewire->nodes + capacity);
-    pipewire->streams = (maudPipewireStream*)(pipewire->cards + capacity);
     memset(pipewire->nodes, 0, (size_t)capacity * sizeof(maudPipewireNode));
     memset(pipewire->cards, 0, (size_t)capacity * sizeof(maudPipewireCard));
     memset(pipewire->streams, 0, (size_t)streams * sizeof(maudPipewireStream));

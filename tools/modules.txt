@@ -9,21 +9,21 @@ alsa_api:
 alsa_chmap:
 alsa_core: alsa_api alsa_chmap alsa_scan context_core worker
 alsa_scan: alsa_api context_core device
-alsa_stream: alsa_api alsa_chmap alsa_core clock context context_core period thread worker xrun
+alsa_stream: allocator alsa_api alsa_chmap alsa_core clock context context_core period thread worker xrun
 alsa_watch:
 ambisonic_rotation:
-apple_objects: context context_core period
+apple_objects: allocator context context_core period
 ambisonics: ambisonic_rotation spherical_harmonics
 backend: context_core
-backend_aaudio: aaudio_core aaudio_java aaudio_stream backend context device focus layout
-backend_alsa: alsa_core alsa_scan alsa_stream alsa_watch backend context device
-backend_coreaudio: backend context coreaudio_core coreaudio_form coreaudio_stream device layout
-backend_ios: backend context device focus follow ios_core ios_session ios_stream layout
+backend_aaudio: aaudio_core aaudio_java aaudio_stream allocator backend context device focus layout
+backend_alsa: allocator alsa_core alsa_scan alsa_stream alsa_watch backend context device
+backend_coreaudio: allocator backend context coreaudio_core coreaudio_form coreaudio_stream device layout
+backend_ios: allocator backend context device focus follow ios_core ios_session ios_stream layout
 backend_offline: backend context_core device
-backend_pipewire: backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_parse pipewire_stream
-backend_pulse: backend context context_core device form layout pulse_api pulse_core pulse_stream
-backend_wasapi: backend context device layout wasapi_apartment wasapi_core wasapi_stream
-backend_web: backend clock context device follow period thread web_capture web_core web_devices
+backend_pipewire: allocator backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_parse pipewire_stream
+backend_pulse: allocator backend context context_core device form layout pulse_api pulse_core pulse_stream
+backend_wasapi: allocator backend context device layout wasapi_apartment wasapi_core wasapi_stream
+backend_web: allocator backend clock context device follow period thread web_capture web_core web_devices
 bake_file: allocator crc32 probe_bake probe_graph
 band_eq:
 binaural: allocator binaural_dsp hrtf_core hrtf_lookup near_field

@@ -207,6 +207,7 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     {
         return maud_errorCapacity;
     }
+    maudLayoutPoison(&layout, block);
     maudContext* context = (maudContext*)(block + contextOffset);
     *context = (maudContext){
         .def = *def,

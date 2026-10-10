@@ -142,6 +142,17 @@ static void CheckLinks(maudAcousticScene* scene, const maudProbeGraph* g, float 
     CHECK(wrong == 0 && links == g->links && g->links > 0, "linked when a ray is clear");
 }
 
+// Whether two graphs hold the same probes and links, array by array
+// (their blocks' padding is not theirs to compare).
+static bool SameGraph(const maudProbeGraph* a, const maudProbeGraph* b)
+{
+    return a->count == b->count && a->links == b->links &&
+           memcmp(a->points, b->points, (size_t)a->count * sizeof(maudVector3)) == 0 &&
+           memcmp(a->offsets, b->offsets, ((size_t)a->count + 1) * sizeof(uint32_t)) == 0 &&
+           memcmp(a->neighbours, b->neighbours, 2 * (size_t)a->links * sizeof(uint32_t)) == 0 &&
+           memcmp(a->lengths, b->lengths, 2 * (size_t)a->links * sizeof(float)) == 0;
+}
+
 static void TestCorridor(void)
 {
     // The L's inside corner: a solid block, the corridor around it.
@@ -181,8 +192,7 @@ static void TestCorridor(void)
     q.finishTask = Finish;
     maudProbeGraph reversed;
     CHECK(maudBuildProbeGraph(&q, &def, &reversed) == maud_success, "built in reverse");
-    CHECK(reversed.bytes == plain.bytes && memcmp(reversed.memory, plain.memory, plain.bytes) == 0,
-          "the same set however the tasks run");
+    CHECK(SameGraph(&reversed, &plain), "the same set however the tasks run");
     maudReleaseProbeGraph(&s_allocator, &reversed);
     // Without an any-hit query every pair within range is linked.
     q.anyHit = nullptr;

@@ -10,6 +10,7 @@
 
 #include "alsa_stream.h"
 
+#include "allocator.h"
 #include "alsa_core.h"
 #include "clock.h"
 #include "context.h"
@@ -323,18 +324,23 @@ static maudResult Allocate(maudContext* context, maudAlsaStream* entry, bool reo
         return maud_errorPlatform;
     }
     size_t samples = (size_t)entry->bufferFrames * entry->core->period.channelCount;
-    size_t fdBytes = ((size_t)count + 1) * sizeof(struct pollfd);
-    fdBytes = (fdBytes + alignof(max_align_t) - 1) / alignof(max_align_t) * alignof(max_align_t);
-    entry->bytes = fdBytes + samples * sizeof(float) * (reorder ? 2 : 1);
-    unsigned char* block = maudContextAllocate(context, entry->bytes, alignof(max_align_t));
+    // The stream's own eventfd, then the PCM's descriptors; the samples,
+    // and their reordered copy for a PCM in another channel order.
+    maudLayout layout = {0};
+    (void)maudLayoutAdd(&layout, (size_t)count + 1, sizeof(struct pollfd), alignof(max_align_t));
+    size_t played = maudLayoutAdd(&layout, samples, sizeof(float), alignof(float));
+    size_t reordered = reorder ? maudLayoutAdd(&layout, samples, sizeof(float), alignof(float)) : 0;
+    unsigned char* block =
+        layout.overflow ? nullptr : maudContextAllocate(context, layout.size, alignof(max_align_t));
     if (block == nullptr)
     {
-        entry->bytes = 0;
         return maud_errorCapacity;
     }
+    maudLayoutPoison(&layout, block);
+    entry->bytes = layout.size;
     entry->fds = (struct pollfd*)block;
-    entry->samples = (float*)(block + fdBytes);
-    entry->reordered = reorder ? entry->samples + samples : nullptr;
+    entry->samples = (float*)(block + played);
+    entry->reordered = reorder ? (float*)(block + reordered) : nullptr;
     entry->fdCount = (uint32_t)count + 1;
     entry->fds[0] = (struct pollfd){.fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC), .events = POLLIN};
     if (entry->fds[0].fd < 0)
