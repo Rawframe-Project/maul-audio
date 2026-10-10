@@ -571,6 +571,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         target_link_libraries(test_coreaudio PRIVATE "-framework CoreAudio"
             "-framework CoreFoundation")
         set_tests_properties(coreaudio PROPERTIES SKIP_RETURN_CODE 77)
+        # Forms and data source listeners, against a fake HAL.
+        maul_add_test(coreaudio_form WHITEBOX)
+        target_link_libraries(test_coreaudio_form PRIVATE "-framework CoreAudio"
+            "-framework CoreFoundation")
     endif()
     # Speaker masks are plain integers, tested on every platform.
     if(NOT MAUL_AUDIO_BUILD_SHARED)

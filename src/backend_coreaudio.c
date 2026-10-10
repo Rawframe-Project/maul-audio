@@ -21,6 +21,13 @@
 
 // The properties whose changes the context listens to, on the system
 // object.
+const maudCoreAudioHal maudCoreAudioSystemHal = {
+    .getData = AudioObjectGetPropertyData,
+    .has = AudioObjectHasProperty,
+    .addListener = AudioObjectAddPropertyListenerBlock,
+    .removeListener = AudioObjectRemovePropertyListenerBlock,
+};
+
 static const AudioObjectPropertySelector s_watched[] = {
     kAudioHardwarePropertyDevices,
     kAudioHardwarePropertyDefaultOutputDevice,
@@ -150,7 +157,7 @@ static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object, maudDirecti
         .keyLength = strlen(endpoint->key),
     };
     ReadRates(coreaudio, object, &spec->info);
-    spec->info.form = maudCoreAudioFormOf(object, direction);
+    spec->info.form = maudCoreAudioFormOf(coreaudio->hal, object, direction);
     // macOS never spatializes an AUHAL client's output, but an object
     // stream renders through the system's spatial mixer, which takes any
     // number of objects.
@@ -308,6 +315,7 @@ static maudCoreAudio* Allocate(maudContext* context)
     maudCoreAudio* coreaudio = (maudCoreAudio*)block;
     *coreaudio = (maudCoreAudio){
         .context = context,
+        .hal = &maudCoreAudioSystemHal,
         .streams = (maudCoreAudioStream*)(block + entries),
         .specs = (maudDeviceSpec*)(block + specs),
         .endpoints = (maudCoreAudioEndpoint*)(block + endpoints),
