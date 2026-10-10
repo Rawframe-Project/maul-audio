@@ -134,6 +134,21 @@ static int ThreadCount(void)
     return count;
 }
 
+// The stream threads still listed after a join, waiting up to a second
+// for them to leave: pthread_join returns once a thread has cleared its
+// id, before the kernel drops it from /proc/self/task. A thread never
+// joined stays listed.
+static int ThreadsAfterJoin(void)
+{
+    int count = ThreadCount();
+    for (int tries = 0; tries < 100 && count != 0; ++tries)
+    {
+        Sleep(10);
+        count = ThreadCount();
+    }
+    return count;
+}
+
 // Frames the stream moves per second of wall time over one window.
 static double MeasureWindow(const maudContext* context, maudStreamId stream, int milliseconds)
 {
@@ -274,7 +289,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
-    CHECK(ThreadCount() == 0, "joined when it stops");
+    CHECK(ThreadsAfterJoin() == 0, "joined when it stops");
     Sleep(200);
     CHECK(Corked(), "and what it queued is dropped");
     uint32_t stopped = atomic_load(&blocks.count);
@@ -283,7 +298,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(&blocks, stopped + 20), "it runs again");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
-    CHECK(ThreadCount() == 0, "and joined");
+    CHECK(ThreadsAfterJoin() == 0, "and joined");
     def = maudDefaultStreamDef();
     def.ratePolicy = maud_rateRequired;
     def.sampleRate = 48000;
