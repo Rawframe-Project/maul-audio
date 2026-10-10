@@ -29,6 +29,7 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/system_properties.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -179,6 +180,13 @@ static bool KeyedAsJava(const maudContext* context, maudDeviceId id, int type, b
     return ok && strlen(wanted) > 2 && strcmp(key, wanted) == 0;
 }
 
+// Whether the test runs in the emulator.
+static bool Emulated(void)
+{
+    char value[PROP_VALUE_MAX] = {0};
+    return __system_property_get("ro.kernel.qemu", value) > 0 && value[0] == '1';
+}
+
 static void TestDevices(maudContext* context, maudDeviceId* speaker)
 {
     uint32_t outputs = 0;
@@ -208,6 +216,9 @@ static void TestDevices(maudContext* context, maudDeviceId* speaker)
     printf("spatializer %u, head tracking %d\n", (unsigned)info.spatializer, info.headTracking);
     CHECK(info.spatializer != maud_spatializerUnknown && info.spatialObjects == 0,
           "with the Spatializer's state, and no objects");
+    // The emulator's route has none at any API level, so its state is
+    // exactly none there.
+    CHECK(!Emulated() || info.spatializer == maud_spatializerNone, "none in the emulator");
     CHECK(maudGetDeviceInfo(context, *speaker, &info) == maud_success &&
               info.spatializer == maud_spatializerUnknown,
           "a pinned output's left unknown");
