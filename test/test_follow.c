@@ -7,7 +7,7 @@
 // however often it is asked, and releasing it resumes it, as awaiting
 // permission and being granted it do; a stream that follows its default
 // moves with it, the platform told to reopen it only when the new
-// device's native rate differs.
+// device's native rate differs; a duplex stream keeps its one rate.
 
 #include "backend.h"
 #include "context.h"
@@ -113,6 +113,37 @@ int main(void)
               s_retargets == 1 && maudGetStreamFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 44100,
           "moved to another rate: reopened at it");
+    // A duplex stream keeps the one rate of its halves: its output, moved
+    // to a device at another rate, is converted by the platform instead,
+    // with no format change.
+    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, same) == maud_success,
+          "back at 48 kHz");
+    maudStreamDef dd = maudDefaultStreamDef();
+    dd.direction = maud_directionDuplex;
+    dd.mode = maud_modePull;
+    dd.callback = Ignore;
+    maudStreamId duplex = {0, 0};
+    CHECK(maudCreateStream(context, &dd, &duplex) == maud_success &&
+              maudGetStreamFormat(context, duplex, &format) == maud_success &&
+              format.sampleRate == 48000 && format.ratePolicy == maud_rateNative,
+          "a duplex stream at 48 kHz");
+    (void)Count(context, maud_notifyStreamMoved);
+    s_retargets = 0;
+    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, other) == maud_success,
+          "its output's default moves to 44.1 kHz");
+    uint32_t changed = 0;
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        changed +=
+            record.kind == maud_notifyStreamFormatChanged && record.stream.index1 == duplex.index1
+                ? 1u
+                : 0u;
+    }
+    CHECK(changed == 0 && maudGetStreamFormat(context, duplex, &format) == maud_success &&
+              format.sampleRate == 48000 && format.ratePolicy == maud_ratePlatformConverted,
+          "the duplex stream keeps 48 kHz, converted");
+    CHECK(maudDestroyStream(context, duplex) == maud_success, "destroy the duplex stream");
     context->backend = offline;
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stream");
     CHECK(maudDestroyContext(context) == maud_success, "destroy the context");

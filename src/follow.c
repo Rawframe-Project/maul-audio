@@ -48,7 +48,10 @@ static void Suspend(maudContext* context, maudStreamSlot* slot, maudSuspendReaso
 }
 
 // Gives a native stream its device's rate, if that differs from the
-// rate it runs at; true when it did.
+// rate it runs at; true when it did. A duplex stream's halves keep the
+// one rate they opened at, as the ring between them and a voice unit
+// running both need: the half on a device at another rate is converted
+// by the platform from then on.
 static bool TakeDeviceRate(maudContext* context, maudStreamSlot* slot)
 {
     maudStreamCore* core = &slot->core;
@@ -56,6 +59,11 @@ static bool TakeDeviceRate(maudContext* context, maudStreamSlot* slot)
     if (device == nullptr || core->format.ratePolicy != maud_rateNative ||
         device->info.nativeSampleRate == core->format.sampleRate)
     {
+        return false;
+    }
+    if (core->duplexGroup != 0)
+    {
+        core->format.ratePolicy = maud_ratePlatformConverted;
         return false;
     }
     core->format.sampleRate = device->info.nativeSampleRate;

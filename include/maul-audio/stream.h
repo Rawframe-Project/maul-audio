@@ -47,7 +47,12 @@ extern "C"
 
     enum
     {
-        // The device's own rate. The def's sampleRate must be 0.
+        // The device's own rate. The def's sampleRate must be 0. A stream
+        // moved to a device at another rate takes it
+        // (maud_notifyStreamFormatChanged), except a duplex stream, whose
+        // halves keep the one rate they opened at: the half on the new
+        // device is converted by the platform, and its policy reads
+        // maud_ratePlatformConverted from then on.
         maud_rateNative = 0,
         // The def's sampleRate, which the device must run at without
         // conversion, or the stream is refused. On PipeWire that is the

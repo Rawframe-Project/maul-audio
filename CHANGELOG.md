@@ -8,6 +8,21 @@ format.
 
 ## [Unreleased]
 
+### Fixed
+
+- A duplex stream whose default output moved to a device at another rate
+  ran its output half at the new rate and its input half at the old
+  one, so the ring between them slipped continuously; on Core Audio a
+  voiced duplex stream could not have its voice unit built at all. A
+  duplex stream now keeps the one rate it opened at, the moved half
+  converted by the platform, with no format change.
+- On Core Audio, WASAPI and AAudio, a running stream the platform failed
+  to reopen was tried again on every maudNextNotification; on Core
+  Audio a voice unit that could not be built woke the drain again each
+  time, so a host draining notifications in a loop never left it. A
+  failed reopen now waits 250 ms before the next try, doubling up to
+  4 s.
+
 ## [0.2.0] - 2026-10-10
 
 A context refuses a program built against another minor version, typed

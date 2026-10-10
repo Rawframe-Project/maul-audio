@@ -862,31 +862,11 @@ static void TestVoiceApart(maudContext* context)
     CHECK(Destroy(context, stream), "destroy it");
 }
 
-// Drains the notification queue; returns how many calls it took, or -1
-// when it did not empty within a second of calls: a drain that rebuilt a
-// failing voice unit on every call never emptied.
-static int DrainCalls(maudContext* context)
-{
-    double until = Now() + 1.0;
-    int calls = 0;
-    maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
-    {
-        ++calls;
-        if (Now() > until)
-        {
-            return -1;
-        }
-    }
-    return calls + 1;
-}
-
 // A voiced duplex stream follows the default output: its unit, which
 // both halves share, is rebuilt on the new device. The voice unit takes
-// one rate both ways, so on the null device at 44.1 kHz, with the input
-// at 48 kHz, it cannot be built; the stream then waits, retried after a
-// growing wait, without holding the drain, and runs again back on
-// BlackHole.
+// one rate both ways, and a duplex stream keeps the rate it opened at,
+// so on the null device at 44.1 kHz it runs on at 48 kHz, converted,
+// with no format change, and back on BlackHole as well.
 static void TestVoicedMoves(maudContext* context)
 {
     maudDeviceId blackhole = FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
@@ -902,20 +882,31 @@ static void TestVoicedMoves(maudContext* context)
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
               maudStartStream(context, stream) == maud_success,
           "a voiced duplex stream runs");
+    maudStreamFormat before = {0};
+    CHECK(maudGetStreamFormat(context, stream, &before) == maud_success, "its format");
     for (int tries = 0; tries < 300 && atomic_load(&tone.count) < 20; ++tries)
     {
         Sleep(10);
     }
     CHECK(MakeDefaultOutput(NULL_DEVICE_UID), "the null device made the default");
-    CHECK(WaitForMove(context, stream, other, true), "the voiced stream follows the default");
-    for (int i = 0; i < 20; ++i)
+    CHECK(WaitForMove(context, stream, other, false), "the voiced stream follows the default");
+    maudStreamFormat after = {0};
+    CHECK(maudGetStreamFormat(context, stream, &after) == maud_success &&
+              after.sampleRate == before.sampleRate &&
+              after.ratePolicy == maud_ratePlatformConverted,
+          "at its own rate, converted");
+    uint32_t moved = atomic_load(&tone.count);
+    for (int tries = 0; tries < 500 && atomic_load(&tone.count) < moved + 20; ++tries)
     {
-        int calls = DrainCalls(context);
-        CHECK(calls > 0 && calls < 50, "the drain empties while the unit cannot be built");
-        Sleep(50);
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
     }
+    CHECK(atomic_load(&tone.count) >= moved + 20, "it runs there");
     CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole the default again");
-    CHECK(WaitForMove(context, stream, blackhole, true), "and back");
+    CHECK(WaitForMove(context, stream, blackhole, false), "and back");
     uint32_t back = atomic_load(&tone.count);
     for (int tries = 0; tries < 500 && atomic_load(&tone.count) < back + 20; ++tries)
     {
