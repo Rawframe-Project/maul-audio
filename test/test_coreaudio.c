@@ -189,23 +189,29 @@ static maudStreamId OpenStream(maudContext* context, maudStreamDef* def, Blocks*
     return stream;
 }
 
-// Prints every device, so a failing run shows what the machine has.
+// Prints every device, so a failing run shows what the machine has, and
+// checks each is listed once a direction.
 static void ListDevices(const maudContext* context, maudDirection direction)
 {
     maudDeviceId ids[32];
     uint32_t count = 0;
+    char keys[32][128] = {{0}};
     CHECK(maudGetDevices(context, direction, ids, 32, &count) == maud_success, "list");
     for (uint32_t i = 0; i < count && i < 32; ++i)
     {
         char name[128] = {0};
-        char key[128] = {0};
+        char* key = keys[i];
         size_t length = 0;
         maudDeviceInfo info = {0};
         CHECK(maudGetDeviceName(context, ids[i], name, sizeof(name) - 1, &length) == maud_success &&
-                  maudGetDeviceKey(context, ids[i], key, sizeof(key) - 1, &length) ==
+                  maudGetDeviceKey(context, ids[i], key, sizeof(keys[i]) - 1, &length) ==
                       maud_success &&
                   maudGetDeviceInfo(context, ids[i], &info) == maud_success,
               "describe");
+        for (uint32_t j = 0; j < i; ++j)
+        {
+            CHECK(strcmp(keys[j], key) != 0, "listed once");
+        }
         printf("%s: %s [%s] %u Hz (%u to %u), layout %u, form %u\n",
                direction == maud_directionOutput ? "output" : "input", name, key,
                info.nativeSampleRate, info.minSampleRate, info.maxSampleRate,
@@ -249,8 +255,8 @@ static void TestDevices(maudContext* context)
           "stereo, its nominal rate inside the wider range it runs at");
     CHECK(info.form == maud_formUnknown, "a virtual device leads nowhere known");
     CHECK(maudGetDeviceName(context, output, name, sizeof(name) - 1, &length) == maud_success &&
-              strstr(name, "BlackHole") != nullptr,
-          "its name");
+              strcmp(name, "BlackHole 2ch") == 0,
+          "its name, not its UID");
     for (maudDeviceRole role = maud_roleGeneral; role <= maud_roleCommunications; ++role)
     {
         maudDeviceId current = {0, 0};
@@ -975,6 +981,30 @@ static double RightOverLeft(maudContext* context, float x)
     return sides.left > 0.0 ? sides.right / sides.left : -1.0;
 }
 
+// The context's allocations not yet given back.
+static int s_live;
+
+static void* CountedAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)context;
+    void* memory = nullptr;
+    if (posix_memalign(&memory, alignment < sizeof(void*) ? sizeof(void*) : alignment, size) != 0)
+    {
+        return nullptr;
+    }
+    s_live++;
+    return memory;
+}
+
+static void CountedFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    s_live--;
+    free(memory);
+}
+
 // An object stream renders through the system's spatial mixer: an
 // object to the right is heard on the right, one to the left on the
 // left. Outputs say the mixer takes objects; a bed wider than stereo is
@@ -987,8 +1017,10 @@ static void TestObjects(maudContext* context)
               info.spatializer == maud_spatializerOn &&
               info.spatialObjects == MAUD_MAX_STREAM_OBJECTS,
           "outputs take objects");
+    int live = s_live;
     double right = RightOverLeft(context, 2.0f);
     double left = RightOverLeft(context, -2.0f);
+    CHECK(s_live == live, "object streams give their memory back");
     CHECK(right > 2.0, "an object to the right is heard on the right");
     CHECK(left >= 0.0 && left < 0.5, "and one to the left on the left");
     Placed placed = {0};
@@ -1012,6 +1044,7 @@ int main(void)
     s_control = pthread_self();
     CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole made the default output");
     maudContextDef def = maudDefaultContextDef();
+    def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
     maudContext* context = nullptr;
     CHECK(maudCreateContext(&def, &context) == maud_success, "a native context");
     if (context == nullptr)
@@ -1031,5 +1064,6 @@ int main(void)
     TestServiceRestart(context);
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    CHECK(s_live == 0, "everything given back");
     return s_failures == 0 ? 0 : 1;
 }
