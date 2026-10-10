@@ -23,6 +23,7 @@
 #include "voice.h"
 #include "xrun.h"
 
+#include <errno.h>
 #include <string.h>
 #include <time.h>
 
@@ -220,6 +221,7 @@ static void Start(maudAaudioStream* entry)
     if (entry->stream != nullptr && !entry->playing)
     {
         entry->playing = AAudioStream_requestStart(entry->stream) == AAUDIO_OK;
+        entry->ran = entry->ran || entry->playing;
     }
 }
 
@@ -246,16 +248,36 @@ static void Stop(maudAaudioStream* entry)
     }
 }
 
+// The wait before closing a stream that ran: AAudio's legacy path can
+// run a data callback just after a stop, and after a close that follows
+// at once, on the freed stream. Oboe waits one burst and a millisecond,
+// 10 to 100 ms.
+static void Settle(AAudioStream* stream)
+{
+    int32_t rate = AAudioStream_getSampleRate(stream);
+    int32_t burst = AAudioStream_getFramesPerBurst(stream);
+    int64_t milliseconds = rate > 0 && burst > 0 ? 1 + (int64_t)burst * 1000 / rate : 0;
+    milliseconds = milliseconds < 10 ? 10 : milliseconds > 100 ? 100 : milliseconds;
+    struct timespec wait = {.tv_sec = 0, .tv_nsec = (long)(milliseconds * 1000000)};
+    while (nanosleep(&wait, &wait) != 0 && errno == EINTR)
+    {
+    }
+}
+
 static void Close(maudAaudioStream* entry)
 {
     if (entry->stream != nullptr)
     {
-        // Closing stops the stream first and returns once its callbacks
-        // are done.
+        if (entry->ran)
+        {
+            Stop(entry);
+            Settle(entry->stream);
+        }
         aaudio_result_t closed = AAudioStream_close(entry->stream);
         (void)closed;
         entry->stream = nullptr;
         entry->playing = false;
+        entry->ran = false;
     }
 }
 

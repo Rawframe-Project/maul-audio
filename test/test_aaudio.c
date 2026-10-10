@@ -245,7 +245,14 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
     CHECK(StreamClockIsSound(context, stream, true, true, Sleep), "its clock after a restart");
+    // A stream that ran waits a burst, 10 ms at least, before AAudio
+    // closes it, so that no callback of the legacy path outlives it.
+    double destroying = Now();
     CHECK(Destroy(context, stream), "destroy while running");
+    CHECK(Now() - destroying >= 0.010, "the close waits for late callbacks");
+    uint32_t destroyed = atomic_load(&blocks.count);
+    Sleep(50);
+    CHECK(atomic_load(&blocks.count) == destroyed, "no callbacks once destroyed");
     // A stream marked as already spatialized: Android before API 32 has
     // no spatializer; after, the open stream carries the mark.
     Blocks marked = {0};
