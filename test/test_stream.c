@@ -248,6 +248,17 @@ static void TestUnsupportedAndInvalidDefs(void)
     def = PullDef(&recorder);
     def.ratePolicy = maud_rateRequired;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "required without rate");
+    // A def may ask for 8,000 to 384,000; the offline device runs at the
+    // rate asked.
+    const uint32_t rates[4] = {7999, 8000, 384000, 384001};
+    for (int i = 0; i < 4; ++i)
+    {
+        def.sampleRate = rates[i];
+        maudResult made = maudCreateStream(context, &def, &stream);
+        bool valid = i == 1 || i == 2;
+        CHECK(made == (valid ? maud_success : maud_errorInvalid), "a required rate's range");
+        CHECK(!valid || maudDestroyStream(context, stream) == maud_success, "destroyed");
+    }
     def = PullDef(&recorder);
     def.callback = nullptr;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "no callback");
@@ -266,7 +277,7 @@ static void TestUnsupportedAndInvalidDefs(void)
     def.direction = maud_directionInput;
     def.voice = 8;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "an unknown voice part");
-    CHECK(maudGetContextMisuse(context) == 7, "each invalid def counted");
+    CHECK(maudGetContextMisuse(context) == 9, "each invalid def counted");
     def = PullDef(&recorder);
     def.periodFrames = 8193;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorCapacity, "period past limit");

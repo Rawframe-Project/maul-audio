@@ -22,6 +22,7 @@
 static int s_activations;
 static int s_deactivations;
 static int s_retargets;
+static int s_duplexRetargets;
 
 static void Active(maudContext* context, maudStreamSlot* slot, bool active)
 {
@@ -34,8 +35,8 @@ static void Active(maudContext* context, maudStreamSlot* slot, bool active)
 static void Retargeted(maudContext* context, maudStreamSlot* slot)
 {
     (void)context;
-    (void)slot;
     s_retargets++;
+    s_duplexRetargets += slot->core.duplexGroup != 0 ? 1 : 0;
 }
 
 static void Ignore(const maudStreamBlock* block, void* user)
@@ -143,6 +144,7 @@ int main(void)
     CHECK(changed == 0 && maudGetStreamFormat(context, duplex, &format) == maud_success &&
               format.sampleRate == 48000 && format.ratePolicy == maud_ratePlatformConverted,
           "the duplex stream keeps 48 kHz, converted");
+    CHECK(s_duplexRetargets == 0, "with nothing to reopen where the platform converts in place");
     // A reopen that fails suspends a started stream once, with
     // maud_suspendPlatform, and waits longer each time; one that works
     // resumes it. A duplex stream says so when its input half fails.
