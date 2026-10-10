@@ -511,6 +511,8 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     # session's category.
     if(MAUL_AUDIO_IOS)
         add_executable(test_ios test/test_ios.m)
+        # White box: it also reads the session's port forms.
+        target_include_directories(test_ios PRIVATE ${PROJECT_SOURCE_DIR}/src)
         target_link_libraries(test_ios PRIVATE maul-audio "-framework AVFAudio"
             "-framework Foundation")
         maul_apply_flags(test_ios)

@@ -9,6 +9,7 @@
 // to resume; a route change giving the default output its form; capture
 // as far as the simulator lets a spawned process record.
 
+#include "ios_session.h"
 #include "test_clock.h"
 #include "test_harness.h"
 
@@ -401,9 +402,64 @@ static void TestObjects(maudContext* context)
           "a bed wider than stereo");
 }
 
+// The form of every port type the session names: the simulator routes
+// to its speaker and microphone only.
+static void TestPortForms(void)
+{
+    const struct
+    {
+        NSString* type;
+        maudDeviceForm form;
+    } ports[] = {
+        {AVAudioSessionPortBuiltInSpeaker, maud_formSpeakers},
+        {AVAudioSessionPortBuiltInReceiver, maud_formHandset},
+        {AVAudioSessionPortHeadphones, maud_formHeadphones},
+        {AVAudioSessionPortBluetoothA2DP, maud_formHeadphones},
+        {AVAudioSessionPortHeadsetMic, maud_formHeadset},
+        {AVAudioSessionPortBluetoothHFP, maud_formHeadset},
+        {AVAudioSessionPortBuiltInMic, maud_formMicrophone},
+        {AVAudioSessionPortLineOut, maud_formLine},
+        {AVAudioSessionPortLineIn, maud_formLine},
+        {AVAudioSessionPortHDMI, maud_formDigital},
+        {AVAudioSessionPortAirPlay, maud_formUnknown},
+        {AVAudioSessionPortUSBAudio, maud_formUnknown},
+    };
+    for (size_t i = 0; i < sizeof(ports) / sizeof(ports[0]); ++i)
+    {
+        CHECK(maudIosPortForm(ports[i].type) == ports[i].form, ports[i].type.UTF8String);
+    }
+}
+
+// A context of one device lists the output alone; of two, the output
+// and the default input, without the session's inputs.
+static void TestDeviceLimit(void)
+{
+    for (uint16_t limit = 1; limit <= 2; ++limit)
+    {
+        maudContextDef def = maudDefaultContextDef();
+        def.limits.devices = limit;
+        maudContext* context = nullptr;
+        CHECK(maudCreateContext(&def, &context) == maud_success, "a small context");
+        if (context == nullptr)
+        {
+            return;
+        }
+        maudDeviceId ids[4];
+        uint32_t outputs = 0;
+        uint32_t inputs = 0;
+        CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &outputs) == maud_success &&
+                  maudGetDevices(context, maud_directionInput, ids, 4, &inputs) == maud_success,
+              "its devices");
+        CHECK(outputs == 1 && inputs == limit - 1u, "within the limit");
+        CHECK(maudDestroyContext(context) == maud_success, "destroyed");
+    }
+}
+
 int main(void)
 {
     s_control = pthread_self();
+    TestPortForms();
+    TestDeviceLimit();
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
     CHECK(maudCreateContext(&def, &context) == maud_success, "a native context");
