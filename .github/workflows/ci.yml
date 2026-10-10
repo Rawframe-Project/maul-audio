@@ -68,6 +68,7 @@ jobs:
           - { name: linux-spatial-only,  os: ubuntu-24.04, cc: gcc-14,   cxx: g++-14,     config: Release, extra: "-DMAUL_AUDIO_DEVICE=OFF" }
           - { name: linux-arm64-gcc-14,  os: ubuntu-24.04-arm, cc: gcc-14, cxx: g++-14,   config: Release, extra: "" }
           - { name: macos-clang,         os: macos-15,     cc: clang,    cxx: clang++,    config: Release, extra: "" }
+          - { name: macos-clang-asan,    os: macos-15,     cc: clang,    cxx: clang++,    config: Debug,   extra: "-DMAUL_AUDIO_SANITIZE=ON" }
     steps:
       - uses: actions/checkout@v7
       - name: Install compilers
