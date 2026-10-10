@@ -883,6 +883,7 @@ static void TestVoice(maudContext* context)
               (voiced.voiceActive & (maud_voiceEchoCancellation | maud_voiceNoiseSuppression)) ==
                   (maud_voiceEchoCancellation | maud_voiceNoiseSuppression),
           "the voiced one reports echo cancellation and noise suppression");
+    CHECK((voiced.voiceActive & maud_voiceGainControl) != 0, "and the gain control it asked for");
     CHECK(voiced.drift == maud_driftNone, "on the unit's one clock");
     TestVoiceApart(context);
     Blocks heard = {0};
