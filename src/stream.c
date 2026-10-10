@@ -216,7 +216,9 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
     const maudStreamCore* captured = duplex != nullptr ? &duplex->input->core : &slot->core;
     *statusOut = (maudStreamStatus){
         .started = binding->started,
-        .suspension = binding->suspension,
+        .suspension = duplex != nullptr && binding->suspension == maud_suspendNone
+                          ? duplex->input->core.binding.suspension
+                          : binding->suspension,
         .device = binding->current,
         .drift =
             duplex == nullptr || SharesClock(context, duplex) ? maud_driftNone : maud_driftSlip,

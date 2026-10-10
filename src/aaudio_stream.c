@@ -355,23 +355,20 @@ void maudAaudioResumeStreams(maudContext* context)
         }
         bool lost = entry->stream != nullptr &&
                     atomic_exchange_explicit(&entry->lost, false, memory_order_acq_rel);
-        if (!lost &&
-            (entry->stream != nullptr || !Running(slot) || !maudRetryDue(&slot->core.binding, now)))
+        if (!lost && (entry->stream != nullptr || !maudWantsReopen(slot) ||
+                      !maudRetryDue(&slot->core.binding, now)))
         {
             continue;
         }
         // A failure leaves the stream without an AAudio stream; the drain
-        // tries again while it runs, waiting longer after each failure.
+        // tries again while it runs, waiting longer after each failure,
+        // the stream suspended with maud_suspendPlatform meanwhile.
         Close(entry);
-        if (Open(context, slot) != maud_success)
-        {
-            maudRetryFailed(&slot->core.binding, now);
-            continue;
-        }
-        maudRetrySucceeded(&slot->core.binding);
-        if (Running(slot))
+        bool opened = Open(context, slot) == maud_success;
+        if (opened && Running(slot))
         {
             Start(entry);
         }
+        maudReportReopen(context, slot, opened, now);
     }
 }

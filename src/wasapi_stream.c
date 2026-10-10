@@ -11,6 +11,7 @@
 
 #include "clock.h"
 #include "context.h"
+#include "follow.h"
 #include "period.h"
 #include "retry.h"
 #include "thread.h"
@@ -582,13 +583,13 @@ void maudWasapiSetStreamActive(maudContext* context, maudStreamSlot* slot, bool 
     Start(entry);
 }
 
-// A live running stream whose thread ended on a failure, or that has
-// no client, once its retry is due (retry.h).
+// A started stream whose thread ended on a failure, or that has no
+// client, once its retry is due (retry.h).
 static bool ToResume(maudContext* context, maudStreamSlot* slot, int64_t now)
 {
     const maudWasapiStream* entry = EntryOf(context, slot);
     bool ended = entry->threadRunning && atomic_load_explicit(&entry->failed, memory_order_acquire);
-    return slot->live && Running(slot) && (ended || !Connected(entry)) &&
+    return maudWantsReopen(slot) && (ended || !Connected(entry)) &&
            maudRetryDue(&slot->core.binding, now);
 }
 
@@ -617,14 +618,7 @@ void maudWasapiResumeStreams(maudContext* context)
         if (ToResume(context, slot, now))
         {
             maudWasapiRetargetStream(context, slot);
-            if (Connected(EntryOf(context, slot)))
-            {
-                maudRetrySucceeded(&slot->core.binding);
-            }
-            else
-            {
-                maudRetryFailed(&slot->core.binding, now);
-            }
+            maudReportReopen(context, slot, Connected(EntryOf(context, slot)), now);
         }
     }
 }

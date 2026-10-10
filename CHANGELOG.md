@@ -8,6 +8,18 @@ format.
 
 ## [Unreleased]
 
+### Added
+
+- `maud_suspendPlatform`: a started stream the platform failed to open
+  on its device (a format the device refuses, an audio service
+  restarting) is suspended with it while the library tries again, and
+  resumed once a try works; until now it stayed "running" in silence.
+
+### Changed
+
+- A duplex stream's status reports its input half's suspension while
+  its output half runs, as its notifications already did.
+
 ### Fixed
 
 - A duplex stream whose default output moved to a device at another rate

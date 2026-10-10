@@ -10,6 +10,7 @@
 #include "backend.h"
 #include "context.h"
 #include "notify.h"
+#include "retry.h"
 
 static bool SameDevice(maudDeviceId a, maudDeviceId b)
 {
@@ -301,5 +302,31 @@ void maudAwaitPermission(maudContext* context, maudStreamSlot* slot, bool waitin
     else if (!waiting && binding->suspension == maud_suspendPermission)
     {
         Resume(context, slot);
+    }
+}
+
+bool maudWantsReopen(const maudStreamSlot* slot)
+{
+    maudSuspendReason reason = slot->core.binding.suspension;
+    return slot->live && slot->core.binding.started &&
+           (reason == maud_suspendNone || reason == maud_suspendPlatform);
+}
+
+void maudReportReopen(maudContext* context, maudStreamSlot* slot, bool opened, int64_t now)
+{
+    maudStreamBinding* binding = &slot->core.binding;
+    if (opened)
+    {
+        maudRetrySucceeded(binding);
+        if (binding->suspension == maud_suspendPlatform)
+        {
+            Resume(context, slot);
+        }
+        return;
+    }
+    maudRetryFailed(binding, now);
+    if (binding->suspension == maud_suspendNone)
+    {
+        Wait(context, slot, maud_suspendPlatform);
     }
 }

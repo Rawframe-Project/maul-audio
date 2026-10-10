@@ -222,6 +222,11 @@ extern "C"
         // The host suspended the context (maudSetContextSuspended): its
         // application is in the background, hidden, or asleep.
         maud_suspendHost = 5,
+        // The platform failed to open it on its device: the device
+        // refused its format, or the audio service is restarting. The
+        // library tries again after a wait that grows to a few seconds,
+        // and resumes it once it opens.
+        maud_suspendPlatform = 6,
     };
 
     // Where a stream stands.

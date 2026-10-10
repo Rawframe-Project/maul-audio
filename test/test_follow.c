@@ -143,6 +143,45 @@ int main(void)
     CHECK(changed == 0 && maudGetStreamFormat(context, duplex, &format) == maud_success &&
               format.sampleRate == 48000 && format.ratePolicy == maud_ratePlatformConverted,
           "the duplex stream keeps 48 kHz, converted");
+    // A reopen that fails suspends a started stream once, with
+    // maud_suspendPlatform, and waits longer each time; one that works
+    // resumes it. A duplex stream says so when its input half fails.
+    maudStreamSlot* played = maudFindStream(context, duplex);
+    maudStreamSlot* captured = played->duplex->input;
+    CHECK(maudStartStream(context, duplex) == maud_success && maudWantsReopen(captured),
+          "a started duplex stream wants its halves reopened");
+    (void)Count(context, maud_notifyStreamSuspended);
+    int deactivations = s_deactivations;
+    maudReportReopen(context, captured, false, 1000);
+    maudReportReopen(context, captured, false, 2000);
+    maudStreamStatus status = {0};
+    uint32_t suspended = 0;
+    maudSuspendReason reason = maud_suspendNone;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        if (record.kind == maud_notifyStreamSuspended && record.stream.index1 == duplex.index1)
+        {
+            suspended++;
+            reason = record.reason;
+        }
+    }
+    CHECK(suspended == 1 && reason == maud_suspendPlatform && s_deactivations == deactivations + 1,
+          "two failed reopens suspend it once");
+    CHECK(captured->core.binding.retryWait == 2 * 250000000 && maudWantsReopen(captured) &&
+              maudWantsReopen(played),
+          "waiting longer, still to be reopened");
+    CHECK(maudGetStreamStatus(context, duplex, &status) == maud_success &&
+              status.suspension == maud_suspendPlatform,
+          "the duplex stream reports its input half's suspension");
+    int activations = s_activations;
+    maudReportReopen(context, captured, true, 3000);
+    CHECK(Count(context, maud_notifyStreamResumed) == 1 && s_activations == activations + 1 &&
+              captured->core.binding.retryWait == 0 &&
+              maudGetStreamStatus(context, duplex, &status) == maud_success &&
+              status.suspension == maud_suspendNone,
+          "a reopen that works resumes it");
+    CHECK(maudStopStream(context, duplex) == maud_success && !maudWantsReopen(captured),
+          "a stopped stream is not reopened");
     CHECK(maudDestroyStream(context, duplex) == maud_success, "destroy the duplex stream");
     context->backend = offline;
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stream");

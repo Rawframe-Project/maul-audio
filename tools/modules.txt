@@ -38,7 +38,7 @@ context_core: period
 coreaudio_core: apple_objects context_core device
 coreaudio_hog: coreaudio_core
 coreaudio_form: coreaudio_core
-coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device period retry thread voice xrun
+coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device follow period retry thread voice xrun
 crc32:
 device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq
@@ -49,7 +49,7 @@ echo_filter: allocator real_fft
 echo_suppressor: allocator real_fft voice_dsp
 fft:
 focus: backend context context_core notify
-follow: backend context context_core notify
+follow: backend context context_core notify retry
 form:
 hrtf: allocator hrtf_core hrtf_file hrtf_resample
 hrtf_core:
@@ -119,7 +119,7 @@ wasapi_exclusive: context_core sample_convert wasapi_core wasapi_format
 wasapi_format:
 wasapi_notify:
 wasapi_objects: context context_core layout period
-wasapi_stream: clock context context_core period retry sample_convert thread voice wasapi_core wasapi_exclusive wasapi_format wasapi_objects wasapi_voice worker xrun
+wasapi_stream: clock context context_core follow period retry sample_convert thread voice wasapi_core wasapi_exclusive wasapi_format wasapi_objects wasapi_voice worker xrun
 wasapi_voice: context_core voice wasapi_core
 watertight:
 web_capture: clock context context_core follow period thread voice web_core web_devices xrun
