@@ -8,6 +8,12 @@ format.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-10
+
+A host draining notifications can no longer be held there by a stream
+the platform cannot reopen, which is now reported as suspended, and a
+duplex stream keeps one rate when its output moves.
+
 ### Added
 
 - `maud_suspendPlatform`: a started stream the platform failed to open
