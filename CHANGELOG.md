@@ -8,7 +8,19 @@ format.
 
 ## [Unreleased]
 
+### Added
+
+- maudContextDef carries `version`, the `MAUD_ABI_VERSION` (major and
+  minor) of the headers the program was built with, and
+  maudCreateContext refuses a def of another with the new
+  `maud_errorVersion` before reading anything else of it.
+
 ### Changed
+
+- maudDefaultContextDef is built in the program from the headers it
+  includes (a `static inline` function), so the version it stamps is
+  the program's; its cookie is `MAUD_CONTEXT_DEF_COOKIE`. A def written
+  field by field must set `version` and the cookie as the default does.
 
 - maudNotification's `deviceId` and `streamId` fields are now `device`
   and `stream`, as the family names a typed id for what it names; the

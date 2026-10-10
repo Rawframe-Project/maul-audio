@@ -30,6 +30,7 @@ static void TestResultNames(void)
     CHECK(strcmp(maudResultName(maud_errorPlatform), "maud_errorPlatform") == 0,
           "errorPlatform name");
     CHECK(strcmp(maudResultName(maud_errorState), "maud_errorState") == 0, "errorState name");
+    CHECK(strcmp(maudResultName(maud_errorVersion), "maud_errorVersion") == 0, "errorVersion name");
     CHECK(strcmp(maudResultName(12345), "unknown result") == 0, "unknown name");
 }
 

@@ -40,6 +40,11 @@ if (made != maud_success)
 }
 ```
 
+The default def is built in the program from the headers it includes
+and carries their major and minor version; a library of another major
+or minor refuses it with `maud_errorVersion`, so a program never runs
+against a library that lays its structs out differently.
+
 The native backend is the platform's: PipeWire, then PulseAudio, then
 ALSA on Linux; WASAPI on Windows; Core Audio on macOS and iOS; AAudio on
 Android; Web Audio in a browser. A build with a private backend, a

@@ -58,6 +58,9 @@ static void TestDefaults(void)
     CHECK(def.backend == maud_backendNative, "native backend");
     CHECK(def.offlineSampleRate == 48000, "48 kHz offline");
     CHECK(def.allocator.alloc == nullptr && def.allocator.free == nullptr, "C allocator");
+    CHECK(def.cookie == MAUD_CONTEXT_DEF_COOKIE, "the cookie");
+    CHECK(def.version == ((uint32_t)MAUD_VERSION_MAJOR << 16 | MAUD_VERSION_MINOR),
+          "the headers' major and minor");
 }
 
 static void TestOfflineContextLifetime(void)
@@ -153,6 +156,27 @@ static void TestInvalidDefsAreRefused(void)
     (void)context;
 }
 
+// A def of another major or minor is refused before anything else of it
+// is read; one without the cookie is not a def at all.
+static void TestOtherVersionIsRefused(void)
+{
+    CountingAllocator counter = {0};
+    const uint32_t others[4] = {MAUD_ABI_VERSION + 1, MAUD_ABI_VERSION - 1,
+                                MAUD_ABI_VERSION + (1u << 16), UINT32_MAX};
+    for (int i = 0; i < 4; ++i)
+    {
+        maudContextDef def = OfflineDef(&counter);
+        def.version = others[i];
+        def.limits.streams = 0;
+        maudContext* context = (maudContext*)&def;
+        CHECK(maudCreateContext(&def, &context) == maud_errorVersion, "another version");
+        CHECK(context == nullptr, "no context");
+        def.cookie = 0;
+        CheckRefused(&def, "another version without the cookie");
+    }
+    CHECK(counter.calls == 0, "nothing allocated");
+}
+
 static void TestAllocatorFailureIsCapacity(void)
 {
     CountingAllocator counter = {.fail = true};
@@ -206,6 +230,7 @@ int main(void)
     TestOfflineContextLifetime();
     TestNativeContextOrUnsupported();
     TestInvalidDefsAreRefused();
+    TestOtherVersionIsRefused();
     TestFocusUnsupported();
     TestAllocatorFailureIsCapacity();
     return s_failures == 0 ? 0 : 1;

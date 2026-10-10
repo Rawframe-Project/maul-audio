@@ -139,14 +139,14 @@ Splits frames into one array per channel: `interleaved[i * channelCount + c]` go
 The Device part's root: a context holds the connection to a backend and the streams opened through it.
 
 ```c
-maudContextDef maudDefaultContextDef(void);
+static inline maudContextDef maudDefaultContextDef(void);
 ```
-Returns the default context def: 8 streams, periods of at most 8,192 frames, 32 devices, 256 notifications, 256 bytes of device name and key, the C library's allocator, the native backend and an offline rate of 48,000.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default context def: 8 streams, periods of at most 8,192 frames, 32 devices, 256 notifications, 256 bytes of device name and key, the C library's allocator, the native backend and an offline rate of 48,000.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut);
 ```
-Creates a context. An offline context starts with one output and one input device at the offline rate, stereo, each the default of its direction for every role. A native context on Linux connects to PipeWire, waiting up to two seconds on the calling thread for its device list. Either starts with an empty notification queue.  @param def         The def, from maudDefaultContextDef. @param contextOut  Receives the context; set to NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def without its cookie, an allocator with one function, a limit of 0 or an offline rate out of range; `maud_errorUnsupported` when this build or platform lacks the backend asked for, or no audio service of it answers; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a context. An offline context starts with one output and one input device at the offline rate, stereo, each the default of its direction for every role. A native context on Linux connects to PipeWire, waiting up to two seconds on the calling thread for its device list. Either starts with an empty notification queue.  @param def         The def, from maudDefaultContextDef. @param contextOut  Receives the context; set to NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL argument, a def without its cookie, an allocator with one function, a limit of 0 or an offline rate out of range; `maud_errorUnsupported` when this build or platform lacks the backend asked for, or no audio service of it answers; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudDestroyContext(maudContext* context);
