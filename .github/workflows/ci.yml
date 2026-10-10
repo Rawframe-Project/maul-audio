@@ -227,9 +227,16 @@ jobs:
     # of the newest runtime. The simulator's microphone and speaker are
     # the runner's default input and output, which BlackHole is made:
     # the runner's own virtual sound device stalled the capture tests
-    # one run in a few.
-    name: ios-simulator
+    # one run in a few. A second cell runs them in Debug under
+    # AddressSanitizer.
+    name: ${{ matrix.name }}
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: ios-simulator,      config: Release, extra: "" }
+          - { name: ios-simulator-asan, config: Debug,   extra: "-DMAUL_AUDIO_SANITIZE=ON" }
     steps:
       - uses: actions/checkout@v7
       - name: Install BlackHole
@@ -252,7 +259,7 @@ jobs:
       - name: Configure
         run: >
           cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/ios-simulator.cmake
-          -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
+          -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON ${{ matrix.extra }}
       - name: Build
         run: cmake --build build -j 4
       - name: BlackHole as the default devices
