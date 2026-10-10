@@ -8,6 +8,12 @@ format.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-10
+
+A context refuses a program built against another minor version, typed
+ids are named for what they name, and an Android crash on closing a
+stream is gone.
+
 ### Added
 
 - maudContextDef carries `version`, the `MAUD_ABI_VERSION` (major and
@@ -21,11 +27,18 @@ format.
   includes (a `static inline` function), so the version it stamps is
   the program's; its cookie is `MAUD_CONTEXT_DEF_COOKIE`. A def written
   field by field must set `version` and the cookie as the default does.
-
 - maudNotification's `deviceId` and `streamId` fields are now `device`
   and `stream`, as the family names a typed id for what it names; the
   out-parameters `deviceIdOut` and `streamIdOut` are now `deviceOut`
   and `streamOut`, which changes no caller.
+
+### Fixed
+
+- On Android, destroying a stream just after it ran could abort the
+  process with a pure virtual call: AAudio's legacy path (every stream
+  on an emulator, and any without MMAP) can run a data callback after
+  the stream's close. A stream that ran is now stopped and left for one
+  burst, 10 to 100 ms, before it is closed.
 
 ## [0.1.2] - 2026-10-09
 
