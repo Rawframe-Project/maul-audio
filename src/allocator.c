@@ -13,7 +13,7 @@
 #if MAUD_REDZONES
 #include <sanitizer/asan_interface.h>
 
-// A gap's size: two of ASan's 8-byte granules.
+// The least gap: two of ASan's 8-byte granules.
 #define REDZONE_BYTES 16u
 #endif
 
@@ -69,11 +69,15 @@ size_t maudLayoutAdd(maudLayout* layout, size_t count, size_t itemSize, size_t a
     }
     layout->size = end;
 #if MAUD_REDZONES
-    // The gap starts on a granule, so that it is poisoned exactly.
+    // The gap starts on a granule, so that it is poisoned exactly, and
+    // spans a whole item: a read of a field of the item one past the end
+    // lands in it rather than past it.
     size_t gap = (end + 7u) & ~(size_t)7u;
-    if (layout->gapCount < MAUD_LAYOUT_GAPS && !ckd_add(&layout->size, gap, REDZONE_BYTES))
+    size_t span = itemSize > REDZONE_BYTES ? (itemSize + 7u) & ~(size_t)7u : REDZONE_BYTES;
+    if (layout->gapCount < MAUD_LAYOUT_GAPS && !ckd_add(&layout->size, gap, span))
     {
-        layout->gaps[layout->gapCount++] = gap;
+        layout->gaps[layout->gapCount] = gap;
+        layout->spans[layout->gapCount++] = span;
     }
     else
     {
@@ -88,7 +92,7 @@ void maudLayoutPoison(const maudLayout* layout, void* block)
 #if MAUD_REDZONES
     for (uint32_t i = 0; block != nullptr && i < layout->gapCount; ++i)
     {
-        ASAN_POISON_MEMORY_REGION((unsigned char*)block + layout->gaps[i], REDZONE_BYTES);
+        ASAN_POISON_MEMORY_REGION((unsigned char*)block + layout->gaps[i], layout->spans[i]);
     }
 #else
     (void)layout;

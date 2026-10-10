@@ -23,9 +23,9 @@ void* maudAllocate(const maudAllocator* allocator, size_t size, size_t alignment
 void maudRelease(const maudAllocator* allocator, void* memory, size_t size, size_t alignment);
 
 // Under AddressSanitizer a layout leaves a poisoned gap after each part,
-// as LLVM's arena allocator does, so that a read past one array of a
-// block is reported rather than landing in the next; a release build
-// lays out the same block without them.
+// as LLVM's arena allocator does, an item long (16 bytes at least), so
+// that a read past one array of a block is reported rather than landing
+// in the next; a release build lays out the same block without them.
 #if defined(__SANITIZE_ADDRESS__)
 #define MAUD_REDZONES 1
 #elif defined(__has_feature)
@@ -46,6 +46,7 @@ typedef struct maudLayout
 #if MAUD_REDZONES
     uint32_t gapCount;
     size_t gaps[MAUD_LAYOUT_GAPS];
+    size_t spans[MAUD_LAYOUT_GAPS];
 #endif
 } maudLayout;
 
