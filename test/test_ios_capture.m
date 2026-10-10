@@ -241,7 +241,21 @@ static void TestPinnedInput(maudContext* context)
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
               maudStartStream(context, stream) == maud_success,
           "a stream pinned to it");
-    CHECK(WaitForBlocks(context, &blocks, 20), "captures");
+    if (!WaitForBlocks(context, &blocks, 20))
+    {
+        // What the stream and the session were doing, for a run that
+        // fails here (one in many on CI's simulator).
+        maudStreamStatus status = {0};
+        maudResult read = maudGetStreamStatus(context, stream, &status);
+        AVAudioSessionRouteDescription* route = [AVAudioSession sharedInstance].currentRoute;
+        NSString* routed = route.inputs.count != 0 ? route.inputs[0].UID : @"none";
+        fprintf(stderr,
+                "pinned capture: %u blocks; status %s, started %d, suspension %d, overruns "
+                "%llu; routed input %s\n",
+                (unsigned)atomic_load(&blocks.count), maudResultName(read), status.started,
+                (int)status.suspension, (unsigned long long)status.overruns, routed.UTF8String);
+        CHECK(false, "captures");
+    }
     NSString* preferred = [AVAudioSession sharedInstance].preferredInput.UID;
     CHECK(preferred != nil && strcmp(preferred.UTF8String, portKey + 5) == 0,
           "the session prefers that input");
