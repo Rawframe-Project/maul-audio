@@ -69,6 +69,7 @@ jobs:
           - { name: linux-arm64-gcc-14,  os: ubuntu-24.04-arm, cc: gcc-14, cxx: g++-14,   config: Release, extra: "" }
           - { name: macos-clang,         os: macos-15,     cc: clang,    cxx: clang++,    config: Release, extra: "" }
           - { name: macos-clang-asan,    os: macos-15,     cc: clang,    cxx: clang++,    config: Debug,   extra: "-DMAUL_AUDIO_SANITIZE=ON" }
+          - { name: macos-clang-tsan,    os: macos-15,     cc: clang,    cxx: clang++,    config: Debug,   extra: "-DMAUL_AUDIO_TSAN=ON" }
     steps:
       - uses: actions/checkout@v7
       - name: Install compilers
