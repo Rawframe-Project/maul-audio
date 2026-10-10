@@ -38,7 +38,7 @@ context_core: period
 coreaudio_core: apple_objects context_core device
 coreaudio_hog: coreaudio_core
 coreaudio_form: coreaudio_core
-coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device period thread voice xrun
+coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device period retry thread voice xrun
 crc32:
 device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq
@@ -92,6 +92,7 @@ pulse_stream: clock context context_core period pulse_core thread worker xrun
 real_fft: allocator
 reflection_response: fft
 reflections: allocator ambisonics partitioned reflection_response reverb_estimate
+retry: context_core
 reverb: allocator band_eq octave_eq
 reverb_estimate: portable_math spherical_harmonics
 scene: allocator bvh scene_state
