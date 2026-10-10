@@ -2,7 +2,7 @@
 # and the modules it may use. tools/check_modules.py enforces it.
 aaudio_core: context_core device
 aaudio_java: aaudio_core
-aaudio_stream: aaudio_core aaudio_java clock context context_core device follow period thread voice xrun
+aaudio_stream: aaudio_core aaudio_java clock context context_core device follow period retry thread voice xrun
 air_absorption: portable_math
 allocator:
 alsa_api:
@@ -119,7 +119,7 @@ wasapi_exclusive: context_core sample_convert wasapi_core wasapi_format
 wasapi_format:
 wasapi_notify:
 wasapi_objects: context context_core layout period
-wasapi_stream: clock context context_core period sample_convert thread voice wasapi_core wasapi_exclusive wasapi_format wasapi_objects wasapi_voice worker xrun
+wasapi_stream: clock context context_core period retry sample_convert thread voice wasapi_core wasapi_exclusive wasapi_format wasapi_objects wasapi_voice worker xrun
 wasapi_voice: context_core voice wasapi_core
 watertight:
 web_capture: clock context context_core follow period thread voice web_core web_devices xrun

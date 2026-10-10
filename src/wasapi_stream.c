@@ -12,6 +12,7 @@
 #include "clock.h"
 #include "context.h"
 #include "period.h"
+#include "retry.h"
 #include "thread.h"
 #include "voice.h"
 #include "wasapi_core.h"
@@ -582,19 +583,21 @@ void maudWasapiSetStreamActive(maudContext* context, maudStreamSlot* slot, bool 
 }
 
 // A live running stream whose thread ended on a failure, or that has
-// no client.
-static bool ToResume(maudContext* context, maudStreamSlot* slot)
+// no client, once its retry is due (retry.h).
+static bool ToResume(maudContext* context, maudStreamSlot* slot, int64_t now)
 {
     const maudWasapiStream* entry = EntryOf(context, slot);
     bool ended = entry->threadRunning && atomic_load_explicit(&entry->failed, memory_order_acquire);
-    return slot->live && Running(slot) && (ended || !Connected(entry));
+    return slot->live && Running(slot) && (ended || !Connected(entry)) &&
+           maudRetryDue(&slot->core.binding, now);
 }
 
 bool maudWasapiStreamsToResume(maudContext* context)
 {
+    int64_t now = maudNowNanoseconds();
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
-        if (ToResume(context, &context->streams.slots[i]))
+        if (ToResume(context, &context->streams.slots[i], now))
         {
             return true;
         }
@@ -602,14 +605,26 @@ bool maudWasapiStreamsToResume(maudContext* context)
     return false;
 }
 
+// A failed reopen waits longer each time, so that a drain the host
+// calls in a loop does not cross to the apartment's thread on every
+// call for an endpoint that stays unusable.
 void maudWasapiResumeStreams(maudContext* context)
 {
+    int64_t now = maudNowNanoseconds();
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
-        if (ToResume(context, slot))
+        if (ToResume(context, slot, now))
         {
             maudWasapiRetargetStream(context, slot);
+            if (Connected(EntryOf(context, slot)))
+            {
+                maudRetrySucceeded(&slot->core.binding);
+            }
+            else
+            {
+                maudRetryFailed(&slot->core.binding, now);
+            }
         }
     }
 }

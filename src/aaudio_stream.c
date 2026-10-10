@@ -19,6 +19,7 @@
 #include "device.h"
 #include "follow.h"
 #include "period.h"
+#include "retry.h"
 #include "thread.h"
 #include "voice.h"
 #include "xrun.h"
@@ -334,6 +335,7 @@ void maudAaudioSetStreamActive(maudContext* context, maudStreamSlot* slot, bool 
 
 void maudAaudioResumeStreams(maudContext* context)
 {
+    int64_t now = maudNowNanoseconds();
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
@@ -353,14 +355,21 @@ void maudAaudioResumeStreams(maudContext* context)
         }
         bool lost = entry->stream != nullptr &&
                     atomic_exchange_explicit(&entry->lost, false, memory_order_acq_rel);
-        if (!lost && (entry->stream != nullptr || !Running(slot)))
+        if (!lost &&
+            (entry->stream != nullptr || !Running(slot) || !maudRetryDue(&slot->core.binding, now)))
         {
             continue;
         }
         // A failure leaves the stream without an AAudio stream; the drain
-        // tries again while it runs.
+        // tries again while it runs, waiting longer after each failure.
         Close(entry);
-        if (Open(context, slot) == maud_success && Running(slot))
+        if (Open(context, slot) != maud_success)
+        {
+            maudRetryFailed(&slot->core.binding, now);
+            continue;
+        }
+        maudRetrySucceeded(&slot->core.binding);
+        if (Running(slot))
         {
             Start(entry);
         }
