@@ -317,9 +317,18 @@ with a listed statement); ThreadSanitizer in CI; review.
   only where code spells it through the family's SIMD header.
 - Each library's profile states its determinism class and the rules
   that follow from it.
+- A library whose profile promises the same bits on every platform
+  lists in `tools/libm-allowed.txt` the `<math.h>` functions its
+  sources may call, one per line: only exactly rounded ones (`sqrt`,
+  `fabs`, `floor`, `ceil`, `trunc`, `round`, `lround`, `rint`,
+  `nearbyint`, `fmin`, `fmax`, `fmod`, `remainder`, `copysign`,
+  `frexp`, `ldexp`, `scalbn`, `modf`, `nextafter` and their `f` forms),
+  never `fma` (above). Every other `<math.h>` function is refused in
+  its sources; the library writes its own where it needs one.
 
 Checked by: `cmake/` (flags); `tools/check_source.py` (calls the
-profile bans); the library's determinism tests.
+profile bans, and `<math.h>` calls against `tools/libm-allowed.txt`);
+the library's determinism tests.
 
 ## 12. API design
 

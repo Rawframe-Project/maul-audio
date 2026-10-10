@@ -9,6 +9,8 @@
 #   comments are // or ///;
 # - comments carry no development history and no TODO or FIXME;
 # - no file in the repository contains an em dash;
+# - src/ calls no <math.h> function but those tools/libm-allowed.txt
+#   lists, when the library has that file;
 # - src/ calls no function the family bans (memory goes through the
 #   allocator, failures are returned statuses, the library prints
 #   nothing, no unsafe string functions, nothing locale-dependent) and
@@ -123,6 +125,50 @@ def library_bans():
     return bans
 
 
+# The functions of C23's <math.h> (with their f and l forms), for a
+# library that lists in tools/libm-allowed.txt the ones it may call
+# (section 11): any other is refused in its own sources. The
+# classification macros (isnan, signbit and the like) are exact and not
+# listed.
+_LIBM_BASES = """
+acos asin atan atan2 cos sin tan acospi asinpi atanpi atan2pi cospi sinpi
+tanpi acosh asinh atanh cosh sinh tanh exp exp10 exp10m1 exp2 exp2m1 expm1
+frexp ilogb ldexp llogb log log10 log10p1 log1p logp1 log2 log2p1 logb modf
+scalbn scalbln cbrt compoundn fabs hypot pow pown powr rootn rsqrt sqrt erf
+erfc lgamma tgamma ceil floor nearbyint rint lrint llrint round lround
+llround roundeven trunc fromfp ufromfp fromfpx ufromfpx fmod remainder
+remquo copysign nan nextafter nexttoward nextup nextdown canonicalize fdim
+fmax fmin fmaximum fminimum fmaximum_mag fminimum_mag fmaximum_num
+fminimum_num fmaximum_mag_num fminimum_mag_num fma
+""".split()
+LIBM = {base + suffix for base in _LIBM_BASES for suffix in ("", "f", "l")} | {
+    narrow + op + wide
+    for op in ("add", "sub", "mul", "div", "fma", "sqrt")
+    for narrow, wides in (("f", ("", "l")), ("d", ("l",)))
+    for wide in wides
+}
+
+
+def libm_allowed():
+    """The <math.h> functions the library may call, from
+    tools/libm-allowed.txt, or None when it lists none (no limit)."""
+    path = os.path.join(ROOT, "tools", "libm-allowed.txt")
+    if not os.path.exists(path):
+        return None
+    allowed = set()
+    for number, line in enumerate(open(path, encoding="utf-8"), 1):
+        name = line.split("#", 1)[0].strip()
+        if not name:
+            continue
+        if name not in LIBM:
+            sys.exit(f"libm-allowed.txt:{number}: {name} is no <math.h> function")
+        allowed.add(name)
+    return allowed
+
+
+LIBM_ALLOWED = libm_allowed()
+
+
 def external_dirs():
     """Directories, relative to the root, whose files come from outside."""
     path = os.path.join(ROOT, "tools", "external-dirs.txt")
@@ -192,6 +238,11 @@ def check_c_file(path, rel, in_src, bans, findings):
             reason = bans.get(name)
             if reason:
                 findings.append(f"{rel}:{number}: banned call {name}(): {reason}")
+            elif LIBM_ALLOWED is not None and name in LIBM and name not in LIBM_ALLOWED:
+                findings.append(
+                    f"{rel}:{number}: libm call {name}() not in tools/libm-allowed.txt:"
+                    " its results may differ between C libraries"
+                )
         if THREAD_LOCAL.search(code):
             findings.append(f"{rel}:{number}: no thread-local state; failures are returned")
         if FILE_SCOPE_STATE.match(code):
