@@ -23,6 +23,7 @@
 #import <AVFAudio/AVFAudio.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -188,6 +189,14 @@ static void TestOutput(maudContext* context, const maudDeviceInfo* info)
     uint32_t stopped = atomic_load(&blocks.count);
     Sleep(200);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
+    // The unit itself stops: its position, which every render moves,
+    // stands still.
+    uint64_t before = 0;
+    uint64_t after = 0;
+    CHECK(maudGetStreamPosition(context, stream, &before) == maud_success, "position");
+    Sleep(200);
+    CHECK(maudGetStreamPosition(context, stream, &after) == maud_success && after == before,
+          "the unit stops with the stream");
     CHECK(maudStartStream(context, stream) == maud_success &&
               WaitForBlocks(context, &blocks, stopped + 20),
           "it runs again");
@@ -402,6 +411,30 @@ static void TestObjects(maudContext* context)
           "a bed wider than stereo");
 }
 
+// The context's allocations not yet given back.
+static int s_live;
+
+static void* CountedAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)context;
+    void* memory = nullptr;
+    if (posix_memalign(&memory, alignment < sizeof(void*) ? sizeof(void*) : alignment, size) != 0)
+    {
+        return nullptr;
+    }
+    s_live++;
+    return memory;
+}
+
+static void CountedFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    s_live--;
+    free(memory);
+}
+
 // The form of every port type the session names: the simulator routes
 // to its speaker and microphone only.
 static void TestPortForms(void)
@@ -461,6 +494,7 @@ int main(void)
     TestPortForms();
     TestDeviceLimit();
     maudContextDef def = maudDefaultContextDef();
+    def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
     maudContext* context = nullptr;
     CHECK(maudCreateContext(&def, &context) == maud_success, "a native context");
     if (context == nullptr)
@@ -476,5 +510,6 @@ int main(void)
     TestRoute(context);
     TestCapture(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    CHECK(s_live == 0, "everything given back");
     return s_failures == 0 ? 0 : 1;
 }

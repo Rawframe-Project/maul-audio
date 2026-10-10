@@ -305,6 +305,7 @@ static void TestVoicedDuplex(maudContext* context)
     CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
               (status.voiceActive & def.voice) == def.voice,
           "echo cancellation and noise suppression reported");
+    CHECK((status.voiceActive & maud_voiceGainControl) == 0, "no gain control unasked");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     // The simulator's voice unit can be slow to settle on a loaded runner.
     for (int tries = 0; tries < 1500 && atomic_load(&duplex.withInput) < 20; ++tries)
