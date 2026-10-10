@@ -210,8 +210,9 @@ static void GuideNotifications(void)
             // refresh a device menu
             break;
         case maud_notifyStreamSuspended:
-            // note.reason: the device was lost, there is none, or the platform
-            // holds audio (a browser before a gesture, an iOS interruption)
+            // note.reason: the device was lost, there is none, the platform
+            // holds audio (a browser before a gesture, an iOS interruption),
+            // or it could not open the stream there (retried until it can)
             break;
         default:
             break;

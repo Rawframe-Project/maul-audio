@@ -125,6 +125,9 @@ is suspended if the device goes. A stream never resamples silently: it
 runs at the device's rate unless the def asks for another
 (`maud_rateRequired` refuses a rate the device does not run;
 `maud_ratePlatformConverted` lets the platform convert, where it can).
+A duplex stream keeps the one rate it opened at, both halves: when its
+output follows the default to a device at another rate, the platform
+converts it, and its format reads `maud_ratePlatformConverted`.
 `maudGetStreamClock` maps a frame to the host's clock, with the
 latency, for A/V sync.
 
@@ -145,8 +148,9 @@ while (maudNextNotification(context, &note) == maud_success)
         // refresh a device menu
         break;
     case maud_notifyStreamSuspended:
-        // note.reason: the device was lost, there is none, or the platform
-        // holds audio (a browser before a gesture, an iOS interruption)
+        // note.reason: the device was lost, there is none, the platform
+        // holds audio (a browser before a gesture, an iOS interruption),
+        // or it could not open the stream there (retried until it can)
         break;
     default:
         break;
