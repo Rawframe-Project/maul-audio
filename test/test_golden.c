@@ -257,7 +257,12 @@ static const Golden s_goldens[4] = {{"hrtf-sweep", MakeSweep, 100},
 
 static void Open(Render* r, const Golden* g)
 {
-    *r = (Render){.make = g->make, .blocks = g->blocks, .noise = {12345u}};
+    // Field by field: a compound literal of a Render would put a second
+    // one on the stack, past a WebAssembly debug build's 64 KB.
+    memset(r, 0, sizeof(*r));
+    r->make = g->make;
+    r->blocks = g->blocks;
+    r->noise = (Noise){12345u};
     if (g->make == MakeSweep)
     {
         r->binaural = Binaural();

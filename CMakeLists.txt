@@ -595,8 +595,9 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_apply_flags(page_web)
         target_link_options(page_web PRIVATE "--shell-file=${PROJECT_SOURCE_DIR}/test/web/shell.html")
     endif()
-    # The audio-thread trap exists only where invariants are checked.
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED)
+    # The audio-thread trap exists only where invariants are checked. In
+    # WebAssembly a trap ends the module, with no signal to catch.
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED AND NOT EMSCRIPTEN)
         maul_add_test(trap WHITEBOX POSIX)
     endif()
 endif()
