@@ -69,15 +69,16 @@ size_t maudLayoutAdd(maudLayout* layout, size_t count, size_t itemSize, size_t a
     }
     layout->size = end;
 #if MAUD_REDZONES
-    // The gap starts on a granule, so that it is poisoned exactly, and
-    // spans a whole item: a read of a field of the item one past the end
-    // lands in it rather than past it.
+    // The gap spans a whole item past the granule the part ends in, so
+    // that a read of a field of the item one past the end lands in it;
+    // it is poisoned from the part's very end, which ASan marks within
+    // the last granule as the bytes past the part.
     size_t gap = (end + 7u) & ~(size_t)7u;
     size_t span = itemSize > REDZONE_BYTES ? (itemSize + 7u) & ~(size_t)7u : REDZONE_BYTES;
     if (layout->gapCount < MAUD_LAYOUT_GAPS && !ckd_add(&layout->size, gap, span))
     {
-        layout->gaps[layout->gapCount] = gap;
-        layout->spans[layout->gapCount++] = span;
+        layout->gaps[layout->gapCount] = end;
+        layout->spans[layout->gapCount++] = gap - end + span;
     }
     else
     {
