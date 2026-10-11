@@ -499,6 +499,10 @@ static void TestSend(void)
     maudDestroyReverb(r[0]);
     maudDestroyReverb(r[1]);
     maudReverbDef far = maudDefaultReverbDef();
+    far.maxDelay = 4.0f;
+    maudReverb* longest = nullptr;
+    CHECK(maudCreateReverb(&far, &longest) == maud_success, "a longest delay of 4 s");
+    maudDestroyReverb(longest);
     far.maxDelay = 4.5f;
     maudReverb* none = nullptr;
     CHECK(maudCreateReverb(&far, &none) == maud_errorInvalid, "a longest delay past 4 s");
