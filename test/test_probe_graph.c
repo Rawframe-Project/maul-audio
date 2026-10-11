@@ -11,8 +11,8 @@
 // without an any-hit query every pair within range is linked, and every
 // query a host gets has a unit direction, two probes at one point too;
 // a column gives up after 32 surfaces; the largest spacing, height and
-// range are taken; the limits and a missing closest-hit query are
-// refused.
+// range are taken; the limits, a missing closest-hit query and a block
+// that cannot be had are refused.
 
 #include "allocator.h"
 #include "probe_graph.h"
@@ -407,6 +407,33 @@ static void TestDeepColumn(void)
     CHECK(maudProbeSetDefValid(&def), "a box flat along x");
 }
 
+static void* Refuse(size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    return nullptr;
+}
+
+static void Ignore(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)memory;
+    (void)size;
+    (void)alignment;
+    (void)context;
+}
+
+// A graph's block that cannot be had is reported: a refused allocation,
+// and on 32 bits a size past the address space, refused before asking.
+static void TestNoRoom(void)
+{
+    const maudAllocator refusing = {Refuse, Ignore, nullptr};
+    maudProbeGraph g = {0};
+    CHECK(!maudLayProbeGraph(&refusing, &g, 4, 4) && g.memory == nullptr, "a refused block");
+    CHECK(!maudLayProbeGraph(&refusing, &g, UINT32_MAX, UINT32_MAX) && g.memory == nullptr,
+          "the largest counts");
+}
+
 int main(void)
 {
     TestCorridor();
@@ -414,6 +441,7 @@ int main(void)
     TestTower();
     TestSteepest();
     TestDeepColumn();
+    TestNoRoom();
     TestCoincident();
     return s_failures == 0 ? 0 : 1;
 }
