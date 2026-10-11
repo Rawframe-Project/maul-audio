@@ -4,9 +4,9 @@
 // Probe sets through the spatializer: a set from points reports its
 // probes and links and copies its points; a generated set lands its
 // probes on the floor; a destroyed set's id is stale and its slot is
-// reused under a new generation; the capacity, the limits, defs out of
-// range, generation without a closest-hit query and probes past the
-// set's are refused.
+// reused under a new generation; the largest limits are in range; the
+// capacity, the limits, defs out of range, generation without a
+// closest-hit query and probes past the set's are refused.
 
 #include "test_harness.h"
 
@@ -14,6 +14,22 @@
 #include "maul-audio/spatializer.h"
 
 #include <math.h>
+
+static void* Refuse(size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    return nullptr;
+}
+
+static void Ignore(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)memory;
+    (void)size;
+    (void)alignment;
+    (void)context;
+}
 
 static maudAcousticScene* Room(void)
 {
@@ -183,6 +199,13 @@ static void TestMisuse(maudSpatializer* s)
     sd.maxProbePairs = 1u << 24;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_success, "the most pairs");
     maudDestroySpatializer(blind);
+    // The most sets and probes are in range: with an allocator that
+    // refuses, they fail for memory, not as invalid.
+    maudSpatializerDef most = sd;
+    most.probeSetCapacity = 64;
+    most.maxProbes = 65536;
+    most.allocator = (maudAllocator){Refuse, Ignore, nullptr};
+    CHECK(maudCreateSpatializer(&most, &blind) == maud_errorCapacity, "the most sets and probes");
     sd.maxProbePairs = (1u << 24) + 1;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "too many pairs");
 }

@@ -33,6 +33,22 @@ enum
 };
 
 // A wall 2 m to the listener's right (x = 2) facing away from it.
+static void* Refuse(size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    return nullptr;
+}
+
+static void Ignore(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)memory;
+    (void)size;
+    (void)alignment;
+    (void)context;
+}
+
 static maudAcousticScene* Wall(void)
 {
     static const maudVector3 v[4] = {
@@ -277,6 +293,13 @@ static void TestMisuse(void)
     def.reflectionDuration = 1.0f;
     def.reflectionRate = 8000.0f;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "8 kHz");
+    // The longest responses at the highest rate are in range: with an
+    // allocator that refuses, they fail for memory, not as invalid.
+    maudSpatializerDef longest = def;
+    longest.reflectionDuration = 4.0f;
+    longest.reflectionRate = 384000.0f;
+    longest.allocator = (maudAllocator){Refuse, Ignore, nullptr};
+    CHECK(maudCreateSpatializer(&longest, &none) == maud_errorCapacity, "4 s at 384 kHz");
     def.reflectionRate = 48000.0f;
     def.reverbRays = 0;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "reflections without rays");
