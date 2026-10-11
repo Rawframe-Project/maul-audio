@@ -8,7 +8,8 @@
 // stops the walk and says so; an unknown material lets nothing through;
 // clear paths and sources without a walk cast no closest-hit rays, and
 // an occluded path without one passes nothing; a split step gives the
-// same bytes; bad materials are refused.
+// same bytes; bad materials and a table past the capacity are refused,
+// a table at it taken.
 
 #include "test_harness.h"
 
@@ -250,6 +251,7 @@ static void TestMaterials(void)
     r = Result(s, id, -2.0f, -10.0f);
     CHECK(Bands(&r, 0.0f, 0.0f, 0.0f), "and every material is unknown");
     CHECK(maudSetMaterials(s, nullptr, 1) == maud_errorInvalid, "no materials");
+    CHECK(maudSetMaterials(s, many, 64) == maud_success, "a table at the capacity");
     maudDestroySpatializer(s);
     maudSpatializerDef def = maudDefaultSpatializerDef();
     maudSpatializer* none = nullptr;
