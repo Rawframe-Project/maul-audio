@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The bake file (whitebox): a set with reverberation and fields, and one
-// of probes and links alone, write and read back to the same memory and
-// write again to the same bytes; every malformed part is refused as
+// The bake file (whitebox): a set with reverberation and fields, and
+// one of probes and links alone, write and read back to the same memory
+// and write again to the same bytes; every malformed part is refused as
 // invalid (magic, size, checksum, range, layers, a neighbour out of
-// range, a self link, a falling row, rows not spanning the links, a
-// link listed from one end only, a link longer than the range, a
-// point, a time, a level, a tail's time and level and a field out of
-// range), another version as unsupported
-// (version 1, without tails, still reads), counts past the limits as
-// capacity, and fields of another layout as unsupported; a failing
-// allocator is a capacity error with nothing leaked.
+// range, a self link, a falling row, a link listed twice, rows not
+// spanning the links, a link listed from one end only, a link longer
+// than the range, a point (an unlinked one's in one axis too), a time,
+// a level, a tail's time and level and a field out of range), another
+// version as unsupported (version 1, without tails, still reads),
+// counts past the limits as capacity, and fields of another layout as
+// unsupported; a failing allocator is a capacity error with nothing
+// leaked.
 
 #include "allocator.h"
 #include "bake_file.h"
@@ -433,6 +434,50 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
           "no file, a short one");
 }
 
+// Two probes 1 m apart with the given rows, each probe's neighbours as
+// listed (count links between them).
+static File Pair(uint32_t links, const uint32_t* neighbours)
+{
+    maudProbeGraph s;
+    CHECK(maudLayProbeGraph(&s_allocator, &s, 2, links), "a pair");
+    s.points[0] = (maudVector3){0.0f, 1.5f, 0.0f};
+    s.points[1] = (maudVector3){1.0f, 1.5f, 0.0f};
+    s.range = 2.5f;
+    s.offsets[0] = 0;
+    s.offsets[1] = links;
+    s.offsets[2] = 2 * links;
+    for (uint32_t e = 0; e < 2 * links; ++e)
+    {
+        s.neighbours[e] = neighbours[e];
+        s.lengths[e] = 1.0f;
+    }
+    maudProbeBake b = Bake(2);
+    File f = Write(&s, &b);
+    maudReleaseProbeBake(&s_allocator, &b);
+    maudReleaseProbeGraph(&s_allocator, &s);
+    return f;
+}
+
+// What the large file cannot show: a probe with no links whose point is
+// not finite in one axis alone, and a link listed twice from both ends
+// (each row then rising only by not falling).
+static void TestPairs(void)
+{
+    File apart = Pair(0, nullptr);
+    CHECK(Read(&apart, &s_limits) == maud_success, "two probes, no links");
+    File c = Changed(&apart);
+    PutFloat(c.bytes + 40 + 12 + 4, NAN);
+    Expect(&c, maud_errorInvalid, "an unlinked point not finite in y");
+    c = Changed(&apart);
+    PutFloat(c.bytes + 40 + 12, NAN);
+    Expect(&c, maud_errorInvalid, "an unlinked point not finite in x");
+    free(apart.bytes);
+    const uint32_t twice[4] = {1, 1, 0, 0};
+    File doubled = Pair(2, twice);
+    CHECK(Read(&doubled, &s_limits) == maud_errorInvalid, "a link listed twice");
+    free(doubled.bytes);
+}
+
 // The set's block failing, then the bake's: a capacity error with
 // nothing leaked.
 static void TestFailingAllocator(const File* f)
@@ -460,6 +505,7 @@ int main(void)
     TestRoundTrip(&g, &b, &f);
     TestRefused(&g, &b, &f);
     TestVersion1(&b, &f);
+    TestPairs();
     TestFailingAllocator(&f);
     free(f.bytes);
     maudReleaseProbeBake(&s_allocator, &b);
