@@ -342,6 +342,13 @@ static void TestDirectivity(void)
     CHECK(maudGetDirectivity(&flat, (maudVector3){0.0f, 0.0f, 1.0f}, d) == maud_success &&
               d[2] == 1.0f,
           "a power of 0: the same all round");
+    const maudVector3 notFinite[3] = {{NAN, 0.0f, 1.0f}, {0.0f, NAN, 1.0f}, {0.0f, 1.0f, NAN}};
+    bool refused = true;
+    for (int k = 0; k < 3; ++k)
+    {
+        refused = refused && maudGetDirectivity(&pattern, notFinite[k], d) == maud_errorInvalid;
+    }
+    CHECK(refused, "a direction not finite in any one axis");
     pattern.weight[0] = 1.5f;
     CHECK(maudGetDirectivity(&pattern, (maudVector3){0.0f, 0.0f, -1.0f}, d) == maud_errorInvalid,
           "a weight above 1");
@@ -382,6 +389,17 @@ static void TestMisuse(void)
     maudDirectEffect* none = (maudDirectEffect*)&def;
     def.sampleRate = 16000.0f;
     CHECK(maudCreateDirectEffect(&def, &none) == maud_errorInvalid && none == nullptr, "16 kHz");
+    maudDirectEffect* bounds = nullptr;
+    def.sampleRate = 32000.0f;
+    bool lowest = maudCreateDirectEffect(&def, &bounds) == maud_success;
+    maudDestroyDirectEffect(bounds);
+    bounds = nullptr;
+    def.sampleRate = 384000.0f;
+    bool highest = maudCreateDirectEffect(&def, &bounds) == maud_success;
+    maudDestroyDirectEffect(bounds);
+    CHECK(lowest && highest, "32 kHz and 384 kHz, the bounds");
+    def.sampleRate = 384001.0f;
+    CHECK(maudCreateDirectEffect(&def, &none) == maud_errorInvalid, "past 384 kHz");
     def = maudDefaultDirectEffectDef();
     def.airAbsorption[1] = -1.0f;
     CHECK(maudCreateDirectEffect(&def, &none) == maud_errorInvalid, "negative absorption");
