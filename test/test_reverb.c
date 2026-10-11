@@ -672,7 +672,8 @@ static double Peak(double start, double end)
 // The tail: alone it gives the first's energy for its time and level; the
 // two do not ring together (equal ones sum in energy, not amplitude); a
 // reverb made without one ignores it; a stopped tail decays at its time,
-// then stops; times and levels are checked.
+// then stops, cleared at the block its ring ends; times and levels
+// are checked, the longest and highest taken.
 static void TestTail(void)
 {
     maudReverbParams alone = {
@@ -714,6 +715,20 @@ static void TestTail(void)
     printf("a stopped tail: %.2f dB from its decay, %.2g from 1.4 s\n", ringing, after);
     CHECK(fabs(ringing) < 1.0, "a stopped tail decays at its time");
     CHECK(after < 1e-9, "and then stops");
+    // A 0.375 s tail rings for 24,000 frames after its last block, 80 dB:
+    // 50 blocks to the frame, it runs through the 49 after and is cleared
+    // at the 50th.
+    maudReverbParams aligned = {{0.1f, 0.1f, 0.1f},
+                                {-96.0f, -96.0f, -96.0f},
+                                0.0f,
+                                {0.375f, 0.375f, 0.375f},
+                                {0.0f, 0.0f, 0.0f}};
+    TailResponse(&aligned, 1, true);
+    double last = Peak(0.49, 0.5);
+    double cleared = Peak(0.5, 0.51);
+    printf("a tail cleared on its frame: %.2g in the last block it runs, %.2g in the next\n", last,
+           cleared);
+    CHECK(last > 1e-7 && cleared < 1e-9, "cleared at the block its ring ends");
     TestTailAgain();
     TestTailBand();
     maudReverb* r = Create();
@@ -728,6 +743,13 @@ static void TestTail(void)
     bad.tailLevel[2] = 25.0f;
     CHECK(maudProcessReverb(r, &bad, out[0], bed, 16) == maud_errorInvalid,
           "a tail's level past 24 dB");
+    maudReverbParams highest = first;
+    highest.reverbTime[0] = 20.0f;
+    highest.level[0] = 24.0f;
+    highest.tailTime[1] = 20.0f;
+    highest.tailLevel[1] = 24.0f;
+    CHECK(maudProcessReverb(r, &highest, out[0], bed, 16) == maud_success,
+          "the longest times and highest levels");
     maudDestroyReverb(r);
 }
 
