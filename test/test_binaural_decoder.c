@@ -11,7 +11,7 @@
 // the set may go once the decoder exists; bad calls write nothing. The
 // build's parts alone: the FFT against a direct DFT, the weighted least
 // squares by its defining properties, the directions' weights by the
-// area of their bands.
+// area of their bands, the transform size by its bounds.
 
 #define _CRT_SECURE_NO_WARNINGS
 
@@ -438,8 +438,22 @@ static void TestWeights(const maudHrtf* hrtf)
     CHECK(fabs(ratio - band0 / band60) < 1e-9, "a direction's weight is its band's area");
 }
 
+// The transform size: the least power of two that holds a response of
+// 256 taps, its delay and a filter, 512 at the least at 48 kHz.
+static void TestSize(void)
+{
+    float delays[2] = {0.0f, 0.0f};
+    maudHrtf set = {.sampleRate = 48000, .taps = 256, .directionCount = 1, .delays = delays};
+    CHECK(maudMagLsSize(&set, 768, 0.0) == 1024, "exactly a power of two");
+    CHECK(maudMagLsSize(&set, 769, 0.0) == 2048, "one past it");
+    CHECK(maudMagLsSize(&set, 16, 0.0) == 512, "512 at the least");
+    delays[1] = 1.5f;
+    CHECK(maudMagLsSize(&set, 767, 0.0) == 2048, "the largest delay counted");
+}
+
 int main(void)
 {
+    TestSize();
     TestFft();
     TestLeastSquares();
     FILE* file = fopen(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", "rb");
