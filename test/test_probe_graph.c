@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Probe sets (whitebox): in an L-shaped corridor every pair within range
-// is linked exactly when a ray between them is clear, the points given
-// in any order, each row ascending, symmetric and measured; the set is
-// the same byte for byte when the tasks run one item at a time in
-// reverse; generation over a
-// mezzanine and a low shelf puts a probe on each storey and none under
-// the shelf, and on a tower's top eight storeys only; without an
-// any-hit query every pair within range is linked; the limits and a
+// Probe sets (whitebox): in an L-shaped corridor every pair within
+// range is linked exactly when a ray between them is clear, the points
+// given in any order, each row ascending, symmetric and measured; the
+// set is the same byte for byte when the tasks run one item at a time
+// in reverse; generation over a mezzanine and a low shelf puts a probe
+// on each storey and none under the shelf, on a tower's top eight
+// storeys only, and on a surface at 45 degrees (the steepest floor);
+// without an any-hit query every pair within range is linked, and every
+// query a host gets has a unit direction, two probes at one point too;
+// the largest spacing, height and range are taken; the limits and a
 // missing closest-hit query are refused.
 
 #include "allocator.h"
@@ -237,6 +239,11 @@ static void TestGeneration(void)
                            .height = 1.5f,
                            .range = 2.0f};
     CHECK(maudProbeSetDefValid(&def), "a valid def");
+    maudProbeSetDef widest = def;
+    widest.spacing = 100.0f;
+    widest.height = 10.0f;
+    widest.range = 1000.0f;
+    CHECK(maudProbeSetDefValid(&widest), "the largest spacing, height and range");
     maudProbeQueries q = Queries(scene);
     maudProbeGraph g;
     CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "generated");
@@ -265,6 +272,68 @@ static void TestGeneration(void)
     def.boxMax.y = def.boxMin.y;
     CHECK(!maudProbeSetDefValid(&def), "a flat box");
     maudDestroyAcousticScene(scene);
+}
+
+static uint32_t s_badRays = 0;
+
+// A host's any-hit query that counts rays without a unit direction and
+// finds nothing in the way.
+static void Clear(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
+{
+    (void)context;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        maudVector3 d = rays[i].direction;
+        float length = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+        s_badRays += fabsf(length - 1.0f) < 1e-5f ? 0 : 1;
+        occluded[i] = 0;
+    }
+}
+
+// Two probes at one point and a third beside them: every query asked
+// has a unit direction, the zero-length pair's too, and all three link.
+static void TestCoincident(void)
+{
+    static const maudVector3 points[3] = {
+        {1.0f, 1.5f, 1.0f}, {1.0f, 1.5f, 1.0f}, {2.0f, 1.5f, 1.0f}};
+    maudProbeSetDef def = {.points = points, .pointCount = 3, .range = 2.0f};
+    maudProbeQueries q = {
+        .anyHit = Clear, .allocator = &s_allocator, .maxProbes = 16, .maxPairs = 16};
+    maudProbeGraph g;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "built");
+    printf("coincident: %u links, %u rays without a direction\n", g.links, s_badRays);
+    CHECK(g.links == 3 && s_badRays == 0, "a unit direction for every query");
+    maudReleaseProbeGraph(&s_allocator, &g);
+}
+
+// A host's closest hits: a surface 2 m down each column, its normal 45
+// degrees from vertical, and nothing below it.
+static void Steep(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
+{
+    (void)context;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        float distance = rays[i].minDistance < 2.0f ? 2.0f : INFINITY;
+        hits[i] = (maudRayHit){distance, {0.0f, 0.70710678f, 0.70710678f}, 0};
+    }
+}
+
+// A surface at 45 degrees, the steepest a floor may be: a probe stands
+// on it.
+static void TestSteepest(void)
+{
+    maudProbeSetDef def = {.boxMin = {0.0f, -1.0f, 0.0f},
+                           .boxMax = {1.0f, 4.0f, 1.0f},
+                           .spacing = 1.0f,
+                           .height = 1.5f,
+                           .range = 2.0f};
+    maudProbeQueries q = {
+        .closestHit = Steep, .allocator = &s_allocator, .maxProbes = 16, .maxPairs = 16};
+    maudProbeGraph g;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "generated");
+    printf("steepest floor: %u probes\n", g.count);
+    CHECK(g.count == 1 && fabsf(g.points[0].y - 3.5f) < 1e-4f, "a probe on a 45 degree floor");
+    maudReleaseProbeGraph(&s_allocator, &g);
 }
 
 // A tower of ten storeys over one column: probes on the top eight, the
@@ -302,5 +371,7 @@ int main(void)
     TestCorridor();
     TestGeneration();
     TestTower();
+    TestSteepest();
+    TestCoincident();
     return s_failures == 0 ? 0 : 1;
 }
