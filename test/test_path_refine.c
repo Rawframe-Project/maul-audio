@@ -5,11 +5,13 @@
 // off an L corridor's corner lands on the corner's edge with the exact
 // length; paths through a door in a wall 0.2 m thick land within 0.1 %
 // of the shortest (one point on each face, found by searches) near a
-// jamb, within 1 % over the lintel; a vertex whose neighbours see each
-// other goes;
-// no query leaves a path as it is; the diffraction table gives 0 dB at
-// no turn and the half-plane's loss at 30, 90 and 180 degrees within
-// 0.1 dB; a path's corners multiply.
+// jamb, within 1 % over the lintel; paths over a ledge whose top edges
+// run along x, and their mirror image, slide along the edges to within
+// 0.1 %; a path as long as its array is refined in place; a vertex
+// whose neighbours see each other goes; no query leaves a path as it
+// is; the diffraction table gives 0 dB at no turn and the half-plane's
+// loss at 30, 90 and 180 degrees within 0.1 dB; a path's corners
+// multiply, and a turn between two steps takes the gain between them.
 
 #include "path_refine.h"
 #include "test_harness.h"
@@ -87,6 +89,12 @@ static void TestCorner(void)
     CHECK(n == 3, "one vertex left");
     CHECK(fabs(PathLength(v, n) / exact - 1.0) < 1e-4, "the exact length");
     CHECK(n == 3 && Length(v[1], corner) < 0.01, "on the corner's edge");
+    // A path as long as its array, its one vertex needed: refined in
+    // place, nothing past it read.
+    maudVector3 exactly[3] = {listener, {18.0f, 1.5f, 2.0f}, source};
+    CHECK(maudRefinePath(maudSceneAnyHit, scene, exactly, 3) == 3 &&
+              fabs(PathLength(exactly, 3) / exact - 1.0) < 1e-4,
+          "a path as long as its array");
     maudVector3 same[3] = {listener, {19.5f, 1.5f, 2.5f}, source};
     CHECK(maudRefinePath(nullptr, nullptr, same, 3) == 3 && same[1].x == 19.5f,
           "no query, no change");
@@ -171,6 +179,61 @@ static void TestDoor(void)
     maudDestroyAcousticScene(scene);
 }
 
+// The length of a to (x1, 2, 4.9) to (10 - x1, 2, 5.1) to b, over a
+// ledge's two top edges, at its shortest by a golden section on x1.
+static double OverLedge(maudVector3 a, maudVector3 b)
+{
+    double low = 0.0;
+    double high = 10.0;
+    double best = HUGE_VAL;
+    for (int i = 0; i < 200; ++i)
+    {
+        double m1 = high - 0.618034 * (high - low);
+        double m2 = low + 0.618034 * (high - low);
+        maudVector3 p1 = {(float)m1, 2.0f, 4.9f};
+        maudVector3 q1 = {(float)(10.0 - m1), 2.0f, 5.1f};
+        maudVector3 p2 = {(float)m2, 2.0f, 4.9f};
+        maudVector3 q2 = {(float)(10.0 - m2), 2.0f, 5.1f};
+        double l1 = Length(a, p1) + Length(p1, q1) + Length(q1, b);
+        double l2 = Length(a, p2) + Length(p2, q2) + Length(q2, b);
+        best = fmin(best, fmin(l1, l2));
+        if (l1 < l2)
+        {
+            high = m2;
+        }
+        else
+        {
+            low = m1;
+        }
+    }
+    return best;
+}
+
+// A wall 2 m high and 0.2 m thick across z = 5, its top edges along x:
+// a path over it from (2, 1, 0) to (8, 1, 10), its vertices starting
+// over x = 2 and 8, slides along the edges to within 0.1 % of the
+// shortest; so does the mirror image, from (8, 1, 0) to (2, 1, 10).
+// The vertices sit in arrays as long as the paths.
+static void TestLedge(void)
+{
+    Box((maudVector3){0.0f, 0.0f, 4.9f}, (maudVector3){10.0f, 2.0f, 5.1f});
+    maudAcousticScene* scene = Scene();
+    const float from[2] = {2.0f, 8.0f};
+    for (int c = 0; c < 2; ++c)
+    {
+        maudVector3 a = {from[c], 1.0f, 0.0f};
+        maudVector3 b = {10.0f - from[c], 1.0f, 10.0f};
+        maudVector3 v[4] = {a, {from[c], 2.5f, 4.7f}, {10.0f - from[c], 2.5f, 5.3f}, b};
+        uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+        double exact = OverLedge(a, b);
+        double got = PathLength(v, n);
+        printf("ledge %d: %u vertices, %.5f m, the shortest %.5f (+%.4f %%)\n", c, n, got, exact,
+               100.0 * (got / exact - 1.0));
+        CHECK(got >= exact - 1e-4 && got < exact * 1.001, "over the ledge");
+    }
+    maudDestroyAcousticScene(scene);
+}
+
 static void TestDiffraction(void)
 {
     static maudDiffraction d;
@@ -197,12 +260,20 @@ static void TestDiffraction(void)
     CHECK(fabsf(gains[1] - d.gain[1][90] * d.gain[1][90]) < 1e-6f, "corners multiply");
     maudPathDiffraction(&d, v, 2, gains);
     CHECK(gains[0] == 1.0f && gains[2] == 1.0f, "a straight path loses nothing");
+    // A turn of 45.5 degrees: halfway between the table's 45 and 46.
+    float half = 45.5f * (float)(3.14159265358979323846 / 180.0);
+    const maudVector3 bent[3] = {{0, 0, 0}, {1, 0, 0}, {1.0f + cosf(half), 0, sinf(half)}};
+    maudPathDiffraction(&d, bent, 3, gains);
+    float between = 0.5f * (d.gain[1][45] + d.gain[1][46]);
+    CHECK(fabsf(gains[1] - between) < 1e-4f && d.gain[1][45] != d.gain[1][46],
+          "between two steps, interpolated");
 }
 
 int main(void)
 {
     TestCorner();
     TestDoor();
+    TestLedge();
     TestDiffraction();
     return s_failures == 0 ? 0 : 1;
 }
