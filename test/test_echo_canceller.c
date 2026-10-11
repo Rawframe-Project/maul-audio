@@ -9,9 +9,11 @@
 // dB under it, and the echo stays down 30 dB between its bursts; with
 // nothing played, tone bursts keep their level within a decibel while
 // the noise between them falls; the output lags by exactly two blocks
-// and does not depend on how the frames are cut; refusals; and no
-// allocation while processing. (Its quality on recorded speech is
-// measured outside the tests, against Speex's.)
+// and does not depend on how the frames are cut; on a bent echo path a
+// first second with nothing played leaves the echo taken down as from
+// the start, and silence alone leaves it unadapted with a high leakage;
+// refusals; and no allocation while processing. (Its quality on
+// recorded speech is measured outside the tests, against Speex's.)
 
 #include "test_harness.h"
 
@@ -65,8 +67,10 @@ static float s_other[MAX_FRAMES];
 // The render (noise at -20 dBFS), its echo through a room response 10 ms
 // late with 60 ms of exponentially decaying taps, and a near end of
 // noise bursts (a quarter second on, a quarter off) from the third
-// second on, at the echo's level when near is set.
-static void Scene(uint32_t rate, uint32_t frames, bool near)
+// second on, at the echo's level when near is set. Nothing is played
+// for the first quiet frames, and curve bends the echo path: a sample s
+// of the linear echo is heard as s (1 + curve |s|).
+static void SceneWith(uint32_t rate, uint32_t frames, bool near, uint32_t quiet, float curve)
 {
     s_state = 11u;
     uint32_t delay = rate / 100;
@@ -78,7 +82,7 @@ static void Scene(uint32_t rate, uint32_t frames, bool near)
     }
     for (uint32_t i = 0; i < frames; ++i)
     {
-        s_render[i] = 0.1f * Gaussian();
+        s_render[i] = i < quiet ? 0.0f : 0.1f * Gaussian();
     }
     for (uint32_t i = 0; i < frames; ++i)
     {
@@ -87,11 +91,16 @@ static void Scene(uint32_t rate, uint32_t frames, bool near)
         {
             sum += response[t] * s_render[i - delay - t];
         }
-        s_echo[i] = sum;
+        s_echo[i] = sum * (1.0f + curve * fabsf(sum));
         bool speaks = near && i >= 2 * rate && (i / (rate / 4)) % 2 == 0;
         s_near[i] = speaks ? 0.05f * Gaussian() : 0.0f;
         s_capture[i] = s_echo[i] + s_near[i];
     }
+}
+
+static void Scene(uint32_t rate, uint32_t frames, bool near)
+{
+    SceneWith(rate, frames, near, 0, 0.0f);
 }
 
 static double Energy(const float* x, uint32_t from, uint32_t to)
@@ -142,6 +151,40 @@ static void TestConverges(uint32_t rate, uint32_t block)
     CHECK(erle > 50.0, "the echo taken down 50 dB or more");
     CHECK(state.adapted && state.leakage < 0.05f && state.frames == frames, "adapted, little left");
     maudDestroyEchoCanceller(c);
+}
+
+// The echo left over the last second of a bent echo path at 16 kHz,
+// after the first quiet frames played nothing (dB under the echo).
+static double BentErle(uint32_t quiet)
+{
+    const uint32_t rate = 16000;
+    uint32_t frames = rate * SECONDS;
+    SceneWith(rate, frames, false, quiet, 10.0f);
+    maudEchoCanceller* c = Create(rate);
+    (void)Run(c, s_capture, frames, rate / 100);
+    maudDestroyEchoCanceller(c);
+    return 10.0 * log10(Energy(s_echo, 3 * rate - 2 * 128, frames - 2 * 128) /
+                        Energy(s_capture, 3 * rate, frames));
+}
+
+// An echo path bent enough to leave some echo the filter cannot model:
+// a first second with nothing played, every band's echo estimate
+// silent, leaves the leakage to be learnt as from the start, the echo
+// taken down within 2 dB of a run that played from the first frame.
+static void TestQuietFirst(void)
+{
+    // Nothing played or heard for a second: not adapted, its leakage
+    // still high, as while it learns.
+    memset(s_render, 0, 16000 * sizeof(float));
+    memset(s_capture, 0, 16000 * sizeof(float));
+    maudEchoCanceller* c = Create(16000);
+    maudEchoState silent = Run(c, s_capture, 16000, 160);
+    maudDestroyEchoCanceller(c);
+    CHECK(!silent.adapted && silent.leakage >= 0.25f, "silence learns nothing");
+    double played = BentErle(0);
+    double quiet = BentErle(16000);
+    printf("a bent echo path: %.1f dB taken down, %.1f dB after a quiet second\n", played, quiet);
+    CHECK(quiet > 20.0 && fabs(quiet - played) < 2.0, "a quiet start leaves the leakage to learn");
 }
 
 static void TestDoubleTalk(void)
@@ -307,6 +350,7 @@ int main(void)
     TestConverges(16000, 128);
     TestConverges(48000, 512);
     TestDoubleTalk();
+    TestQuietFirst();
     TestFraming();
     TestNearAlone();
     TestRefused();
