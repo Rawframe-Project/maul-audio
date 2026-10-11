@@ -10,9 +10,10 @@
 // storeys only, and on a surface at 45 degrees (the steepest floor);
 // without an any-hit query every pair within range is linked, and every
 // query a host gets has a unit direction, two probes at one point too;
-// a column gives up after 32 surfaces; the largest spacing, height and
-// range are taken; the limits, a missing closest-hit query and a block
-// that cannot be had are refused.
+// one probe asks for no empty block; a column gives up after 32
+// surfaces; the largest spacing, height and range are taken; the
+// limits, a missing closest-hit query and a block that cannot be had
+// are refused.
 
 #include "allocator.h"
 #include "probe_graph.h"
@@ -21,6 +22,7 @@
 #include "maul-audio/scene.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum
@@ -434,6 +436,39 @@ static void TestNoRoom(void)
           "the largest counts");
 }
 
+static uint32_t s_zeroAsks = 0;
+
+static void* NoZero(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    s_zeroAsks += size == 0 ? 1u : 0u;
+    return malloc(size == 0 ? 1 : size);
+}
+
+static void Free(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    free(memory);
+}
+
+// One probe has no pairs: its graph is built without asking the host
+// for a block of no bytes.
+static void TestLonely(void)
+{
+    static const maudVector3 point = {1.0f, 1.5f, 1.0f};
+    const maudAllocator counted = {NoZero, Free, nullptr};
+    maudProbeSetDef def = {.points = &point, .pointCount = 1, .range = 2.0f};
+    maudProbeQueries q = {.anyHit = Clear, .allocator = &counted, .maxProbes = 16, .maxPairs = 16};
+    maudProbeGraph g;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success && g.count == 1 && g.links == 0,
+          "one probe, no links");
+    CHECK(s_zeroAsks == 0, "no block of no bytes asked for");
+    maudReleaseProbeGraph(&counted, &g);
+}
+
 int main(void)
 {
     TestCorridor();
@@ -442,6 +477,7 @@ int main(void)
     TestSteepest();
     TestDeepColumn();
     TestNoRoom();
+    TestLonely();
     TestCoincident();
     return s_failures == 0 ? 0 : 1;
 }
