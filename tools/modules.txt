@@ -17,7 +17,7 @@ ambisonics: ambisonic_rotation spherical_harmonics
 backend: context_core
 backend_aaudio: aaudio_core aaudio_java aaudio_stream allocator backend context device focus layout
 backend_alsa: allocator alsa_core alsa_scan alsa_stream alsa_watch backend context device
-backend_coreaudio: allocator backend context coreaudio_core coreaudio_form coreaudio_stream device layout
+backend_coreaudio: allocator backend context coreaudio_core coreaudio_form coreaudio_listen coreaudio_stream device layout
 backend_ios: allocator backend context device focus follow ios_core ios_session ios_stream layout
 backend_offline: backend context_core device
 backend_pipewire: allocator backend context context_core device follow form layout pipewire_api pipewire_card pipewire_core pipewire_parse pipewire_stream
@@ -38,6 +38,7 @@ context_core: period
 coreaudio_core: apple_objects context_core device
 coreaudio_hog: coreaudio_core
 coreaudio_form: coreaudio_core
+coreaudio_listen: coreaudio_core coreaudio_form
 coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device follow period retry thread voice xrun
 crc32:
 device: context context_core follow notify

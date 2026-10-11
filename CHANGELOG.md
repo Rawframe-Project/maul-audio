@@ -8,6 +8,16 @@ format.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Core Audio, a restart of the audio server (coreaudiod) could leave
+  a running stream silent for good, and the context deaf to device
+  changes: the server forgets a client's listeners and units, and the
+  library kept both. It now listens for the restart, adds its listeners
+  again, lists the devices again and opens every stream's unit again; a
+  stream that cannot open yet is suspended with `maud_suspendPlatform`
+  and retried until it can.
+
 ## [0.3.0] - 2026-10-10
 
 A host draining notifications can no longer be held there by a stream
