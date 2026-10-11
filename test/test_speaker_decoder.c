@@ -248,6 +248,11 @@ static void TestDecode(void)
     speakers[0][0] = 7.0f;
     CHECK(maudDecodeToSpeakers(decoder, bed, missing, 5) == maud_errorInvalid, "a missing speaker");
     CHECK(speakers[0][0] == 7.0f, "nothing written by a bad call");
+    const float* gap[9] = {bed[0], bed[1], bed[2], bed[3], bed[4], bed[5], bed[6], bed[7], nullptr};
+    CHECK(maudDecodeToSpeakers(decoder, gap, out, 5) == maud_errorInvalid &&
+              maudDecodeToSpeakers(decoder, nullptr, out, 5) == maud_errorInvalid &&
+              maudDecodeToSpeakers(decoder, bed, nullptr, 5) == maud_errorInvalid,
+          "a missing channel, no bed, no output");
     CHECK(maudDecodeToSpeakers(decoder, nullptr, nullptr, 0) == maud_success, "no frames");
     CHECK(maudGetSpeakerDecoderMatrix(decoder, nullptr) == maud_errorInvalid, "no matrix");
     maudDestroySpeakerDecoder(decoder);
