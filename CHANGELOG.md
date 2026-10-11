@@ -8,6 +8,11 @@ format.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-11
+
+A stream keeps playing after the audio service restarts on macOS or
+resets on iOS.
+
 ### Fixed
 
 - On Core Audio, a restart of the audio server (coreaudiod) could leave
