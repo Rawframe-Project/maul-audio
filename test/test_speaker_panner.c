@@ -347,7 +347,7 @@ static void TestStereoAndMono(void)
 }
 
 // Panning adds into the channels, its gains ramping from the previous
-// direction's to this one's.
+// direction's to this one's, on 5.1 and on the largest layout, 7.1.4.
 static void TestPan(void)
 {
     maudSpeakerPanner* panner = Create(maud_layout5Point1);
@@ -385,11 +385,39 @@ static void TestPan(void)
     channels[0][0] = 7.0f;
     CHECK(maudPanToSpeakers(panner, &from, &to, in, missing, 8) == maud_errorInvalid,
           "a missing channel");
+    CHECK(maudPanToSpeakers(panner, &from, &to, in, nullptr, 8) == maud_errorInvalid,
+          "no channels");
     maudPanSource bad = {{NAN, 0.0f, 0.0f}, 1.0f};
     CHECK(maudPanToSpeakers(panner, &bad, &to, in, out, 8) == maud_errorInvalid, "NaN");
     CHECK(channels[0][0] == 7.0f, "nothing written by a bad call");
     CHECK(maudGetSpeakerGains(panner, from.direction, nullptr) == maud_errorInvalid, "no gains");
     maudDestroySpeakerPanner(panner);
+    // The largest layout, its twelve channels in an array of twelve.
+    maudSpeakerPanner* wide = Create(maud_layout7Point1Point4);
+    static float wideChannels[12][8];
+    float* wideOut[12];
+    for (int c = 0; c < 12; ++c)
+    {
+        wideOut[c] = wideChannels[c];
+    }
+    float wa[12];
+    float wb[12];
+    CHECK(maudPanToSpeakers(wide, &from, &to, in, wideOut, 8) == maud_success &&
+              maudGetSpeakerGains(wide, from.direction, wa) == maud_success &&
+              maudGetSpeakerGains(wide, to.direction, wb) == maud_success,
+          "pan on 7.1.4");
+    bool wideRamped = true;
+    for (int c = 0; c < 12; ++c)
+    {
+        for (int n = 0; n < 8; ++n)
+        {
+            float t = (float)(n + 1) / 8.0f;
+            float gain = wa[c] + t * (0.5f * wb[c] - wa[c]);
+            wideRamped = wideRamped && fabsf(wideChannels[c][n] - gain * in[n]) < 1e-5f;
+        }
+    }
+    CHECK(wideRamped, "every channel of the largest layout ramps");
+    maudDestroySpeakerPanner(wide);
     maudSpeakerPannerDef def = maudDefaultSpeakerPannerDef();
     maudSpeakerPanner* none = (maudSpeakerPanner*)&def;
     def.layout = maud_layoutNone;
