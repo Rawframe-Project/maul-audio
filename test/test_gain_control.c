@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The automatic gain control on synthetic speech and noise: quiet and
-// loud speech brought toward the target and held in pauses, noise kept
-// under its ceiling, the gain's pace, the limiter, layouts, chunking and
-// allocation.
+// loud speech brought toward the target and held in pauses, the level
+// following louder speech, noise kept under its ceiling, the gain's
+// pace, the limiter, layouts, chunking and allocation.
 
 #include "test_harness.h"
 #include "test_signals.h"
@@ -145,6 +145,23 @@ static void TestRange(void)
     free(up.gainDb);
     FreeSignal(&loud);
     FreeSignal(&quiet);
+}
+
+// Quiet speech for 20 s, then speech 30 dB louder: the level forgets
+// the quiet speech as it goes and follows the loud.
+static void TestForget(void)
+{
+    Signal signal = MakeSignal(48000, 40.0);
+    AddNoise(&signal, -80, 77);
+    AddSpeech(&signal, -45, 1.0, 20.0);
+    AddSpeech(&signal, -15, 20.0, 40.0);
+    maudGainControlDef def = maudDefaultGainControlDef();
+    Trace trace = Control(&signal, &def);
+    printf("forget: the speech at %.2f dBFS\n", (double)trace.last.speechDbfs);
+    CHECK(trace.last.speechReliable && trace.last.speechDbfs > -27.0f,
+          "the level follows the loud speech");
+    free(trace.gainDb);
+    FreeSignal(&signal);
 }
 
 // Loud bursts shorter than a run of 12 frames, in the pauses, leave the
@@ -374,6 +391,7 @@ int main(void)
 {
     TestTarget();
     TestRange();
+    TestForget();
     TestShortRuns();
     TestHoldInPauses();
     TestLimiterShape();
