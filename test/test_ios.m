@@ -6,8 +6,10 @@
 // converted and refused rates; the session's category following what
 // runs and the host's focus; interruptions, posted as the session
 // posts them, holding the streams and ending with or without the hint
-// to resume; a route change giving the default output its form; capture
-// as far as the simulator lets a spawned process record.
+// to resume; a reset of the media services holding the streams until
+// the host resumes them on new units; a route change giving the default
+// output its form; capture as far as the simulator lets a spawned
+// process record.
 
 #include "ios_session.h"
 #include "test_clock.h"
@@ -294,6 +296,33 @@ static void TestInterruptions(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed");
 }
 
+// A reset of the media services, posted as the session posts it: the
+// stream is held while its unit is made again, and plays again once the
+// host resumes it, as Apple asks an application not to go active by
+// itself (QA1749).
+static void TestMediaReset(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = Open(context, &def, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 10),
+          "a stream runs");
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:AVAudioSessionMediaServicesWereResetNotification
+                      object:[AVAudioSession sharedInstance]];
+    CHECK(FocusAfterDrain(context) == maud_focusPaused, "a reset pauses focus");
+    CHECK(Suspension(context, stream) == maud_suspendPolicy, "and holds the stream");
+    uint32_t held = atomic_load(&blocks.count);
+    Sleep(200);
+    CHECK(atomic_load(&blocks.count) == held, "silent while held");
+    CHECK(maudResumeContext(context) == maud_success &&
+              FocusAfterDrain(context) == maud_focusNone &&
+              Suspension(context, stream) == maud_suspendNone,
+          "until the host resumes it");
+    CHECK(WaitForBlocks(context, &blocks, held + 10), "and it plays on its new unit");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed");
+}
+
 // The form the session's route leads to, as the backend reads it.
 static maudDeviceForm RouteForm(void)
 {
@@ -507,6 +536,7 @@ int main(void)
     TestOutput(context, &output);
     TestObjects(context);
     TestInterruptions(context);
+    TestMediaReset(context);
     TestRoute(context);
     TestCapture(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

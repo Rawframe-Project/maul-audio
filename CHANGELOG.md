@@ -17,6 +17,11 @@ format.
   again, lists the devices again and opens every stream's unit again; a
   stream that cannot open yet is suspended with `maud_suspendPlatform`
   and retried until it can.
+- On iOS, a reset of the media services left every stream on a unit
+  that no longer worked. The streams are now held, as by an
+  interruption, while the session is set up again and every unit made
+  again, and run again when the host resumes the context or asks for
+  focus, as Apple asks an application not to go active by itself.
 
 ## [0.3.0] - 2026-10-10
 
