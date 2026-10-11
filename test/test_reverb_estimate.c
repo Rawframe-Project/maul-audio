@@ -470,6 +470,85 @@ static void TestFit(void)
     CHECK(fit.times[2] == 0.1f && fit.tailTimes[2] == 0.0f, "no energy: the floor, no tail");
 }
 
+// A 15 s decay cut at 2 s: filled in past the cut, it is still above
+// -45 dB at the last bin, so the two-slope fit spans every bin and no
+// more, and finds one slope.
+static void TestLongTail(void)
+{
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        double t = ((double)i + 0.5) * 0.01;
+        for (int b = 0; b < 3; ++b)
+        {
+            s_histograms[0].energy[b][i] = i < 200 ? (float)pow(10.0, -6.0 * t / 15.0) : 0.0f;
+        }
+    }
+    s_histograms[0].truncated = 2.0f;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    printf("long tail: %.3f s, tail %.3f s\n", (double)fit.times[1], (double)fit.tailTimes[1]);
+    CHECK(fabs((double)fit.times[1] / 15.0 - 1.0) < 0.05 && fit.tailTimes[1] == 0.0f,
+          "a decay above -45 dB at the last bin: its time, no tail");
+}
+
+// A strong first bin over a 1.5 s decay cut at 0.2 s, with a loud bin
+// just past the cut: the bins from the cut on are filled in, whatever
+// they hold, at the rate the decay falls from -5 dB to the cut.
+static void TestPastTheCut(void)
+{
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        double t = ((double)i + 0.5) * 0.01;
+        float bin = i < 20 ? (float)pow(10.0, -6.0 * t / 1.5) : 0.0f;
+        for (int b = 0; b < 3; ++b)
+        {
+            s_histograms[0].energy[b][i] = i == 0 ? 114.0f : i == 20 ? 1000.0f : bin;
+        }
+    }
+    s_histograms[0].truncated = 0.2f;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    printf("past the cut: %.3f s\n", (double)fit.times[1]);
+    CHECK(fabs((double)fit.times[1] / 1.5 - 1.0) < 0.05, "the bins past the cut are filled in");
+}
+
+// A decay through -5 to -25 dB in two bins (-6 dB, then -10 dB): two
+// levels give a slope, 0.15 s, not the floor.
+static void TestTwoBins(void)
+{
+    const float bins[4] = {0.75f, 0.15f, 0.097f, 0.003f};
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        for (int b = 0; b < 3; ++b)
+        {
+            s_histograms[0].energy[b][i] = i < 4 ? bins[i] : 0.0f;
+        }
+    }
+    s_histograms[0].truncated = INFINITY;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    printf("two bins: %.3f s\n", (double)fit.times[1]);
+    CHECK(fabs((double)fit.times[1] / 0.15 - 1.0) < 0.05, "two bins' slope");
+}
+
+// A first bin and one echo 10 dB down 0.1 s later, silence between: a
+// level that does not fall from -5 to -25 dB reads the ceiling.
+static void TestFlat(void)
+{
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        for (int b = 0; b < 3; ++b)
+        {
+            s_histograms[0].energy[b][i] = i == 0 ? 1.0f : i == 10 ? 0.1f : 0.0f;
+        }
+    }
+    s_histograms[0].truncated = INFINITY;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    printf("flat: %.3f s, tail %.3f s\n", (double)fit.times[1], (double)fit.tailTimes[1]);
+    CHECK(fit.times[1] == 20.0f, "a flat decay: the ceiling");
+}
+
 typedef double Shape(double t);
 
 static double Bent(double t)
@@ -705,6 +784,10 @@ int main(void)
     TestNoDecay();
     TestTailLevels();
     TestTailBounds();
+    TestLongTail();
+    TestPastTheCut();
+    TestTwoBins();
+    TestFlat();
     TestCoupledRooms();
     TestRooms();
     TestBandsAndAir();

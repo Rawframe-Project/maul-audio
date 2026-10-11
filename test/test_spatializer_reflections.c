@@ -265,6 +265,9 @@ static void TestMisuse(void)
     CHECK(maudRenderReflections(s, &upright, nullptr, nullptr, 0) == maud_success, "no frames");
     CHECK(maudRenderReflections(nullptr, &upright, s_send, nine, 16) == maud_errorInvalid, "NULL");
     maudDestroySpatializer(s);
+    def.reflectionOrder = 3;
+    CHECK(maudCreateSpatializer(&def, &s) == maud_success, "order 3, the highest");
+    maudDestroySpatializer(s);
     maudSpatializer* none = nullptr;
     def.reflectionOrder = 4;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid && none == nullptr, "order 4");
