@@ -10,8 +10,9 @@
 // storeys only, and on a surface at 45 degrees (the steepest floor);
 // without an any-hit query every pair within range is linked, and every
 // query a host gets has a unit direction, two probes at one point too;
-// the largest spacing, height and range are taken; the limits and a
-// missing closest-hit query are refused.
+// a column gives up after 32 surfaces; the largest spacing, height and
+// range are taken; the limits and a missing closest-hit query are
+// refused.
 
 #include "allocator.h"
 #include "probe_graph.h"
@@ -366,12 +367,53 @@ static void TestTower(void)
     maudDestroyAcousticScene(scene);
 }
 
+static uint32_t s_stackCalls = 0;
+
+// A host's closest hits: 32 walls down each column, a metre apart from
+// 1 m, then a floor at 40 m, and nothing below it.
+static void Stack(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
+{
+    (void)context;
+    s_stackCalls += 1;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        float m = rays[i].minDistance;
+        float wall = ceilf(m);
+        hits[i] = wall <= 32.0f ? (maudRayHit){wall < 1.0f ? 1.0f : wall, {1.0f, 0.0f, 0.0f}, 0}
+                  : m <= 40.0f  ? (maudRayHit){40.0f, {0.0f, 1.0f, 0.0f}, 0}
+                                : (maudRayHit){INFINITY, {0.0f, 1.0f, 0.0f}, 0};
+    }
+}
+
+// A column gives up after 32 surfaces: a floor under 32 walls is not
+// reached, and a set that finds no floor walks its columns once. A box
+// flat along x is taken.
+static void TestDeepColumn(void)
+{
+    maudProbeSetDef def = {.boxMin = {0.0f, 0.0f, 0.0f},
+                           .boxMax = {1.0f, 50.0f, 1.0f},
+                           .spacing = 1.0f,
+                           .height = 1.5f,
+                           .range = 2.0f};
+    maudProbeQueries q = {
+        .closestHit = Stack, .allocator = &s_allocator, .maxProbes = 16, .maxPairs = 16};
+    maudProbeGraph g;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "generated");
+    printf("deep column: %u probes, %u queries\n", g.count, s_stackCalls);
+    CHECK(g.count == 0 && s_stackCalls == 32, "32 surfaces walked, once");
+    maudReleaseProbeGraph(&s_allocator, &g);
+    def.boxMin.x = 0.5f;
+    def.boxMax.x = 0.5f;
+    CHECK(maudProbeSetDefValid(&def), "a box flat along x");
+}
+
 int main(void)
 {
     TestCorridor();
     TestGeneration();
     TestTower();
     TestSteepest();
+    TestDeepColumn();
     TestCoincident();
     return s_failures == 0 ? 0 : 1;
 }
