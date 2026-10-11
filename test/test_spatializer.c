@@ -6,8 +6,8 @@
 // distance and the direction in the listener's frame, turning with the
 // listener, and the source's directivity turning with the source; the
 // rendering side sees a step only once it latches it, and a source made
-// or destroyed after a step is stale in it; bad calls are refused; a
-// step allocates nothing.
+// or destroyed after a step is stale in it; occlusion rays go in
+// rounds of 4096; bad calls are refused; a step allocates nothing.
 
 #include "test_harness.h"
 
@@ -32,6 +32,37 @@ static void CountedFree(void* memory, size_t size, size_t alignment, void* conte
     (void)alignment;
     (void)context;
     free(memory);
+}
+
+static uint32_t s_rays;
+static uint32_t s_rounds;
+
+static void NoHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
+{
+    (void)rays;
+    (void)context;
+    s_rays += count;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        occluded[i] = 0;
+    }
+}
+
+// Runs a task at once, counting each one.
+static void* Inline(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
+                    void* userContext)
+{
+    (void)minRange;
+    (void)userContext;
+    s_rounds++;
+    task(0, itemCount, taskContext);
+    return nullptr;
+}
+
+static void Finish(void* userTask, void* userContext)
+{
+    (void)userTask;
+    (void)userContext;
 }
 
 static maudSpatializer* Create(uint32_t capacity)
@@ -269,12 +300,62 @@ static void TestMisuse(void)
     maudDestroySpatializer(nullptr);
 }
 
+// Occlusion rays are queried in rounds of 4096: sources whose rays fill
+// a round exactly take one (a source without occlusion adding none), a
+// ray more a second.
+static void TestRounds(void)
+{
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.sourceCapacity = 66;
+    def.anyHit = NoHit;
+    def.enqueueTask = Inline;
+    def.finishTask = Finish;
+    maudSpatializer* s = nullptr;
+    CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer that queries");
+    maudSourceDef sphere = maudDefaultSourceDef();
+    sphere.occlusion = maud_occlusionVolumetric;
+    sphere.occlusionRadius = 0.5f;
+    sphere.occlusionSamples = 32;
+    const maudPose pose = {{0.0f, 0.0f, -5.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    bool made = true;
+    for (int i = 0; i < 64; ++i)
+    {
+        maudSourceId id = {0, 0};
+        made = made && maudCreateSource(s, &sphere, &id) == maud_success &&
+               maudSetSourcePose(s, id, &pose) == maud_success;
+    }
+    CHECK(made, "64 sources of 64 rays");
+    // A source that asks for no occlusion, after the round is full,
+    // writes none of its sphere's rays past it.
+    maudSourceDef none = sphere;
+    none.occlusion = maud_occlusionNone;
+    maudSourceId quiet = {0, 0};
+    CHECK(maudCreateSource(s, &none, &quiet) == maud_success &&
+              maudSetSourcePose(s, quiet, &pose) == maud_success,
+          "a source without occlusion");
+    const maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    CHECK(maudSimulateDirect(s, &listener) == maud_success && s_rays == 4096 && s_rounds == 1,
+          "4096 rays, one round");
+    maudSourceDef ray = maudDefaultSourceDef();
+    ray.occlusion = maud_occlusionRay;
+    maudSourceId last = {0, 0};
+    CHECK(maudCreateSource(s, &ray, &last) == maud_success &&
+              maudSetSourcePose(s, last, &pose) == maud_success,
+          "a source of one ray");
+    s_rays = 0;
+    s_rounds = 0;
+    CHECK(maudSimulateDirect(s, &listener) == maud_success && s_rays == 4097 && s_rounds == 2,
+          "a ray more, a second round");
+    maudDestroySpatializer(s);
+}
+
 int main(void)
 {
     TestIds();
     TestGeometry();
     TestOrientations();
     TestLatch();
+    TestRounds();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
 }
