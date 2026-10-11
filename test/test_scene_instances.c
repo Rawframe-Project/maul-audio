@@ -7,10 +7,11 @@
 // alike but for rays grazing an edge, distances within 1e-4, the same
 // normals and materials); a ray onto a box's top lands at the exact
 // distance; a quarter turn about +y carries +x to -z; changes wait for
-// a commit; ties go to the static scene, then the lower slot; limits,
-// stale ids and transforms out of range are refused; a freed slot is
-// taken again under a new id; an allocator that fails at any of the
-// scene's blocks is a capacity error with nothing leaked.
+// a commit; ties go to the static scene, then the lower slot; a ray
+// ending exactly on an instance hits it; limits, stale ids and
+// transforms out of range are refused; a freed slot is taken again
+// under a new id; an allocator that fails at any of the scene's blocks
+// is a capacity error with nothing leaked.
 
 #include "test_harness.h"
 
@@ -281,6 +282,11 @@ static void TestTies(void)
               maudCommitAcousticScene(scene) == maud_success,
           "two coincident instances");
     CHECK(Down(scene, 0.3f, 0.2f).material == 7, "the lower slot wins a tie");
+    // A ray ending exactly on the instances: a hit within [tMin, tMax].
+    maudRay exact = {{0.3f, 10.0f, 0.2f}, {0.0f, -1.0f, 0.0f}, 0.0f, 10.0f};
+    uint8_t occluded = 0;
+    maudSceneAnyHit(&exact, 1, &occluded, scene);
+    CHECK(occluded == 1, "a hit at the ray's end");
     maudDestroyAcousticScene(scene);
     def.meshes = &statics;
     def.meshCount = 1;

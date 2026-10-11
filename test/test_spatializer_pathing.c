@@ -14,9 +14,10 @@
 // the straight line's shorter spread, and the direction blends the two
 // arrivals by their energy. A wall closing the corridor after the set
 // was made: its links are found blocked and no path is left; a pillar
-// put up blocking one row of links: the path goes around it; every
-// link blocked, more than the search lists: no path. A
-// destroyed set's id is stale and its paths stop.
+// put up blocking one row of links: the path goes around it; every link
+// blocked, more than the search lists: no path. With no source to path,
+// no ray attaches the listener to the set. A destroyed set's id is
+// stale and its paths stop.
 
 #include "test_harness.h"
 
@@ -39,9 +40,22 @@ static bool AtProbe(maudVector3 p)
     return p.x - floorf(p.x) == 0.5f && p.z - floorf(p.z) == 0.5f;
 }
 
+static maudPose s_listener = {{18.5f, 1.5f, 12.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+
+// The rays from the listener to the probes within the set's range: its
+// attachment to the set.
+static uint32_t s_attachRays;
+
 static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
 {
     (void)context;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        maudVector3 o = rays[i].origin;
+        bool fromListener = o.x == s_listener.position.x && o.y == s_listener.position.y &&
+                            o.z == s_listener.position.z;
+        s_attachRays += fromListener && rays[i].maxDistance <= 3.0f ? 1 : 0;
+    }
     maudSceneAnyHit(rays, count, occluded, s_current);
     for (uint32_t i = 0; i < count && s_linksBlocked; ++i)
     {
@@ -120,8 +134,6 @@ typedef struct World
     maudProbeSetId set;
     maudSourceId sources[4];
 } World;
-
-static maudPose s_listener = {{18.5f, 1.5f, 12.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
 
 // When set, the source around the corner is a cardioid facing +x.
 static bool s_cardioid;
@@ -334,6 +346,25 @@ int main(void)
     Step(&w, r);
     s_linksBlocked = false;
     CHECK(!r[0].pathed, "every link blocked, no path");
+    // The sources that ask moved into sight: nothing to path, and no
+    // ray spent attaching the listener to the set.
+    s_attachRays = 0;
+    Step(&w, r);
+    uint32_t attaching = s_attachRays;
+    const maudPose inSight = {{18.5f, 1.5f, 6.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    const maudPose around = {{6.0f, 1.5f, 1.5f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    const maudPose past = {{8.0f, 1.5f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    CHECK(maudSetSourcePose(w.s, w.sources[0], &inSight) == maud_success &&
+              maudSetSourcePose(w.s, w.sources[3], &inSight) == maud_success,
+          "moved into sight");
+    s_attachRays = 0;
+    Step(&w, r);
+    printf("attaching the listener: %u rays with a source to path, %u without\n", attaching,
+           s_attachRays);
+    CHECK(attaching > 0 && s_attachRays == 0, "nothing to path, no ray to the set");
+    CHECK(maudSetSourcePose(w.s, w.sources[0], &around) == maud_success &&
+              maudSetSourcePose(w.s, w.sources[3], &past) == maud_success,
+          "moved back");
     // A destroyed set: its id stale, its paths gone.
     CHECK(maudDestroyProbeSet(w.s, w.set) == maud_success, "destroyed");
     CHECK(maudSetPathing(w.s, w.set) == maud_errorStale, "a destroyed set's id is stale");
