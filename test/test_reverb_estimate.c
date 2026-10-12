@@ -776,6 +776,7 @@ static void TestSealed(void)
 }
 
 static float s_wall = 1.0f;
+static bool s_flat = false;
 static uint32_t s_wallQueries = 0;
 
 // A host's closest hits: a wall s_wall ahead of every ray, facing it.
@@ -786,19 +787,28 @@ static void Wall(const maudRay* rays, uint32_t count, maudRayHit* hits, void* co
     for (uint32_t i = 0; i < count; ++i)
     {
         maudVector3 d = rays[i].direction;
-        hits[i] = (maudRayHit){s_wall, {-d.x, -d.y, -d.z}, 0};
+        maudVector3 normal =
+            s_flat ? (maudVector3){0.0f, 0.0f, 0.0f} : (maudVector3){-d.x, -d.y, -d.z};
+        hits[i] = (maudRayHit){s_wall, normal, 0};
     }
 }
 
 // Every ray meets a wall facing it: the paths bounce to the cap, one
-// query a bounce; a wall so far that its echo lands one bin past the
-// last records nothing, in any band.
+// query a bounce, and a hit without a normal ends its path; a wall so
+// far that its echo lands one bin past the last records nothing, in
+// any band.
 static void TestFarWall(void)
 {
     maudAcousticMaterial mirror = Material(0.0f, 0.0f);
     maudReverbTrace trace = {Wall, Never, nullptr, &mirror, 1, {0, 0, 0}, {0, 0, 0}, 64, 2, 0, 0};
     maudTraceReverbBatch(&trace, 0, &s_histograms[0]);
     CHECK(s_wallQueries == 2, "two bounces, two queries");
+    // A hit without a normal ends its path: one query.
+    s_flat = true;
+    s_wallQueries = 0;
+    maudTraceReverbBatch(&trace, 0, &s_histograms[0]);
+    CHECK(s_wallQueries == 1, "a hit without a normal ends the path");
+    s_flat = false;
     // There and back, 1000.5 bins of 10 ms at 343 m/s.
     s_wall = 0.5f * 1000.5f * 343.0f * 0.01f;
     trace.maxBounces = 1;
