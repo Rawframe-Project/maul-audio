@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Contexts: defaults, refusals of invalid defs, the native backend's
-// absence in this build, audio focus where the backend has none, and
-// memory through the def's allocator.
+// Contexts: defaults, refusals of invalid defs (and the offline rate's
+// bounds taken), the native backend's absence in this build, audio
+// focus where the backend has none, and memory through the def's
+// allocator.
 
 #include "test_harness.h"
 
@@ -129,6 +130,19 @@ static void TestInvalidDefsAreRefused(void)
     CheckRefused(&def, "rate below range");
     def.offlineSampleRate = 384001;
     CheckRefused(&def, "rate above range");
+    // Either end of the range is taken (made through the C library, so
+    // the counter stays at nothing allocated).
+    const uint32_t ends[2] = {8000, 384000};
+    for (int i = 0; i < 2; ++i)
+    {
+        maudContextDef edge = maudDefaultContextDef();
+        edge.backend = maud_backendOffline;
+        edge.offlineSampleRate = ends[i];
+        maudContext* made = nullptr;
+        CHECK(maudCreateContext(&edge, &made) == maud_success &&
+                  maudDestroyContext(made) == maud_success,
+              "a rate at either end");
+    }
     def = OfflineDef(&counter);
     def.backend = 200;
     CheckRefused(&def, "unknown backend");
