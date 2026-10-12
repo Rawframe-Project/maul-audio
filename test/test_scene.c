@@ -7,7 +7,8 @@
 // share, hit; equal distances go to the triangle listed first; normals
 // face the counterclockwise side; an empty scene misses; plugged into a
 // spatializer's hooks, a wall occludes and its two faces transmit; bad
-// meshes are refused.
+// meshes are refused; memory running out at any allocation is a capacity
+// error with nothing left.
 
 #include "test_harness.h"
 
@@ -312,6 +313,71 @@ static void TestHooks(void)
     maudDestroyAcousticScene(scene);
 }
 
+static long s_live;
+static int s_failAt;
+static int s_asked;
+static bool s_refused;
+
+// Counts what is live, and refuses the s_failAt-th allocation.
+static void* Failing(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    if (s_asked++ == s_failAt)
+    {
+        s_refused = true;
+        return nullptr;
+    }
+    s_live++;
+    return malloc(size);
+}
+
+static void Freeing(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    s_live--;
+    free(memory);
+}
+
+// Each allocation of a scene with static and instance meshes refused in
+// turn: every refusal is a capacity error with nothing left, and the
+// scene is made once none is refused.
+static void TestNoMemory(void)
+{
+    static const maudVector3 v[3] = {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+    static const uint32_t indices[3] = {0, 1, 2};
+    static const uint32_t materials[1] = {0};
+    const maudMesh mesh = {v, 3, indices, materials, 1};
+    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    def.meshes = &mesh;
+    def.meshCount = 1;
+    def.instanceMeshes = &mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 2;
+    def.allocator = (maudAllocator){Failing, Freeing, nullptr};
+    bool refusals = true;
+    bool made = false;
+    for (s_failAt = 0; s_failAt < 64 && !made; ++s_failAt)
+    {
+        s_asked = 0;
+        s_refused = false;
+        maudAcousticScene* scene = nullptr;
+        maudResult result = maudCreateAcousticScene(&def, &scene);
+        if (s_refused)
+        {
+            refusals = refusals && result == maud_errorCapacity && scene == nullptr && s_live == 0;
+        }
+        else
+        {
+            made = result == maud_success;
+            maudDestroyAcousticScene(scene);
+        }
+    }
+    CHECK(refusals && made && s_live == 0, "every refusal a capacity error, nothing left");
+}
+
 static void TestMisuse(void)
 {
     static const maudVector3 v[] = {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, NAN, 0.0f}};
@@ -346,5 +412,6 @@ int main(void)
     TestTiesAndNormals();
     TestHooks();
     TestMisuse();
+    TestNoMemory();
     return s_failures == 0 ? 0 : 1;
 }
