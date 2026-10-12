@@ -199,13 +199,15 @@ static void TestMisuse(maudSpatializer* s)
     sd.maxProbePairs = 1u << 24;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_success, "the most pairs");
     maudDestroySpatializer(blind);
-    // The most sets and probes are in range: with an allocator that
-    // refuses, they fail for memory, not as invalid.
+    // The most sets, probes and materials are in range: with an
+    // allocator that refuses, they fail for memory, not as invalid.
     maudSpatializerDef most = sd;
     most.probeSetCapacity = 64;
     most.maxProbes = 65536;
+    most.materialCapacity = 65536;
     most.allocator = (maudAllocator){Refuse, Ignore, nullptr};
-    CHECK(maudCreateSpatializer(&most, &blind) == maud_errorCapacity, "the most sets and probes");
+    CHECK(maudCreateSpatializer(&most, &blind) == maud_errorCapacity,
+          "the most sets, probes and materials");
     sd.maxProbePairs = (1u << 24) + 1;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "too many pairs");
 }
