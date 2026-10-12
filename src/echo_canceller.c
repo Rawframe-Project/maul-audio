@@ -106,7 +106,8 @@ typedef struct Layout
     size_t fft;
     size_t filter;
     size_t suppressor;
-    size_t floats;
+    // The five blocks apart, so that a sanitizer sees a block overrun.
+    size_t blocks[5];
     size_t total;
     maudLayout layout;
 } Layout;
@@ -120,7 +121,10 @@ static Layout LayoutOf(uint32_t block, uint32_t partitions, double rate)
     l.filter =
         maudLayoutAdd(&layout, maudEchoFilterBytes(block, partitions, rate), 1, alignof(double));
     l.suppressor = maudLayoutAdd(&layout, maudEchoSuppressorBytes(block, rate), 1, alignof(double));
-    l.floats = maudLayoutAdd(&layout, 5 * (size_t)block, sizeof(float), alignof(float));
+    for (int i = 0; i < 5; ++i)
+    {
+        l.blocks[i] = maudLayoutAdd(&layout, block, sizeof(float), alignof(float));
+    }
     l.total = layout.overflow ? 0 : layout.size;
     l.layout = layout;
     return l;
@@ -164,13 +168,12 @@ maudResult maudCreateEchoCanceller(const maudEchoCancellerDef* def,
     maudInitEchoFilter(&c->filter, block, partitions, rate, &c->fft, memory + l.filter);
     maudInitEchoSuppressor(&c->suppressor, block, rate, (double)def->floorDb, &c->fft,
                            memory + l.suppressor);
-    float* f = (float*)(memory + l.floats);
     float** blocks[5] = {&c->capture, &c->render, &c->linear, &c->echo, &c->output};
     for (int i = 0; i < 5; ++i)
     {
-        *blocks[i] = f + (size_t)i * block;
+        *blocks[i] = (float*)(memory + l.blocks[i]);
+        memset(*blocks[i], 0, (size_t)block * sizeof(float));
     }
-    memset(f, 0, 5 * (size_t)block * sizeof(float));
     *cancellerOut = c;
     return maud_success;
 }
