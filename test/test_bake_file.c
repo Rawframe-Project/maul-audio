@@ -3,7 +3,8 @@
 //
 // The bake file (whitebox): a set with reverberation and fields, and
 // one of probes and links alone, write and read back to the same memory
-// and write again to the same bytes; a range, times and levels at
+// and write again to the same bytes; one with reverberation alone reads
+// back; a range, times and levels at
 // either end of their bounds read; every malformed part is refused as
 // invalid (magic, size, checksum, range, layers, a neighbour out of
 // range, a self link, a falling row, a link listed twice, rows not
@@ -248,6 +249,27 @@ static void TestRoundTrip(const maudProbeGraph* g, const maudProbeBake* b, const
     const maudBakeLimits other = {64, 64, 3, 401};
     CHECK(bare.size == Times(f) && Read(&bare, &other) == maud_success, "probes and links alone");
     free(bare.bytes);
+    // Reverberation without fields, as a spatializer without reflections
+    // saves it.
+    maudProbeBake plain;
+    CHECK(maudCreateProbeBake(&s_allocator, g->count, 0, &plain), "a bake without fields");
+    size_t bands = (size_t)g->count * 3 * sizeof(float);
+    memcpy(plain.times, b->times, bands);
+    memcpy(plain.levels, b->levels, bands);
+    memcpy(plain.tailTimes, b->tailTimes, bands);
+    memcpy(plain.tailLevels, b->tailLevels, bands);
+    File flat = {nullptr, maudBakeFileBytes(g, &plain, 0, 0), g->count, g->links};
+    flat.bytes = malloc(flat.size);
+    maudWriteBakeFile(g, &plain, 0, 0, flat.bytes);
+    const maudBakeLimits none = {64, 64, 0, 0};
+    CHECK(maudReadBakeFile(flat.bytes, flat.size, &none, &s_allocator, &rg, &rb) == maud_success &&
+              rb.fieldFloats == 0 && memcmp(rb.times, b->times, bands) == 0 &&
+              memcmp(rb.tailLevels, b->tailLevels, bands) == 0,
+          "reverberation alone read back");
+    free(flat.bytes);
+    maudReleaseProbeGraph(&s_allocator, &rg);
+    maudReleaseProbeBake(&s_allocator, &rb);
+    maudReleaseProbeBake(&s_allocator, &plain);
 }
 
 // Version 1, without tails: the file less its tails' sections reads as
