@@ -439,6 +439,35 @@ static void TestNoDecay(void)
     CHECK(fit.times[0] == 20.0f && fit.times[1] == 20.0f, "rising bins cut short: the ceiling");
 }
 
+// Bins cut short: two falling ones (1, then 0.5), the cut where the
+// decay is still above -5 dB, give a slope, not the ceiling; flat ones
+// (each exactly 1, a slope of exactly 0) give the ceiling.
+static void TestCutShort(void)
+{
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            s_histograms[0].energy[b][i] = i == 0 ? 1.0f : i == 1 ? 0.5f : 0.0f;
+        }
+    }
+    s_histograms[0].truncated = 0.025f;
+    maudReverbFit fit;
+    maudFitReverb(s_histograms, 1, &fit);
+    printf("cut short: %.3f s from two bins\n", (double)fit.times[1]);
+    CHECK(fit.times[1] < 1.0f, "two falling bins give a slope");
+    for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+    {
+        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        {
+            s_histograms[0].energy[b][i] = i < 50 ? 1.0f : 0.0f;
+        }
+    }
+    s_histograms[0].truncated = 0.505f;
+    maudFitReverb(s_histograms, 1, &fit);
+    CHECK(fit.times[1] == 20.0f, "flat bins cut short: the ceiling");
+}
+
 // Synthetic histograms: an exponential of 1.5 s, one slope; bins falling
 // at 0.5 s to -25 dB and then at 3 s, two slopes (one fitted from -5 to
 // -25 dB would read 2.03 s), the slower with a few percent of the
@@ -832,6 +861,7 @@ int main(void)
     TestTruncated();
     TestFit();
     TestNoDecay();
+    TestCutShort();
     TestTailLevels();
     TestTailBounds();
     TestLongTail();
