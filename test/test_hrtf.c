@@ -5,10 +5,10 @@
 // license, its interaural delay on the right side, and resampled to 44.1
 // and 96 kHz with its response at 1 kHz kept (the resampled responses
 // start 24 input samples early, a constant latency); crafted files
-// with a valid checksum are refused for each rule they break; a seeded
-// sweep of mutations loads exactly the well-formed ones and never
-// crashes; an allocator that fails is a capacity error with nothing
-// leaked.
+// with a valid checksum are refused for each rule they break, and one
+// with the most taps, 1024, is taken; a seeded sweep of mutations loads
+// exactly the well-formed ones and never crashes; an allocator that
+// fails is a capacity error with nothing leaked.
 
 // fopen reads the shipped set; the C runtime's warning that it is unsafe
 // is about the Annex K alternative, which the family does not use.
@@ -229,6 +229,40 @@ static maudResult LoadCrafted(const Crafted* file)
     maudResult result = Load(file->bytes, file->count, 0, &hrtf);
     maudDestroyHrtf(hrtf);
     return result;
+}
+
+// The small file's layout with taps taps a response, on the heap.
+static unsigned char* CraftTaps(uint32_t taps, size_t* countOut)
+{
+    size_t count = 48 + 4 + 8 + 16 + 16 + (size_t)4 * 2 * taps * 2;
+    unsigned char* bytes = malloc(count);
+    if (bytes == nullptr)
+    {
+        return nullptr;
+    }
+    Crafted small = Craft();
+    memcpy(bytes, small.bytes, 76);
+    Put32(bytes + 16, taps);
+    for (size_t i = 76; i < count; ++i)
+    {
+        bytes[i] = (unsigned char)(i * 7u);
+    }
+    Put32(bytes + 44, maudCrc32(bytes + 48, count - 48));
+    *countOut = count;
+    return bytes;
+}
+
+// The most taps a response may have, 1024, are taken.
+static void TestMostTaps(void)
+{
+    size_t count = 0;
+    unsigned char* bytes = CraftTaps(1024, &count);
+    maudHrtf* hrtf = nullptr;
+    CHECK(bytes != nullptr && Load(bytes, count, 0, &hrtf) == maud_success && hrtf != nullptr &&
+              hrtf->taps == 1024,
+          "1024 taps");
+    maudDestroyHrtf(hrtf);
+    free(bytes);
 }
 
 static void TestCraftedFiles(void)
@@ -531,6 +565,7 @@ int main(void)
 {
     TestShippedSet();
     TestCraftedFiles();
+    TestMostTaps();
     TestMutations();
     TestBounds();
     TestResampler();
