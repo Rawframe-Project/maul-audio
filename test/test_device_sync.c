@@ -3,10 +3,11 @@
 //
 // Syncing the device table with a backend's list (whitebox): when one
 // device's native rate changes and the others' do not, a stream at the
-// native rate on it takes the new rate and says so. Two devices of
-// opposite directions under one key are each found by their direction,
-// an unknown key by none; a removed device's slot taken again leaves
-// its old id stale.
+// native rate on it takes the new rate and says so, and so it does when
+// every device's rate changes at once. Two devices of opposite
+// directions under one key are each found by their direction, an
+// unknown key by none; a removed device's slot taken again leaves its
+// old id stale.
 
 #include "context.h"
 #include "device.h"
@@ -72,6 +73,19 @@ int main(void)
     CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 44100 && told,
           "the stream takes the device's new rate and says so");
+    // Every device's rate changed at once: the stream follows as well.
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        specs[i].info.nativeSampleRate = 32000;
+        specs[i].info.minSampleRate = 32000;
+    }
+    CHECK(maudSyncDevices(context, specs, count, nullptr) == maud_success &&
+              maudGetStreamFormat(context, stream, &format) == maud_success &&
+              format.sampleRate == 32000,
+          "every rate changed, the stream's too");
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+    }
     // Two devices, an output and an input, under one key (as Core Audio
     // keys a device's two directions by its UID): each direction finds
     // its own; a key no device has finds none, every slot looked at.
