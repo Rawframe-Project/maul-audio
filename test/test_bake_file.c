@@ -3,8 +3,8 @@
 //
 // The bake file (whitebox): a set with reverberation and fields, and
 // one of probes and links alone, write and read back to the same memory
-// and write again to the same bytes; a range at either end of its
-// bounds reads; every malformed part is refused as
+// and write again to the same bytes; a range, times and levels at
+// either end of their bounds read; every malformed part is refused as
 // invalid (magic, size, checksum, range, layers, a neighbour out of
 // range, a self link, a falling row, a link listed twice, rows not
 // spanning the links, a link listed from one end only, a link longer
@@ -401,6 +401,16 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     c = Changed(f);
     PutFloat(c.bytes + 44, NAN);
     Expect(&c, maud_errorInvalid, "a point not finite");
+    // Times, levels, tails' times and tails' levels, each at both ends
+    // of its bounds, read.
+    c = Changed(f);
+    for (size_t k = 0; k < 4; ++k)
+    {
+        uint8_t* at = c.bytes + Times(&c) + 12 * k * (size_t)f->probes;
+        PutFloat(at, k % 2 == 0 ? 20.0f : 24.0f);
+        PutFloat(at + 4, k % 2 == 0 ? 0.1f : -96.0f);
+    }
+    Expect(&c, maud_success, "times and levels at their bounds");
     c = Changed(f);
     PutFloat(c.bytes + Times(&c), 0.05f);
     Expect(&c, maud_errorInvalid, "a time");
