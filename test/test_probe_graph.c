@@ -436,6 +436,44 @@ static void TestNoRoom(void)
           "the largest counts");
 }
 
+static uint32_t s_asks = 0;
+
+static void* Count(size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    s_asks += 1;
+    return nullptr;
+}
+
+static void Lost(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
+{
+    (void)rays;
+    (void)hits;
+    (void)context;
+    CHECK(count == 0, "no column walked");
+}
+
+// A grid of 4096 x 4096 columns, the most, is laid out: its block is
+// asked for. One column more across is refused before asking.
+static void TestMostColumns(void)
+{
+    const maudAllocator counting = {Count, Ignore, nullptr};
+    maudProbeQueries q = {.closestHit = Lost, .allocator = &counting, .maxProbes = 16};
+    maudProbeSetDef def = {.boxMin = {0.0f, 0.0f, 0.0f},
+                           .boxMax = {4096.0f, 2.0f, 4096.0f},
+                           .spacing = 1.0f,
+                           .height = 1.5f,
+                           .range = 2.0f};
+    maudProbeGraph g;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorCapacity && s_asks == 1,
+          "the most columns asked for");
+    def.boxMax.x = 4097.0f;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorCapacity && s_asks == 1,
+          "one column more refused before asking");
+}
+
 static uint32_t s_zeroAsks = 0;
 
 static void* NoZero(size_t size, size_t alignment, void* context)
@@ -477,6 +515,7 @@ int main(void)
     TestSteepest();
     TestDeepColumn();
     TestNoRoom();
+    TestMostColumns();
     TestLonely();
     TestCoincident();
     return s_failures == 0 ? 0 : 1;
