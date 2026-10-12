@@ -624,6 +624,30 @@ static void TestTailAgain(void)
     CHECK(peak > 1e-3 && worst < 1e-6 * peak, "a tail started again sounds as new");
 }
 
+// A stopped tail's send, cleared with it: with an impulse in every block
+// while it rings and in the block its ring ends, the tail started again
+// with no sound adds nothing.
+static void TestTailCleared(void)
+{
+    maudReverbParams p = {
+        {0.1f, 0.1f, 0.1f}, {-96.0f, -96.0f, -96.0f}, 0.0f, {0.2f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}};
+    int blocks[49];
+    for (int i = 0; i < 49; ++i)
+    {
+        blocks[i] = (i + 1) * 480;
+    }
+    Added(&p, blocks, 49, 1, 50, s_again);
+    double ringing = 0.0;
+    double after = 0.0;
+    for (int n = 0; n < LENGTH; ++n)
+    {
+        double* peak = n < 50 * 480 ? &ringing : &after;
+        *peak = fmax(*peak, fabs((double)s_again[n]));
+    }
+    printf("a tail cleared: %.2g while it rings, %.2g started again\n", ringing, after);
+    CHECK(ringing > 0.0 && after == 0.0, "nothing of the stopped send left");
+}
+
 // A tail in the 2 kHz band alone: the 125 Hz octave holds nothing of it.
 static void TestTailBand(void)
 {
@@ -734,6 +758,7 @@ static void TestTail(void)
            cleared);
     CHECK(last > 1e-7 && cleared < 1e-9, "cleared at the block its ring ends");
     TestTailAgain();
+    TestTailCleared();
     TestTailBand();
     maudReverb* r = Create();
     float out[4][16] = {{0}};
