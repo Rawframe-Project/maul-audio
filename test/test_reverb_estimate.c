@@ -775,6 +775,46 @@ static void TestSealed(void)
     maudDestroyAcousticScene(scene);
 }
 
+static float s_wall = 1.0f;
+static uint32_t s_wallQueries = 0;
+
+// A host's closest hits: a wall s_wall ahead of every ray, facing it.
+static void Wall(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
+{
+    (void)context;
+    s_wallQueries += 1;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        maudVector3 d = rays[i].direction;
+        hits[i] = (maudRayHit){s_wall, {-d.x, -d.y, -d.z}, 0};
+    }
+}
+
+// Every ray meets a wall facing it: the paths bounce to the cap, one
+// query a bounce; a wall so far that its echo lands one bin past the
+// last records nothing, in any band.
+static void TestFarWall(void)
+{
+    maudAcousticMaterial mirror = Material(0.0f, 0.0f);
+    maudReverbTrace trace = {Wall, Never, nullptr, &mirror, 1, {0, 0, 0}, {0, 0, 0}, 64, 2, 0, 0};
+    maudTraceReverbBatch(&trace, 0, &s_histograms[0]);
+    CHECK(s_wallQueries == 2, "two bounces, two queries");
+    // There and back, 1000.5 bins of 10 ms at 343 m/s.
+    s_wall = 0.5f * 1000.5f * 343.0f * 0.01f;
+    trace.maxBounces = 1;
+    maudTraceReverbBatch(&trace, 0, &s_histograms[0]);
+    bool silent = true;
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        for (uint32_t i = 0; i < MAUD_REVERB_BINS; ++i)
+        {
+            silent = silent && s_histograms[0].energy[b][i] == 0.0f;
+        }
+    }
+    CHECK(silent, "an echo past the last bin records nothing");
+    s_wall = 1.0f;
+}
+
 int main(void)
 {
     TestSingleBounce();
@@ -792,6 +832,7 @@ int main(void)
     TestRooms();
     TestBandsAndAir();
     TestLimits();
+    TestFarWall();
     TestOrder();
     TestSealed();
     return s_failures == 0 ? 0 : 1;
