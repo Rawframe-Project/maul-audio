@@ -6,9 +6,10 @@
 // responses at their delays; between two directions, as their blend; a
 // change of direction crossfades sample by sample, without a click,
 // into exactly what an effect started there renders, the latest of
-// several changes waiting for the fade under way; only the direction
-// counts; the gain ramps; one call or many give the same samples; a
-// reset forgets. On the shipped
+// several changes waiting for the fade under way, and a fade writes
+// nothing past a call's last frame; only the direction counts; the
+// gain ramps; one call or many give the same samples; a reset forgets;
+// a head radius at either end of its bounds is taken. On the shipped
 // SADIE II set: a source on the right reaches the right ear first and
 // louder, and the left one the left. Bad calls write nothing, and
 // processing never allocates.
@@ -713,6 +714,26 @@ static void TestGain(const maudHrtf* hrtf)
     maudDestroyBinaural(steady);
 }
 
+// A fade written into heap buffers exactly a call long: every call
+// turns the direction, so each ends mid-fade, and nothing is written
+// past the call's last frame.
+static void TestExactBuffers(const maudHrtf* hrtf)
+{
+    maudBinaural* effect = Create(hrtf, FRAMES);
+    float* left = malloc(FRAMES * sizeof(float));
+    float* right = malloc(FRAMES * sizeof(float));
+    bool done = left != nullptr && right != nullptr;
+    for (int call = 0; call < 6 && done; ++call)
+    {
+        maudBinauralParams params = call % 2 == 0 ? At(1.0f, 0.0f, 0.0f) : At(0.0f, 1.0f, 0.0f);
+        done = Process(effect, params, s_in, left, right, FRAMES) == maud_success;
+    }
+    CHECK(done, "six calls, each turning");
+    free(left);
+    free(right);
+    maudDestroyBinaural(effect);
+}
+
 static void TestMisuse(const maudHrtf* hrtf)
 {
     maudBinaural* effect = Create(hrtf, 64);
@@ -765,6 +786,13 @@ static void TestMisuse(const maudHrtf* hrtf)
     {
         def.headRadius = radii[i];
         CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "a head out of bounds");
+    }
+    float ends[2] = {0.05f, 0.15f};
+    for (int i = 0; i < 2; ++i)
+    {
+        def.headRadius = ends[i];
+        CHECK(maudCreateBinaural(&def, &none) == maud_success, "a head at either end");
+        maudDestroyBinaural(none);
     }
     def.headRadius = 0.0875f;
     def.cookie = 0;
@@ -897,6 +925,7 @@ int main(void)
         TestBlocks(hrtf);
         TestGain(hrtf);
         TestMisuse(hrtf);
+        TestExactBuffers(hrtf);
         TestNoAllocation(hrtf);
         TestNearField(hrtf);
         maudDestroyHrtf(hrtf);
