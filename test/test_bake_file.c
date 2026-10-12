@@ -3,7 +3,8 @@
 //
 // The bake file (whitebox): a set with reverberation and fields, and
 // one of probes and links alone, write and read back to the same memory
-// and write again to the same bytes; every malformed part is refused as
+// and write again to the same bytes; a range at either end of its
+// bounds reads; every malformed part is refused as
 // invalid (magic, size, checksum, range, layers, a neighbour out of
 // range, a self link, a falling row, a link listed twice, rows not
 // spanning the links, a link listed from one end only, a link longer
@@ -458,14 +459,23 @@ static File Pair(uint32_t links, const uint32_t* neighbours)
     return f;
 }
 
-// What the large file cannot show: a probe with no links whose point is
-// not finite in one axis alone, and a link listed twice from both ends
+// What the large file cannot show: the range at either end of its
+// bounds, a probe with no links whose point is not finite in one axis
+// alone, and a link listed twice from both ends
 // (each row then rising only by not falling).
 static void TestPairs(void)
 {
     File apart = Pair(0, nullptr);
     CHECK(Read(&apart, &s_limits) == maud_success, "two probes, no links");
     File c = Changed(&apart);
+    PutFloat(c.bytes + 20, 1000.0f);
+    Seal(&c);
+    CHECK(Read(&c, &s_limits) == maud_success, "the longest range");
+    PutFloat(c.bytes + 20, 0.1f);
+    Seal(&c);
+    CHECK(Read(&c, &s_limits) == maud_success, "the shortest range");
+    free(c.bytes);
+    c = Changed(&apart);
     PutFloat(c.bytes + 40 + 12 + 4, NAN);
     Expect(&c, maud_errorInvalid, "an unlinked point not finite in y");
     c = Changed(&apart);
