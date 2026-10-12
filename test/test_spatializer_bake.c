@@ -13,11 +13,12 @@
 // closest-hit query, and a destroyed set's id are refused. Saved and
 // loaded into another spatializer a bake gives the same estimates and
 // saves to the same bytes; a file with fields loads only where they
-// match; the office's bake is, byte for byte, the shipped one in
-// data/bake (MAUD_WRITE_GOLDEN set rewrites it), and on the web, which
-// has no file system, its hash; the shipped version 1 bake, before
-// tails, still loads and gives the same estimates. In two coupled rooms
-// a bake carries the slower slope.
+// match, and none where every set is taken, keeping nothing; the
+// office's bake is, byte for byte, the shipped one in data/bake
+// (MAUD_WRITE_GOLDEN set rewrites it), and on the web, which has no
+// file system, its hash; the shipped version 1 bake, before tails,
+// still loads and gives the same estimates. In two coupled rooms a bake
+// carries the slower slope.
 
 // fopen and getenv read and rewrite the shipped bake; the C runtime's
 // warning that they are unsafe is about the Annex K alternatives, which
@@ -423,6 +424,11 @@ static void TestFile(maudAcousticScene* scene)
           "fields where there are no reflections");
     bytes[size - 1] ^= 1;
     CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorInvalid, "a bad checksum");
+    bytes[size - 1] ^= 1;
+    CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorCapacity &&
+              refused.index1 == 0,
+          "every set taken, nothing kept");
+    bytes[size - 1] ^= 1;
     maudProbeSetDef def = maudDefaultProbeSetDef();
     const maudVector3 point = {1.0f, 1.5f, 1.0f};
     def.points = &point;
