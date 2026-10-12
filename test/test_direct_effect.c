@@ -8,8 +8,9 @@
 // (band means measured densely on the effect's impulse response); an
 // occlusion step makes no click; air absorption follows ISO 9613 part 1
 // (the standard's table at 20 degrees C and 50 %); directivity follows
-// the weighted dipole; bad calls write nothing; processing allocates
-// nothing.
+// the weighted dipole; a source exactly at the silence threshold is
+// silent; no absorption at all is taken; bad calls write nothing;
+// processing allocates nothing.
 
 #include "test_harness.h"
 
@@ -354,6 +355,37 @@ static void TestDirectivity(void)
           "a weight above 1");
 }
 
+// A source exactly at the silence threshold (its loudest band 1e-6 of
+// full scale, the others lower) renders nothing and leaves the filters
+// flat: a full-scale call after it renders as one after silence does.
+static void TestSilent(void)
+{
+    const maudDirectParams quiet = {
+        .gain = 1.0f, .transmission = {1.0f, 1.0f, 1.0f}, .directivity = {1e-6f, 1e-7f, 1e-7f}};
+    const maudDirectParams none = {.gain = 1.0f, .transmission = {1.0f, 1.0f, 1.0f}};
+    const maudDirectParams full = {
+        .gain = 1.0f, .transmission = {1.0f, 1.0f, 1.0f}, .directivity = {1.0f, 1.0f, 1.0f}};
+    maudDirectEffect* after = Create();
+    maudDirectEffect* reference = Create();
+    static float out[TAPS];
+    static float expected[TAPS];
+    memset(s_impulse, 0, sizeof(s_impulse));
+    s_impulse[0] = 1.0f;
+    bool silent = maudProcessDirect(after, &quiet, s_impulse, out, TAPS) == maud_success;
+    for (int i = 0; i < TAPS; ++i)
+    {
+        silent = silent && out[i] == 0.0f;
+    }
+    CHECK(silent, "at the threshold, silence");
+    CHECK(maudProcessDirect(reference, &none, s_impulse, expected, TAPS) == maud_success &&
+              maudProcessDirect(after, &full, s_impulse, out, TAPS) == maud_success &&
+              maudProcessDirect(reference, &full, s_impulse, expected, TAPS) == maud_success &&
+              memcmp(out, expected, sizeof(out)) == 0,
+          "and the filters flat after it");
+    maudDestroyDirectEffect(after);
+    maudDestroyDirectEffect(reference);
+}
+
 static void TestMisuse(void)
 {
     maudDirectEffect* effect = Create();
@@ -403,6 +435,13 @@ static void TestMisuse(void)
     def = maudDefaultDirectEffectDef();
     def.airAbsorption[1] = -1.0f;
     CHECK(maudCreateDirectEffect(&def, &none) == maud_errorInvalid, "negative absorption");
+    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    {
+        def.airAbsorption[b] = 0.0f;
+    }
+    maudDirectEffect* still = nullptr;
+    CHECK(maudCreateDirectEffect(&def, &still) == maud_success, "no absorption at all");
+    maudDestroyDirectEffect(still);
     def = maudDefaultDirectEffectDef();
     def.cookie = 0;
     CHECK(maudCreateDirectEffect(&def, &none) == maud_errorInvalid, "no cookie");
@@ -417,5 +456,6 @@ int main(void)
     TestAir();
     TestDirectivity();
     TestMisuse();
+    TestSilent();
     return s_failures == 0 ? 0 : 1;
 }
