@@ -16,6 +16,8 @@
 
 #include <dirent.h>
 #include <ftw.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,6 +81,9 @@ typedef struct Blocks
     // Stalls the callback once, past the device buffer, at this block.
     uint32_t stallAt;
     uint32_t periodFrames;
+    // The thread the callback runs on, once known.
+    _Atomic(bool) known;
+    pthread_t thread;
 } Blocks;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
@@ -91,6 +96,11 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (block->input != nullptr)
     {
         atomic_fetch_add(&blocks->withInput, 1);
+    }
+    if (!atomic_load_explicit(&blocks->known, memory_order_relaxed))
+    {
+        blocks->thread = pthread_self();
+        atomic_store_explicit(&blocks->known, true, memory_order_release);
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
@@ -334,6 +344,38 @@ static void TestXrun(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+static void Interrupt(int signal)
+{
+    (void)signal;
+}
+
+// Signals to the stream's thread, each cutting its poll short (EINTR),
+// as a host's profiler or timers may: the stream runs on.
+static void TestSignals(maudContext* context)
+{
+    struct sigaction action = {.sa_handler = Interrupt};
+    struct sigaction before;
+    sigemptyset(&action.sa_mask);
+    CHECK(sigaction(SIGUSR1, &action, &before) == 0, "a handler");
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenDefault(context, maud_directionOutput, &blocks, &def);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(&blocks, 5), "blocks arrive");
+    if (atomic_load_explicit(&blocks.known, memory_order_acquire))
+    {
+        for (int i = 0; i < 20; ++i)
+        {
+            pthread_kill(blocks.thread, SIGUSR1);
+            Sleep(5);
+        }
+    }
+    uint32_t signalled = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(&blocks, signalled + 40), "it runs on after the signals");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    sigaction(SIGUSR1, &before, nullptr);
+}
+
 static void TestInputStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -426,6 +468,7 @@ int main(void)
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the probe");
         TestOutputStream(context);
         TestXrun(context);
+        TestSignals(context);
         TestExclusiveRefused(context);
         TestInputStream(context);
     }

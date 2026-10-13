@@ -4,7 +4,9 @@
 // ALSA's recovery from a failed transfer, against a fake PCM: an -EPIPE
 // is an xrun, counted by the stream's direction, and other failures are
 // not; a recovered capture is started again and a recovered playback
-// is not; a PCM that cannot recover ends the stream.
+// is not; a PCM that cannot recover ends the stream. A transfer whose
+// PCM has nothing to move now (-EAGAIN) leaves it as it is, and one
+// whose PCM ran dry recovers it.
 
 #include "alsa_stream.h"
 #include "test_harness.h"
@@ -30,6 +32,14 @@ static int FakeStart(snd_pcm_t* pcm)
     (void)pcm;
     s_started++;
     return 0;
+}
+
+static snd_pcm_sframes_t s_avail;
+
+static snd_pcm_sframes_t FakeAvail(snd_pcm_t* pcm)
+{
+    (void)pcm;
+    return s_avail;
 }
 
 static void Reset(maudStreamCore* core, maudDirection direction, int recoverResult)
@@ -71,5 +81,17 @@ int main(void)
     Reset(&core, maud_directionInput, -ENODEV);
     CHECK(!maudAlsaRecover(&api, pcm, &core, -ENODEV), "a PCM gone past recovery");
     CHECK(s_started == 0, "is not started again");
+
+    api.pcmAvailUpdate = FakeAvail;
+    maudAlsaStream entry = {.api = &api, .core = &core, .pcm = pcm};
+    Reset(&core, maud_directionOutput, 0);
+    s_avail = -EAGAIN;
+    CHECK(maudAlsaTransfer(&entry) && s_recovered == 0, "nothing to move now: left as it is");
+    s_avail = -EPIPE;
+    CHECK(maudAlsaTransfer(&entry) && s_recovered == 1 && atomic_load(&core.underruns) == 1,
+          "a playback run dry: recovered, an underrun counted");
+    Reset(&core, maud_directionOutput, -ENODEV);
+    s_avail = -ENODEV;
+    CHECK(!maudAlsaTransfer(&entry), "a PCM gone: the transfer fails");
     return s_failures == 0 ? 0 : 1;
 }

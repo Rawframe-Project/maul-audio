@@ -137,9 +137,7 @@ static snd_pcm_sframes_t ReadIn(maudAlsaStream* entry, snd_pcm_sframes_t avail)
     return 0;
 }
 
-// Moves what the PCM can take or has, recovering from an xrun
-// (maudAlsaRecover). False when the PCM failed past recovery.
-static bool Transfer(maudAlsaStream* entry)
+bool maudAlsaTransfer(maudAlsaStream* entry)
 {
     const maudAlsaApi* api = entry->api;
     bool output = entry->core->def.direction == maud_directionOutput;
@@ -199,7 +197,8 @@ static void RunStream(void* user)
         unsigned short events = 0;
         api->pollDescriptorsRevents(entry->pcm, entry->fds + 1, entry->fdCount - 1, &events);
         // A PCM failed past recovery stays silent until the stream stops.
-        if ((events & (POLLIN | POLLOUT | POLLERR | POLLHUP | POLLNVAL)) != 0 && !Transfer(entry))
+        if ((events & (POLLIN | POLLOUT | POLLERR | POLLHUP | POLLNVAL)) != 0 &&
+            !maudAlsaTransfer(entry))
         {
             return;
         }
