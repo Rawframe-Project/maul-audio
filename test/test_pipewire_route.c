@@ -5,7 +5,8 @@
 // Device emits them are read into a direction, a profile device and the
 // form of the port type, and a node on that profile device takes the
 // route's form over its own form factor, in its device's info too, until
-// the card goes.
+// the card goes. A card is added through a stand-in registry and device:
+// it takes a free slot, binds, listens and subscribes to its routes.
 
 #include "pipewire_card.h"
 #include "test_harness.h"
@@ -197,11 +198,116 @@ static void TestApply(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroyed");
 }
 
+// A stand-in registry whose bind hands out the stand-in device below, or
+// nothing when told to fail, and a device that keeps its listeners and
+// the param it was subscribed to.
+static struct spa_hook_list s_deviceHooks;
+static int s_binds;
+static bool s_bindFails;
+static uint32_t s_subscribed;
+static struct spa_interface s_device;
+
+static void* Bind(void* object, uint32_t id, const char* type, uint32_t version, size_t size)
+{
+    (void)object;
+    (void)id;
+    (void)type;
+    (void)version;
+    (void)size;
+    s_binds++;
+    return s_bindFails ? nullptr : &s_device;
+}
+
+static int AddListener(void* object, struct spa_hook* listener,
+                       const struct pw_device_events* events, void* data)
+{
+    (void)object;
+    spa_hook_list_append(&s_deviceHooks, listener, events, data);
+    return 0;
+}
+
+static int Subscribe(void* object, uint32_t* ids, uint32_t count)
+{
+    (void)object;
+    s_subscribed = count == 1 ? ids[0] : SPA_ID_INVALID;
+    return 0;
+}
+
+static const struct pw_registry_methods s_registryMethods = {
+    .version = PW_VERSION_REGISTRY_METHODS,
+    .bind = Bind,
+};
+
+static const struct pw_device_methods s_deviceMethods = {
+    .version = PW_VERSION_DEVICE_METHODS,
+    .add_listener = AddListener,
+    .subscribe_params = Subscribe,
+};
+
+// A card takes the first free slot and hears its routes; a full table
+// or a bind that fails keeps no card.
+static void TestAdd(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendOffline;
+    maudContext* context = nullptr;
+    maudDeviceId device = {0, 0};
+    CHECK(maudCreateContext(&def, &context) == maud_success &&
+              maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
+                  maud_success,
+          "a device");
+    spa_hook_list_init(&s_deviceHooks);
+    struct spa_interface registry = SPA_INTERFACE_INIT(
+        PW_TYPE_INTERFACE_Registry, PW_VERSION_REGISTRY, &s_registryMethods, nullptr);
+    s_device = (struct spa_interface)SPA_INTERFACE_INIT(PW_TYPE_INTERFACE_Device, PW_VERSION_DEVICE,
+                                                        &s_deviceMethods, nullptr);
+    maudPipewireNode node = {.device = device,
+                             .direction = maud_directionOutput,
+                             .factorForm = maud_formSpeakers,
+                             .hasCard = true,
+                             .cardId = 51,
+                             .profileDevice = 2,
+                             .used = true};
+    maudPipewireCard cards[2] = {{.globalId = 50, .used = true}};
+    spa_list_init(&cards[0].listener.link);
+    maudPipewire pipewire = {.api = {.proxyDestroy = Destroyed},
+                             .context = context,
+                             .nodes = &node,
+                             .nodeCapacity = 1,
+                             .cards = cards,
+                             .cardCapacity = 2};
+    pipewire.connection.registry = (struct pw_registry*)&registry;
+    node.owner = &pipewire;
+    s_subscribed = SPA_ID_INVALID;
+    maudPipewireAddCard(&pipewire, 51);
+    CHECK(cards[1].used && cards[1].globalId == 51 && cards[1].owner == &pipewire &&
+              cards[1].proxy == (struct pw_proxy*)&s_device,
+          "a card takes the free slot, bound");
+    CHECK(s_subscribed == SPA_PARAM_Route, "subscribed to its routes");
+    uint8_t buffer[1024];
+    spa_hook_list_call(&s_deviceHooks, struct pw_device_events, param, 0, 0, SPA_PARAM_Route, 0, 1,
+                       BuildRoute(buffer, sizeof(buffer), SPA_DIRECTION_OUTPUT, 2, "headphones"));
+    CHECK(FormOf(context, device) == maud_formHeadphones, "the card's route reaches its node");
+    maudPipewireAddCard(&pipewire, 52);
+    CHECK(s_binds == 1 && cards[0].globalId == 50 && cards[1].globalId == 51,
+          "a full table keeps no card");
+    int destroyed = s_destroyed;
+    maudPipewireRemoveCard(&pipewire, 51);
+    CHECK(s_destroyed == destroyed + 1 && !cards[1].used &&
+              FormOf(context, device) == maud_formSpeakers,
+          "the card goes");
+    s_bindFails = true;
+    maudPipewireAddCard(&pipewire, 53);
+    CHECK(s_binds == 2 && !cards[1].used, "a bind that fails keeps no card");
+    CHECK(maudDestroyContext(context) == maud_success, "destroyed");
+}
+
 int main(void)
 {
     TestRead();
     TestStore();
     TestNodeForm();
     TestApply();
+    TestAdd();
     return s_failures == 0 ? 0 : 1;
 }
