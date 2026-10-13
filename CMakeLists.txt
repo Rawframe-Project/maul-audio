@@ -588,6 +588,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
                     ${PROJECT_BINARY_DIR}/test_android_java.apk
                     $<TARGET_FILE:test_android_java> ${package} ${ANDROID_ABI}
             DEPENDS test_android_java ${MAUL_AUDIO_JAVA_SOURCES}
+                    ${PROJECT_SOURCE_DIR}/java/proguard-rules.pro
                     ${PROJECT_SOURCE_DIR}/test/android/AndroidManifest.xml
                     ${PROJECT_SOURCE_DIR}/tools/build_android_app.sh
             VERBATIM)

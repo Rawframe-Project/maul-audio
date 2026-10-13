@@ -5,8 +5,11 @@
 #   tools/build_android_app.sh <out.apk> <libname.so> <package> [abi]
 #
 # The library's Java classes (java/maul/audio) compiled with javac and
-# d8, test/android/AndroidManifest.xml with the package and library
-# filled in, linked by aapt2 as debuggable, the native library under
+# shrunk, optimized and renamed by R8 as a release build is, keeping
+# only what the library's rules (java/proguard-rules.pro) and the
+# manifest keep, so every test run checks the library's rules;
+# test/android/AndroidManifest.xml with the package and library filled
+# in, linked by aapt2 as debuggable, the native library under
 # lib/<abi>/ (x86_64 by default), aligned and signed with a debug key
 # kept beside the output. ANDROID_HOME names the SDK; the newest build
 # tools and platform there are used.
@@ -27,10 +30,11 @@ sed -e "s/@PACKAGE@/$package/" -e "s/@LIBRARY@/$name/" \
 mkdir -p "$work/classes" "$work/dex" "$work/lib/$abi"
 javac -nowarn --release 11 -classpath "$jar" -d "$work/classes" \
     $(find "$root/java" -name '*.java')
-"$tools/d8" --min-api 30 --lib "$jar" --output "$work/dex" \
-    $(find "$work/classes" -name '*.class')
 "$tools/aapt2" link -o "$work/linked.apk" -I "$jar" --manifest "$work/AndroidManifest.xml" \
-    --min-sdk-version 30 --target-sdk-version 35 --debug-mode
+    --proguard "$work/manifest.pro" --min-sdk-version 30 --target-sdk-version 35 --debug-mode
+java -cp "$tools/lib/d8.jar" com.android.tools.r8.R8 --release --min-api 30 --lib "$jar" \
+    --output "$work/dex" --pg-conf "$work/manifest.pro" \
+    --pg-conf "$root/java/proguard-rules.pro" $(find "$work/classes" -name '*.class')
 cp "$library" "$work/lib/$abi/"
 cp "$work/dex/classes.dex" "$work/"
 (cd "$work" && zip -q linked.apk classes.dex "lib/$abi/$(basename "$library")")

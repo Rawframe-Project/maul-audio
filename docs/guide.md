@@ -52,6 +52,16 @@ console's for instance, tries it first (docs/private-backends.md).
 `maudGetContextBackend` says which one opened. `maudDestroyContext`
 stops and destroys its streams.
 
+On Android the application compiles the library's Java
+(`java/maul/audio`) with its own and passes its `JavaVM` and an
+`android.content.Context` in the def's `androidJavaVm` and
+`androidContext`; the context then lists every device and asks for the
+microphone. The native library finds those classes by name, which a
+shrinker cannot see: an application that shrinks its code with R8 or
+ProGuard, as a release build does, adds `java/proguard-rules.pro` to
+its rules, or creating a context with those handles fails with
+`maud_errorPlatform`.
+
 ## Devices
 
 ```c

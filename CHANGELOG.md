@@ -8,6 +8,15 @@ format.
 
 ## [Unreleased]
 
+### Added
+
+- `java/proguard-rules.pro`: what an Android application that shrinks
+  its code with R8 or ProGuard keeps for the library's Java, which the
+  native library reaches by name (maud-0003). Without it, a shrunk
+  release build loses `maul.audio.Devices`, and creating a context with
+  its handles fails with `maud_errorPlatform`. The test application is
+  built by R8 with these rules.
+
 ## [0.4.0] - 2026-10-13
 
 A device's native format changing is now reported.

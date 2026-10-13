@@ -78,12 +78,13 @@ extern "C"
         uint32_t offlineSampleRate;
         // On Android, the application's JavaVM* and a jobject naming an
         // android.content.Context, with the java/maul/audio classes
-        // compiled into the application: the context then lists every
+        // compiled into the application (and java/proguard-rules.pro among
+        // its rules when it shrinks its code): the context then lists every
         // device, follows their changes and asks for the microphone once
         // where the Context is an Activity. NULL both, the default: only
         // the default output and input. The context keeps a reference of
-        // its own to the Context. One without the other is invalid.
-        // Unused elsewhere.
+        // its own to the Context. One without the other is invalid. Unused
+        // elsewhere.
         void* androidJavaVm;
         void* androidContext;
         // On iOS, whether the Ring/Silent switch silences the context's
