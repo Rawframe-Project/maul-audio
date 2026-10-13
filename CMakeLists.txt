@@ -394,6 +394,8 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(echo_canceller)
     # The guide's snippets (docs/guide.md), as written there: both parts'.
     if(MAUL_AUDIO_SPATIAL)
+        maul_add_test(refusals)
+        maul_audio_test_data(refusals)
         maul_add_test(guide)
         maul_audio_test_data(guide)
         # Its stream plays on the test daemon, which other tests plug,

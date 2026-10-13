@@ -29,6 +29,7 @@ typedef struct Recorder
     maudResult controlResult;
     maudResult renderResult;
     maudResult resumeResult;
+    maudResult destroyResult;
 } Recorder;
 
 static int s_liveAllocations = 0;
@@ -91,6 +92,7 @@ static void Record(const maudStreamBlock* block, void* user)
         float frame[2];
         recorder->renderResult = maudRenderStream(recorder->context, recorder->stream, frame, 1);
         recorder->resumeResult = maudResumeContext(recorder->context);
+        recorder->destroyResult = maudDestroyContext(recorder->context);
     }
 }
 
@@ -450,7 +452,8 @@ static void TestControlCallsFromTheCallbackAreRefused(void)
     CHECK(recorder.controlResult == maud_errorState, "create refused on the audio thread");
     CHECK(recorder.renderResult == maud_errorState, "re-entrant render refused");
     CHECK(recorder.resumeResult == maud_errorState, "resume refused on the audio thread");
-    CHECK(maudGetContextMisuse(context) == 2, "control calls counted as misuse");
+    CHECK(recorder.destroyResult == maud_errorState, "the context's destruction refused there");
+    CHECK(maudGetContextMisuse(context) == 3, "control calls counted as misuse");
     recorder.tryControl = false;
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy after rendering");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
