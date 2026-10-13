@@ -32,6 +32,7 @@ typedef struct Helper
     struct pw_metadata* metadata;
     struct pw_metadata* settings;
     struct pw_proxy* node;
+    struct pw_proxy* surround;
     // The links' input nodes and the plugged sink's global id, written
     // on the helper's loop thread.
     uint32_t linkInputs[256];
@@ -124,6 +125,29 @@ static void PlugSink(Helper* helper)
     helper->node = pw_core_create_object(helper->core, "adapter", PW_TYPE_INTERFACE_Node,
                                          PW_VERSION_NODE, &props->dict, 0);
     pw_properties_free(props);
+    pw_thread_loop_unlock(helper->loop);
+}
+
+// Plugs in a null sink named maud-test-surround whose properties give
+// its six channels' positions but not their count, which only its
+// formats say.
+static void PlugSurround(Helper* helper)
+{
+    pw_thread_loop_lock(helper->loop);
+    struct pw_properties* props = pw_properties_new(
+        "factory.name", "support.null-audio-sink", "node.name", "maud-test-surround", "media.class",
+        "Audio/Sink", "audio.position", "[FL FR FC LFE RL RR]", nullptr);
+    helper->surround = pw_core_create_object(helper->core, "adapter", PW_TYPE_INTERFACE_Node,
+                                             PW_VERSION_NODE, &props->dict, 0);
+    pw_properties_free(props);
+    pw_thread_loop_unlock(helper->loop);
+}
+
+static void UnplugSurround(Helper* helper)
+{
+    pw_thread_loop_lock(helper->loop);
+    pw_proxy_destroy(helper->surround);
+    helper->surround = nullptr;
     pw_thread_loop_unlock(helper->loop);
 }
 
@@ -323,6 +347,34 @@ static bool SetEffectiveDefault(maudContext* context, Helper* helper, const char
         }
     }
     return false;
+}
+
+// A node whose properties lack its channel count: its layout comes from
+// its formats, which arrive after it is listed (the context takes them
+// in while notifications are drained).
+static void TestLayoutFromFormats(maudContext* context, Helper* helper)
+{
+    maudDeviceId plugged = {0, 0};
+    PlugSurround(helper);
+    CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-surround", &plugged), "plugged in");
+    maudDeviceInfo info = {0};
+    for (int tries = 0; tries < NOTICE_TRIES; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        if (maudGetDeviceInfo(context, plugged, &info) != maud_success ||
+            info.nativeLayout == maud_layout5Point1)
+        {
+            break;
+        }
+        Sleep(10);
+    }
+    CHECK(info.nativeLayout == maud_layout5Point1, "5.1 from its formats");
+    UnplugSurround(helper);
+    maudDeviceId removed = plugged;
+    CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
 }
 
 static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
@@ -840,6 +892,7 @@ int main(void)
     if (helped)
     {
         TestHotplugAndDefaults(context, &helper);
+        TestLayoutFromFormats(context, &helper);
     }
     TestOutputStream(context);
     TestInputStream(context);
