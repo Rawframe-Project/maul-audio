@@ -68,5 +68,10 @@ int main(void)
     CHECK(maudAlsaChannelOrder(maud_layout7Point1Point4, nullptr, 12, order) &&
               Same(order, identity, 12),
           "no standard order: the stream's own");
+    static const unsigned int twelve[] = {
+        SND_CHMAP_FL, SND_CHMAP_FR, SND_CHMAP_FC,  SND_CHMAP_LFE, SND_CHMAP_RL,  SND_CHMAP_RR,
+        SND_CHMAP_SL, SND_CHMAP_SR, SND_CHMAP_TFL, SND_CHMAP_TFR, SND_CHMAP_TRL, SND_CHMAP_TC};
+    CHECK(!maudAlsaChannelOrder(maud_layout7Point1Point4, twelve, 12, order),
+          "the most channels, one with no match");
     return s_failures == 0 ? 0 : 1;
 }
