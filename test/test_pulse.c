@@ -2,11 +2,12 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The PulseAudio backend against a running server: its sinks and
-// sources as devices, the server's defaults, a sink added, made the
-// default and removed with pactl, and the server restarted when
-// MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START name commands.
-// Without a server the test is skipped, unless MAUD_REQUIRE_PULSE is
-// set.
+// sources as devices, the server's defaults (a context made while a
+// later sink is the default takes it), a sink added, made the default
+// and removed with pactl, a source added and removed, and the server
+// restarted when MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START
+// name commands. Without a server the test is skipped, unless
+// MAUD_REQUIRE_PULSE is set.
 
 #include "test_clock.h"
 #include "test_harness.h"
@@ -367,6 +368,35 @@ static void TestHotplug(maudContext* context)
     CHECK(FindByKey(context, maud_directionOutput, "maud-pulse-hotplug").index1 == 0, "gone");
 }
 
+// A context made while the server's default is a sink listed after
+// another takes that default from the server's own answer, not from the
+// order of the listing.
+static void TestListedDefault(maudContext* context)
+{
+    CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-default > /dev/null"),
+          "load a sink");
+    CHECK(Run("pactl set-default-sink maud-pulse-default"), "make it the default");
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendPulse;
+    maudContext* other = nullptr;
+    CHECK(maudCreateContext(&def, &other) == maud_success, "another context");
+    if (other != nullptr)
+    {
+        maudDeviceId sink = FindByKey(other, maud_directionOutput, "maud-pulse-default");
+        maudDeviceId current = {0, 0};
+        CHECK(sink.index1 != 0 &&
+                  maudGetDefaultDevice(other, maud_directionOutput, maud_roleGeneral, &current) ==
+                      maud_success &&
+                  SameDevice(current, sink),
+              "the server's default from its answer");
+        CHECK(maudDestroyContext(other) == maud_success, "destroy it");
+    }
+    CHECK(Run("pactl set-default-sink maud-test-sink"), "restore the default");
+    CHECK(Run("pactl unload-module module-null-sink"), "unload it");
+    CHECK(WaitForDefaults(context, FindByKey(context, maud_directionOutput, "maud-test-sink")),
+          "the first context's default back");
+}
+
 // A callback that stalls past the server's buffer leaves the sink dry:
 // an underrun, counted.
 static void TestUnderrun(maudContext* context)
@@ -473,6 +503,7 @@ static void TestDuplexConverted(maudContext* context)
               "sink_name=maud-pulse-slow rate=44100 channels=2 > /dev/null"),
           "load a 44.1 kHz source");
     maudDeviceId slow = WaitForKey(context, maud_directionInput, "maud-pulse-slow");
+    CHECK(slow.index1 != 0, "a capture device");
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionDuplex;
@@ -492,6 +523,8 @@ static void TestDuplexConverted(maudContext* context)
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     CHECK(Run("pactl unload-module module-null-sink"), "unload it");
+    maudNotification record;
+    CHECK(WaitFor(context, maud_notifyDeviceRemoved, slow, &record), "the source removed");
 }
 
 // A stream opened on a device stays on it and is lost with it.
@@ -608,6 +641,7 @@ int main(void)
     }
     TestDevices(context);
     TestHotplug(context);
+    TestListedDefault(context);
     TestOutputStream(context);
     TestMono(context);
     TestUnderrun(context);
