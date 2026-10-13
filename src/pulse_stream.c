@@ -378,6 +378,15 @@ void maudPulseSetStreamActive(maudContext* context, maudStreamSlot* slot, bool a
     {
         return;
     }
+    // A stopped stream's loop has not run: take in what the server said
+    // meanwhile, a lost connection among it, so its health is current.
+    for (int i = 0; entry->used && i < FLUSH_ITERATIONS; ++i)
+    {
+        if (entry->api->mainloopIterate(entry->loop, 0, nullptr) <= 0)
+        {
+            break;
+        }
+    }
     if (!Healthy(entry))
     {
         Disconnect(entry);

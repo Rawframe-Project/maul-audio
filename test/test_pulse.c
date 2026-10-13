@@ -565,6 +565,8 @@ static void TestPinnedStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// The server restarted: a playing stream plays on the new one, and one
+// stopped across the restart starts on it.
 static void TestRestart(maudContext* context)
 {
     const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
@@ -579,6 +581,12 @@ static void TestRestart(maudContext* context)
     maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    // A second stream, stopped while the server goes away.
+    Blocks idle = {0};
+    maudStreamId stopped = OpenStream(context, maud_directionOutput, none, &idle);
+    CHECK(maudStartStream(context, stopped) == maud_success && WaitForBlocks(context, &idle, 5) &&
+              maudStopStream(context, stopped) == maud_success,
+          "a second plays and stops");
     CHECK(Run(stop), "the server stops");
     maudNotification record;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, sink, &record), "its devices go");
@@ -599,6 +607,11 @@ static void TestRestart(maudContext* context)
     uint32_t resumed = atomic_load(&blocks.count);
     CHECK(WaitForBlocks(context, &blocks, resumed + 20), "the stream plays on the new server");
     CHECK(atomic_load(&blocks.onControl) == 0, "rebuilt without a callback on this thread");
+    uint32_t before = atomic_load(&idle.count);
+    CHECK(maudStartStream(context, stopped) == maud_success &&
+              WaitForBlocks(context, &idle, before + 20),
+          "the stopped one starts on the new server");
+    CHECK(maudDestroyStream(context, stopped) == maud_success, "destroy it");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 

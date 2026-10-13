@@ -17,6 +17,14 @@ format.
   its handles fails with `maud_errorPlatform`. The test application is
   built by R8 with these rules.
 
+### Fixed
+
+- On PulseAudio, a stream stopped while the server restarted stayed
+  silent when started again: its own connection had not run while it
+  was stopped, still read as ready, and the stream started on the dead
+  one. It now takes in what the server said before it starts, and
+  reconnects.
+
 ## [0.4.0] - 2026-10-13
 
 A device's native format changing is now reported.
