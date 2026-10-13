@@ -8,6 +8,11 @@ format.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-13
+
+A stream stopped across a PulseAudio restart plays again, and an
+Android application that shrinks its code keeps the library's Java.
+
 ### Added
 
 - `java/proguard-rules.pro`: what an Android application that shrinks
