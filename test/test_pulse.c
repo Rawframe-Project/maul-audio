@@ -4,7 +4,8 @@
 // The PulseAudio backend against a running server: its sinks and
 // sources as devices, the server's defaults (a context made while a
 // later sink is the default takes it), a sink added, made the default
-// and removed with pactl, a source added and removed, and the server
+// and removed with pactl, a source added and removed, a stream that
+// follows the default reopened at a new default's rate, and the server
 // restarted when MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START
 // name commands. Without a server the test is skipped, unless
 // MAUD_REQUIRE_PULSE is set.
@@ -565,6 +566,47 @@ static void TestPinnedStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// A native stream on the default follows it to a sink of another rate:
+// the server moves it, and the library reopens it at the new rate and
+// says so; it plays there, and goes back with the default.
+static void TestFollowRate(maudContext* context)
+{
+    maudDeviceId home = FindByKey(context, maud_directionOutput, "maud-test-sink");
+    Blocks blocks = {0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &blocks);
+    maudStreamFormat before;
+    CHECK(maudGetStreamFormat(context, stream, &before) == maud_success &&
+              before.sampleRate != 44100,
+          "a native stream at the default's rate");
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-follow rate=44100 "
+              "sink_properties=device.description=Follow > /dev/null"),
+          "load a 44.1 kHz sink");
+    maudDeviceId other = WaitForKey(context, maud_directionOutput, "maud-pulse-follow");
+    maudNotification record;
+    CHECK(Run("pactl set-default-sink maud-pulse-follow"), "make it the default");
+    CHECK(WaitFor(context, maud_notifyStreamMoved, other, &record), "the stream moves");
+    CHECK(WaitFor(context, maud_notifyStreamFormatChanged, (maudDeviceId){0, 0}, &record) &&
+              record.sampleRate == 44100,
+          "at the new default's rate");
+    maudStreamFormat after;
+    CHECK(maudGetStreamFormat(context, stream, &after) == maud_success && after.sampleRate == 44100,
+          "its format says so");
+    uint32_t played = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, played + 20), "it plays on");
+    CHECK(Run("pactl list sink-inputs | grep -q 'Sample Specification: float32le 2ch 44100Hz'"),
+          "reopened at 44.1 kHz");
+    CHECK(Run("pactl set-default-sink maud-test-sink"), "restore the default");
+    CHECK(WaitFor(context, maud_notifyStreamMoved, home, &record), "it moves back");
+    CHECK(WaitFor(context, maud_notifyStreamFormatChanged, (maudDeviceId){0, 0}, &record) &&
+              record.sampleRate == before.sampleRate,
+          "at its first rate");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(Run("pactl unload-module module-null-sink"), "unload it");
+    CHECK(WaitFor(context, maud_notifyDeviceRemoved, other, &record), "it is removed");
+}
+
 // The server restarted: a playing stream plays on the new one, and one
 // stopped across the restart starts on it.
 static void TestRestart(maudContext* context)
@@ -662,6 +704,7 @@ int main(void)
     TestInputStream(context);
     TestDuplexConverted(context);
     TestPinnedStream(context);
+    TestFollowRate(context);
     TestRestart(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestNativeFallback();

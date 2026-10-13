@@ -8,9 +8,10 @@
 // any estimate they are 0.1 s with none counted; without a closest-hit
 // query an estimate gives 0.1 s; a listener outside the room hears no
 // reverberation, and with a host's any-hit query that
-// blocks every path, which lights nothing, too; a def asking for no
-// estimates refuses
-// them; ray counts out of range and bad air are refused.
+// blocks every path, which lights nothing, too; without an any-hit
+// query every path is clear, which in the convex office gives the
+// scene query's times bit for bit; a def asking for no estimates
+// refuses them; ray counts out of range and bad air are refused.
 
 #include "test_harness.h"
 
@@ -18,6 +19,7 @@
 #include "maul-audio/spatializer.h"
 
 #include <math.h>
+#include <string.h>
 
 static maudAcousticScene* Office(void)
 {
@@ -60,10 +62,10 @@ static void Finish(void* userTask, void* userContext)
     (void)userContext;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene, bool tasks)
+static maudSpatializer* Create(maudAcousticScene* scene, bool tasks, maudAnyHitFn* anyHit)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
+    def.anyHit = anyHit;
     def.closestHit = maudSceneClosestHit;
     def.rayContext = scene;
     def.reverbRays = 1024;
@@ -85,8 +87,8 @@ static const maudPose s_listener = {{1.85f, 1.64f, 1.35f}, {0.0f, 0.0f, 0.0f, 1.
 static void TestEstimate(void)
 {
     maudAcousticScene* scene = Office();
-    maudSpatializer* plain = Create(scene, false);
-    maudSpatializer* tasked = Create(scene, true);
+    maudSpatializer* plain = Create(scene, false, maudSceneAnyHit);
+    maudSpatializer* tasked = Create(scene, true, maudSceneAnyHit);
     maudReverbResult result;
     CHECK(maudGetReverbResult(plain, &result) == maud_errorInvalid, "nothing latched yet");
     CHECK(maudSimulateDirect(plain, &s_listener) == maud_success, "a direct step");
@@ -167,6 +169,32 @@ static void TestBlocked(void)
     maudDestroyAcousticScene(scene);
 }
 
+// The office is convex: from inside, nothing stands between a wall's
+// point and the listener, so an any-hit query that clears every path is
+// the scene's own.
+static void TestNoAnyHit(void)
+{
+    maudAcousticScene* scene = Office();
+    maudSpatializer* queried = Create(scene, false, maudSceneAnyHit);
+    maudSpatializer* clear = Create(scene, false, nullptr);
+    maudReverbResult a;
+    maudReverbResult b;
+    CHECK(maudSimulateReverb(queried, &s_listener) == maud_success &&
+              maudSimulateDirect(queried, &s_listener) == maud_success &&
+              maudLatchResults(queried) == 1 && maudGetReverbResult(queried, &a) == maud_success,
+          "an estimate with the scene's any-hit query");
+    CHECK(maudSimulateReverb(clear, &s_listener) == maud_success &&
+              maudSimulateDirect(clear, &s_listener) == maud_success &&
+              maudLatchResults(clear) == 1 && maudGetReverbResult(clear, &b) == maud_success,
+          "an estimate without one");
+    CHECK(memcmp(a.reverbTime, b.reverbTime, sizeof(a.reverbTime)) == 0 &&
+              memcmp(a.level, b.level, sizeof(a.level)) == 0 && b.reverbTime[1] > 0.5f,
+          "every path clear: the scene's times and levels");
+    maudDestroySpatializer(queried);
+    maudDestroySpatializer(clear);
+    maudDestroyAcousticScene(scene);
+}
+
 static void TestMisuse(void)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
@@ -210,6 +238,7 @@ int main(void)
 {
     TestEstimate();
     TestBlocked();
+    TestNoAnyHit();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
 }
