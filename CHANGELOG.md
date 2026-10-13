@@ -8,6 +8,17 @@ format.
 
 ## [Unreleased]
 
+### Added
+
+- `maud_notifyDeviceFormatChanged`: a device's native layout or rates
+  changed, as when a user picks another format in the system's
+  settings, a PulseAudio sink or PipeWire's graph changes rate, or
+  PipeWire tells a node's channels only after listing it. The record
+  names the device and its native rate. These changes were applied to
+  `maudDeviceInfo` before, without a record.
+- `maudSetOfflineDeviceFormat`: changes an offline device's native
+  layout and rate, posting that record, so a host can rehearse it.
+
 ## [0.3.1] - 2026-10-11
 
 A stream keeps playing after the audio service restarts on macOS or

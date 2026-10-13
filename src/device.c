@@ -272,17 +272,35 @@ void maudSetDeviceSpatializer(maudContext* context, maudDeviceSlot* slot,
                                   });
 }
 
-// Takes a scanned device's info; true when its native rate changed.
-static bool Update(maudContext* context, maudDeviceSlot* slot, const maudDeviceInfo* info)
+bool maudSetDeviceFormat(maudContext* context, maudDeviceSlot* slot, const maudDeviceInfo* info)
 {
-    maudSetDeviceForm(context, slot, info->form);
-    maudSetDeviceSpatializer(context, slot, info);
+    if (slot->info.nativeLayout == info->nativeLayout &&
+        slot->info.nativeSampleRate == info->nativeSampleRate &&
+        slot->info.minSampleRate == info->minSampleRate &&
+        slot->info.maxSampleRate == info->maxSampleRate)
+    {
+        return false;
+    }
     bool rateChanged = slot->info.nativeSampleRate != info->nativeSampleRate;
     slot->info.nativeLayout = info->nativeLayout;
     slot->info.nativeSampleRate = info->nativeSampleRate;
     slot->info.minSampleRate = info->minSampleRate;
     slot->info.maxSampleRate = info->maxSampleRate;
+    maudPostNotification(context, &(maudNotification){
+                                      .kind = maud_notifyDeviceFormatChanged,
+                                      .direction = slot->info.direction,
+                                      .device = IdOf(context, slot),
+                                      .sampleRate = info->nativeSampleRate,
+                                  });
     return rateChanged;
+}
+
+// Takes a scanned device's info; true when its native rate changed.
+static bool Update(maudContext* context, maudDeviceSlot* slot, const maudDeviceInfo* info)
+{
+    maudSetDeviceForm(context, slot, info->form);
+    maudSetDeviceSpatializer(context, slot, info);
+    return maudSetDeviceFormat(context, slot, info);
 }
 
 maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, uint32_t count,

@@ -351,6 +351,11 @@ MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceForm(maudContext* context
 Changes what a device leads to, as plugging headphones into its jack does: a change posts maud_notifyRouteChanged.  @param context  An offline context. @param device   The device. @param form     Its new form. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL context or an unknown form; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` on a thread rendering one of the context's streams. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
+MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceFormat(maudContext* context, maudDeviceId device, maudChannelLayout layout, uint32_t sampleRate);
+```
+Changes a device's native layout and rate, as a user picking another format in the system's settings does: a change posts maud_notifyDeviceFormatChanged, and streams on the device that follow its rate take the new one.  @param context     An offline context. @param device      The device. @param layout      Its new layout. @param sampleRate  Its new native rate, 8,000 to 384,000. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL context, an unknown layout or a rate out of range; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` on a thread rendering one of the context's streams. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+
+```c
 MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceSpatializer( maudContext* context, maudDeviceId device, maudPlatformSpatializer spatializer, bool headTracking, uint32_t objects);
 ```
 Changes what a platform spatializer does on an output device, as a user turning one on does: a change posts maud_notifySpatializerChanged. Offline outputs start with none.  @param context       An offline context. @param device        An output device. @param spatializer   Its new state. @param headTracking  Whether it can follow the listener's head. @param objects       The positioned objects it takes; 0 unless on. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL context, an unknown state, objects while not on, or an input device; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` on a thread rendering one of the context's streams. @par Thread safety Safe from any thread; the context is used by one thread at a time.
@@ -731,4 +736,4 @@ Takes the echo of the render out of the capture, in place, in any count of frame
 
 ---
 
-130 functions across 19 headers.
+131 functions across 19 headers.

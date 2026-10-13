@@ -91,8 +91,9 @@ static void OnNodeParam(void* data, int seq, uint32_t id, uint32_t index, uint32
         spa_pod_find_prop(param, nullptr, SPA_FORMAT_AUDIO_channels);
     if (channels != nullptr)
     {
-        slot->info.nativeLayout =
-            maudLayoutWithChannels(maudPipewireChoiceDefault(&channels->value));
+        maudDeviceInfo info = slot->info;
+        info.nativeLayout = maudLayoutWithChannels(maudPipewireChoiceDefault(&channels->value));
+        (void)maudSetDeviceFormat(node->owner->context, slot, &info);
     }
 }
 
@@ -256,9 +257,11 @@ static void UpdateGraphRate(maudPipewire* pipewire)
                                    : nullptr;
         if (slot != nullptr)
         {
-            slot->info.nativeSampleRate = rate;
-            slot->info.minSampleRate = rate;
-            slot->info.maxSampleRate = rate;
+            maudDeviceInfo info = slot->info;
+            info.nativeSampleRate = rate;
+            info.minSampleRate = rate;
+            info.maxSampleRate = rate;
+            (void)maudSetDeviceFormat(pipewire->context, slot, &info);
         }
     }
     maudRefreshNativeRates(pipewire->context);

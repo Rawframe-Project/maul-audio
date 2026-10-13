@@ -107,6 +107,27 @@ extern "C"
                                                                 maudDeviceId device,
                                                                 maudDeviceForm form);
 
+    /// Changes a device's native layout and rate, as a user picking another
+    /// format in the system's settings does: a change posts
+    /// maud_notifyDeviceFormatChanged, and streams on the device that
+    /// follow its rate take the new one.
+    ///
+    /// @param context     An offline context.
+    /// @param device      The device.
+    /// @param layout      Its new layout.
+    /// @param sampleRate  Its new native rate, 8,000 to 384,000.
+    /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
+    ///         NULL context, an unknown layout or a rate out of range;
+    ///         `maud_errorUnsupported` on a context that is not offline;
+    ///         `maud_errorState` on a thread rendering one of the context's
+    ///         streams.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time.
+    MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceFormat(maudContext* context,
+                                                                  maudDeviceId device,
+                                                                  maudChannelLayout layout,
+                                                                  uint32_t sampleRate);
+
     /// Changes what a platform spatializer does on an output device, as a
     /// user turning one on does: a change posts
     /// maud_notifySpatializerChanged. Offline outputs start with none.

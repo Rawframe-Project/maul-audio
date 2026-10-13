@@ -72,7 +72,7 @@ noise_suppressor: allocator real_fft voice_dsp
 notify: backend context context_core invariant
 occlusion:
 octave_eq: least_squares
-offline: context context_core device
+offline: context context_core device follow
 partitioned: real_fft
 period:
 path_refine:

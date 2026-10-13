@@ -3,8 +3,8 @@
 //
 // Devices on the offline backend: enumeration, names and keys, defaults
 // per role, streams following a default and moving, device loss,
-// suspension and resumption, format changes, and the notification
-// queue's overflow record.
+// suspension and resumption, format changes (a stream's, and a
+// device's own), and the notification queue's overflow record.
 
 #include "test_harness.h"
 
@@ -460,6 +460,58 @@ static void TestSpatializerChanges(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// A device's native format is part of its info: a change is one record
+// naming the device and its rate, and a stream on it that follows its
+// rate takes the new one; the same format again is no change.
+static void TestFormatChanges(void)
+{
+    maudContext* context = Offline(16);
+    maudDeviceId output = {0, 0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+              maud_success,
+          "the starting output");
+    Blocks blocks = {0};
+    maudStreamId stream = OpenOutput(context, output, maud_roleGeneral, &blocks);
+    while (maudNextNotification(context, &(maudNotification){0}) == maud_success)
+    {
+    }
+    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layout5Point1, 96000) == maud_success,
+          "another format picked");
+    maudNotification record = Expect(context, maud_notifyDeviceFormatChanged, "a record");
+    CHECK(Same(record.device, output) && record.direction == maud_directionOutput &&
+              record.sampleRate == 96000,
+          "naming the device and its rate");
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
+              info.nativeLayout == maud_layout5Point1 && info.nativeSampleRate == 96000,
+          "which its info reports");
+    record = Expect(context, maud_notifyStreamFormatChanged, "the stream follows");
+    CHECK(SameStream(record.stream, stream) && record.sampleRate == 96000, "to the new rate");
+    ExpectDrained(context, "nothing more");
+    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layout5Point1, 96000) == maud_success,
+          "the same again");
+    ExpectDrained(context, "is no change");
+    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 96000) == maud_success,
+          "the layout alone");
+    Expect(context, maud_notifyDeviceFormatChanged, "is a change");
+    ExpectDrained(context, "which the stream's rate does not follow");
+    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layoutNone, 48000) ==
+                  maud_errorInvalid &&
+              maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 7999) ==
+                  maud_errorInvalid &&
+              maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 384001) ==
+                  maud_errorInvalid,
+          "no layout, rates out of range");
+    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 8000) == maud_success &&
+              maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 384000) ==
+                  maud_success,
+          "the rates' ends");
+    CHECK(maudSetOfflineDeviceFormat(context, (maudDeviceId){3, 7}, maud_layoutStereo, 48000) ==
+              maud_errorStale,
+          "a stale device");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 int main(void)
 {
     TestStartingDevices();
@@ -471,5 +523,6 @@ int main(void)
     TestRefusals();
     TestRouteChanges();
     TestSpatializerChanges();
+    TestFormatChanges();
     return s_failures == 0 ? 0 : 1;
 }

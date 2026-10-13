@@ -47,6 +47,12 @@ extern "C"
         // changed (maudDeviceInfo's spatializer, headTracking and
         // spatialObjects).
         maud_notifySpatializerChanged = 11,
+        // device, of direction, now runs natively at another format
+        // (maudDeviceInfo's nativeLayout or its rates), as when a user
+        // picks another in the system's settings or the platform tells
+        // its channels only after listing it; sampleRate is its native
+        // rate. Streams that follow its rate report their own change.
+        maud_notifyDeviceFormatChanged = 12,
     };
 
     // One change. Fields a kind does not name are zero.

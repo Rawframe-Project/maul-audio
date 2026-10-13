@@ -350,28 +350,19 @@ static bool SetEffectiveDefault(maudContext* context, Helper* helper, const char
 }
 
 // A node whose properties lack its channel count: its layout comes from
-// its formats, which arrive after it is listed (the context takes them
-// in while notifications are drained).
+// its formats, which arrive after it is listed and are reported.
 static void TestLayoutFromFormats(maudContext* context, Helper* helper)
 {
     maudDeviceId plugged = {0, 0};
     PlugSurround(helper);
     CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-surround", &plugged), "plugged in");
+    maudDeviceId changed = plugged;
+    CHECK(WaitFor(context, maud_notifyDeviceFormatChanged, nullptr, &changed),
+          "its format reported");
     maudDeviceInfo info = {0};
-    for (int tries = 0; tries < NOTICE_TRIES; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        if (maudGetDeviceInfo(context, plugged, &info) != maud_success ||
-            info.nativeLayout == maud_layout5Point1)
-        {
-            break;
-        }
-        Sleep(10);
-    }
-    CHECK(info.nativeLayout == maud_layout5Point1, "5.1 from its formats");
+    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success &&
+              info.nativeLayout == maud_layout5Point1,
+          "5.1 from its formats");
     UnplugSurround(helper);
     maudDeviceId removed = plugged;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");

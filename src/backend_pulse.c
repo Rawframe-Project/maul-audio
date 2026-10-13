@@ -131,10 +131,9 @@ static void ApplyNode(maudPulse* pulse, const Node* reported)
     maudDeviceSlot* slot = node != nullptr ? maudFindDevice(pulse->context, node->device) : nullptr;
     if (slot != nullptr)
     {
-        slot->info.nativeLayout = info.nativeLayout;
-        slot->info.nativeSampleRate = info.nativeSampleRate;
-        slot->info.minSampleRate = info.minSampleRate;
-        slot->info.maxSampleRate = info.maxSampleRate;
+        // The server converts a stream to its sink's rate: the stream
+        // keeps its own.
+        (void)maudSetDeviceFormat(pulse->context, slot, &info);
         maudSetDeviceForm(pulse->context, slot, info.form);
         return;
     }

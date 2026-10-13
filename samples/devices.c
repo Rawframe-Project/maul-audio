@@ -126,6 +126,8 @@ static const char* KindName(maudNotificationKind kind)
         return "focus changed";
     case maud_notifySpatializerChanged:
         return "spatializer changed";
+    case maud_notifyDeviceFormatChanged:
+        return "device format changed";
     }
     return "unknown";
 }
