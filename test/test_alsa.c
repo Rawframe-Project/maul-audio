@@ -5,7 +5,8 @@
 // run on the default PCM, which the test's own ~/.asoundrc makes a plug
 // over a PulseAudio server whose "hardware" runs at 44.1 kHz only,
 // never the machine's sound hardware; without a server they are
-// skipped, unless MAUD_REQUIRE_ALSA is set.
+// skipped, unless MAUD_REQUIRE_ALSA is set. An allocator refusing each
+// block of a context's creation, and of a stream's, is a capacity error.
 
 #include "test_clock.h"
 #include "test_harness.h"
@@ -441,6 +442,82 @@ static void TestExclusiveRefused(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// An allocator that refuses its call numbered failAt, counting from 1,
+// and counts the blocks still held.
+typedef struct Refusing
+{
+    int calls;
+    int failAt;
+    int live;
+} Refusing;
+
+static void* RefusingAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    Refusing* refusing = context;
+    if (++refusing->calls == refusing->failAt)
+    {
+        return nullptr;
+    }
+    refusing->live++;
+    return malloc(size);
+}
+
+static void RefusingFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    Refusing* refusing = context;
+    refusing->live--;
+    free(memory);
+}
+
+// A refused block of a context's creation, or of a stream's, is a
+// capacity error that holds nothing; the context stays usable.
+static void TestRefusingAllocator(bool server)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendAlsa;
+    Refusing refusing = {0};
+    def.allocator = (maudAllocator){RefusingAlloc, RefusingFree, &refusing};
+    maudContext* context = nullptr;
+    for (int failAt = 1; failAt < 64 && context == nullptr; ++failAt)
+    {
+        refusing = (Refusing){.failAt = failAt};
+        maudResult result = maudCreateContext(&def, &context);
+        CHECK(result == maud_success ||
+                  (result == maud_errorCapacity && context == nullptr && refusing.live == 0),
+              "a refused block is a capacity error, and nothing is held");
+    }
+    CHECK(context != nullptr, "created once the allocator gives every block");
+    if (context == nullptr)
+    {
+        return;
+    }
+    int held = refusing.live;
+    Blocks blocks = {0};
+    maudStreamDef streamDef = maudDefaultStreamDef();
+    streamDef.callback = CountBlocks;
+    streamDef.user = &blocks;
+    maudStreamId stream = {0, 0};
+    bool opened = !server;
+    for (int ahead = 1; ahead < 16 && !opened; ++ahead)
+    {
+        refusing.failAt = refusing.calls + ahead;
+        maudResult result = maudCreateStream(context, &streamDef, &stream);
+        opened = result == maud_success;
+        CHECK(opened ||
+                  (result == maud_errorCapacity && stream.index1 == 0 && refusing.live == held),
+              "a refused stream block is a capacity error, and nothing is held");
+    }
+    CHECK(opened, "a stream once the allocator gives every block");
+    if (server && opened)
+    {
+        CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stream");
+    }
+    CHECK(maudDestroyContext(context) == maud_success && refusing.live == 0, "every block back");
+}
+
 int main(void)
 {
     if (!UseTestHome())
@@ -474,5 +551,6 @@ int main(void)
     }
     CHECK(server || getenv("MAUD_REQUIRE_ALSA") == nullptr, "a server for the streams");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    TestRefusingAllocator(server);
     return s_failures == 0 ? 0 : 1;
 }
