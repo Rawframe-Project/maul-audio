@@ -6,7 +6,8 @@
 // later sink is the default takes it), a sink added, made the default
 // and removed with pactl, a source added and removed, a stream that
 // follows the default reopened at a new default's rate, a context of
-// one device and one whose allocator refuses, and the server
+// one device (refusing scripted devices) and one whose allocator
+// refuses, and the server
 // restarted when MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START
 // name commands. Without a server the test is skipped, unless
 // MAUD_REQUIRE_PULSE is set.
@@ -16,6 +17,7 @@
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
+#include "maul-audio/offline.h"
 #include "maul-audio/stream.h"
 
 #include <dirent.h>
@@ -581,6 +583,9 @@ static void TestFollowRate(maudContext* context)
           "a native stream at the default's rate");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    float frames[2];
+    CHECK(maudRenderStream(context, stream, frames, 1) == maud_errorUnsupported,
+          "the server's thread renders it, not the host");
     CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-follow rate=44100 "
               "sink_properties=device.description=Follow > /dev/null"),
           "load a 44.1 kHz sink");
@@ -717,6 +722,9 @@ static void TestLimits(void)
               maudGetDevices(context, maud_directionInput, ids, 4, &inputs) == maud_success &&
               outputs + inputs == 1,
           "one device listed");
+    maudOfflineDeviceDef scripted = maudDefaultOfflineDeviceDef();
+    CHECK(maudAddOfflineDevice(context, &scripted, &ids[0]) == maud_errorUnsupported,
+          "no scripted devices on a server's context");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     def = maudDefaultContextDef();
     def.backend = maud_backendPulse;

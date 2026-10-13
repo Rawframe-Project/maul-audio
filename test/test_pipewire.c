@@ -3,7 +3,8 @@
 //
 // The PipeWire backend against a running daemon: its devices, a device
 // plugged in and out, and a default changed, with a second PipeWire
-// client of the test's own doing the plugging. Without a daemon the
+// client of the test's own doing the plugging, a context of one device
+// and one whose allocator refuses. Without a daemon the
 // test is skipped, unless MAUD_REQUIRE_PIPEWIRE is set.
 
 #include "test_clock.h"
@@ -852,6 +853,78 @@ static void TestExclusiveRefused(maudContext* context)
           "exclusive use is refused");
 }
 
+// An allocator that refuses its call numbered failAt, counting from 1,
+// and counts the blocks still held.
+typedef struct Refusing
+{
+    int calls;
+    int failAt;
+    int live;
+} Refusing;
+
+static void* RefusingAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    Refusing* refusing = context;
+    if (++refusing->calls == refusing->failAt)
+    {
+        return nullptr;
+    }
+    refusing->live++;
+    return malloc(size);
+}
+
+static void RefusingFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    Refusing* refusing = context;
+    refusing->live--;
+    free(memory);
+}
+
+// A context of one device keeps one of the daemon's nodes and drops the
+// rest; a context whose allocator refuses any of its creation's blocks
+// is refused for capacity and holds nothing.
+static void TestLimits(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendPipewire;
+    def.limits.devices = 1;
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&def, &context) == maud_success, "a context of one device");
+    maudDeviceId ids[4];
+    uint32_t outputs = 0;
+    uint32_t inputs = 0;
+    CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &outputs) == maud_success &&
+              maudGetDevices(context, maud_directionInput, ids, 4, &inputs) == maud_success &&
+              outputs + inputs == 1,
+          "one device listed");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    def = maudDefaultContextDef();
+    def.backend = maud_backendPipewire;
+    bool created = false;
+    for (int failAt = 1; failAt < 64 && !created; ++failAt)
+    {
+        Refusing refusing = {.failAt = failAt};
+        def.allocator = (maudAllocator){RefusingAlloc, RefusingFree, &refusing};
+        context = nullptr;
+        maudResult result = maudCreateContext(&def, &context);
+        created = result == maud_success;
+        if (created)
+        {
+            CHECK(maudDestroyContext(context) == maud_success && refusing.live == 0,
+                  "every block back");
+        }
+        else
+        {
+            CHECK(result == maud_errorCapacity && context == nullptr && refusing.live == 0,
+                  "a refused block is a capacity error, and nothing is held");
+        }
+    }
+    CHECK(created, "created once the allocator gives every block");
+}
+
 int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -897,5 +970,6 @@ int main(void)
     }
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    TestLimits();
     return s_failures == 0 ? 0 : 1;
 }

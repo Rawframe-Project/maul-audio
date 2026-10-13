@@ -388,6 +388,23 @@ static void TestStreamLimitAndStaleIds(void)
     CHECK(maudRenderStream(context, first, frames, 1) == maud_errorStale, "render stale");
     maudStreamClock clock = {0};
     CHECK(maudGetStreamClock(context, first, &clock) == maud_errorStale, "a stale stream's clock");
+    maudStreamStatus status;
+    maudStreamFormat format;
+    uint64_t position = 0;
+    CHECK(maudGetStreamStatus(context, first, &status) == maud_errorStale &&
+              maudGetStreamFormat(context, first, &format) == maud_errorStale &&
+              maudGetStreamPosition(context, first, &position) == maud_errorStale,
+          "a stale stream's status, format and position");
+    CHECK(maudGetStreamStatus(nullptr, second, &status) == maud_errorInvalid &&
+              maudGetStreamStatus(context, second, nullptr) == maud_errorInvalid &&
+              maudGetStreamFormat(nullptr, second, &format) == maud_errorInvalid &&
+              maudGetStreamFormat(context, second, nullptr) == maud_errorInvalid &&
+              maudGetStreamPosition(nullptr, second, &position) == maud_errorInvalid &&
+              maudGetStreamPosition(context, second, nullptr) == maud_errorInvalid &&
+              maudGetStreamClock(nullptr, second, &clock) == maud_errorInvalid &&
+              maudGetStreamClock(context, second, nullptr) == maud_errorInvalid &&
+              maudStartStream(nullptr, second) == maud_errorInvalid,
+          "no context or nowhere to write");
     maudStreamId reused = Open(context, &def);
     CHECK(reused.index1 == first.index1 && reused.generation != first.generation,
           "a reused slot gets a new generation");
@@ -399,7 +416,6 @@ static void TestStreamLimitAndStaleIds(void)
     CHECK(maudCreateStream(nullptr, &def, &junk) == maud_errorInvalid && junk.index1 == 0 &&
               junk.generation == 0 && maudCreateStream(context, &def, nullptr) == maud_errorInvalid,
           "a refused stream's id cleared; no id to write");
-    (void)second;
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 

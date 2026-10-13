@@ -4,7 +4,8 @@
 // Devices on the offline backend: enumeration, names and keys, defaults
 // per role, streams following a default and moving, device loss,
 // suspension and resumption, format changes (a stream's, and a
-// device's own), and the notification queue's overflow record.
+// device's own), the notification queue's overflow record, and the
+// scripting calls refused without a context and inside a callback.
 
 #include "test_harness.h"
 
@@ -512,6 +513,87 @@ static void TestFormatChanges(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// What the scripting calls return inside a render callback.
+typedef struct Inside
+{
+    maudContext* context;
+    maudDeviceId device;
+    maudResult results[6];
+    uint32_t blocks;
+} Inside;
+
+static void ScriptInside(const maudStreamBlock* block, void* user)
+{
+    (void)block;
+    Inside* inside = user;
+    if (inside->blocks++ > 0)
+    {
+        return;
+    }
+    maudContext* context = inside->context;
+    maudOfflineDeviceDef def = maudDefaultOfflineDeviceDef();
+    maudDeviceId added;
+    inside->results[0] = maudAddOfflineDevice(context, &def, &added);
+    inside->results[1] = maudRemoveOfflineDevice(context, inside->device);
+    inside->results[2] = maudSetOfflineDefaultDevice(context, maud_roleGeneral, inside->device);
+    inside->results[3] = maudSetOfflineDeviceForm(context, inside->device, maud_formHeadphones);
+    inside->results[4] =
+        maudSetOfflineDeviceFormat(context, inside->device, maud_layoutStereo, 44100);
+    inside->results[5] =
+        maudSetOfflineDeviceSpatializer(context, inside->device, maud_spatializerOff, false, 0);
+}
+
+// Every scripting call refuses a NULL context, and a thread rendering
+// one of the context's streams, counting that as misuse; the device is
+// untouched.
+static void TestScriptGuards(void)
+{
+    maudOfflineDeviceDef def = maudDefaultOfflineDeviceDef();
+    maudDeviceId id = {7, 7};
+    CHECK(maudAddOfflineDevice(nullptr, &def, &id) == maud_errorInvalid && id.index1 == 0,
+          "add without a context");
+    CHECK(maudRemoveOfflineDevice(nullptr, (maudDeviceId){1, 1}) == maud_errorInvalid &&
+              maudSetOfflineDefaultDevice(nullptr, maud_roleGeneral, (maudDeviceId){1, 1}) ==
+                  maud_errorInvalid &&
+              maudSetOfflineDeviceForm(nullptr, (maudDeviceId){1, 1}, maud_formHeadphones) ==
+                  maud_errorInvalid &&
+              maudSetOfflineDeviceFormat(nullptr, (maudDeviceId){1, 1}, maud_layoutStereo, 44100) ==
+                  maud_errorInvalid &&
+              maudSetOfflineDeviceSpatializer(nullptr, (maudDeviceId){1, 1}, maud_spatializerOff,
+                                              false, 0) == maud_errorInvalid,
+          "the rest without a context");
+    maudContext* context = Offline(16);
+    Inside inside = {.context = context};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &inside.device) ==
+              maud_success,
+          "the default output");
+    maudStreamDef stream = maudDefaultStreamDef();
+    stream.mode = maud_modePull;
+    stream.callback = ScriptInside;
+    stream.user = &inside;
+    maudStreamId streamId;
+    CHECK(maudCreateStream(context, &stream, &streamId) == maud_success &&
+              maudStartStream(context, streamId) == maud_success,
+          "a stream");
+    uint64_t misuse = maudGetContextMisuse(context);
+    float frames[2 * 64];
+    CHECK(maudRenderStream(context, streamId, frames, 64) == maud_success && inside.blocks == 1,
+          "rendered");
+    bool refused = true;
+    for (int i = 0; i < 6; ++i)
+    {
+        refused = refused && inside.results[i] == maud_errorState;
+    }
+    CHECK(refused, "every call refused inside the callback");
+    CHECK(maudGetContextMisuse(context) == misuse + 6, "each counted");
+    maudDeviceInfo info = {0};
+    CHECK(maudGetDeviceInfo(context, inside.device, &info) == maud_success &&
+              info.form != maud_formHeadphones && info.nativeSampleRate != 44100,
+          "the device untouched");
+    ExpectDrained(context, "nothing posted");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 int main(void)
 {
     TestStartingDevices();
@@ -524,5 +606,6 @@ int main(void)
     TestRouteChanges();
     TestSpatializerChanges();
     TestFormatChanges();
+    TestScriptGuards();
     return s_failures == 0 ? 0 : 1;
 }
