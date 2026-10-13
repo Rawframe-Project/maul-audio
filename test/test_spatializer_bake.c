@@ -440,6 +440,14 @@ static void TestFile(maudAcousticScene* scene)
     CHECK(maudDestroyProbeSet(loaded, again) == maud_success &&
               maudLoadProbeSet(loaded, bareBytes, bareSize, &again) == maud_success,
           "probes and links alone load anywhere");
+    maudSpatializerDef noSets = maudDefaultSpatializerDef();
+    noSets.probeSetCapacity = 0;
+    maudSpatializer* none = nullptr;
+    CHECK(maudCreateSpatializer(&noSets, &none) == maud_success &&
+              maudLoadProbeSet(none, bareBytes, bareSize, &refused) == maud_errorCapacity &&
+              refused.index1 == 0,
+          "no sets asked for, none taken");
+    maudDestroySpatializer(none);
     CHECK(maudLoadProbeSet(nullptr, bytes, size, &again) == maud_errorInvalid &&
               maudSaveProbeSet(plain, bare, nullptr, 0, nullptr) == maud_errorInvalid,
           "NULL");

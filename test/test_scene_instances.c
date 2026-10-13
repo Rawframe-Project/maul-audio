@@ -5,7 +5,8 @@
 // over a static floor answer 4,000 random rays as a static scene of the
 // same triangles carried into the world does (any-hit and closest-hit
 // alike but for rays grazing an edge, distances within 1e-4, the same
-// normals and materials); a ray onto a box's top lands at the exact
+// normals and materials), and so do 36, which the instances' own tree
+// holds in more than one level; a ray onto a box's top lands at the exact
 // distance; a quarter turn about +y carries +x to -z; changes wait for
 // a commit; ties go to the static scene, then the lower slot; a ray
 // ending exactly on an instance hits it; limits, stale ids and
@@ -64,11 +65,34 @@ static void Turn(maudQuaternion q, const double* p, double* out)
     out[2] = p[2] + w * t[2] + (x * t[1] - y * t[0]);
 }
 
-static const maudInstanceTransform s_transforms[4] = {
+#define MANY 36
+
+// The first four by hand; the rest on a 4 by 8 grid above them, each
+// turned and scaled its own way (Fill).
+static maudInstanceTransform s_transforms[MANY] = {
     {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f},
     {{3.0f, 2.0f, -2.0f}, {0.2f, 0.7f, -0.1f, 0.6f}, 2.5f},
     {{-4.0f, 1.5f, 3.0f}, {-0.5f, 0.1f, 0.3f, 0.8f}, 0.5f},
     {{1.0f, 4.0f, 4.0f}, {0.0f, 1.0f, 0.0f, 1.0f}, 1.7f}};
+
+static void Fill(void)
+{
+    for (int i = 4; i < MANY; ++i)
+    {
+        int k = i - 4;
+        float a = 0.37f * (float)k;
+        float x = sinf(a);
+        float y = cosf(a * 1.3f);
+        float z = sinf(a * 0.7f);
+        float w = 1.0f + 0.1f * (float)(k % 5);
+        float n = sqrtf(x * x + y * y + z * z + w * w);
+        s_transforms[i] =
+            (maudInstanceTransform){{-7.0f + 2.0f * (float)(k % 8), 5.5f + 0.4f * (float)(k % 3),
+                                     -6.0f + 3.0f * (float)(k / 8)},
+                                    {x / n, y / n, z / n, w / n},
+                                    0.4f + 0.05f * (float)(k % 7)};
+    }
+}
 
 static Box s_unit;
 static Box s_floor;
@@ -100,17 +124,17 @@ static void CountedFree(void* memory, size_t size, size_t alignment, void* conte
     free(memory);
 }
 
-static maudAcousticScene* Instanced(void)
+static maudAcousticScene* Instanced(int count)
 {
     maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
     def.meshes = &s_floor.mesh;
     def.meshCount = 1;
     def.instanceMeshes = &s_unit.mesh;
     def.instanceMeshCount = 1;
-    def.instanceCapacity = 4;
+    def.instanceCapacity = (uint32_t)count;
     maudAcousticScene* scene = nullptr;
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an instanced scene");
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < count; ++i)
     {
         maudSceneInstanceId id;
         CHECK(maudCreateSceneInstance(scene, 0, &s_transforms[i], &id) == maud_success,
@@ -121,11 +145,11 @@ static maudAcousticScene* Instanced(void)
 }
 
 // The same triangles carried into the world, as static meshes.
-static maudAcousticScene* Flattened(void)
+static maudAcousticScene* Flattened(int count)
 {
-    static Box boxes[4];
-    maudMesh meshes[5] = {s_floor.mesh};
-    for (int i = 0; i < 4; ++i)
+    static Box boxes[MANY];
+    maudMesh meshes[1 + MANY] = {s_floor.mesh};
+    for (int i = 0; i < count; ++i)
     {
         boxes[i] = s_unit;
         for (int k = 0; k < 8; ++k)
@@ -144,7 +168,7 @@ static maudAcousticScene* Flattened(void)
     }
     maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
     def.meshes = meshes;
-    def.meshCount = 5;
+    def.meshCount = 1 + (uint32_t)count;
     maudAcousticScene* scene = nullptr;
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a flattened scene");
     return scene;
@@ -155,10 +179,10 @@ static float Random(float low, float high)
     return low + (high - low) * (float)rand() / (float)RAND_MAX;
 }
 
-static void TestAgainstFlattened(void)
+static void TestAgainstFlattened(int count)
 {
-    maudAcousticScene* a = Instanced();
-    maudAcousticScene* b = Flattened();
+    maudAcousticScene* a = Instanced(count);
+    maudAcousticScene* b = Flattened(count);
     srand(5);
     uint32_t anyWrong = 0;
     uint32_t hitWrong = 0;
@@ -193,9 +217,9 @@ static void TestAgainstFlattened(void)
         worst = fmax(worst, fabs((double)ha.distance - (double)hb.distance));
         hitWrong += ha.material != hb.material || dot < 0.9999 ? 1 : 0;
     }
-    printf("against flattened: %u hits; any-hit %u differ, closest %u differ; worst distance "
-           "%.2e m\n",
-           hits, anyWrong, hitWrong, worst);
+    printf("%d instances against flattened: %u hits; any-hit %u differ, closest %u differ; "
+           "worst distance %.2e m\n",
+           count, hits, anyWrong, hitWrong, worst);
     CHECK(hits > 1000 && anyWrong <= 4 && hitWrong <= 4 && worst < 1e-4, "as flattened");
     maudDestroyAcousticScene(b);
     maudDestroyAcousticScene(a);
@@ -379,7 +403,9 @@ int main(void)
 {
     MakeBox(&s_unit, (maudVector3){-0.5f, -0.5f, -0.5f}, (maudVector3){0.5f, 0.5f, 0.5f}, 10);
     MakeBox(&s_floor, (maudVector3){-10.0f, -0.2f, -10.0f}, (maudVector3){10.0f, 0.0f, 10.0f}, 0);
-    TestAgainstFlattened();
+    Fill();
+    TestAgainstFlattened(4);
+    TestAgainstFlattened(MANY);
     TestExactAndTurn();
     TestTies();
     TestRefused();
