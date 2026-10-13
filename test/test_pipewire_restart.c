@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The PipeWire daemon going away and coming back: devices are removed,
-// streams that follow a default wait and then resume on the new daemon.
+// streams that follow a default wait and then resume on the new daemon,
+// and one stopped meanwhile starts on it.
 // The daemon is stopped and started by the commands in
 // MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START; without them,
 // or without a daemon, the test is skipped.
@@ -106,6 +107,10 @@ int main(void)
     Blocks before = {0};
     maudStreamId stream = Follow(context, &before);
     CHECK(WaitForBlocks(context, &before, 10), "playing before");
+    Blocks idle = {0};
+    maudStreamId stopped = Follow(context, &idle);
+    CHECK(WaitForBlocks(context, &idle, 5) && maudStopStream(context, stopped) == maud_success,
+          "a second plays, then stops");
     CHECK(system(stop) == 0, "the daemon stops");
     maudNotification record;
     CHECK(WaitForStream(context, maud_notifyStreamSuspended, stream, &record), "it waits");
@@ -121,6 +126,10 @@ int main(void)
     uint32_t resumed = atomic_load(&before.count);
     CHECK(WaitForBlocks(context, &before, resumed + 20), "and plays on the new daemon");
     CHECK(WaitForBlocks(context, &during, 20), "the late stream plays too");
+    uint32_t idled = atomic_load(&idle.count);
+    CHECK(maudStartStream(context, stopped) == maud_success &&
+              WaitForBlocks(context, &idle, idled + 20),
+          "the stopped one starts on the new daemon");
     CHECK(OutputCount(context) >= 1, "the devices are back");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;
