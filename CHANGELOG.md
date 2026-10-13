@@ -8,6 +8,10 @@ format.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-13
+
+A device's native format changing is now reported.
+
 ### Added
 
 - `maud_notifyDeviceFormatChanged`: a device's native layout or rates
