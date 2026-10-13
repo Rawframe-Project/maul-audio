@@ -51,8 +51,8 @@ figures in `bench/baseline.txt`), per 10 ms of 48 kHz audio:
 | A source into the third-order bed | 2.4 us | about 4,100 sources |
 | The bed decoded binaurally | 123 us | once per listener |
 | A reverb | 53 us | about 190 reverbs |
-| Noise suppression, mono (16 kHz, 48 kHz) | 45, 93 us | |
-| Echo cancellation, mono (16 kHz, 48 kHz) | 93, 287 us | |
+| Noise suppression, mono (16 kHz, 48 kHz) | 33, 69 us | |
+| Echo cancellation, mono (16 kHz, 48 kHz) | 38, 113 us | |
 
 On the web, each feature linked alone costs a page, gzipped: a
 playback stream about 16 KB of WebAssembly and JavaScript, the
