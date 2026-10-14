@@ -17,3 +17,11 @@ target's seed, behind a 0x03 byte.
 The same bake in version 1 of the format, before tails, as the library
 wrote it until tails came: the test requires that it still loads and
 gives the same estimates.
+
+## `office-1.0.0.maudbake`
+
+The office as 1.0.0 baked it, in version 2 of the format. Unlike
+`office.maudbake`, which follows the bake whenever a release changes
+its results, this file is never rewritten: every 1.x must load it, and
+the test requires the estimates it gave at 1.0.0 (a hash of them, the
+same on every platform).

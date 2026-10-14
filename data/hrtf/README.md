@@ -30,3 +30,7 @@ It was generated, not edited, from the published SOFA file:
 - **Result:** 1,652 directions on 37 rings, 128 taps at 48 kHz,
   measured at 1.2 m, format version 2, 853,896 bytes, SHA-256
   `6867385a5f475ff735151daeba145d12e5c7524c9a52cb1be37f65c587deac33`.
+
+The shipped set is also the format's kept file: every 1.x reads
+version 2 of the format, and should the shipped set move to a later
+version, this one stays as test data.

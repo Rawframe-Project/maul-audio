@@ -461,6 +461,54 @@ static void TestFile(maudAcousticScene* scene)
 
 // The office's bake with reflections of order 1 over 0.05 s, against
 // the shipped file.
+#ifndef __EMSCRIPTEN__
+// Loads a kept bake from data/bake into a spatializer like def with
+// materials m, and requires four estimates equal to s's (with no tail
+// when untailed); hashOut receives the estimates' hash.
+static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, const char* name,
+                 maudSpatializer* s, bool untailed, uint64_t* hashOut)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/bake/%s", MAUD_DATA_DIR, name);
+    FILE* in = fopen(path, "rb");
+    uint8_t* bytes = malloc(1 << 20);
+    size_t size = in != nullptr ? fread(bytes, 1, 1 << 20, in) : 0;
+    if (in != nullptr)
+    {
+        fclose(in);
+    }
+    maudSpatializer* kept = nullptr;
+    maudProbeSetId loaded = {0, 0};
+    bool ok = maudCreateSpatializer(def, &kept) == maud_success &&
+              maudSetMaterials(kept, m, 6) == maud_success &&
+              maudLoadProbeSet(kept, bytes, size, &loaded) == maud_success &&
+              maudUseBakedReverb(kept, loaded) == maud_success;
+    uint64_t hash = 1469598103934665603u;
+    for (int i = 0; ok && i < 4; ++i)
+    {
+        maudReverbResult a = At(s, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
+        maudReverbResult b = At(kept, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
+        ok = Same(&a, &b) && (!untailed || a.tailTime[1] == 0.0f);
+        // The estimate's fields alone, as a later 1.x may add fields.
+        float fields[4 * MAUD_DIRECT_BANDS + 1];
+        memcpy(fields, b.reverbTime, sizeof(b.reverbTime));
+        memcpy(fields + MAUD_DIRECT_BANDS, b.level, sizeof(b.level));
+        memcpy(fields + 2 * MAUD_DIRECT_BANDS, b.tailTime, sizeof(b.tailTime));
+        memcpy(fields + 3 * MAUD_DIRECT_BANDS, b.tailLevel, sizeof(b.tailLevel));
+        fields[4 * MAUD_DIRECT_BANDS] = b.delay;
+        const uint8_t* p = (const uint8_t*)fields;
+        for (size_t k = 0; k < sizeof(fields); ++k)
+        {
+            hash = (hash ^ p[k]) * 1099511628211u;
+        }
+    }
+    *hashOut = hash;
+    maudDestroySpatializer(kept);
+    free(bytes);
+    return ok;
+}
+#endif
+
 static void TestGolden(maudAcousticScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
@@ -512,30 +560,13 @@ static void TestGolden(maudAcousticScene* scene)
     free(golden);
     // The same bake in version 1, before tails: it loads, and gives the
     // same estimates (the office decays in one slope).
-    in = fopen(MAUD_DATA_DIR "/bake/office-v1.maudbake", "rb");
-    uint8_t* old = malloc(2 * size);
-    size_t oldSize = in != nullptr ? fread(old, 1, 2 * size, in) : 0;
-    if (in != nullptr)
-    {
-        fclose(in);
-    }
-    maudSpatializer* earlier = nullptr;
-    maudProbeSetId loaded = {0, 0};
-    CHECK(maudCreateSpatializer(&def, &earlier) == maud_success &&
-              maudSetMaterials(earlier, m, 6) == maud_success &&
-              maudLoadProbeSet(earlier, old, oldSize, &loaded) == maud_success &&
-              maudUseBakedReverb(earlier, loaded) == maud_success,
-          "version 1 loads");
-    bool same = true;
-    for (int i = 0; i < 4; ++i)
-    {
-        maudReverbResult a = At(s, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
-        maudReverbResult b = At(earlier, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
-        same = same && Same(&a, &b) && a.tailTime[1] == 0.0f;
-    }
-    CHECK(same, "version 1: the same estimates");
-    maudDestroySpatializer(earlier);
-    free(old);
+    uint64_t answer = 0;
+    CHECK(Kept(&def, m, "office-v1.maudbake", s, true, &answer), "version 1: the same estimates");
+    // The bake 1.0.0 wrote, kept as it was while the golden file follows
+    // the bake: every 1.x loads it and gives the estimates it gave then.
+    CHECK(Kept(&def, m, "office-1.0.0.maudbake", s, false, &answer), "1.0.0's bake loads");
+    printf("1.0.0's bake: estimates hash %016llx\n", (unsigned long long)answer);
+    CHECK(answer == 0x65d285e6a1014f03u, "1.0.0's bake: its estimates");
 #endif
     free(bytes);
     maudDestroySpatializer(s);
