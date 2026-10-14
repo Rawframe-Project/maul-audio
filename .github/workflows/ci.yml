@@ -161,10 +161,11 @@ jobs:
             $(PKG_CONFIG_PATH="$PWD/package/lib/pkgconfig" pkg-config $static --cflags --libs maul-audio)
           LD_LIBRARY_PATH="$PWD/package/lib" ./minimal-pc
 
-  # Each fuzz target runs for one minute on every push, from the shipped
-  # files as seeds: the HRTF set behind a 0x01 byte, the bakes behind a
-  # 0x03 (CMakeLists.txt says what the bytes choose). The loaders are
-  # the Spatial part's, so the Device part is not built.
+  # Each fuzz target runs for one minute on every push, from its corpus
+  # in test/corpus/ and the shipped files: the HRTF set behind a 0x01
+  # byte, the bakes behind a 0x03 (CMakeLists.txt says what the bytes
+  # choose). The loaders are the Spatial part's, so the Device part is
+  # not built.
   fuzz:
     name: fuzz
     runs-on: ubuntu-24.04
@@ -184,6 +185,8 @@ jobs:
       - name: Run
         run: |
           mkdir -p corpus-fuzz_hrtf corpus-fuzz_bake
+          cp test/corpus/fuzz_hrtf/* corpus-fuzz_hrtf/
+          cp test/corpus/fuzz_bake/* corpus-fuzz_bake/
           { printf '\001'; cat data/hrtf/sadie2-ku100-48k.maudhrtf; } > corpus-fuzz_hrtf/seed
           { printf '\003'; cat data/bake/office.maudbake; } > corpus-fuzz_bake/seed
           { printf '\003'; cat data/bake/office-v1.maudbake; } > corpus-fuzz_bake/seed-v1

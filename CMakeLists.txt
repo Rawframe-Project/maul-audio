@@ -644,9 +644,10 @@ if(MAUL_AUDIO_BUILD_TESTS)
 endif()
 
 # The fuzz targets: test/fuzz_<area>.c, run as fuzz_<area> <corpus dir>,
-# over the bytes programs load and hand the library; the shipped HRTF
-# file in data/hrtf/, behind a 0x01 byte, is fuzz_hrtf's seed; the shipped
-# bake in data/bake/, behind a 0x03 byte (fields of order 1), fuzz_bake's.
+# over the bytes programs load and hand the library. Their corpora are in
+# test/corpus/fuzz_<area>/; the shipped HRTF file in data/hrtf/, behind a
+# 0x01 byte, seeds fuzz_hrtf too, and the shipped bakes in data/bake/,
+# behind a 0x03 byte (fields of order 1), fuzz_bake.
 if(MAUL_AUDIO_FUZZ AND MAUL_AUDIO_SPATIAL)
     # The library is instrumented too: its coverage guides libFuzzer, and
     # the sanitizers watch its code, not only the targets'.
