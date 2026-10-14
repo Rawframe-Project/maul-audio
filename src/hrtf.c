@@ -12,25 +12,11 @@
 
 #include <string.h>
 
-#define HRTF_DEF_COOKIE 0x6D687266u
-#define MAX_RATE        384000u
-
-maudHrtfDef maudDefaultHrtfDef(void)
-{
-    return (maudHrtfDef){
-        .cookie = HRTF_DEF_COOKIE,
-        .bytes = nullptr,
-        .byteCount = 0,
-        .sampleRate = 0,
-        .maxDirections = 65536,
-        .maxTaps = 1024,
-        .allocator = {0},
-    };
-}
+#define MAX_RATE 384000u
 
 static bool DefValid(const maudHrtfDef* def)
 {
-    return def->cookie == HRTF_DEF_COOKIE && def->bytes != nullptr &&
+    return def->cookie == MAUD_HRTF_DEF_COOKIE && def->bytes != nullptr &&
            (def->sampleRate == 0 || (def->sampleRate >= 8000 && def->sampleRate <= MAX_RATE)) &&
            def->maxDirections >= 1 && def->maxTaps >= 1 && maudIsAllocatorValid(&def->allocator);
 }
@@ -107,6 +93,10 @@ maudResult maudLoadHrtf(const maudHrtfDef* def, maudHrtf** hrtfOut)
     if (hrtfOut != nullptr)
     {
         *hrtfOut = nullptr;
+    }
+    if (def != nullptr && def->cookie == MAUD_HRTF_DEF_COOKIE && def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
     }
     if (def == nullptr || hrtfOut == nullptr || !DefValid(def))
     {

@@ -43,7 +43,9 @@ if (made != maud_success)
 The default def is built in the program from the headers it includes
 and carries their major and minor version; a library of another major
 or minor refuses it with `maud_errorVersion`, so a program never runs
-against a library that lays its structs out differently.
+against a library that lays its structs out differently. Every def an
+object is made from without a context (an HRTF set's, a spatializer's,
+a voice processor's) carries the version the same way.
 
 The native backend is the platform's: PipeWire, then PulseAudio, then
 ALSA on Linux; WASAPI on Windows; Core Audio on macOS and iOS; AAudio on

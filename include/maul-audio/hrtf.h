@@ -26,6 +26,9 @@ extern "C"
     typedef struct maudHrtfDef
     {
         uint32_t cookie;
+        // MAUD_ABI_VERSION of the headers the program was built with; the
+        // cookie and this stay the first two fields in every version.
+        uint32_t version;
         // The file's bytes; the loader copies what it keeps, so they may
         // go once maudLoadHrtf returns.
         const void* bytes;
@@ -57,20 +60,41 @@ extern "C"
         size_t licenseLength;
     } maudHrtfInfo;
 
+// The cookie of an HRTF def, which its default sets and
+// maudLoadHrtf checks.
+#define MAUD_HRTF_DEF_COOKIE 0x6D687266u
+
     /// Returns the default HRTF def: no bytes, the file's own rate, at most
     /// 65,536 directions and 1,024 taps.
     ///
-    /// @return The def, with a valid cookie.
+    /// The default is built in the program from the headers it includes,
+    /// so the version it stamps is the program's.
+    ///
+    /// @return The def, with a valid cookie and version.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API maudHrtfDef maudDefaultHrtfDef(void);
+    static inline maudHrtfDef maudDefaultHrtfDef(void)
+    {
+#ifdef __cplusplus
+        maudHrtfDef def = {};
+#else
+    maudHrtfDef def = {0};
+#endif
+        def.cookie = MAUD_HRTF_DEF_COOKIE;
+        def.version = MAUD_ABI_VERSION;
+        def.maxDirections = 65536;
+        def.maxTaps = 1024;
+        return def;
+    }
 
     /// Loads an HRTF set from a .maudhrtf file's bytes, checking every
     /// count, size and the checksum before it allocates or trusts anything.
     ///
     /// @param def      The def, from maudDefaultHrtfDef.
     /// @param hrtfOut  Receives the set; NULL on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def
+    /// @return `maud_success`; `maud_errorVersion` for a def stamped with
+    ///         another major or minor version than the library's, checked
+    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a def
     ///         without its cookie or out of range, or bytes that are not a
     ///         well-formed file (a wrong magic, size, ring layout, text or
     ///         checksum); `maud_errorUnsupported` for a format version this

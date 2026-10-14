@@ -98,6 +98,9 @@ extern "C"
     typedef struct maudBinauralDecoderDef
     {
         uint32_t cookie;
+        // MAUD_ABI_VERSION of the headers the program was built with; the
+        // cookie and this stay the first two fields in every version.
+        uint32_t version;
         // The set the decoder is fitted to, at the rate it runs at. The
         // decoder keeps its own filters: the set may go once it exists.
         const maudHrtf* hrtf;
@@ -109,13 +112,32 @@ extern "C"
         maudAllocator allocator;
     } maudBinauralDecoderDef;
 
+// The cookie of a binaural decoder def, which its default sets and
+// maudCreateBinauralDecoder checks.
+#define MAUD_BINAURAL_DECODER_DEF_COOKIE 0x6D616264u
+
     /// Returns the default binaural decoder def: no set, order 3, at most
     /// 1,024 frames per call.
     ///
-    /// @return The def, with a valid cookie.
+    /// The default is built in the program from the headers it includes,
+    /// so the version it stamps is the program's.
+    ///
+    /// @return The def, with a valid cookie and version.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void);
+    static inline maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void)
+    {
+#ifdef __cplusplus
+        maudBinauralDecoderDef def = {};
+#else
+    maudBinauralDecoderDef def = {0};
+#endif
+        def.cookie = MAUD_BINAURAL_DECODER_DEF_COOKIE;
+        def.version = MAUD_ABI_VERSION;
+        def.order = MAUD_MAX_AMBISONIC_ORDER;
+        def.maxFrames = 1024;
+        return def;
+    }
 
     /// Creates a binaural decoder: fits filters to the set by magnitude
     /// least squares (least squares below 1.5 kHz, magnitudes above), each
@@ -126,7 +148,9 @@ extern "C"
     /// @param def         The def, from maudDefaultBinauralDecoderDef,
     ///                    with a set.
     /// @param decoderOut  Receives the decoder; NULL on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
+    /// @return `maud_success`; `maud_errorVersion` for a def stamped with
+    ///         another major or minor version than the library's, checked
+    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, without a set or out of range, or a
     ///         set whose directions cannot carry the order;
     ///         `maud_errorCapacity` when the allocator fails.
@@ -174,6 +198,9 @@ extern "C"
     typedef struct maudSpeakerDecoderDef
     {
         uint32_t cookie;
+        // MAUD_ABI_VERSION of the headers the program was built with; the
+        // cookie and this stay the first two fields in every version.
+        uint32_t version;
         // The layout decoded to.
         maudChannelLayout layout;
         // The order decoded, 1 to MAUD_MAX_AMBISONIC_ORDER; a bed's
@@ -182,12 +209,31 @@ extern "C"
         maudAllocator allocator;
     } maudSpeakerDecoderDef;
 
+// The cookie of a speaker decoder def, which its default sets and
+// maudCreateSpeakerDecoder checks.
+#define MAUD_SPEAKER_DECODER_DEF_COOKIE 0x6D736463u
+
     /// Returns the default speaker decoder def: stereo, order 3.
     ///
-    /// @return The def, with a valid cookie.
+    /// The default is built in the program from the headers it includes,
+    /// so the version it stamps is the program's.
+    ///
+    /// @return The def, with a valid cookie and version.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API maudSpeakerDecoderDef maudDefaultSpeakerDecoderDef(void);
+    static inline maudSpeakerDecoderDef maudDefaultSpeakerDecoderDef(void)
+    {
+#ifdef __cplusplus
+        maudSpeakerDecoderDef def = {};
+#else
+    maudSpeakerDecoderDef def = {0};
+#endif
+        def.cookie = MAUD_SPEAKER_DECODER_DEF_COOKIE;
+        def.version = MAUD_ABI_VERSION;
+        def.layout = maud_layoutStereo;
+        def.order = 3;
+        return def;
+    }
 
     /// Creates a speaker decoder by all-round ambisonic decoding: the bed
     /// decoded to 240 near-uniform virtual speakers with max-rE weights,
@@ -198,7 +244,9 @@ extern "C"
     ///
     /// @param def         The def, from maudDefaultSpeakerDecoderDef.
     /// @param decoderOut  Receives the decoder; NULL on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
+    /// @return `maud_success`; `maud_errorVersion` for a def stamped with
+    ///         another major or minor version than the library's, checked
+    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, an order out of range or a layout
     ///         the library does not have; `maud_errorCapacity` when the
     ///         allocator fails.

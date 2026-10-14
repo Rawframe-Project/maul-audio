@@ -28,12 +28,11 @@
 #include <stdatomic.h>
 #include <string.h>
 
-#define SPATIALIZER_DEF_COOKIE 0x6D617370u
-#define SOURCE_DEF_COOKIE      0x6D61736Fu
-#define MAX_SOURCES            65536u
-#define MAX_SAMPLES            1024u
-#define MAX_SURFACES           16u
-#define MAX_MATERIALS          65536u
+#define SOURCE_DEF_COOKIE 0x6D61736Fu
+#define MAX_SOURCES       65536u
+#define MAX_SAMPLES       1024u
+#define MAX_SURFACES      16u
+#define MAX_MATERIALS     65536u
 // Rays per round of queries, and per query.
 #define ROUND           4096u
 #define BATCH           64u
@@ -49,34 +48,6 @@
 #define MAX_PROBE_PAIRS      16777216u
 #define MAX_PATHS            4096u
 #define SILENT               (-96.0f)
-
-maudSpatializerDef maudDefaultSpatializerDef(void)
-{
-    maudSpatializerDef def = {
-        .cookie = SPATIALIZER_DEF_COOKIE,
-        .sourceCapacity = 256,
-        .maxOcclusionSamples = 64,
-        .anyHit = nullptr,
-        .closestHit = nullptr,
-        .rayContext = nullptr,
-        .maxSurfaces = 4,
-        .materialCapacity = 64,
-        .reverbRays = 2048,
-        .reflectionOrder = 0,
-        .reflectionDuration = 1.0f,
-        .reflectionRate = 48000.0f,
-        .probeSetCapacity = 0,
-        .maxProbes = 4096,
-        .maxProbePairs = 1048576,
-        .maxPaths = 32,
-        .enqueueTask = nullptr,
-        .finishTask = nullptr,
-        .userTaskContext = nullptr,
-        .allocator = {nullptr, nullptr, nullptr},
-    };
-    maudAirAbsorptionOf(20.0, 50.0, def.airAbsorption);
-    return def;
-}
 
 maudSourceDef maudDefaultSourceDef(void)
 {
@@ -239,7 +210,12 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     {
         *spatializerOut = nullptr;
     }
-    if (def == nullptr || spatializerOut == nullptr || def->cookie != SPATIALIZER_DEF_COOKIE ||
+    if (def != nullptr && def->cookie == MAUD_SPATIALIZER_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
+    }
+    if (def == nullptr || spatializerOut == nullptr || def->cookie != MAUD_SPATIALIZER_DEF_COOKIE ||
         def->sourceCapacity == 0 || def->sourceCapacity > MAX_SOURCES ||
         def->maxOcclusionSamples == 0 || def->maxOcclusionSamples > MAX_SAMPLES ||
         def->maxSurfaces == 0 || def->maxSurfaces > MAX_SURFACES || def->materialCapacity == 0 ||

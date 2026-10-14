@@ -9,9 +9,8 @@
 
 #include "maul-audio/voice.h"
 
-#define VOICE_DETECTOR_DEF_COOKIE 0x6D766164u
-#define MIN_RATE                  8000u
-#define MAX_RATE                  384000u
+#define MIN_RATE 8000u
+#define MAX_RATE 384000u
 // The longest hangover a def may ask for.
 #define MAX_HANGOVER_MS 10000u
 
@@ -23,21 +22,9 @@ struct maudVoiceDetector
     maudVadCore core;
 };
 
-maudVoiceDetectorDef maudDefaultVoiceDetectorDef(void)
-{
-    return (maudVoiceDetectorDef){
-        .cookie = VOICE_DETECTOR_DEF_COOKIE,
-        .sampleRate = 48000,
-        .layout = maud_layoutMono,
-        .aggressiveness = 1,
-        .hangoverMilliseconds = 200,
-        .allocator = {0},
-    };
-}
-
 static bool DefValid(const maudVoiceDetectorDef* def)
 {
-    return def->cookie == VOICE_DETECTOR_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
+    return def->cookie == MAUD_VOICE_DETECTOR_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && maudGetLayoutChannelCount(def->layout) != 0 &&
            def->aggressiveness <= 3 && def->hangoverMilliseconds <= MAX_HANGOVER_MS &&
            maudIsAllocatorValid(&def->allocator);
@@ -48,6 +35,11 @@ maudResult maudCreateVoiceDetector(const maudVoiceDetectorDef* def, maudVoiceDet
     if (detectorOut != nullptr)
     {
         *detectorOut = nullptr;
+    }
+    if (def != nullptr && def->cookie == MAUD_VOICE_DETECTOR_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
     }
     if (def == nullptr || detectorOut == nullptr || !DefValid(def))
     {

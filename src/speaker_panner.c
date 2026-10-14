@@ -19,11 +19,10 @@
 #include <math.h>
 #include <string.h>
 
-#define PANNER_DEF_COOKIE 0x6D617370u
-#define MAX_CHANNELS      12
-#define MAX_POINTS        (MAX_CHANNELS + 2)
-#define MAX_TRIANGLES     64
-#define PI_F              3.14159265f
+#define MAX_CHANNELS  12
+#define MAX_POINTS    (MAX_CHANNELS + 2)
+#define MAX_TRIANGLES 64
+#define PI_F          3.14159265f
 // How far below zero a face's least gain may round and the face still
 // hold a direction.
 #define HELD 1e-5f
@@ -54,15 +53,6 @@ struct maudSpeakerPanner
     uint32_t neighbourCount[2];
     uint32_t neighbours[2][MAX_CHANNELS];
 };
-
-maudSpeakerPannerDef maudDefaultSpeakerPannerDef(void)
-{
-    return (maudSpeakerPannerDef){
-        .cookie = PANNER_DEF_COOKIE,
-        .layout = maud_layoutStereo,
-        .allocator = {nullptr, nullptr, nullptr},
-    };
-}
 
 static void Point(float azimuthDegrees, float elevationDegrees, float* p)
 {
@@ -220,7 +210,12 @@ maudResult maudCreateSpeakerPanner(const maudSpeakerPannerDef* def, maudSpeakerP
     {
         *pannerOut = nullptr;
     }
-    if (def == nullptr || pannerOut == nullptr || def->cookie != PANNER_DEF_COOKIE ||
+    if (def != nullptr && def->cookie == MAUD_SPEAKER_PANNER_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
+    }
+    if (def == nullptr || pannerOut == nullptr || def->cookie != MAUD_SPEAKER_PANNER_DEF_COOKIE ||
         maudGetLayoutChannelCount(def->layout) == 0 || !maudIsAllocatorValid(&def->allocator))
     {
         return maud_errorInvalid;

@@ -33,4 +33,4 @@ Shrunk applications keep working, and a Java member the native library
 reaches by name without a rule keeping it fails the Android test. The
 rules keep the package's few classes whole rather than member by
 member, which costs an application a few kilobytes and cannot miss one.
-This follows Maul Window's record for the same trap (family F42).
+This follows Maul Window's record for the same trap.

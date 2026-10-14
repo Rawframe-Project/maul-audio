@@ -26,14 +26,13 @@
 #include <math.h>
 #include <string.h>
 
-#define NOISE_DEF_COOKIE 0x6D616E73u
-#define MIN_RATE         8000u
-#define MAX_RATE         384000u
-#define MIN_FLOOR_DB     (-40.0f)
-#define MAX_FLOOR_DB     (-6.0f)
-#define MIN_HIGH_PASS    20.0f
-#define MAX_HIGH_PASS    400.0f
-#define PI               3.14159265358979323846
+#define MIN_RATE      8000u
+#define MAX_RATE      384000u
+#define MIN_FLOOR_DB  (-40.0f)
+#define MAX_FLOOR_DB  (-6.0f)
+#define MIN_HIGH_PASS 20.0f
+#define MAX_HIGH_PASS 400.0f
+#define PI            3.14159265358979323846
 // OM-LSA's decision-directed weight and a priori SNR floor (Cohen
 // 2002); the noise estimate's a priori SNR under speech (15 dB), its
 // smoothing per 10 ms and its stagnation guard (Gerkmann and Hendriks
@@ -103,18 +102,6 @@ struct maudNoiseSuppressor
     size_t bytes;
 };
 
-maudNoiseSuppressorDef maudDefaultNoiseSuppressorDef(void)
-{
-    return (maudNoiseSuppressorDef){
-        .cookie = NOISE_DEF_COOKIE,
-        .sampleRate = 48000,
-        .layout = maud_layoutMono,
-        .floorDb = -30.0f,
-        .highPassHz = 100.0f,
-        .allocator = {nullptr, nullptr, nullptr},
-    };
-}
-
 static uint32_t PowerOfTwo(uint32_t atLeast)
 {
     uint32_t n = 4;
@@ -181,7 +168,7 @@ static Biquad HighPass(double hz, double rate)
 
 static bool DefValid(const maudNoiseSuppressorDef* def)
 {
-    return def->cookie == NOISE_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
+    return def->cookie == MAUD_NOISE_SUPPRESSOR_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && def->sampleRate % 100 == 0 &&
            def->floorDb >= MIN_FLOOR_DB && def->floorDb <= MAX_FLOOR_DB &&
            (def->highPassHz == 0.0f ||
@@ -212,6 +199,11 @@ maudResult maudCreateNoiseSuppressor(const maudNoiseSuppressorDef* def,
     if (suppressorOut != nullptr)
     {
         *suppressorOut = nullptr;
+    }
+    if (def != nullptr && def->cookie == MAUD_NOISE_SUPPRESSOR_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
     }
     if (def == nullptr || suppressorOut == nullptr || !DefValid(def))
     {

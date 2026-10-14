@@ -17,9 +17,8 @@
 
 #include <math.h>
 
-#define GAIN_CONTROL_DEF_COOKIE 0x6D616763u
-#define MIN_RATE                8000u
-#define MAX_RATE                384000u
+#define MIN_RATE 8000u
+#define MAX_RATE 384000u
 // AGC2's rules: frames of confident speech in a row before the gain may
 // rise or the level is trusted; the probability a frame needs; the level
 // estimate's memory in frames once full.
@@ -58,23 +57,6 @@ struct maudGainControl
     float release;
 };
 
-maudGainControlDef maudDefaultGainControlDef(void)
-{
-    return (maudGainControlDef){
-        .cookie = GAIN_CONTROL_DEF_COOKIE,
-        .sampleRate = 48000,
-        .layout = maud_layoutMono,
-        .targetDbfs = -25.0f,
-        .minGainDb = -10.0f,
-        .maxGainDb = 50.0f,
-        .initialGainDb = 15.0f,
-        .maxChangeDbPerSecond = 6.0f,
-        .maxNoiseDbfs = -50.0f,
-        .aggressiveness = 1,
-        .allocator = {0},
-    };
-}
-
 static bool Within(float value, float low, float high)
 {
     return value >= low && value <= high;
@@ -82,7 +64,7 @@ static bool Within(float value, float low, float high)
 
 static bool DefValid(const maudGainControlDef* def)
 {
-    return def->cookie == GAIN_CONTROL_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
+    return def->cookie == MAUD_GAIN_CONTROL_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && maudGetLayoutChannelCount(def->layout) != 0 &&
            Within(def->targetDbfs, -40.0f, -6.0f) && Within(def->minGainDb, -30.0f, 0.0f) &&
            Within(def->maxGainDb, 0.0f, 60.0f) &&
@@ -102,6 +84,11 @@ maudResult maudCreateGainControl(const maudGainControlDef* def, maudGainControl*
     if (gainOut != nullptr)
     {
         *gainOut = nullptr;
+    }
+    if (def != nullptr && def->cookie == MAUD_GAIN_CONTROL_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
     }
     if (def == nullptr || gainOut == nullptr || !DefValid(def))
     {

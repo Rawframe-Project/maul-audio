@@ -22,9 +22,8 @@
 #include <math.h>
 #include <string.h>
 
-#define BINAURAL_DEF_COOKIE 0x6D616262u
-#define MAX_FRAMES          16384u
-#define DEFAULT_MAX_FRAMES  1024u
+#define MAX_FRAMES         16384u
+#define DEFAULT_MAX_FRAMES 1024u
 // The fade: 128 frames at 48 kHz, in proportion at other rates.
 #define FADE_SECONDS (128.0 / 48000.0)
 // Every delay is lengthened by one sample, so the cubic read never needs
@@ -76,21 +75,9 @@ struct maudBinaural
     bool primed;
 };
 
-maudBinauralDef maudDefaultBinauralDef(void)
-{
-    return (maudBinauralDef){
-        .cookie = BINAURAL_DEF_COOKIE,
-        .hrtf = nullptr,
-        .maxFrames = DEFAULT_MAX_FRAMES,
-        .nearField = true,
-        .headRadius = 0.0875f,
-        .allocator = {nullptr, nullptr, nullptr},
-    };
-}
-
 static bool DefValid(const maudBinauralDef* def)
 {
-    return def->cookie == BINAURAL_DEF_COOKIE && def->hrtf != nullptr && def->maxFrames >= 1 &&
+    return def->cookie == MAUD_BINAURAL_DEF_COOKIE && def->hrtf != nullptr && def->maxFrames >= 1 &&
            def->maxFrames <= MAX_FRAMES && def->headRadius >= MIN_RADIUS &&
            def->headRadius <= MAX_RADIUS && maudIsAllocatorValid(&def->allocator);
 }
@@ -144,6 +131,11 @@ maudResult maudCreateBinaural(const maudBinauralDef* def, maudBinaural** effectO
     if (effectOut != nullptr)
     {
         *effectOut = nullptr;
+    }
+    if (def != nullptr && def->cookie == MAUD_BINAURAL_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
     }
     if (def == nullptr || effectOut == nullptr || !DefValid(def))
     {

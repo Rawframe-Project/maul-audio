@@ -26,13 +26,12 @@
 #include <math.h>
 #include <string.h>
 
-#define ECHO_DEF_COOKIE 0x6D616563u
-#define MIN_RATE        8000u
-#define MAX_RATE        384000u
-#define MIN_TAIL        0.05f
-#define MAX_TAIL        1.0f
-#define MIN_FLOOR_DB    (-40.0f)
-#define MAX_FLOOR_DB    (-6.0f)
+#define MIN_RATE     8000u
+#define MAX_RATE     384000u
+#define MIN_TAIL     0.05f
+#define MAX_TAIL     1.0f
+#define MIN_FLOOR_DB (-40.0f)
+#define MAX_FLOOR_DB (-6.0f)
 // The block's shortest length, in seconds.
 #define MIN_BLOCK 0.008
 // At 16 kHz: the notch's radius and the pre-emphasis.
@@ -71,20 +70,9 @@ struct maudEchoCanceller
     uint64_t frames;
 };
 
-maudEchoCancellerDef maudDefaultEchoCancellerDef(void)
-{
-    return (maudEchoCancellerDef){
-        .cookie = ECHO_DEF_COOKIE,
-        .sampleRate = 48000,
-        .tailSeconds = 0.2f,
-        .floorDb = -15.0f,
-        .allocator = {nullptr, nullptr, nullptr},
-    };
-}
-
 static bool DefValid(const maudEchoCancellerDef* def)
 {
-    return def->cookie == ECHO_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
+    return def->cookie == MAUD_ECHO_CANCELLER_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && def->tailSeconds >= MIN_TAIL &&
            def->tailSeconds <= MAX_TAIL && def->floorDb >= MIN_FLOOR_DB &&
            def->floorDb <= MAX_FLOOR_DB && maudIsAllocatorValid(&def->allocator);
@@ -136,6 +124,11 @@ maudResult maudCreateEchoCanceller(const maudEchoCancellerDef* def,
     if (cancellerOut != nullptr)
     {
         *cancellerOut = nullptr;
+    }
+    if (def != nullptr && def->cookie == MAUD_ECHO_CANCELLER_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
     }
     if (def == nullptr || cancellerOut == nullptr || !DefValid(def))
     {

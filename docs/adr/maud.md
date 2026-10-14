@@ -8,3 +8,4 @@ are listed in [README.md](README.md).
 | [maud-0001](maud-0001-library-profile.md) | Library profile | Accepted |
 | [maud-0002](maud-0002-private-backends.md) | Private backends join at configure time | Accepted |
 | [maud-0003](maud-0003-android-shrinking.md) | What an Android application keeps when it shrinks its code | Accepted |
+| [maud-0004](maud-0004-root-def-versions.md) | Every root def carries the program's version | Accepted |

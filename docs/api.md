@@ -42,14 +42,14 @@ MAUD_NODISCARD MAUD_API maudResult maudRotateAmbisonic(uint32_t order, const mau
 Rotates a bed in place, the rotation moving linearly from `from` to `to` across the call (a crossfade of the two rotated fields; a large change within one call blends rather than turns). A rotation turns the field in the listener's frame: a sound from direction d comes out from the rotated d.  @param order   The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER. @param from    The rotation at the previous call's end. @param to      The rotation at this call's end. @param bed     The order's channel count of channels, frames each. @param frames  The frames. @return `maud_success`, or `maud_errorInvalid` for an order out of range, a NULL pointer, or a quaternion of zero length or not finite; nothing is written then. @par Thread safety Safe from any thread; the bed is used by one thread at a time.
 
 ```c
-maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void);
+static inline maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void);
 ```
-Returns the default binaural decoder def: no set, order 3, at most 1,024 frames per call.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default binaural decoder def: no set, order 3, at most 1,024 frames per call.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateBinauralDecoder(const maudBinauralDecoderDef* def, maudBinauralDecoder** decoderOut);
 ```
-Creates a binaural decoder: fits filters to the set by magnitude least squares (least squares below 1.5 kHz, magnitudes above), each 2 ms long and delaying the field by 0.67 ms. The fit is the heavy part, done here and never while decoding; its working memory comes from the def's allocator and goes back before this returns.  @param def         The def, from maudDefaultBinauralDecoderDef, with a set. @param decoderOut  Receives the decoder; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie, without a set or out of range, or a set whose directions cannot carry the order; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a binaural decoder: fits filters to the set by magnitude least squares (least squares below 1.5 kHz, magnitudes above), each 2 ms long and delaying the field by 0.67 ms. The fit is the heavy part, done here and never while decoding; its working memory comes from the def's allocator and goes back before this returns.  @param def         The def, from maudDefaultBinauralDecoderDef, with a set. @param decoderOut  Receives the decoder; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie, without a set or out of range, or a set whose directions cannot carry the order; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyBinauralDecoder(maudBinauralDecoder* decoder);
@@ -67,14 +67,14 @@ MAUD_NODISCARD MAUD_API maudResult maudResetBinauralDecoder(maudBinauralDecoder*
 Forgets the bed a decoder has heard.  @param decoder  The decoder. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the decoder is used by one thread at a time.
 
 ```c
-maudSpeakerDecoderDef maudDefaultSpeakerDecoderDef(void);
+static inline maudSpeakerDecoderDef maudDefaultSpeakerDecoderDef(void);
 ```
-Returns the default speaker decoder def: stereo, order 3.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default speaker decoder def: stereo, order 3.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateSpeakerDecoder(const maudSpeakerDecoderDef* def, maudSpeakerDecoder** decoderOut);
 ```
-Creates a speaker decoder by all-round ambisonic decoding: the bed decoded to 240 near-uniform virtual speakers with max-rE weights, each panned to the layout as a speaker panner pans, folded into one matrix. A source encoded into the bed reaches the speakers with unit energy on average over the sphere, as one panned to them does; the low-frequency channel gets nothing.  @param def         The def, from maudDefaultSpeakerDecoderDef. @param decoderOut  Receives the decoder; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie, an order out of range or a layout the library does not have; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a speaker decoder by all-round ambisonic decoding: the bed decoded to 240 near-uniform virtual speakers with max-rE weights, each panned to the layout as a speaker panner pans, folded into one matrix. A source encoded into the bed reaches the speakers with unit energy on average over the sphere, as one panned to them does; the low-frequency channel gets nothing.  @param def         The def, from maudDefaultSpeakerDecoderDef. @param decoderOut  Receives the decoder; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie, an order out of range or a layout the library does not have; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroySpeakerDecoder(maudSpeakerDecoder* decoder);
@@ -96,14 +96,14 @@ Decodes frames of a bed to the layout's channels, written over out. The decoder 
 Binaural effects: one per source, rendering its mono signal for both ears through a loaded HRTF set (maul-audio/hrtf.h). Processing runs on whatever thread the host renders on: it allocates nothing, takes no lock and does work in proportion to its frames.
 
 ```c
-maudBinauralDef maudDefaultBinauralDef(void);
+static inline maudBinauralDef maudDefaultBinauralDef(void);
 ```
-Returns the default binaural def: no set, at most 1,024 frames per call, the near field on for a head of 8.75 cm.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default binaural def: no set, at most 1,024 frames per call, the near field on for a head of 8.75 cm.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateBinaural(const maudBinauralDef* def, maudBinaural** effectOut);
 ```
-Creates a binaural effect, its memory taken once from the def's allocator.  @param def      The def, from maudDefaultBinauralDef, with a set. @param effectOut  Receives the effect; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a def without its cookie, without a set or out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a binaural effect, its memory taken once from the def's allocator.  @param def      The def, from maudDefaultBinauralDef, with a set. @param effectOut  Receives the effect; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer or a def without its cookie, without a set or out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyBinaural(maudBinaural* effect);
@@ -207,11 +207,6 @@ Reports the default device of a direction for a role.  @param context      The c
 The direct effect: what the direct path does to a source before it is spatialized, in three bands (up to 800 Hz, 800 Hz to 8 kHz, above 8 kHz). Air absorption over distance, a directivity pattern, occlusion and transmission through what blocks the path; distance attenuation is the host's own curve, given as a gain. One effect per source, mono in and mono out, ahead of the binaural effect or a speaker panner.
 
 ```c
-maudDirectEffectDef maudDefaultDirectEffectDef(void);
-```
-Returns the default direct effect def: 48 kHz, air absorption of ISO 9613 part 1 at 20 degrees C, 50 % humidity and 101.325 kPa.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
-
-```c
 maudDirectParams maudDefaultDirectParams(void);
 ```
 Returns the default direct params: gain 1, no distance, a clear path, full transmission and directivity.  @return The params. @par Thread safety Safe from any thread.
@@ -222,6 +217,11 @@ MAUD_NODISCARD MAUD_API maudResult maudGetAirAbsorption(float temperatureCelsius
 Computes air absorption per band from ISO 9613 part 1 at 101.325 kPa: the standard's attenuation averaged in dB over each band, as an amplitude exponent per metre.  @param temperatureCelsius  -20 to 50. @param humidityPercent     Relative humidity, 10 to 100. @param absorptionOut       Receives three exponents. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or a value out of range. @par Thread safety Safe from any thread.
 
 ```c
+static inline maudDirectEffectDef maudDefaultDirectEffectDef(void);
+```
+Returns the default direct effect def: 48 kHz, air absorption of ISO 9613 part 1 at 20 degrees C, 50 % humidity and 101.325 kPa.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
+
+```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDirectivity(const maudDirectivityPattern* pattern, maudVector3 toListener, float* directivityOut);
 ```
 Computes a pattern's directivity towards the listener.  @param pattern         The pattern. @param toListener      The direction from the source to the listener in the source's own frame, whose forward axis is -z; a zero vector counts as straight ahead. @param directivityOut  Receives three gains. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer, a weight outside 0 to 1, a power below 0 or a value that is not finite. @par Thread safety Safe from any thread.
@@ -229,7 +229,7 @@ Computes a pattern's directivity towards the listener.  @param pattern         T
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateDirectEffect(const maudDirectEffectDef* def, maudDirectEffect** effectOut);
 ```
-Creates a direct effect.  @param def        The def, from maudDefaultDirectEffectDef. @param effectOut  Receives the effect; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a rate out of range or air absorption below 0 or not finite; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a direct effect.  @param def        The def, from maudDefaultDirectEffectDef. @param effectOut  Receives the effect; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a rate out of range or air absorption below 0 or not finite; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyDirectEffect(maudDirectEffect* effect);
@@ -265,14 +265,14 @@ Reads where the context stands with audio focus, as of the last drain of its not
 Head-related transfer function sets, loaded from the bytes of a .maudhrtf file (docs/hrtf-format.md) for the binaural renderer. The library reads no files: the host hands over the bytes, which the loader treats as hostile.
 
 ```c
-maudHrtfDef maudDefaultHrtfDef(void);
+static inline maudHrtfDef maudDefaultHrtfDef(void);
 ```
-Returns the default HRTF def: no bytes, the file's own rate, at most 65,536 directions and 1,024 taps.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default HRTF def: no bytes, the file's own rate, at most 65,536 directions and 1,024 taps.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudLoadHrtf(const maudHrtfDef* def, maudHrtf** hrtfOut);
 ```
-Loads an HRTF set from a .maudhrtf file's bytes, checking every count, size and the checksum before it allocates or trusts anything.  @param def      The def, from maudDefaultHrtfDef. @param hrtfOut  Receives the set; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie or out of range, or bytes that are not a well-formed file (a wrong magic, size, ring layout, text or checksum); `maud_errorUnsupported` for a format version this library does not read; `maud_errorCapacity` when the set passes the def's limits or the allocator fails. @par Thread safety Safe from any thread.
+Loads an HRTF set from a .maudhrtf file's bytes, checking every count, size and the checksum before it allocates or trusts anything.  @param def      The def, from maudDefaultHrtfDef. @param hrtfOut  Receives the set; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie or out of range, or bytes that are not a well-formed file (a wrong magic, size, ring layout, text or checksum); `maud_errorUnsupported` for a format version this library does not read; `maud_errorCapacity` when the set passes the def's limits or the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyHrtf(maudHrtf* hrtf);
@@ -365,14 +365,14 @@ Changes what a platform spatializer does on an output device, as a user turning 
 The parametric reverb: a feedback delay network whose decay follows reverberation times given per band (up to 800 Hz, 800 Hz to 8 kHz, above 8 kHz). It takes the host's mono reverb send and adds a diffuse tail into a first-order ambisonic bed, which the binaural and speaker decoders render. Where a coupled space decays in two slopes, a reverb made with a tail renders the slower one too. One per listener; it allocates nothing once made.
 
 ```c
-maudReverbDef maudDefaultReverbDef(void);
+static inline maudReverbDef maudDefaultReverbDef(void);
 ```
-Returns the default reverb def: 48 kHz, no input delay.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default reverb def: 48 kHz, no input delay.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut);
 ```
-Creates a reverb, silent.  @param def        The def, from maudDefaultReverbDef. @param reverbOut  Receives the reverb; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a rate or longest delay out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a reverb, silent.  @param def        The def, from maudDefaultReverbDef. @param reverbOut  Receives the reverb; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a rate or longest delay out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyReverb(maudReverb* reverb);
@@ -394,14 +394,14 @@ Silences a reverb's tail.  @param reverb  The reverb. @return `maud_success`, or
 Acoustic scenes: the library's own geometry and ray tracer, for hosts without one and for work whose results must match on every platform. A scene's static meshes are fixed when it is made; instances of its instancing meshes are made, moved and destroyed at any time and take effect at a commit. Between commits any number of threads query it at once; changes and commits must not overlap queries. Its query functions have the spatializer's hook signatures, the scene as their context.
 
 ```c
-maudAcousticSceneDef maudDefaultAcousticSceneDef(void);
+static inline maudAcousticSceneDef maudDefaultAcousticSceneDef(void);
 ```
-Returns the default acoustic scene def: no meshes, no instances, 16,777,216 triangles at most.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default acoustic scene def: no meshes, no instances, 16,777,216 triangles at most.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcousticScene** sceneOut);
 ```
-Creates an acoustic scene: copies the meshes and builds a bounding volume hierarchy over their triangles, the same on every platform.  @param def       The def, from maudDefaultAcousticSceneDef. @param sceneOut  Receives the scene; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a mesh with a NULL array it needs, a vertex index past its vertices or a vertex that is not finite; `maud_errorCapacity` for more than 16,777,216 triangles in all or when the allocator fails. @par Thread safety Safe from any thread.
+Creates an acoustic scene: copies the meshes and builds a bounding volume hierarchy over their triangles, the same on every platform.  @param def       The def, from maudDefaultAcousticSceneDef. @param sceneOut  Receives the scene; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a mesh with a NULL array it needs, a vertex index past its vertices or a vertex that is not finite; `maud_errorCapacity` for more triangles in all than the def's maxTriangles or when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyAcousticScene(maudAcousticScene* scene);
@@ -443,9 +443,9 @@ Commits the instances' changes: the live instances, where they are now, are what
 The Spatial part's root. A spatializer has two sides. The simulation side, called from the host's own threads or tasks, makes sources, sets their poses and runs steps that work out what the direct path does to each source. The rendering side, on the audio thread, latches the newest step and reads each source's result without allocating, locking or waiting; a step is published whole, never torn. The host passes the results to the direct effect and to the binaural effect or a panner. Positions are in metres in the host's world, right-handed with +y up; an orientation turns the frame of the listener or a source (+x right, +y up, -z ahead) into the world's.
 
 ```c
-maudSpatializerDef maudDefaultSpatializerDef(void);
+static inline maudSpatializerDef maudDefaultSpatializerDef(void);
 ```
-Returns the default spatializer def: 256 sources, up to 64 occlusion points each, transmission paths of up to 4 surfaces, 64 materials, reverberation estimates of 2048 rays through air at 20 degrees and 50 % humidity, no geometric reflections (when asked for: 1 s at 48 kHz), no ray queries, no task hooks.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default spatializer def: 256 sources, up to 64 occlusion points each, transmission paths of up to 4 surfaces, 64 materials, reverberation estimates of 2048 rays through air at 20 degrees and 50 % humidity, no geometric reflections (when asked for: 1 s at 48 kHz), no ray queries, no task hooks.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 maudSourceDef maudDefaultSourceDef(void);
@@ -455,7 +455,7 @@ Returns the default source def: omnidirectional, occlusion by one ray (for volum
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer** spatializerOut);
 ```
-Creates a spatializer, allocating everything it will use.  @param def             The def, from maudDefaultSpatializerDef. @param spatializerOut  Receives the spatializer; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a capacity or ray count out of range, an air absorption below 0 or not finite, a reflection order, duration or rate out of range (or reflections without reverberation rays), or one task hook without the other; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a spatializer, allocating everything it will use.  @param def             The def, from maudDefaultSpatializerDef. @param spatializerOut  Receives the spatializer; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie, a capacity or ray count out of range, an air absorption below 0 or not finite, a reflection order, duration or rate out of range (or reflections without reverberation rays), or one task hook without the other; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroySpatializer(maudSpatializer* spatializer);
@@ -562,14 +562,14 @@ Loads a probe set from a `.maudbake` file, treated as hostile: every count is ch
 Panning to speakers: a panner per channel layout, made once from the layout's nominal positions, pans sources by vector base amplitude panning (VBAP) into the layout's channels. Once made it is read-only: any number of sources share it, from any thread. Panning allocates nothing and does work in proportion to its frames.
 
 ```c
-maudSpeakerPannerDef maudDefaultSpeakerPannerDef(void);
+static inline maudSpeakerPannerDef maudDefaultSpeakerPannerDef(void);
 ```
-Returns the default speaker panner def: stereo.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default speaker panner def: stereo.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateSpeakerPanner(const maudSpeakerPannerDef* def, maudSpeakerPanner** pannerOut);
 ```
-Creates a speaker panner. Mono passes a source through; stereo pans by how far to the side a source is (one behind counts as in front); other layouts by VBAP over the triangles between their speakers, with imaginary speakers above and below whose share goes to their real neighbours. Gains keep the energy; the low-frequency channel gets nothing.  @param def         The def, from maudDefaultSpeakerPannerDef. @param pannerOut   Receives the panner; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def without its cookie or a layout the library does not have; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a speaker panner. Mono passes a source through; stereo pans by how far to the side a source is (one behind counts as in front); other layouts by VBAP over the triangles between their speakers, with imaginary speakers above and below whose share goes to their real neighbours. Gains keep the energy; the low-frequency channel gets nothing.  @param def         The def, from maudDefaultSpeakerPannerDef. @param pannerOut   Receives the panner; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer, a def without its cookie or a layout the library does not have; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroySpeakerPanner(maudSpeakerPanner* panner);
@@ -655,14 +655,14 @@ Feeds the next frames to an offline input stream from a caller buffer, calling t
 First-party voice processing: a voice activity detector and an automatic gain control. They stand apart from contexts and streams; a host runs them on captured frames, in its callback or anywhere else.
 
 ```c
-maudVoiceDetectorDef maudDefaultVoiceDetectorDef(void);
+static inline maudVoiceDetectorDef maudDefaultVoiceDetectorDef(void);
 ```
-Returns the default voice detector def: 48,000, mono, aggressiveness 1, a 200 ms hangover, the default allocator.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default voice detector def: 48,000, mono, aggressiveness 1, a 200 ms hangover, the default allocator.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateVoiceDetector(const maudVoiceDetectorDef* def, maudVoiceDetector** detectorOut);
 ```
-Creates a voice activity detector.  @param def          The def, from maudDefaultVoiceDetectorDef. @param detectorOut  Receives the detector; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a voice activity detector.  @param def          The def, from maudDefaultVoiceDetectorDef. @param detectorOut  Receives the detector; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyVoiceDetector(maudVoiceDetector* detector);
@@ -675,14 +675,14 @@ MAUD_NODISCARD MAUD_API maudResult maudDetectVoice(maudVoiceDetector* detector, 
 Analyzes interleaved frames, in any count: what does not complete a 10 ms frame waits for the next call, so the results do not depend on how the frames are cut.  @param detector    The detector. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL detector, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The detector is used by one thread at a time.
 
 ```c
-maudGainControlDef maudDefaultGainControlDef(void);
+static inline maudGainControlDef maudDefaultGainControlDef(void);
 ```
-Returns the default gain control def: 48,000, mono, a target of -25 dBFS, gains from -10 to 50 dB starting at 15, 6 dB per second, noise kept under -50 dBFS, aggressiveness 1, the default allocator.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default gain control def: 48,000, mono, a target of -25 dBFS, gains from -10 to 50 dB starting at 15, 6 dB per second, noise kept under -50 dBFS, aggressiveness 1, the default allocator.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateGainControl(const maudGainControlDef* def, maudGainControl** gainOut);
 ```
-Creates an automatic gain control.  @param def      The def, from maudDefaultGainControlDef. @param gainOut  Receives the gain control; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates an automatic gain control.  @param def      The def, from maudDefaultGainControlDef. @param gainOut  Receives the gain control; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyGainControl(maudGainControl* gain);
@@ -695,14 +695,14 @@ MAUD_NODISCARD MAUD_API maudResult maudApplyGainControl(maudGainControl* gain, f
 Applies the gain to interleaved frames in place, in any count; the output does not depend on how the frames are cut. The gain follows what the frames before them showed, so it adds no delay.  @param gain        The gain control. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL gain control, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The gain control is used by one thread at a time.
 
 ```c
-maudNoiseSuppressorDef maudDefaultNoiseSuppressorDef(void);
+static inline maudNoiseSuppressorDef maudDefaultNoiseSuppressorDef(void);
 ```
-Returns the default noise suppressor def: 48,000, mono, a floor of -30 dB, a high-pass at 100 Hz, the default allocator.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default noise suppressor def: 48,000, mono, a floor of -30 dB, a high-pass at 100 Hz, the default allocator.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateNoiseSuppressor( const maudNoiseSuppressorDef* def, maudNoiseSuppressor** suppressorOut);
 ```
-Creates a noise suppressor.  @param def            The def, from maudDefaultNoiseSuppressorDef. @param suppressorOut  Receives the noise suppressor; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates a noise suppressor.  @param def            The def, from maudDefaultNoiseSuppressorDef. @param suppressorOut  Receives the noise suppressor; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyNoiseSuppressor(maudNoiseSuppressor* suppressor);
@@ -715,14 +715,14 @@ MAUD_NODISCARD MAUD_API maudResult maudSuppressNoise(maudNoiseSuppressor* suppre
 Suppresses noise in interleaved frames in place, in any count; the output does not depend on how the frames are cut. It lags the input by 10 ms: the first 10 ms out are silence.  @param suppressor  The noise suppressor. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL noise suppressor, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The noise suppressor is used by one thread at a time.
 
 ```c
-maudEchoCancellerDef maudDefaultEchoCancellerDef(void);
+static inline maudEchoCancellerDef maudDefaultEchoCancellerDef(void);
 ```
-Returns the default echo canceller def: 48,000, a path of 0.2 s, a noise floor of -15 dB, the default allocator.  @return The def, with a valid cookie. @par Thread safety Safe from any thread.
+Returns the default echo canceller def: 48,000, a path of 0.2 s, a noise floor of -15 dB, the default allocator.  The default is built in the program from the headers it includes, so the version it stamps is the program's.  @return The def, with a valid cookie and version. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateEchoCanceller(const maudEchoCancellerDef* def, maudEchoCanceller** cancellerOut);
 ```
-Creates an echo canceller.  @param def            The def, from maudDefaultEchoCancellerDef. @param cancellerOut   Receives the echo canceller; NULL on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
+Creates an echo canceller.  @param def            The def, from maudDefaultEchoCancellerDef. @param cancellerOut   Receives the echo canceller; NULL on failure. @return `maud_success`; `maud_errorVersion` for a def stamped with another major or minor version than the library's, checked before anything else of it; `maud_errorInvalid` for a NULL pointer or a def out of range; `maud_errorCapacity` when the allocator fails. @par Thread safety Safe from any thread.
 
 ```c
 void maudDestroyEchoCanceller(maudEchoCanceller* canceller);

@@ -15,23 +15,8 @@
 
 #include <math.h>
 
-#define SCENE_DEF_COOKIE 0x6D617363u
-#define MAX_TRIANGLES    16777216u
-#define MAX_INSTANCES    65536u
-
-maudAcousticSceneDef maudDefaultAcousticSceneDef(void)
-{
-    return (maudAcousticSceneDef){
-        .cookie = SCENE_DEF_COOKIE,
-        .meshes = nullptr,
-        .meshCount = 0,
-        .instanceMeshes = nullptr,
-        .instanceMeshCount = 0,
-        .instanceCapacity = 0,
-        .maxTriangles = MAX_TRIANGLES,
-        .allocator = {nullptr, nullptr, nullptr},
-    };
-}
+#define MAX_TRIANGLES 16777216u
+#define MAX_INSTANCES 65536u
 
 static bool MeshValid(const maudMesh* mesh)
 {
@@ -82,7 +67,7 @@ static bool MeshesValid(const maudMesh* meshes, uint32_t count, uint64_t* sum)
 static maudResult Check(const maudAcousticSceneDef* def)
 {
     uint64_t sum = 0;
-    if (def->cookie != SCENE_DEF_COOKIE || !maudIsAllocatorValid(&def->allocator) ||
+    if (def->cookie != MAUD_ACOUSTIC_SCENE_DEF_COOKIE || !maudIsAllocatorValid(&def->allocator) ||
         def->instanceCapacity > MAX_INSTANCES || def->maxTriangles == 0 ||
         def->maxTriangles > MAX_TRIANGLES || !MeshesValid(def->meshes, def->meshCount, &sum) ||
         !MeshesValid(def->instanceMeshes, def->instanceMeshCount, &sum))
@@ -204,6 +189,11 @@ maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcoustic
     if (sceneOut != nullptr)
     {
         *sceneOut = nullptr;
+    }
+    if (def != nullptr && def->cookie == MAUD_ACOUSTIC_SCENE_DEF_COOKIE &&
+        def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
     }
     if (def == nullptr || sceneOut == nullptr)
     {

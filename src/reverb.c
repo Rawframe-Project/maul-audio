@@ -24,10 +24,9 @@
 #include <math.h>
 #include <string.h>
 
-#define REVERB_DEF_COOKIE 0x6D617276u
-#define LINES             16
-#define FILTERS           MAUD_OCTAVE_FILTERS
-#define RAMP_FRAMES       8u
+#define LINES       16
+#define FILTERS     MAUD_OCTAVE_FILTERS
+#define RAMP_FRAMES 8u
 // The send enters line i negated where bit i is set: with one sign on
 // every line the lines stay correlated, W sums them coherently and the
 // directional channels carry a sixth of its energy rather than the
@@ -114,17 +113,6 @@ struct maudReverb
     uint64_t tailLeft;
 };
 
-maudReverbDef maudDefaultReverbDef(void)
-{
-    return (maudReverbDef){
-        .cookie = REVERB_DEF_COOKIE,
-        .sampleRate = 48000.0f,
-        .maxDelay = 0.0f,
-        .tail = false,
-        .allocator = {nullptr, nullptr, nullptr},
-    };
-}
-
 static bool Prime(uint32_t n)
 {
     if (n < 2)
@@ -180,7 +168,11 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     {
         *reverbOut = nullptr;
     }
-    if (def == nullptr || reverbOut == nullptr || def->cookie != REVERB_DEF_COOKIE ||
+    if (def != nullptr && def->cookie == MAUD_REVERB_DEF_COOKIE && def->version != MAUD_ABI_VERSION)
+    {
+        return maud_errorVersion;
+    }
+    if (def == nullptr || reverbOut == nullptr || def->cookie != MAUD_REVERB_DEF_COOKIE ||
         !(def->sampleRate >= MIN_RATE) || !(def->sampleRate <= MAX_RATE) ||
         !(def->maxDelay >= 0.0f) || !(def->maxDelay <= MAX_DELAY) ||
         !maudIsAllocatorValid(&def->allocator))

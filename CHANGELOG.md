@@ -8,6 +8,27 @@ format.
 
 ## [Unreleased]
 
+### Added
+
+- Every def a program makes an object from without a context carries
+  `version`, second after its cookie, as the context def does: the HRTF
+  set's, the binaural effect's and decoder's, the speaker decoder's and
+  panner's, the direct effect's, the reverb's, the acoustic scene's,
+  the spatializer's and the four voice processors'. Their creation
+  refuses a def built for another major or minor with
+  `maud_errorVersion` before reading anything else of it, so a program
+  using the Spatial part or a voice processor alone is checked too
+  (maud-0004).
+
+### Changed
+
+- Those thirteen defaults are built in the program from the headers it
+  includes (`static inline` functions), and their cookies are public
+  (`MAUD_HRTF_DEF_COOKIE` and the like). A def written field by field
+  must set `version` and the cookie as the default does.
+- The speaker decoder's and the speaker panner's cookies changed: they
+  were the same as a stream def's and a spatializer def's.
+
 ## [0.4.1] - 2026-10-13
 
 A stream stopped across a PulseAudio restart plays again, and an

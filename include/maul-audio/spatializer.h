@@ -126,6 +126,9 @@ extern "C"
     typedef struct maudSpatializerDef
     {
         uint32_t cookie;
+        // MAUD_ABI_VERSION of the headers the program was built with; the
+        // cookie and this stay the first two fields in every version.
+        uint32_t version;
         // The most sources at once, 1 to 65,536.
         uint32_t sourceCapacity;
         // The most occlusion points a volumetric source may have, 1 to
@@ -284,16 +287,44 @@ extern "C"
         float tailLevel[MAUD_DIRECT_BANDS];
     } maudReverbResult;
 
+// The cookie of a spatializer def, which its default sets and
+// maudCreateSpatializer checks.
+#define MAUD_SPATIALIZER_DEF_COOKIE 0x6D617370u
+
     /// Returns the default spatializer def: 256 sources, up to 64
     /// occlusion points each, transmission paths of up to 4 surfaces, 64
     /// materials, reverberation estimates of 2048 rays through air at
     /// 20 degrees and 50 % humidity, no geometric reflections (when
     /// asked for: 1 s at 48 kHz), no ray queries, no task hooks.
     ///
-    /// @return The def, with a valid cookie.
+    /// The default is built in the program from the headers it includes,
+    /// so the version it stamps is the program's.
+    ///
+    /// @return The def, with a valid cookie and version.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API maudSpatializerDef maudDefaultSpatializerDef(void);
+    static inline maudSpatializerDef maudDefaultSpatializerDef(void)
+    {
+#ifdef __cplusplus
+        maudSpatializerDef def = {};
+#else
+    maudSpatializerDef def = {0};
+#endif
+        def.cookie = MAUD_SPATIALIZER_DEF_COOKIE;
+        def.version = MAUD_ABI_VERSION;
+        def.sourceCapacity = 256;
+        def.maxOcclusionSamples = 64;
+        def.maxSurfaces = 4;
+        def.materialCapacity = 64;
+        def.reverbRays = 2048;
+        def.reflectionDuration = 1.0f;
+        def.reflectionRate = 48000.0f;
+        def.maxProbes = 4096;
+        def.maxProbePairs = 1048576;
+        def.maxPaths = 32;
+        (void)maudGetAirAbsorption(20.0f, 50.0f, def.airAbsorption);
+        return def;
+    }
 
     /// Returns the default source def: omnidirectional, occlusion by one
     /// ray (for volumetric occlusion a sphere of 1 m with 32 points),
@@ -308,7 +339,9 @@ extern "C"
     ///
     /// @param def             The def, from maudDefaultSpatializerDef.
     /// @param spatializerOut  Receives the spatializer; NULL on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
+    /// @return `maud_success`; `maud_errorVersion` for a def stamped with
+    ///         another major or minor version than the library's, checked
+    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, a capacity or ray count out of
     ///         range, an air absorption below 0 or not finite, a
     ///         reflection order, duration or rate out of range (or
