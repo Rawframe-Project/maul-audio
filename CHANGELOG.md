@@ -8,6 +8,11 @@ format.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-14
+
+Every object a program makes first, not only a context, now refuses a
+program built against another minor version.
+
 ### Added
 
 - Every def a program makes an object from without a context carries
