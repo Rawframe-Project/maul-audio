@@ -2,11 +2,37 @@
 
 All notable changes to this project are recorded here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
-the project uses [Semantic Versioning](https://semver.org/). Before
-1.0.0, any minor release may change the API, the ABI and every data
-format.
+the project uses [Semantic Versioning](https://semver.org/). From
+1.0.0, within a major version: the source interface only grows (fields
+are added at the end of their struct, and a removal waits for the next
+major), every bake format an earlier 1.x wrote and every HRTF format
+version a 1.x read is read, and results keep the determinism the
+library states within a version, a change to them a line under Changed
+or Fixed. The binary interface holds within a minor version: a program
+built against 1.y runs with any 1.y.z, and a library of another minor
+refuses its root defs with `maud_errorVersion`. Before 1.0.0, any minor
+release could change the API, the ABI and every data format.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-10-14
+
+The first stable release: what 0.5 does, with the promises above. Every
+object a program makes first refuses a program built against another
+minor version (0.5.0), the bake format stays version 2, which loads
+version 1's bakes too, and the HRTF format stays version 2.
+
+### Added
+
+- `data/bake/office-1.0.0.maudbake`, the bake 1.0.0 writes, kept as
+  test data and never rewritten: every 1.x loads it and gives the
+  estimates it gave at 1.0.0.
+
+### Changed
+
+- The CMake package accepts any 1.x when a program asks for 1.0
+  (SameMajorVersion); the shared library's version still carries the
+  major and the minor, as the binary interface holds within a minor.
 
 ## [0.5.0] - 2026-10-14
 

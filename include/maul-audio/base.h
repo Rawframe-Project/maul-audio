@@ -17,8 +17,8 @@ extern "C"
 #endif
 
 // The library version. CMake reads it from here.
-#define MAUD_VERSION_MAJOR 0
-#define MAUD_VERSION_MINOR 5
+#define MAUD_VERSION_MAJOR 1
+#define MAUD_VERSION_MINOR 0
 #define MAUD_VERSION_PATCH 0
 
 // The ABI a program is built for: major and minor, as the ABI holds within
