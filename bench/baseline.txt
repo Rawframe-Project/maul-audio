@@ -37,3 +37,10 @@ noise.48k.mono.us 69.1
 noise.48k.stereo.us 72.52
 echo.16k.us 38.23
 echo.48k.us 112.6
+# The guarded control calls (bench_control), recorded 2026-10-19: the
+# best of five runs at a load of 200 to 250, each run itself the best of
+# seven; v1.0.0 built alike ran as fast, and its instruction count
+# (perf stat) is within 1 % of this code's, where wall time at that
+# load is not to be trusted further.
+control.poses.us 2.436
+control.drain.ns 12.56
