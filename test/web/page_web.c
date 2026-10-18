@@ -661,9 +661,12 @@ static void Watch(double now)
     {
         s_excused += shorts - s_watchedShorts;
     }
-    int expected = s_watchedTarget + (shorts - s_watchedShorts) * 128;
+    // The target grows from the step before's, or at the first step from
+    // the one a correct backend starts with, which no load can move.
+    int before = s_lastStep > 0.0 ? s_watchedTarget : StartTarget();
+    int expected = before + (shorts - s_watchedShorts) * 128;
     expected = expected < Capacity() ? expected : Capacity();
-    if (s_lastStep > 0.0 && Target() != expected)
+    if (Target() != expected)
     {
         printf("target %d after %d short quanta, expected %d\n", Target(), shorts - s_watchedShorts,
                expected);
@@ -748,7 +751,8 @@ static void Step_(void* user)
         {
             CHECK(Shorts() > s_shortsBeforeStall && Target() == Capacity(),
                   "a long stall grows the target to the ring's capacity");
-            CHECK(s_ruleBroken == 0, "the target grows by a quantum for each quantum played short");
+            CHECK(s_ruleBroken == 0, "the target starts two quanta past the base latency and grows "
+                                     "by a quantum for each quantum played short");
             CheckXruns();
             SuspendForHost();
         }
