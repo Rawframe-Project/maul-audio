@@ -275,9 +275,9 @@ void maudContextRelease(maudContext* context, void* memory, size_t size, size_t 
     atomic_store_explicit(&context->hostThread, 0, memory_order_relaxed);
 }
 
-bool maudIsRenderingThread(const maudContext* context)
+// Whether the thread self renders one of the context's streams.
+static bool RendersStream(const maudContext* context, uintptr_t self)
 {
-    uintptr_t self = maudCurrentThread();
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         // Only the atomic is read: the audio thread may ask while the
@@ -291,6 +291,11 @@ bool maudIsRenderingThread(const maudContext* context)
     return false;
 }
 
+bool maudIsRenderingThread(const maudContext* context)
+{
+    return RendersStream(context, maudCurrentThread());
+}
+
 bool maudIsAllocatingThread(const maudContext* context)
 {
     return atomic_load_explicit(&context->hostThread, memory_order_relaxed) == maudCurrentThread();
@@ -298,7 +303,10 @@ bool maudIsAllocatingThread(const maudContext* context)
 
 bool maudRefuseControl(maudContext* context)
 {
-    if (maudIsRenderingThread(context) || maudIsAllocatingThread(context))
+    // The thread's identity is asked once: every control call pays this.
+    uintptr_t self = maudCurrentThread();
+    if (atomic_load_explicit(&context->hostThread, memory_order_relaxed) == self ||
+        RendersStream(context, self))
     {
         maudCountMisuse(context);
         return true;

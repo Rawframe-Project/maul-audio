@@ -15,6 +15,13 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Changed
+
+- A context's control calls ask for the calling thread's identity once
+  to refuse a call from host code, as 1.0 did: 1.1's second check had
+  made each call some 8 ns slower (a notification drain 21 ns against
+  13 ns, `bench_control`).
+
 ## [1.1.0] - 2026-10-18
 
 Host code calling back into the object it serves is refused and
