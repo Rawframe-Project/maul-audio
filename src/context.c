@@ -210,6 +210,7 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
         .bytes = layout.size,
     };
     atomic_init(&context->misuse, 0);
+    atomic_init(&context->hostThread, 0);
     InitStreams(&context->streams);
     maudResult result = OpenBackend(context, (char*)(block + textOffset));
     if (result != maud_success)
@@ -227,9 +228,8 @@ maudResult maudDestroyContext(maudContext* context)
     {
         return maud_success;
     }
-    if (maudIsRenderingThread(context))
+    if (maudRefuseControl(context))
     {
-        maudCountMisuse(context);
         return maud_errorState;
     }
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
@@ -261,13 +261,18 @@ uint64_t maudGetContextMisuse(const maudContext* context)
 void* maudContextAllocate(maudContext* context, size_t size, size_t alignment)
 {
     MAUD_ASSERT(!maudIsRenderingThread(context));
-    return maudAllocate(&context->def.allocator, size, alignment);
+    atomic_store_explicit(&context->hostThread, maudCurrentThread(), memory_order_relaxed);
+    void* memory = maudAllocate(&context->def.allocator, size, alignment);
+    atomic_store_explicit(&context->hostThread, 0, memory_order_relaxed);
+    return memory;
 }
 
 void maudContextRelease(maudContext* context, void* memory, size_t size, size_t alignment)
 {
     MAUD_ASSERT(!maudIsRenderingThread(context));
+    atomic_store_explicit(&context->hostThread, maudCurrentThread(), memory_order_relaxed);
     maudRelease(&context->def.allocator, memory, size, alignment);
+    atomic_store_explicit(&context->hostThread, 0, memory_order_relaxed);
 }
 
 bool maudIsRenderingThread(const maudContext* context)
@@ -282,6 +287,21 @@ bool maudIsRenderingThread(const maudContext* context)
         {
             return true;
         }
+    }
+    return false;
+}
+
+bool maudIsAllocatingThread(const maudContext* context)
+{
+    return atomic_load_explicit(&context->hostThread, memory_order_relaxed) == maudCurrentThread();
+}
+
+bool maudRefuseControl(maudContext* context)
+{
+    if (maudIsRenderingThread(context) || maudIsAllocatingThread(context))
+    {
+        maudCountMisuse(context);
+        return true;
     }
     return false;
 }
@@ -374,9 +394,8 @@ maudResult maudResumeContext(maudContext* context)
     {
         return maud_errorInvalid;
     }
-    if (maudIsRenderingThread(context))
+    if (maudRefuseControl(context))
     {
-        maudCountMisuse(context);
         return maud_errorState;
     }
     if (context->backend->resumeContext != nullptr)

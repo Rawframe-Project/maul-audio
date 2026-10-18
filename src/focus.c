@@ -29,9 +29,8 @@ maudResult maudRequestFocus(maudContext* context, maudFocusRequest request, maud
     {
         return maud_errorInvalid;
     }
-    if (maudIsRenderingThread(context))
+    if (maudRefuseControl(context))
     {
-        maudCountMisuse(context);
         return maud_errorState;
     }
     if (context->backend->requestFocus == nullptr)

@@ -41,9 +41,8 @@ static maudResult CheckOffline(maudContext* context)
     {
         return maud_errorUnsupported;
     }
-    if (maudIsRenderingThread(context))
+    if (maudRefuseControl(context))
     {
-        maudCountMisuse(context);
         return maud_errorState;
     }
     return maud_success;

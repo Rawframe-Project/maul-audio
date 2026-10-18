@@ -81,7 +81,8 @@ extern "C"
     /// @param notificationOut  Receives the record.
     /// @return `maud_success`; `maud_empty` when the queue is drained;
     ///         `maud_errorInvalid` for a NULL pointer; `maud_errorState` on a
-    ///         thread rendering one of the context's streams.
+    ///         thread rendering one of the context's streams or running its
+    ///         allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudNextNotification(maudContext* context,

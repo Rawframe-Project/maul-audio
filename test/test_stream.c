@@ -453,7 +453,8 @@ static void TestControlCallsFromTheCallbackAreRefused(void)
     CHECK(recorder.renderResult == maud_errorState, "re-entrant render refused");
     CHECK(recorder.resumeResult == maud_errorState, "resume refused on the audio thread");
     CHECK(recorder.destroyResult == maud_errorState, "the context's destruction refused there");
-    CHECK(maudGetContextMisuse(context) == 3, "control calls counted as misuse");
+    CHECK(maudGetContextMisuse(context) == 4,
+          "control calls and the re-entrant render counted as misuse");
     recorder.tryControl = false;
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy after rendering");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

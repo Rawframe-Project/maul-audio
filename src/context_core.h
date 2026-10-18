@@ -184,6 +184,8 @@ struct maudContext
     // The audio focus last reported (focus.h).
     maudFocus focus;
     _Atomic(uint64_t) misuse;
+    // The thread running the host's allocator for the context, or 0.
+    _Atomic(uintptr_t) hostThread;
 };
 
 #endif // MAUL_AUDIO_SRC_CONTEXT_CORE_H

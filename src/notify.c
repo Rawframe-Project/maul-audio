@@ -47,9 +47,8 @@ maudResult maudNextNotification(maudContext* context, maudNotification* notifica
     {
         return maud_errorInvalid;
     }
-    if (maudIsRenderingThread(context))
+    if (maudRefuseControl(context))
     {
-        maudCountMisuse(context);
         return maud_errorState;
     }
     if (context->backend->pump != nullptr)

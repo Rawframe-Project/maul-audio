@@ -15,6 +15,17 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Changed
+
+- Host code the context runs calling back into it is refused and
+  counted as misuse: every call refused on a thread rendering one of
+  the context's streams is also refused on the thread running the
+  context's allocator, with `maud_errorState`, and rendering a stream
+  again from its own callback is counted (it was refused uncounted).
+  `maudStreamCallback`'s comment names the calls it may make, and
+  `maudAllocator`'s says an allocator calls no function of the object
+  it serves.
+
 ## [1.0.0] - 2026-10-14
 
 The first stable release: what 0.5 does, with the promises above. Every

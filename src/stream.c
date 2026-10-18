@@ -89,9 +89,8 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def, maud
     {
         return maud_errorInvalid;
     }
-    if (maudIsRenderingThread(context))
+    if (maudRefuseControl(context))
     {
-        maudCountMisuse(context);
         return maud_errorState;
     }
     if (def == nullptr || streamOut == nullptr || !DefValid(def))
@@ -135,9 +134,8 @@ static maudResult FindForControl(maudContext* context, maudStreamId stream,
     {
         return maud_errorInvalid;
     }
-    if (maudIsRenderingThread(context))
+    if (maudRefuseControl(context))
     {
-        maudCountMisuse(context);
         return maud_errorState;
     }
     *slotOut = maudFindStream(context, stream);
@@ -301,6 +299,11 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
     {
         return maud_errorInvalid;
     }
+    if (maudIsAllocatingThread(context))
+    {
+        maudCountMisuse(context);
+        return maud_errorState;
+    }
     maudStreamSlot* slot = maudFindStream(context, stream);
     if (slot == nullptr)
     {
@@ -329,10 +332,16 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
     {
         return maud_errorState;
     }
+    uintptr_t self = maudCurrentThread();
     uintptr_t idle = 0;
-    if (!atomic_compare_exchange_strong_explicit(&core->renderingThread, &idle, maudCurrentThread(),
+    if (!atomic_compare_exchange_strong_explicit(&core->renderingThread, &idle, self,
                                                  memory_order_acq_rel, memory_order_acquire))
     {
+        // Rendering it again from its own callback is calling back in.
+        if (idle == self)
+        {
+            maudCountMisuse(context);
+        }
         return maud_errorState;
     }
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);

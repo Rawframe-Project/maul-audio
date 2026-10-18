@@ -88,7 +88,11 @@ extern "C"
 
     // The allocator an owner object takes in its def and keeps for its
     // lifetime. Alignment is a power of two. A zeroed allocator means the C
-    // library's allocation functions.
+    // library's allocation functions. It calls no function of the object
+    // it serves: the context and the spatializer refuse such a call with
+    // maud_errorState and count it as misuse, and every other object calls
+    // its allocator only while it is made or destroyed, when no handle to
+    // it is valid.
     typedef struct maudAllocator
     {
         void* (*alloc)(size_t size, size_t alignment, void* context);

@@ -152,8 +152,9 @@ extern "C"
     ///
     /// @param context  The context. NULL does nothing.
     /// @return `maud_success`, or `maud_errorState` when called on a thread
-    ///         that is rendering one of its streams; the context is then
-    ///         left as it was and the call counts as misuse.
+    ///         that is rendering one of its streams or running its allocator;
+    ///         the context is then left as it was and the call counts as
+    ///         misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     /// No stream of the context may be rendering on another thread.
@@ -169,8 +170,9 @@ extern "C"
     ///
     /// @param context  The context.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL context;
-    ///         `maud_errorState` when called on a thread that is rendering
-    ///         one of the context's streams, which counts as misuse.
+    ///         `maud_errorState` when called on a thread that is rendering one
+    ///         of the context's streams or running its allocator, which counts
+    ///         as misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudResumeContext(maudContext* context);
@@ -188,8 +190,9 @@ extern "C"
     /// @param context    The context.
     /// @param suspended  Whether the host is suspended.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL context;
-    ///         `maud_errorState` when called on a thread that is rendering
-    ///         one of the context's streams, which counts as misuse.
+    ///         `maud_errorState` when called on a thread that is rendering one
+    ///         of the context's streams or running its allocator, which counts
+    ///         as misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSetContextSuspended(maudContext* context,
@@ -205,8 +208,10 @@ extern "C"
     MAUD_API maudBackendKind maudGetContextBackend(const maudContext* context);
 
     /// Returns how many calls the context refused as misuse: invalid
-    /// arguments against it, and control calls made on a thread that was
-    /// rendering one of its streams. Stale ids are not misuse.
+    /// arguments against it, and calls refused because they came from
+    /// host code the context was running (control calls on a thread
+    /// rendering one of its streams or running its allocator, a stream
+    /// rendered again from its own callback). Stale ids are not misuse.
     ///
     /// @param context  The context.
     /// @return The count since the context was created.

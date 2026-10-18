@@ -48,12 +48,12 @@ extern "C"
     /// @param context      An offline context.
     /// @param def          The def, from maudDefaultOfflineDeviceDef.
     /// @param deviceOut    Receives the device's id; the null id on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer where
-    ///         one is required, a def without its cookie, or a value out of
-    ///         range; `maud_errorCapacity` past the device limit or the
-    ///         name and key limit; `maud_errorUnsupported` on a context that
-    ///         is not offline; `maud_errorState` on a thread rendering one of
-    ///         the context's streams.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer where one
+    ///         is required, a def without its cookie, or a value out of range;
+    ///         `maud_errorCapacity` past the device limit or the name and key
+    ///         limit; `maud_errorUnsupported` on a context that is not offline;
+    ///         `maud_errorState` on a thread rendering one of the context's
+    ///         streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudAddOfflineDevice(maudContext* context,
@@ -69,7 +69,7 @@ extern "C"
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL context; `maud_errorUnsupported` on a context that is not
     ///         offline; `maud_errorState` on a thread rendering one of the
-    ///         context's streams.
+    ///         context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudRemoveOfflineDevice(maudContext* context,
@@ -84,7 +84,7 @@ extern "C"
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL context or an unknown role; `maud_errorUnsupported` on a
     ///         context that is not offline; `maud_errorState` on a thread
-    ///         rendering one of the context's streams.
+    ///         rendering one of the context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDefaultDevice(maudContext* context,
@@ -100,7 +100,7 @@ extern "C"
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL context or an unknown form; `maud_errorUnsupported` on a
     ///         context that is not offline; `maud_errorState` on a thread
-    ///         rendering one of the context's streams.
+    ///         rendering one of the context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceForm(maudContext* context,
@@ -120,7 +120,7 @@ extern "C"
     ///         NULL context, an unknown layout or a rate out of range;
     ///         `maud_errorUnsupported` on a context that is not offline;
     ///         `maud_errorState` on a thread rendering one of the context's
-    ///         streams.
+    ///         streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceFormat(maudContext* context,
@@ -141,7 +141,7 @@ extern "C"
     ///         NULL context, an unknown state, objects while not on, or an
     ///         input device; `maud_errorUnsupported` on a context that is not
     ///         offline; `maud_errorState` on a thread rendering one of the
-    ///         context's streams.
+    ///         context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSetOfflineDeviceSpatializer(

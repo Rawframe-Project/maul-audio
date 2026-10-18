@@ -305,9 +305,17 @@ tests with a counting allocator (hot paths); review.
     the marshal deadline.`
   - `Real-time safe: no allocation, lock or wait.`
 - Scheduling never changes results.
+- Host code a library calls (the allocator, task hooks, the library's
+  own callbacks) calls no function of the object it serves unless the
+  library profile says it may; the callback's documentation says so,
+  and the object's mutating functions refuse such a call with the
+  state error, one misuse counted. A callback that must call back in
+  (an audio callback queuing a voice) is given a named list of allowed
+  calls, kept free of the state the outer call is changing.
 
 Checked by: `tools/check_docs.py` (a thread safety paragraph opening
-with a listed statement); ThreadSanitizer in CI; review.
+with a listed statement); ThreadSanitizer in CI; a test calling back in
+from each callback; review.
 
 ## 11. Floating point and determinism
 

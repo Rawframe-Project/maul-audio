@@ -89,9 +89,13 @@ extern "C"
         uint32_t objectsAvailable;
     } maudStreamBlock;
 
-    // The host's real-time callback. It must not allocate, lock, wait or
-    // make any control call on the stream's context; control calls made
-    // from it are refused with maud_errorState.
+    // The host's real-time callback. It must not allocate, lock or wait.
+    // Of the stream's context it may call only maudGetStreamFormat,
+    // maudGetStreamPosition, maudGetStreamClock, maudGetContextMisuse and
+    // maudGetHostNanoseconds, and render or feed another offline stream
+    // (maudRenderStream, maudFeedStream, maudRenderObjects). Any other
+    // call that changes the context is refused with maud_errorState and
+    // counted as misuse, rendering its own stream again included.
     typedef void (*maudStreamCallback)(const maudStreamBlock* block, void* user);
 
     // Parts of the platform's voice processing, as flags: asked for by an
@@ -302,9 +306,9 @@ extern "C"
     ///         without its cookie or callback, or a value out of range;
     ///         `maud_errorUnsupported` for what the backend cannot do (the
     ///         offline backend has only pull mode and no converter);
-    ///         `maud_errorCapacity` past the stream or period limit or when
-    ///         the allocator fails; `maud_errorState` on a thread rendering
-    ///         one of the context's streams.
+    ///         `maud_errorCapacity` past the stream or period limit or when the
+    ///         allocator fails; `maud_errorState` on a thread rendering one of
+    ///         the context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudCreateStream(maudContext* context,
@@ -319,8 +323,8 @@ extern "C"
     /// @return `maud_success`; `maud_errorStale` for an id that names no
     ///         stream; `maud_errorInvalid` for a NULL context;
     ///         `maud_errorState` on a thread rendering one of the context's
-    ///         streams, or, on the offline backend, while another thread
-    ///         renders the stream.
+    ///         streams or running its allocator, or, on the offline backend,
+    ///         while another thread renders the stream.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudDestroyStream(maudContext* context, maudStreamId stream);
@@ -330,8 +334,8 @@ extern "C"
     /// @param context  The context.
     /// @param stream   The stream.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
-    ///         NULL context; `maud_errorState` on a thread rendering one of
-    ///         the context's streams.
+    ///         NULL context; `maud_errorState` on a thread rendering one of the
+    ///         context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudStartStream(maudContext* context, maudStreamId stream);
@@ -341,8 +345,8 @@ extern "C"
     /// @param context  The context.
     /// @param stream   The stream.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
-    ///         NULL context; `maud_errorState` on a thread rendering one of
-    ///         the context's streams.
+    ///         NULL context; `maud_errorState` on a thread rendering one of the
+    ///         context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudStopStream(maudContext* context, maudStreamId stream);
