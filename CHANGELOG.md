@@ -15,6 +15,14 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-18
+
+Host code calling back into the object it serves is refused and
+counted (docs/adr/maud-0005), and the spatializer and the scene count
+their misuse as the context does. A program built against 1.0 is
+rebuilt to run with 1.1: a library of another minor refuses its root
+defs with `maud_errorVersion`.
+
 ### Added
 
 - `maudGetSpatializerMisuse`: the calls the spatializer refused as
