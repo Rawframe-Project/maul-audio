@@ -129,6 +129,16 @@ extern "C"
     /// Safe from any thread.
     MAUD_API void maudDestroyAcousticScene(maudAcousticScene* scene);
 
+    /// Returns how many calls the scene refused as misuse: invalid
+    /// arguments to the functions that change its instances. Stale ids
+    /// are not misuse.
+    ///
+    /// @param scene  The scene.
+    /// @return The count since the scene was created.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MAUD_API uint64_t maudGetAcousticSceneMisuse(const maudAcousticScene* scene);
+
     /// Answers any-hit queries against a scene (a maudAnyHitFn): a ray
     /// hits when a triangle lies within [minDistance, maxDistance] along
     /// it. A ray through an edge or vertex shared by triangles hits.

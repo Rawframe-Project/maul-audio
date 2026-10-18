@@ -211,6 +211,7 @@ maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcoustic
         return maud_errorCapacity;
     }
     *scene = (maudAcousticScene){.allocator = def->allocator};
+    atomic_init(&scene->misuse, 0);
     if (!Build(scene, def))
     {
         Release(scene);
@@ -226,6 +227,11 @@ void maudDestroyAcousticScene(maudAcousticScene* scene)
     {
         Release(scene);
     }
+}
+
+uint64_t maudGetAcousticSceneMisuse(const maudAcousticScene* scene)
+{
+    return atomic_load_explicit(&scene->misuse, memory_order_relaxed);
 }
 
 static void Unpack(const maudRay* ray, float* origin, float* direction)

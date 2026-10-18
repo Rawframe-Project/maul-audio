@@ -21,6 +21,9 @@ release could change the API, the ABI and every data format.
   misuse, invalid arguments to the functions that change it and calls
   made from host code it was running (stale ids and malformed bake
   files are not misuse).
+- `maudGetAcousticSceneMisuse`: the calls the scene refused as misuse,
+  invalid arguments to the functions that change its instances (stale
+  ids are not misuse).
 
 ### Changed
 

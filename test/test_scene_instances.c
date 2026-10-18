@@ -10,7 +10,8 @@
 // distance; a quarter turn about +y carries +x to -z; changes wait for
 // a commit; ties go to the static scene, then the lower slot; a ray
 // ending exactly on an instance hits it; limits, stale ids and
-// transforms out of range are refused; a freed slot is taken again
+// transforms out of range are refused, and only the invalid arguments
+// count as misuse; a freed slot is taken again
 // under a new id; an allocator that fails at any of the scene's blocks
 // is a capacity error with nothing leaked.
 
@@ -359,6 +360,8 @@ static void TestRefused(void)
     CHECK(maudDestroySceneInstance(scene, none) == maud_errorInvalid &&
               maudCommitAcousticScene(nullptr) == maud_errorInvalid,
           "0 and NULL");
+    CHECK(maudGetAcousticSceneMisuse(scene) == 6,
+          "each invalid argument counted; the capacity and the stale id not");
     maudDestroyAcousticScene(scene);
     def.maxTriangles = 11;
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorCapacity, "past maxTriangles");

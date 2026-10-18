@@ -409,6 +409,11 @@ void maudDestroyAcousticScene(maudAcousticScene* scene);
 Destroys an acoustic scene. NULL is ignored. No query may be running on it.  @param scene  The scene. @par Thread safety Safe from any thread.
 
 ```c
+uint64_t maudGetAcousticSceneMisuse(const maudAcousticScene* scene);
+```
+Returns how many calls the scene refused as misuse: invalid arguments to the functions that change its instances. Stale ids are not misuse.  @param scene  The scene. @return The count since the scene was created. @par Thread safety Safe from any thread.
+
+```c
 void maudSceneAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* scene);
 ```
 Answers any-hit queries against a scene (a maudAnyHitFn): a ray hits when a triangle lies within [minDistance, maxDistance] along it. A ray through an edge or vertex shared by triangles hits.  @param rays      count rays. @param count     The rays. @param occluded  Receives 1 or 0 per ray. @param scene     The scene. @par Thread safety Safe from any thread.
@@ -741,4 +746,4 @@ Takes the echo of the render out of the capture, in place, in any count of frame
 
 ---
 
-132 functions across 19 headers.
+133 functions across 19 headers.

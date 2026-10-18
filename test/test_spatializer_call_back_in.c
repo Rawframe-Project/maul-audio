@@ -8,9 +8,9 @@
 // that changes the spatializer is refused with maud_errorState and
 // counted as misuse, maudDestroySpatializer does nothing, and the outer
 // call goes on as if nothing happened. The calls the hooks may make (the
-// rendering side, the misuse count) work from them. Invalid arguments to
-// the functions that change it count too; a stale id, a malformed bake
-// and the queries do not.
+// rendering side, the misuse count) work from them. Each invalid
+// argument to the functions that change it counts once; a stale id, a
+// malformed bake and the queries do not.
 
 #include "test_harness.h"
 
@@ -245,6 +245,54 @@ static void TestAllocator(void)
     CHECK(maudDestroyProbeSet(s_s, set) == maud_success, "the loaded set destroyed");
 }
 
+// Each invalid argument to a function that changes a spatializer,
+// refused and counted once.
+#define COUNTED(s, call, msg)                                                                      \
+    do                                                                                             \
+    {                                                                                              \
+        uint64_t before_ = maudGetSpatializerMisuse(s);                                            \
+        CHECK((call) == maud_errorInvalid && maudGetSpatializerMisuse(s) == before_ + 1, msg);     \
+    } while (0)
+
+static void TestEachCounted(void)
+{
+    maudSourceId source = {0, 0};
+    maudProbeSetId set = {0, 0};
+    maudAcousticMaterial wrong = {{2.0f, 0.1f, 0.1f}, 0.3f, {0.0f, 0.0f, 0.0f}};
+    const maudProbeSetId unknown = {99, 1};
+    COUNTED(s_s, maudCreateSource(s_s, nullptr, &source), "a source without a def");
+    COUNTED(s_s, maudDestroySource(s_s, (maudSourceId){0, 0}), "a 0 source id");
+    COUNTED(s_s, maudSetSourcePose(s_s, s_source, nullptr), "no pose");
+    COUNTED(s_s, maudSetMaterials(s_s, nullptr, 1), "no materials");
+    COUNTED(s_s, maudSetMaterials(s_s, &wrong, 1), "an absorption past 1");
+    COUNTED(s_s, maudSimulateDirect(s_s, nullptr), "a direct step without a listener");
+    COUNTED(s_s, maudSimulateReverb(s_s, nullptr), "a reverberation step without one");
+    COUNTED(s_s, maudCreateProbeSet(s_s, nullptr, &set), "a set without a def");
+    COUNTED(s_s, maudDestroyProbeSet(s_s, unknown), "destroying an unknown set");
+    COUNTED(s_s, maudSetPathing(s_s, unknown), "pathing over one");
+    COUNTED(s_s, maudBakeProbeSet(s_s, unknown), "baking one");
+    COUNTED(s_s, maudUseBakedReverb(s_s, unknown), "using one's bake");
+    COUNTED(s_s, maudLoadProbeSet(s_s, nullptr, 0, &set), "loading no bytes");
+    // The rendering side counts its invalid arguments too.
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.reverbRays = 64;
+    def.reflectionOrder = 1;
+    def.reflectionDuration = 0.05f;
+    def.reflectionRate = 48000.0f;
+    maudSpatializer* r = nullptr;
+    CHECK(maudCreateSpatializer(&def, &r) == maud_success, "a spatializer with reflections");
+    const maudQuaternion none = {0.0f, 0.0f, 0.0f, 0.0f};
+    const maudQuaternion facing = {0.0f, 0.0f, 0.0f, 1.0f};
+    float send[4] = {0};
+    float channel[4][4] = {{0}};
+    float* bed[4] = {channel[0], channel[1], channel[2], channel[3]};
+    float* gap[4] = {channel[0], nullptr, channel[2], channel[3]};
+    COUNTED(r, maudRenderReflections(r, &none, send, bed, 4), "a zero orientation");
+    COUNTED(r, maudRenderReflections(r, &facing, nullptr, bed, 4), "no send");
+    COUNTED(r, maudRenderReflections(r, &facing, send, gap, 4), "a bed channel missing");
+    maudDestroySpatializer(r);
+}
+
 static void TestCounts(void)
 {
     uint64_t before = maudGetSpatializerMisuse(s_s);
@@ -309,6 +357,7 @@ int main(void)
     CHECK(maudGetSpatializerMisuse(s_s) == 0, "no misuse yet");
     TestHooks();
     TestAllocator();
+    TestEachCounted();
     TestCounts();
     TestDestroy();
     free(s_bytes);
