@@ -101,24 +101,51 @@ static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t c
 }
 
 // The stream's rate: the best of three windows of three seconds, since
-// a loaded machine's stalls only lower a window's count. AAudio moves
+// a stall that lowers a window's count is the machine's. AAudio moves
 // frames in bursts (882 on the emulator, 20 ms): a window this long
-// holds one burst more or less within 0.7%.
+// holds one burst more or less within 0.7%. A window in which the test's
+// own thread woke more than 50 ms late, and the one after it, where the
+// emulator catches up, do not count: on a loaded machine the starved
+// emulator moves frames slow, then fast. After ten windows with fewer
+// than three that count, every window counts, as before.
 static double MeasureRate(const maudContext* context, maudStreamId stream)
 {
     double best = 0.0;
-    for (int window = 0; window < 3; ++window)
+    double bestOfAll = 0.0;
+    int counted = 0;
+    bool starved = false;
+    for (int window = 0; window < 10 && counted < 3; ++window)
     {
         uint64_t first = 0;
         uint64_t last = 0;
         double start = Now();
+        double previous = start;
+        double late = 0.0;
         CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-        Sleep(3000);
+        while (Now() - start < 3.0)
+        {
+            Sleep(10);
+            double now = Now();
+            late = now - previous - 0.010 > late ? now - previous - 0.010 : late;
+            previous = now;
+        }
         CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
         double rate = (double)(last - first) / (Now() - start);
-        best = rate > best ? rate : best;
+        bestOfAll = rate > bestOfAll ? rate : bestOfAll;
+        bool counts = late <= 0.050 && !starved;
+        starved = late > 0.050;
+        if (counts)
+        {
+            best = rate > best ? rate : best;
+            counted += 1;
+        }
+        else
+        {
+            fprintf(stderr, "window %d left out: %.0f frames/s, the test's thread %.0f ms late\n",
+                    window, rate, late * 1000.0);
+        }
     }
-    return best;
+    return counted >= 3 ? best : bestOfAll;
 }
 
 // At most 2% above the expected rate and 6% below; printed when not.
