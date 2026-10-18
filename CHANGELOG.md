@@ -15,8 +15,21 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Added
+
+- `maudGetSpatializerMisuse`: the calls the spatializer refused as
+  misuse, invalid arguments to the functions that change it and calls
+  made from host code it was running (stale ids and malformed bake
+  files are not misuse).
+
 ### Changed
 
+- Host code the spatializer runs (its ray queries, task hooks and
+  allocator) calling back into it is refused: every function that
+  changes the spatializer returns `maud_errorState` and counts one
+  misuse while such code runs, from whichever thread, and
+  `maudDestroySpatializer` does nothing then. The hooks may call the
+  rendering side and the misuse count (docs/adr/maud-0005).
 - Host code the context runs calling back into it is refused and
   counted as misuse: every call refused on a thread rendering one of
   the context's streams is also refused on the thread running the

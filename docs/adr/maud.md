@@ -9,3 +9,4 @@ are listed in [README.md](README.md).
 | [maud-0002](maud-0002-private-backends.md) | Private backends join at configure time | Accepted |
 | [maud-0003](maud-0003-android-shrinking.md) | What an Android application keeps when it shrinks its code | Accepted |
 | [maud-0004](maud-0004-root-def-versions.md) | Every root def carries the program's version | Accepted |
+| [maud-0005](maud-0005-calling-back-in.md) | Host code that calls back in is refused and counted | Accepted |

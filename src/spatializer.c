@@ -275,16 +275,46 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     s->back = 0;
     s->front = 1;
     atomic_init(&s->shared, 2u);
+    atomic_init(&s->misuse, 0);
+    atomic_init(&s->host, false);
     *spatializerOut = s;
     return maud_success;
 }
 
 void maudDestroySpatializer(maudSpatializer* spatializer)
 {
-    if (spatializer != nullptr)
+    if (spatializer != nullptr && !maudSpatializerBusy(spatializer))
     {
+        // Its allocator runs from here on, with no handle left valid.
+        maudSpatializerRunHost(spatializer, true);
         Release(spatializer);
     }
+}
+
+uint64_t maudGetSpatializerMisuse(const maudSpatializer* spatializer)
+{
+    return atomic_load_explicit(&spatializer->misuse, memory_order_relaxed);
+}
+
+maudResult maudSpatializerInvalid(maudSpatializer* s)
+{
+    atomic_fetch_add_explicit(&s->misuse, 1, memory_order_relaxed);
+    return maud_errorInvalid;
+}
+
+bool maudSpatializerBusy(maudSpatializer* s)
+{
+    if (atomic_load_explicit(&s->host, memory_order_acquire))
+    {
+        atomic_fetch_add_explicit(&s->misuse, 1, memory_order_relaxed);
+        return true;
+    }
+    return false;
+}
+
+void maudSpatializerRunHost(maudSpatializer* s, bool running)
+{
+    atomic_store_explicit(&s->host, running, memory_order_release);
 }
 
 static bool PatternValid(const maudDirectivityPattern* pattern)
@@ -300,14 +330,21 @@ maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* d
     {
         *sourceOut = (maudSourceId){0, 0};
     }
-    if (spatializer == nullptr || def == nullptr || sourceOut == nullptr ||
-        def->cookie != SOURCE_DEF_COOKIE || !PatternValid(&def->directivity) ||
-        def->occlusion > maud_occlusionVolumetric ||
+    if (spatializer == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    if (maudSpatializerBusy(spatializer))
+    {
+        return maud_errorState;
+    }
+    if (def == nullptr || sourceOut == nullptr || def->cookie != SOURCE_DEF_COOKIE ||
+        !PatternValid(&def->directivity) || def->occlusion > maud_occlusionVolumetric ||
         (def->occlusion == maud_occlusionVolumetric &&
          (!(def->occlusionRadius > 0.0f) || !isfinite(def->occlusionRadius) ||
           def->occlusionSamples == 0 || def->occlusionSamples > spatializer->maxSamples)))
     {
-        return maud_errorInvalid;
+        return maudSpatializerInvalid(spatializer);
     }
     if (spatializer->freeCount == 0)
     {
@@ -327,13 +364,21 @@ maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* d
     return maud_success;
 }
 
-// The live slot an id names, or the reason there is none.
+// The live slot an id names for a call that changes it, or the reason
+// there is none.
 static maudResult Find(maudSpatializer* spatializer, maudSourceId source, Slot** slotOut)
 {
-    if (spatializer == nullptr || source.index1 == 0 || source.index1 > spatializer->capacity ||
-        source.generation == 0)
+    if (spatializer == nullptr)
     {
         return maud_errorInvalid;
+    }
+    if (maudSpatializerBusy(spatializer))
+    {
+        return maud_errorState;
+    }
+    if (source.index1 == 0 || source.index1 > spatializer->capacity || source.generation == 0)
+    {
+        return maudSpatializerInvalid(spatializer);
     }
     Slot* slot = &spatializer->slots[source.index1 - 1];
     if (!slot->live || slot->generation != source.generation)
@@ -369,7 +414,7 @@ maudResult maudSetSourcePose(maudSpatializer* spatializer, maudSourceId source,
     }
     if (pose == nullptr || !maudPoseValid(pose))
     {
-        return maud_errorInvalid;
+        return maudSpatializerInvalid(spatializer);
     }
     slot->pose = *pose;
     return maud_success;
@@ -537,9 +582,17 @@ static bool MaterialValid(const maudAcousticMaterial* m)
 maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMaterial* materials,
                             uint32_t count)
 {
-    if (spatializer == nullptr || (count > 0 && materials == nullptr))
+    if (spatializer == nullptr)
     {
         return maud_errorInvalid;
+    }
+    if (maudSpatializerBusy(spatializer))
+    {
+        return maud_errorState;
+    }
+    if (count > 0 && materials == nullptr)
+    {
+        return maudSpatializerInvalid(spatializer);
     }
     if (count > spatializer->materialCapacity)
     {
@@ -549,7 +602,7 @@ maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMate
     {
         if (!MaterialValid(&materials[i]))
         {
-            return maud_errorInvalid;
+            return maudSpatializerInvalid(spatializer);
         }
     }
     if (count > 0)
@@ -562,10 +615,19 @@ maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMate
 
 maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* listener)
 {
-    if (spatializer == nullptr || listener == nullptr || !maudPoseValid(listener))
+    if (spatializer == nullptr)
     {
         return maud_errorInvalid;
     }
+    if (maudSpatializerBusy(spatializer))
+    {
+        return maud_errorState;
+    }
+    if (listener == nullptr || !maudPoseValid(listener))
+    {
+        return maudSpatializerInvalid(spatializer);
+    }
+    maudSpatializerRunHost(spatializer, true);
     Buffer* buffer = &spatializer->buffers[spatializer->back];
     for (uint32_t i = 0; i < spatializer->capacity; ++i)
     {
@@ -589,6 +651,7 @@ maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* list
     uint32_t old = atomic_exchange_explicit(&spatializer->shared, spatializer->back | FRESH,
                                             memory_order_acq_rel);
     spatializer->back = old & (FRESH - 1);
+    maudSpatializerRunHost(spatializer, false);
     return maud_success;
 }
 
@@ -610,21 +673,13 @@ static void Clear(const maudRay* rays, uint32_t count, uint8_t* occluded, void* 
     memset(occluded, 0, count);
 }
 
-maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* listener)
+// A reverberation step's estimate, from the baked set in use or traced.
+static void EstimateReverb(maudSpatializer* s, const maudPose* listener)
 {
-    if (spatializer == nullptr || listener == nullptr || !maudPoseValid(listener))
-    {
-        return maud_errorInvalid;
-    }
-    maudSpatializer* s = spatializer;
-    if (s->trace.rays == 0)
-    {
-        return maud_errorState;
-    }
     s->reverb.estimates += 1;
     if (maudBakedReverb(s, listener->position))
     {
-        return maud_success;
+        return;
     }
     if (s->closestHit == nullptr)
     {
@@ -636,13 +691,36 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
             s->reverb.tailLevel[b] = SILENT;
         }
         s->reverb.delay = 0.0f;
-        return maud_success;
+        return;
     }
     uint32_t batches = maudTraceFrom(s, listener->position, &s->reverb);
     if (s->reflections != nullptr)
     {
         maudPublishReflections(s->reflections, &s->trace, s->histograms, batches);
     }
+}
+
+maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* listener)
+{
+    if (spatializer == nullptr)
+    {
+        return maud_errorInvalid;
+    }
+    if (maudSpatializerBusy(spatializer))
+    {
+        return maud_errorState;
+    }
+    if (listener == nullptr || !maudPoseValid(listener))
+    {
+        return maudSpatializerInvalid(spatializer);
+    }
+    if (spatializer->trace.rays == 0)
+    {
+        return maud_errorState;
+    }
+    maudSpatializerRunHost(spatializer, true);
+    EstimateReverb(spatializer, listener);
+    maudSpatializerRunHost(spatializer, false);
     return maud_success;
 }
 
@@ -738,7 +816,7 @@ maudResult maudRenderReflections(maudSpatializer* spatializer, const maudQuatern
     float n = q->x * q->x + q->y * q->y + q->z * q->z + q->w * q->w;
     if (!isfinite(n) || !(n > 0.0f))
     {
-        return maud_errorInvalid;
+        return maudSpatializerInvalid(spatializer);
     }
     if (spatializer->reflections == nullptr)
     {
@@ -748,13 +826,13 @@ maudResult maudRenderReflections(maudSpatializer* spatializer, const maudQuatern
     channels *= channels;
     if (frames > 0 && (send == nullptr || bed == nullptr))
     {
-        return maud_errorInvalid;
+        return maudSpatializerInvalid(spatializer);
     }
     for (uint32_t c = 0; c < channels && frames > 0; ++c)
     {
         if (bed[c] == nullptr)
         {
-            return maud_errorInvalid;
+            return maudSpatializerInvalid(spatializer);
         }
     }
     maudConvolveReflections(spatializer->reflections, orientation, send, bed, frames);
