@@ -73,6 +73,10 @@ static double s_best;
 static double s_lastStep;
 static double s_watchedFrames;
 static double s_mostAhead;
+static double s_mostApart;
+// The same while the rate and the ramp are measured.
+static double s_measuredAhead;
+static double s_measuredApart;
 static int s_watchedShorts;
 static int s_watchedTarget;
 static bool s_wasLate;
@@ -188,6 +192,13 @@ EM_JS(int, Target, (void), {
 EM_JS(double, ContextFrames, (void), {
     const entry = globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0];
     return entry.context.currentTime * entry.context.sampleRate;
+});
+
+// The target a stream starts with, from the context's own latency
+// (backend_web.c's rule, worked out here so the backend cannot move it).
+EM_JS(int, StartTarget, (void), {
+    const entry = globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0];
+    return Math.ceil(entry.context.baseLatency * entry.context.sampleRate / 128) * 128 + 256;
 });
 
 // The most the target may grow to: the ring's capacity.
@@ -409,12 +420,13 @@ static void CheckBreaks(void)
         return;
     }
     int shorts = Shorts() - s_shortsAtMeasure;
-    if (breaks > 2 * shorts || Shorts() - s_excused > 4 || s_excused > 0)
-    {
-        printf("breaks %d, short quanta %d while measuring, %d in all, %d with a thread late "
-               "(the audio clock at most %.0f frames ahead of a step)\n",
-               breaks, shorts, Shorts(), s_excused, s_mostAhead);
-    }
+    // Printed on every run: what a quiet machine's steps look like is
+    // what the floors in Watch rest on.
+    printf("breaks %d, short quanta %d while measuring, %d in all, %d with a thread late; "
+           "steps at most %.0f ms apart, the audio clock at most %.0f frames ahead (while "
+           "measuring %.0f ms, %.0f frames)\n",
+           breaks, shorts, Shorts(), s_excused, s_mostApart, s_mostAhead, s_measuredApart,
+           s_measuredAhead);
     CHECK(breaks <= 2 * shorts, "the ramp plays in order");
     CHECK(Shorts() - s_excused <= 4, "few short quanta from the start");
     CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
@@ -608,14 +620,14 @@ static void StartSink(void)
           "the same device is not");
 }
 
-// Either thread starved empties the buffer the backend left: the main
-// thread away from a step for longer than the target at the step before
-// (and than 50 ms), or the audio thread catching up, its clock run ahead
-// of the step's wall time by more than that target (and than 20 ms, past
-// a device callback's burst). The short quanta seen then, or at the next
+// Either thread empties the buffer the backend left: the main thread
+// away from a step for longer than that buffer lasts (and than 50 ms),
+// or the audio thread running ahead of the step's wall time by more than
+// it (and than 20 ms), as Chrome's does when the device starts and,
+// starved, when it catches up. The short quanta seen then, or at the next
 // step (the worklet's report may queue behind the step's timer), are the
-// host's. On a quiet machine neither happens; and a backend that left
-// too little would not move either measure.
+// host's. Neither measure is the backend's to move, and the buffer is
+// never taken as less than a correct backend starts with.
 static void Watch(double now)
 {
     maudStreamFormat format;
@@ -628,9 +640,20 @@ static void Watch(double now)
     double rate = (double)format.sampleRate;
     double frames = ContextFrames();
     double wall = (now - s_lastStep) * rate / 1000.0;
-    double target = (double)s_watchedTarget;
+    // The buffer the backend should have left: its target at the step
+    // before, and never less than a correct backend starts with, so a
+    // backend that starts too low cannot excuse its own short quanta.
+    double target = (double)s_watchedTarget > (double)StartTarget() ? (double)s_watchedTarget
+                                                                    : (double)StartTarget();
     double ahead = frames - s_watchedFrames - wall;
     s_mostAhead = s_lastStep > 0.0 && ahead > s_mostAhead ? ahead : s_mostAhead;
+    s_mostApart =
+        s_lastStep > 0.0 && now - s_lastStep > s_mostApart ? now - s_lastStep : s_mostApart;
+    if (s_step == stepMeasure || s_step == stepBreaks)
+    {
+        s_measuredAhead = ahead > s_measuredAhead ? ahead : s_measuredAhead;
+        s_measuredApart = now - s_lastStep > s_measuredApart ? now - s_lastStep : s_measuredApart;
+    }
     bool away = wall > (target > 0.05 * rate ? target : 0.05 * rate);
     bool burst = ahead > (target > 0.02 * rate ? target : 0.02 * rate);
     bool late = s_lastStep > 0.0 && (away || burst);

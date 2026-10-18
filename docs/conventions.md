@@ -103,7 +103,10 @@ errors.
   geometry, and end with the out-parameter for the new id.
 - The same concept has the same name in every library. When one
   library gains a function another already has, it takes the existing
-  name.
+  name, even where the object form above would give another: an
+  object's misuse count is `PGetObjectMisuse` in every library
+  (`mtwnGetContextMisuse`, `mrhiGetDeviceMisuse`), not
+  `PObject_GetMisuse`.
 
 Checked by: review. `clang-tidy`'s identifier naming check covers the
 case of locals, parameters and fields.
