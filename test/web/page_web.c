@@ -6,10 +6,14 @@
 // held by the policy, logs that it waits, and the driver's click calls
 // maudResumeContext. The stream then plays a ramp, which a probe
 // worklet behind it checks for continuity; its rate, short quanta,
-// stopping, refilling after a restart, the fill target's growth after
-// a stall of the main thread, and refusals are checked, and the result
+// stopping, refilling after a restart, the fill target's growth by a
+// quantum per short quantum (after a short and a long stall of the main
+// thread, and at every step), and refusals are checked, and the result
 // is logged for the driver, which runs the page with and without
-// cross-origin isolation.
+// cross-origin isolation. On a loaded machine the counts of short
+// quanta leave out those the host caused, a thread starved for longer
+// than the buffer lasts, and the rate leaves out windows with such a
+// step.
 
 #include "../test_clock.h"
 #include "../test_harness.h"
@@ -35,6 +39,7 @@ typedef enum Step
     stepBreaks,
     stepStopped,
     stepRestarted,
+    stepNudged,
     stepStalled,
     stepHostSuspended,
     stepHostResumed,
@@ -58,11 +63,30 @@ static uint32_t s_wrongSize;
 static double s_since;
 static uint64_t s_position;
 static int s_window;
+static int s_windows;
 static double s_best;
+// The main thread's own lateness, watched at every step: when the last
+// step ran, the short quanta and the target then, whether that step came
+// late, whether a step of the rate window did, and the short quanta
+// seen at a late step or the one after it (the host's, not the
+// backend's).
+static double s_lastStep;
+static double s_watchedFrames;
+static double s_mostAhead;
+static int s_watchedShorts;
+static int s_watchedTarget;
+static bool s_wasLate;
+static bool s_windowLate;
+static int s_excused;
+// Steps at which the target was not the one before plus a quantum per
+// new short quantum, held at the ring's capacity.
+static int s_ruleBroken;
+static int s_excusedAtRestart;
 static bool s_gestured;
 static int s_shortsAtMeasure;
 static int s_shortsAtRestart;
 static int s_targetBeforeStall;
+static int s_shortsBeforeStall;
 static maudStreamClock s_clock;
 static bool s_clockSound;
 // The capture stream on the browser's (fake) microphone.
@@ -158,6 +182,17 @@ EM_JS(int, ContextSuspended, (void), {
 
 EM_JS(int, Target, (void), {
     return globalThis.maudWeb.nodes.filter(function (record) { return record !== null && record.target !== undefined; })[0].target;
+});
+
+// The frames the context's audio thread has rendered, by its clock.
+EM_JS(double, ContextFrames, (void), {
+    const entry = globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0];
+    return entry.context.currentTime * entry.context.sampleRate;
+});
+
+// The most the target may grow to: the ring's capacity.
+EM_JS(int, Capacity, (void), {
+    return globalThis.maudWeb.nodes.filter(function (record) { return record !== null && record.target !== undefined; })[0].capacity;
 });
 
 // Connects a probe worklet behind the stream's node. While counting, it
@@ -314,8 +349,9 @@ static void CheckCapture(uint32_t rate)
 }
 
 // Three windows of two seconds, long enough that the browser's bursts
-// and the 10 ms steps blur little; the best is the rate (a stalled
-// clock only lowers one), at most 2% above and 6% below.
+// and the 10 ms steps blur little, each with every step on time; the
+// best is the rate (a stalled clock only lowers one), at most 2% above
+// and 6% below.
 static void Measure(double now)
 {
     if (now - s_since < 2000.0)
@@ -324,7 +360,12 @@ static void Measure(double now)
     }
     uint64_t position = Position();
     double rate = (double)(position - s_position) * 1000.0 / (now - s_since);
-    s_best = rate > s_best ? rate : s_best;
+    // A window with a late step may count the refill burst after it; it
+    // counts only once ten windows found too few without one.
+    bool clean = !s_windowLate || s_windows >= 10;
+    s_windows += 1;
+    s_windowLate = false;
+    s_best = clean && rate > s_best ? rate : s_best;
     s_position = position;
     s_since = now;
     // The clock over the same window; one sound window is enough, as
@@ -337,7 +378,7 @@ static void Measure(double now)
         s_clockSound || ClockIsSound(&s_clock, &clock, true, true, (double)current.sampleRate,
                                      maudGetHostNanoseconds());
     s_clock = clock;
-    if (++s_window < 3)
+    if (!clean || ++s_window < 3)
     {
         return;
     }
@@ -368,12 +409,14 @@ static void CheckBreaks(void)
         return;
     }
     int shorts = Shorts() - s_shortsAtMeasure;
-    if (breaks > 2 * shorts || Shorts() > 4)
+    if (breaks > 2 * shorts || Shorts() - s_excused > 4 || s_excused > 0)
     {
-        printf("breaks %d, short quanta %d while measuring, %d in all\n", breaks, shorts, Shorts());
+        printf("breaks %d, short quanta %d while measuring, %d in all, %d with a thread late "
+               "(the audio clock at most %.0f frames ahead of a step)\n",
+               breaks, shorts, Shorts(), s_excused, s_mostAhead);
     }
     CHECK(breaks <= 2 * shorts, "the ramp plays in order");
-    CHECK(Shorts() <= 4, "few short quanta from the start");
+    CHECK(Shorts() - s_excused <= 4, "few short quanta from the start");
     CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
     CHECK(maudStopStream(s_context, s_capture) == maud_success, "stop the capture");
     s_capturedAtStop = s_captured;
@@ -382,16 +425,37 @@ static void CheckBreaks(void)
     s_step = stepStopped;
 }
 
-// After a restart the stream refills; then a stall of 200 ms starves
-// it, and the target grows.
+// After a restart the stream refills; then a stall 30 ms longer than
+// the target's span plays a few quanta short, and the target grows by a
+// quantum for each, so the rule shows below the ring's capacity unless
+// a loaded machine's short quanta took it there already.
 static void Restarted(double now)
 {
     if (s_blocks < 20 || now - s_since < 500.0)
     {
         return;
     }
-    CHECK(Shorts() - s_shortsAtRestart <= 2, "refilled after a restart");
+    CHECK(Shorts() - s_shortsAtRestart - (s_excused - s_excusedAtRestart) <= 2,
+          "refilled after a restart");
+    maudStreamFormat format;
+    CHECK(maudGetStreamFormat(s_context, s_stream, &format) == maud_success, "format");
     s_targetBeforeStall = Target();
+    s_shortsBeforeStall = Shorts();
+    Stall((int)(s_targetBeforeStall * 1000.0 / format.sampleRate) + 30);
+    s_since = emscripten_get_now();
+    s_step = stepNudged;
+}
+
+// Then a stall of 200 ms starves it for longer than the ring holds.
+static void Nudged(double now)
+{
+    if (now - s_since < 300.0)
+    {
+        return;
+    }
+    // Posted chunks in flight may cover the 30 ms; what quanta it played
+    // short, the target grew by as Watch checks at every step.
+    s_shortsBeforeStall = Shorts();
     Stall(200);
     s_since = emscripten_get_now();
     s_step = stepStalled;
@@ -544,10 +608,57 @@ static void StartSink(void)
           "the same device is not");
 }
 
+// Either thread starved empties the buffer the backend left: the main
+// thread away from a step for longer than the target at the step before
+// (and than 50 ms), or the audio thread catching up, its clock run ahead
+// of the step's wall time by more than that target (and than 20 ms, past
+// a device callback's burst). The short quanta seen then, or at the next
+// step (the worklet's report may queue behind the step's timer), are the
+// host's. On a quiet machine neither happens; and a backend that left
+// too little would not move either measure.
+static void Watch(double now)
+{
+    maudStreamFormat format;
+    if (s_step == stepWaitForGesture ||
+        maudGetStreamFormat(s_context, s_stream, &format) != maud_success)
+    {
+        return;
+    }
+    int shorts = Shorts();
+    double rate = (double)format.sampleRate;
+    double frames = ContextFrames();
+    double wall = (now - s_lastStep) * rate / 1000.0;
+    double target = (double)s_watchedTarget;
+    double ahead = frames - s_watchedFrames - wall;
+    s_mostAhead = s_lastStep > 0.0 && ahead > s_mostAhead ? ahead : s_mostAhead;
+    bool away = wall > (target > 0.05 * rate ? target : 0.05 * rate);
+    bool burst = ahead > (target > 0.02 * rate ? target : 0.02 * rate);
+    bool late = s_lastStep > 0.0 && (away || burst);
+    if (shorts > s_watchedShorts && (late || s_wasLate))
+    {
+        s_excused += shorts - s_watchedShorts;
+    }
+    int expected = s_watchedTarget + (shorts - s_watchedShorts) * 128;
+    expected = expected < Capacity() ? expected : Capacity();
+    if (s_lastStep > 0.0 && Target() != expected)
+    {
+        printf("target %d after %d short quanta, expected %d\n", Target(), shorts - s_watchedShorts,
+               expected);
+        s_ruleBroken += 1;
+    }
+    s_windowLate = s_windowLate || late;
+    s_wasLate = late;
+    s_watchedShorts = shorts;
+    s_watchedFrames = frames;
+    s_watchedTarget = Target();
+    s_lastStep = now;
+}
+
 static void Step_(void* user)
 {
     (void)user;
     double now = emscripten_get_now();
+    Watch(now);
     maudNotification record;
     bool resumed = false;
     while (maudNextNotification(s_context, &record) == maud_success)
@@ -598,6 +709,7 @@ static void Step_(void* user)
             CHECK(maudStartStream(s_context, s_stream) == maud_success, "start again");
             CHECK(maudStartStream(s_context, s_capture) == maud_success, "capture again");
             s_shortsAtRestart = Shorts();
+            s_excusedAtRestart = s_excused;
             s_since = now;
             s_step = stepRestarted;
         }
@@ -605,10 +717,15 @@ static void Step_(void* user)
     case stepRestarted:
         Restarted(now);
         break;
+    case stepNudged:
+        Nudged(now);
+        break;
     case stepStalled:
         if (now - s_since > 300.0)
         {
-            CHECK(Target() > s_targetBeforeStall, "the target grows after a stall");
+            CHECK(Shorts() > s_shortsBeforeStall && Target() == Capacity(),
+                  "a long stall grows the target to the ring's capacity");
+            CHECK(s_ruleBroken == 0, "the target grows by a quantum for each quantum played short");
             CheckXruns();
             SuspendForHost();
         }

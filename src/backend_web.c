@@ -153,7 +153,8 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
     const entry = web.contexts[handle];
     const rate = entry.context.sampleRate;
     const base = Math.ceil(entry.context.baseLatency * rate / quantum) * quantum;
-    const record = {node: null, closed: false, posted: 0, shortSeen: 0, ring: null, index: null, data: null};
+    const record = {node: null, closed: false, posted: 0, shortSeen: 0, ring: null, index: null, data: null,
+                    capacity: capacity};
     record.target = Math.min(base + 2 * quantum, capacity);
     if (typeof SharedArrayBuffer !== "undefined" && globalThis.crossOriginIsolated) {
         record.ring = new SharedArrayBuffer(12 + capacity * channels * 4);
