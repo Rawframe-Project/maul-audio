@@ -82,13 +82,18 @@ static void Render(maudPulseStream* entry, float* out, const float* in, uint32_t
     {
         latency = 0;
     }
+    int64_t nanoseconds = (int64_t)latency * 1000;
     if (output)
     {
-        maudStampOutputClock(core, (int64_t)latency * 1000);
+        maudStampOutputClock(core, nanoseconds);
     }
     else
     {
-        maudStampInputClock(core, (int64_t)latency * 1000);
+        // A captured block's first frame came at least the block's length
+        // ago, which PipeWire's PulseAudio server, interpolating its
+        // timing, can report below and even negative.
+        int64_t own = (int64_t)frames * 1000000000 / (int64_t)core->period.sampleRate;
+        maudStampInputClock(core, nanoseconds > own ? nanoseconds : own);
     }
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
 }

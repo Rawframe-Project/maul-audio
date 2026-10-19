@@ -29,6 +29,11 @@ release could change the API, the ABI and every data format.
   device's pulls was up to a pull high: each report was answered as if
   nothing had played since it was sent. The worklet now reports its
   frame, and the latency takes off what the context rendered since.
+- PulseAudio capture: the stream clock's latency is never less than
+  the captured block's own length. PipeWire's PulseAudio server,
+  interpolating its timing, could report less and even a negative
+  latency, which the clock took as 0, as if each block had been
+  captured the instant it was read.
 
 ## [1.1.0] - 2026-10-18
 
