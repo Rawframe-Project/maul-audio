@@ -73,6 +73,7 @@ static double s_best;
 static double s_lastStep;
 static double s_watchedFrames;
 static double s_mostAhead;
+static double s_lastAhead;
 static double s_mostApart;
 // The same while the rate and the ramp are measured.
 static double s_measuredAhead;
@@ -209,7 +210,9 @@ EM_JS(int, Capacity, (void), {
 // Connects a probe worklet behind the stream's node. While counting, it
 // counts the samples of the first channel that do not continue the
 // ramp, a run of silence (a short quantum) once, since the ramp never
-// holds 0 twice in a row; told to stop, it posts the count.
+// holds 0 twice in a row; told to stop, it posts the count. A second
+// node on the same thread answers each ping at once, so the page can
+// time the messages the backend's chunks wait among.
 EM_JS(void, AttachProbe, (int ramp), {
     const source = [
         "class MaudProbe extends AudioWorkletProcessor {",
@@ -237,18 +240,61 @@ EM_JS(void, AttachProbe, (int ramp), {
         "  }",
         "}",
         "registerProcessor('maud-probe', MaudProbe);",
+        "class MaudPing extends AudioWorkletProcessor {",
+        "  constructor() {",
+        "    super();",
+        "    const self = this;",
+        "    this.port.onmessage = function () { self.port.postMessage(0); };",
+        "  }",
+        "  process() { return true; }",
+        "}",
+        "registerProcessor('maud-ping', MaudPing);",
     ].join("\n");
     const web = globalThis.maudWeb;
     const context = web.contexts.filter(function (entry) { return entry !== null; })[0].context;
     const record = web.nodes.filter(function (entry) { return entry !== null && entry.target !== undefined; })[0];
     const probe = {node: null, breaks: -1};
     web.probe = probe;
+    const ping = {node: null, out: false, sent: 0, late: false, slowest: 0};
+    web.ping = ping;
     context.audioWorklet.addModule(URL.createObjectURL(new Blob([source], {type: "text/javascript"}))).then(function () {
         probe.node = new AudioWorkletNode(context, "maud-probe", {numberOfInputs: 1, numberOfOutputs: 1});
         probe.node.port.onmessage = function (event) { probe.breaks = event.data; };
         record.node.connect(probe.node);
         probe.node.connect(context.destination);
+        ping.node = new AudioWorkletNode(context, "maud-ping", {numberOfInputs: 0, numberOfOutputs: 1});
+        ping.node.port.onmessage = function () {
+            const trip = performance.now() - ping.sent;
+            ping.slowest = Math.max(ping.slowest, trip);
+            ping.late = ping.late || trip > 10;
+            ping.out = false;
+        };
     });
+});
+
+// Whether the browser held messages to the worklet's thread since the
+// last call: a ping answered, or still out, after more than 10 ms. Sends
+// the next ping when none is out.
+EM_JS(int, PingLate, (void), {
+    const ping = globalThis.maudWeb.ping;
+    if (ping === undefined || ping.node === null) {
+        return 0;
+    }
+    const now = performance.now();
+    const late = ping.late || (ping.out && now - ping.sent > 10);
+    ping.late = false;
+    if (!ping.out) {
+        ping.out = true;
+        ping.sent = now;
+        ping.node.port.postMessage(0);
+    }
+    return late ? 1 : 0;
+});
+
+// The slowest ping's round trip in milliseconds.
+EM_JS(double, PingSlowest, (void), {
+    const ping = globalThis.maudWeb.ping;
+    return ping === undefined ? 0 : ping.slowest;
 });
 
 EM_JS(int, ProbeReady, (void), {
@@ -361,8 +407,8 @@ static void CheckCapture(uint32_t rate)
 
 // Three windows of two seconds, long enough that the browser's bursts
 // and the 10 ms steps blur little, each with every step on time; the
-// best is the rate (a stalled clock only lowers one), at most 2% above
-// and 6% below.
+// best is the rate (a stalled clock only lowers one), at most 2% above,
+// past what the device's pulls at the windows' ends add, and 6% below.
 static void Measure(double now)
 {
     if (now - s_since < 2000.0)
@@ -398,7 +444,11 @@ static void Measure(double now)
     // What the docs quote for each transport, isolated or not.
     printf("output latency %.1f ms, fill target %d frames\n",
            (double)clock.latencyNanoseconds / 1e6, Target());
-    if (!(s_best > format.sampleRate * 0.94 && s_best < format.sampleRate * 1.02))
+    // A window's ends may fall either side of one of the device's pulls,
+    // so a window of two seconds or more reads up to half a pull a second
+    // high: the bound is on the rate, not on where the pulls fall.
+    double pull = (double)(StartTarget() - 256) / 2.0;
+    if (!(s_best > format.sampleRate * 0.94 && s_best < format.sampleRate * 1.02 + pull))
     {
         printf("measured %.0f frames/s, expected %u\n", s_best, format.sampleRate);
         CHECK(false, "at the context's rate");
@@ -424,9 +474,9 @@ static void CheckBreaks(void)
     // what the floors in Watch rest on.
     printf("breaks %d, short quanta %d while measuring, %d in all, %d with a thread late; "
            "steps at most %.0f ms apart, the audio clock at most %.0f frames ahead (while "
-           "measuring %.0f ms, %.0f frames)\n",
+           "measuring %.0f ms, %.0f frames), the slowest ping %.0f ms\n",
            breaks, shorts, Shorts(), s_excused, s_mostApart, s_mostAhead, s_measuredApart,
-           s_measuredAhead);
+           s_measuredAhead, PingSlowest());
     CHECK(breaks <= 2 * shorts, "the ramp plays in order");
     CHECK(Shorts() - s_excused <= 4, "few short quanta from the start");
     CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
@@ -624,10 +674,12 @@ static void StartSink(void)
 // away from a step for longer than that buffer lasts (and than 50 ms),
 // or the audio thread running ahead of the step's wall time by more than
 // it (and than 20 ms), as Chrome's does when the device starts and,
-// starved, when it catches up. The short quanta seen then, or at the next
-// step (the worklet's report may queue behind the step's timer), are the
-// host's. Neither measure is the backend's to move, and the buffer is
-// never taken as less than a correct backend starts with.
+// starved, when it catches up. Or the browser holds messages to the
+// worklet's thread, where posted chunks wait while a burst plays: a ping
+// to that thread out for more than 10 ms. The short quanta seen then, or
+// at the next step (the worklet's report may queue behind the step's
+// timer), are the host's. No measure is the backend's to move, and the
+// buffer is never taken as less than a correct backend starts with.
 static void Watch(double now)
 {
     maudStreamFormat format;
@@ -655,8 +707,13 @@ static void Watch(double now)
         s_measuredApart = now - s_lastStep > s_measuredApart ? now - s_lastStep : s_measuredApart;
     }
     bool away = wall > (target > 0.05 * rate ? target : 0.05 * rate);
-    bool burst = ahead > (target > 0.02 * rate ? target : 0.02 * rate);
-    bool late = s_lastStep > 0.0 && (away || burst);
+    // Over two steps as well: the device's catch-up may straddle one. A
+    // device pulling on time is never more than one pull ahead over any
+    // span, and a correct backend holds a pull and two quanta.
+    double most = target > 0.02 * rate ? target : 0.02 * rate;
+    bool burst = ahead > most || (s_lastStep > 0.0 && ahead + s_lastAhead > most);
+    bool held = PingLate() == 1;
+    bool late = s_lastStep > 0.0 && (away || burst || held);
     if (shorts > s_watchedShorts && (late || s_wasLate))
     {
         s_excused += shorts - s_watchedShorts;
@@ -674,6 +731,7 @@ static void Watch(double now)
     }
     s_windowLate = s_windowLate || late;
     s_wasLate = late;
+    s_lastAhead = s_lastStep > 0.0 ? ahead : 0.0;
     s_watchedShorts = shorts;
     s_watchedFrames = frames;
     s_watchedTarget = Target();
