@@ -116,6 +116,19 @@ EM_JS(void, DeliverToMain, (void), {
     }
 });
 
+// Delivers the oldest report alone; 0 when none waits.
+EM_JS(int, DeliverOneToMain, (void), {
+    const queue = globalThis.maudSim.toMain;
+    if (queue.length === 0) {
+        return 0;
+    }
+    const message = queue.shift();
+    if (message.port.onmessage !== null) {
+        message.port.onmessage({data: message.data});
+    }
+    return 1;
+});
+
 EM_JS(int, Target, (void), {
     const records = globalThis.maudWeb.nodes.filter(function (r) { return r !== null && r.target !== undefined; });
     return records[records.length - 1].target;
@@ -247,11 +260,38 @@ static void RunTransport(bool isolated)
         CHECK(false, "the latency told: what plays first, then the base and output latencies");
     }
 
+    // Each report answered alone: the clock's latency is right for the
+    // frames just written at every report, not only at the batch's last.
+    // On the ring the first report writes the pull's frames behind the
+    // two quanta left; posted, each writes a quantum, behind one more
+    // quantum than the last.
+    Pull(BASE / QUANTUM);
+    for (int report = 0; DeliverOneToMain() == 1; ++report)
+    {
+        int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
+        int64_t expected = frames * 1000000000LL / RATE + 26000000LL;
+        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        if (clock.latencyNanoseconds < expected - 2 || clock.latencyNanoseconds > expected + 2)
+        {
+            printf("report %d: latency %lld ns, expected %lld\n", report,
+                   (long long)clock.latencyNanoseconds, (long long)expected);
+            CHECK(false, "the latency is right at every report of a batch");
+        }
+    }
+    DeliverToWorklet();
+
     // The main thread away for two pulls: the second plays two quanta of
     // the buffer and four short; the target grows a quantum for each.
     Pull(BASE / QUANTUM);
     Pull(BASE / QUANTUM);
     CHECK(WorkletShorts() == 4, "four quanta short after a missed refill");
+    // The first report answered now is older than the whole buffer: the
+    // worklet ran dry, so nothing plays before the frames it brings.
+    DeliverOneToMain();
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+              clock.latencyNanoseconds >= 26000000LL - 2 &&
+              clock.latencyNanoseconds <= 26000000LL + 2,
+          "after running dry, only the base and output latencies");
     DeliverToMain();
     DeliverToWorklet();
     CHECK(Target() == BASE + 6 * QUANTUM, "the target grew a quantum for each short one");

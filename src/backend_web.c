@@ -73,7 +73,8 @@ EM_JS(void, maudWebClose, (int handle), {
 // The processor plays interleaved frames from a SharedArrayBuffer ring
 // (its write index, read index and short count in the first 12 bytes)
 // or from posted chunks, counts the quanta it plays short, and posts
-// after each quantum. Told to drop, it discards what it holds, counted
+// after each quantum (posted: what it played, its short count and the
+// frame its quantum ended at). Told to drop, it discards what it holds, counted
 // as played so the main thread refills. The
 // source is plain string literals: EM_JS passes its body through the C
 // preprocessor, which would split arrow functions and template
@@ -101,7 +102,7 @@ EM_JS(void, maudWebAddProcessor, (int handle), {
         "      self.played += dropped;",
         "      self.chunks = [];",
         "      self.offset = 0;",
-        "      self.port.postMessage(self.index ? 0 : [self.played, self.short]);",
+        "      self.port.postMessage(self.index ? 0 : [self.played, self.short, currentFrame]);",
         "    };",
         "  }",
         "  readRing(out, frames) {",
@@ -133,7 +134,7 @@ EM_JS(void, maudWebAddProcessor, (int handle), {
         "      this.short += 1;",
         "      if (this.index) { Atomics.store(this.index, 2, this.short); }",
         "    }",
-        "    this.port.postMessage(this.index ? 0 : [this.played, this.short]);",
+        "    this.port.postMessage(this.index ? 0 : [this.played, this.short, currentFrame + frames]);",
         "    return true;",
         "  }",
         "}",
@@ -178,7 +179,7 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
         record.data.set(HEAPF32.subarray(from + first * channels, from + frames * channels), 0);
         Atomics.store(record.index, 0, (at + frames) | 0);
     }
-    function fill(played, short) {
+    function fill(played, short, frame) {
         if (short > record.shortSeen) {
             record.target = Math.min(record.target + (short - record.shortSeen) * quantum, capacity);
             _maudWebXrun(context, slot, short - record.shortSeen);
@@ -189,8 +190,13 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
         const frames = Math.floor((record.target - buffered) / quantum) * quantum;
         if (frames > 0) {
             // What plays before these frames: the buffer ahead of them and
-            // the context's own latency to the speaker.
-            const latency = buffered / rate + entry.context.baseLatency + (entry.context.outputLatency || 0);
+            // the context's own latency to the speaker. A posted report
+            // answered late (they come in a batch after the device's
+            // pull) is behind by the frames rendered since its own, which
+            // the context's clock and the report's frame give.
+            const behind = frame === undefined ? 0 : Math.max(0, Math.round(entry.context.currentTime * rate) - frame);
+            const ahead = Math.max(0, buffered - behind);
+            const latency = ahead / rate + entry.context.baseLatency + (entry.context.outputLatency || 0);
             write(_maudWebRender(context, slot, frames, latency), frames);
         }
     }
@@ -210,7 +216,7 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
             if (record.ring) {
                 fill(0, Atomics.load(record.index, 2));
             } else {
-                fill(event.data[0], event.data[1]);
+                fill(event.data[0], event.data[1], event.data[2]);
             }
         };
         fill(0, 0);

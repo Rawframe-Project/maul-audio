@@ -22,6 +22,14 @@ release could change the API, the ABI and every data format.
   made each call some 8 ns slower (a notification drain 21 ns against
   13 ns, `bench_control`).
 
+### Fixed
+
+- On the web without cross-origin isolation (posted chunks), the
+  stream clock's latency read by a callback during a burst of the
+  device's pulls was up to a pull high: each report was answered as if
+  nothing had played since it was sent. The worklet now reports its
+  frame, and the latency takes off what the context rendered since.
+
 ## [1.1.0] - 2026-10-18
 
 Host code calling back into the object it serves is refused and
