@@ -9,8 +9,8 @@ result goes in the release notes.
 
 | Backend | Device plugged in and out | Default changed | Service restarted | Stream ended by the platform |
 |---|---|---|---|---|
-| PipeWire | a second client adds and removes nodes (`test_pipewire`) | yes, by that client | the daemon stopped and started (`test_pipewire_restart`) | a playing and a stopped stream's node destroyed, both built again (`test_pipewire`) |
-| PulseAudio | a sink loaded and unloaded with `pactl` (`test_pulse`) | yes, with `pactl` | the server stopped and started (`test_pulse`) | a playing and a stopped stream's node destroyed, both rebuilt (`test_pulse`) |
+| PipeWire | a second client adds and removes nodes (`test_pipewire`) | yes, by that client | the daemon stopped and started: devices keep their ids, streams wait and resume; away past ten seconds, the devices go (`test_pipewire_restart`) | a playing and a stopped stream's node destroyed, both built again (`test_pipewire`) |
+| PulseAudio | a sink loaded and unloaded with `pactl` (`test_pulse`) | yes, with `pactl` | the server stopped and started: devices keep their ids, streams wait and resume; away past ten seconds, the devices go (`test_pulse`) | a playing and a stopped stream's node destroyed, both rebuilt (`test_pulse`) |
 | ALSA | made-up endpoint lists, and card nodes a test directory gains and loses (`test_alsa_hotplug`) | not reported by ALSA | none (no service) | the default PCM's stream ended at its PulseAudio server, the PCM recovered (`test_alsa`) |
 | Core Audio | an aggregate device over BlackHole made and destroyed (`test_coreaudio`) | yes, the system default set to it and back | `coreaudiod` killed under a running stream (`test_coreaudio`, macOS cell) | not tested; the backend listens for the device's loss and the service's restart, not for a unit stopped from outside |
 | WASAPI | the notification callbacks called by the test; streams moved between the endpoints there are (`test_wasapi`) | the same | not tested | a stream whose thread failed is opened again on a later drain, waiting longer after each failure (`test_wasapi`) |

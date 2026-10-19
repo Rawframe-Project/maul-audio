@@ -21,6 +21,14 @@ release could change the API, the ABI and every data format.
   to refuse a call from host code, as 1.0 did: 1.1's second check had
   made each call some 8 ns slower (a notification drain 21 ns against
   13 ns, `bench_control`).
+- PulseAudio and PipeWire: across a restart of the server or daemon,
+  devices keep their ids, and streams, on a default or on a device, are
+  suspended with `maud_suspendPlatform` while it is away and resume on
+  the new one, as across a Core Audio or WASAPI service restart. Every
+  device was removed and added again under a new id, so a stream opened
+  on a device was lost for good. A device the new server does not list
+  is removed once it has listed the rest, and every device is removed
+  if none comes back within ten seconds.
 
 ### Fixed
 

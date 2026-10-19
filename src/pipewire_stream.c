@@ -314,6 +314,19 @@ void maudPipewireRetargetStream(maudContext* context, maudStreamSlot* slot)
     (void)result;
 }
 
+void maudPipewireSuspendStreams(maudContext* context)
+{
+    int64_t now = maudNowNanoseconds();
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        if (maudWantsReopen(slot) && slot->core.binding.suspension == maud_suspendNone)
+        {
+            maudReportReopen(context, slot, false, now);
+        }
+    }
+}
+
 void maudPipewireDropStreams(maudContext* context)
 {
     for (uint32_t i = 0; i < context->streams.capacity; ++i)

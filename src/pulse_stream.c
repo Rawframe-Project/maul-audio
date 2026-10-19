@@ -435,6 +435,19 @@ void maudPulseRetargetStream(maudContext* context, maudStreamSlot* slot)
 // waits up to the connection's deadline, so one that fails waits longer
 // before the next, and the stream is suspended with maud_suspendPlatform
 // until one works.
+void maudPulseSuspendStreams(maudContext* context)
+{
+    int64_t now = maudNowNanoseconds();
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        if (maudWantsReopen(slot) && slot->core.binding.suspension == maud_suspendNone)
+        {
+            maudReportReopen(context, slot, false, now);
+        }
+    }
+}
+
 void maudPulseResumeStreams(maudContext* context)
 {
     int64_t now = maudNowNanoseconds();
@@ -445,7 +458,8 @@ void maudPulseResumeStreams(maudContext* context)
         bool lost = entry->threadRunning && atomic_load(&entry->lost);
         bool running =
             atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning;
-        bool needed = lost || !entry->used || (running && !entry->threadRunning);
+        bool needed = lost || !entry->used || (running && !entry->threadRunning) ||
+                      slot->core.binding.suspension == maud_suspendPlatform;
         if (!needed || !maudWantsReopen(slot) || !maudRetryDue(&slot->core.binding, now))
         {
             continue;

@@ -703,8 +703,53 @@ static void TestRebuildFails(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
-// The server restarted: a playing stream plays on the new one, and one
-// stopped across the restart starts on it.
+// What the notifications across a server restart said, for a stream on
+// the default (0), one pinned to the test sink (1) and one created while
+// the server was away (2).
+typedef struct Restart
+{
+    maudStreamId streams[3];
+    maudDeviceId sink;
+    maudDeviceId gone;
+    maudSuspendReason reason[3];
+    bool resumed[3];
+    bool sinkRemoved;
+    bool goneRemoved;
+} Restart;
+
+static bool SameStream(maudStreamId a, maudStreamId b)
+{
+    return a.index1 == b.index1 && a.generation == b.generation;
+}
+
+// Drains the notifications there are into seen.
+static void Note(maudContext* context, Restart* seen)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        for (int i = 0; i < 3; ++i)
+        {
+            bool mine = seen->streams[i].index1 != 0 && SameStream(record.stream, seen->streams[i]);
+            if (mine && record.kind == maud_notifyStreamSuspended)
+            {
+                seen->reason[i] = record.reason;
+            }
+            seen->resumed[i] =
+                seen->resumed[i] || (mine && record.kind == maud_notifyStreamResumed);
+        }
+        bool removed = record.kind == maud_notifyDeviceRemoved;
+        seen->sinkRemoved = seen->sinkRemoved || (removed && SameDevice(record.device, seen->sink));
+        seen->goneRemoved = seen->goneRemoved || (removed && SameDevice(record.device, seen->gone));
+    }
+}
+
+// The server restarted: its devices keep their ids, a playing stream on
+// the default and one on a device are suspended for the platform while
+// it is away and play on the new one, one created meanwhile waits and
+// plays too, and one stopped across the restart starts on it. A device the new server does not list
+// goes once it has listed the rest. Away longer than the backend keeps them, the devices go, the
+// pinned stream with its device.
 static void TestRestart(maudContext* context)
 {
     const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
@@ -713,37 +758,81 @@ static void TestRestart(maudContext* context)
     {
         return;
     }
-    maudDeviceId sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
+    CHECK(Run("pactl load-module module-null-sink sink_name=maud-test-gone >/dev/null"),
+          "a sink the restart will not bring back");
+    Restart seen = {0};
+    for (int tries = 0; tries < 300 && seen.gone.index1 == 0; ++tries)
+    {
+        Note(context, &seen);
+        seen.gone = FindByKey(context, maud_directionOutput, "maud-test-gone");
+        Sleep(10);
+    }
+    seen.sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
+    CHECK(seen.gone.index1 != 0 && seen.sink.index1 != 0, "both sinks listed");
     Blocks blocks = {0};
+    Blocks pinned = {0};
     maudDeviceId none = {0, 0};
     maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
-    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
-    // A second stream, stopped while the server goes away.
+    maudStreamId held = OpenStream(context, maud_directionOutput, seen.sink, &pinned);
+    seen.streams[0] = stream;
+    seen.streams[1] = held;
+    CHECK(maudStartStream(context, stream) == maud_success &&
+              maudStartStream(context, held) == maud_success,
+          "start");
+    CHECK(WaitForBlocks(context, &blocks, 20) && WaitForBlocks(context, &pinned, 20), "they play");
+    // A third stream, stopped while the server goes away.
     Blocks idle = {0};
     maudStreamId stopped = OpenStream(context, maud_directionOutput, none, &idle);
     CHECK(maudStartStream(context, stopped) == maud_success && WaitForBlocks(context, &idle, 5) &&
               maudStopStream(context, stopped) == maud_success,
-          "a second plays and stops");
+          "a third plays and stops");
+    Note(context, &seen);
     CHECK(Run(stop), "the server stops");
-    maudNotification record;
-    CHECK(WaitFor(context, maud_notifyDeviceRemoved, sink, &record), "its devices go");
-    CHECK(Run(start), "the server starts again");
-    maudDeviceId current = {0, 0};
-    for (int tries = 0; tries < 500 && current.index1 == 0; ++tries)
+    int64_t away = maudGetHostNanoseconds();
+    for (int tries = 0; tries < 300 && !(seen.reason[0] != 0 && seen.reason[1] != 0); ++tries)
     {
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-        }
-        maudResult result =
-            maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current);
-        CHECK(result == maud_success || result == maud_empty, "default or none yet");
+        Note(context, &seen);
         Sleep(10);
     }
-    sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
-    CHECK(sink.index1 != 0 && SameDevice(current, sink), "the sink and its default come back");
+    CHECK(seen.reason[0] == maud_suspendPlatform && seen.reason[1] == maud_suspendPlatform,
+          "both wait for the platform while it is away");
+    CHECK(!seen.sinkRemoved && !seen.goneRemoved, "its devices are kept");
+    Blocks during = {0};
+    seen.streams[2] = OpenStream(context, maud_directionOutput, none, &during);
+    CHECK(seen.streams[2].index1 != 0 && maudStartStream(context, seen.streams[2]) == maud_success,
+          "one created and started while away");
+    for (int tries = 0; tries < 100 && seen.reason[2] == 0; ++tries)
+    {
+        Note(context, &seen);
+        Sleep(10);
+    }
+    CHECK(seen.reason[2] == maud_suspendPlatform, "waits too");
+    CHECK(Run(start), "the server starts again");
+    for (int tries = 0; tries < 500 && !(seen.resumed[0] && seen.resumed[1] && seen.resumed[2] &&
+                                         seen.goneRemoved);
+         ++tries)
+    {
+        Note(context, &seen);
+        Sleep(10);
+    }
+    int64_t listed = maudGetHostNanoseconds() - away;
+    CHECK(seen.resumed[0] && seen.resumed[1] && seen.resumed[2], "all three resume");
+    CHECK(seen.goneRemoved && listed < 9000000000ll,
+          "the sink it does not bring back goes once the rest are listed");
+    maudDeviceId current = {0, 0};
+    CHECK(!seen.sinkRemoved &&
+              SameDevice(FindByKey(context, maud_directionOutput, "maud-test-sink"), seen.sink) &&
+              maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
+                  maud_success &&
+              SameDevice(current, seen.sink),
+          "the sink keeps its id, and is the default");
     uint32_t resumed = atomic_load(&blocks.count);
-    CHECK(WaitForBlocks(context, &blocks, resumed + 20), "the stream plays on the new server");
+    uint32_t resumedPinned = atomic_load(&pinned.count);
+    CHECK(WaitForBlocks(context, &blocks, resumed + 20) &&
+              WaitForBlocks(context, &pinned, resumedPinned + 20),
+          "both play on the new server");
+    CHECK(WaitForBlocks(context, &during, 20), "the late one plays too");
+    CHECK(maudDestroyStream(context, seen.streams[2]) == maud_success, "destroy the late one");
     CHECK(atomic_load(&blocks.onControl) == 0, "rebuilt without a callback on this thread");
     uint32_t before = atomic_load(&idle.count);
     int64_t asked = maudGetHostNanoseconds();
@@ -764,6 +853,28 @@ static void TestRestart(maudContext* context)
     }
     CHECK(started, "the stopped one starts on the new server");
     CHECK(maudDestroyStream(context, stopped) == maud_success, "destroy it");
+    // Away for longer than the devices are kept.
+    Note(context, &seen);
+    seen.resumed[0] = false;
+    CHECK(Run(stop), "the server stops for longer");
+    for (int tries = 0;
+         tries < 1300 && !(seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost); ++tries)
+    {
+        Note(context, &seen);
+        Sleep(10);
+    }
+    CHECK(seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost,
+          "its devices go, and the pinned stream with its device");
+    CHECK(Run(start), "the server starts again");
+    for (int tries = 0; tries < 500 && !seen.resumed[0]; ++tries)
+    {
+        Note(context, &seen);
+        Sleep(10);
+    }
+    resumed = atomic_load(&blocks.count);
+    CHECK(seen.resumed[0] && WaitForBlocks(context, &blocks, resumed + 20),
+          "the stream on the default plays on the new sink");
+    CHECK(maudDestroyStream(context, held) == maud_success, "destroy the pinned one");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 

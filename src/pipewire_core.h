@@ -15,6 +15,9 @@
 #define MAUD_PIPEWIRE_DEADLINE_NS 2000000000ll
 // How long after a failed connection the next one is tried.
 #define MAUD_PIPEWIRE_RETRY_NS 500000000ll
+// How long the devices of a lost connection are kept for a new core to
+// list again.
+#define MAUD_PIPEWIRE_AWAY_NS 10000000000ll
 // How many loop iterations one pump takes at most.
 #define MAUD_PIPEWIRE_PUMP_ITERATIONS 64
 // The graph rate until the settings metadata gives it.
@@ -41,6 +44,10 @@ typedef struct maudPipewireNode
     uint32_t cardId;
     int32_t profileDevice;
     bool used;
+    // Kept from a lost connection with its device and nothing else: a
+    // new core's node with its name takes the device over, else it is
+    // removed.
+    bool away;
 } maudPipewireNode;
 
 // How many routes a card keeps: one per profile device and direction.
@@ -83,6 +90,12 @@ typedef struct maudPipewireConnection
     // that reported it, and a new one is tried from nextAttempt on.
     bool lost;
     int64_t nextAttempt;
+    // When the devices of a lost connection go if no new core has listed
+    // them by then; zero with none away. A new core's listing is two
+    // round trips (its globals, then the nodes' info); listing counts
+    // those still unanswered.
+    int64_t awayUntil;
+    int listing;
 } maudPipewireConnection;
 
 // The default metadata and the node names it gives per direction.
