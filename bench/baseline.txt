@@ -1,6 +1,7 @@
-# Maul Audio's benchmark baseline (bench/baseline.h): a row's key and
-# its figure, times in us or ms (lower is better), rates in M rays a
-# second (higher is better). Recorded 2026-10-06 on an AMD Ryzen 9
+# Maul Audio's benchmark baseline (bench/baseline.h): a row's key, its
+# figure and its budget, times in us or ms (lower is better, the budget
+# a ceiling), rates in M rays a second (higher is better, the budget a
+# floor). Recorded 2026-10-06 on an AMD Ryzen 9
 # 5900X under Linux, clang 20, Release, one core of a shared machine:
 # each row the best of four to seven runs at loads from 20 to 160,
 # from the commit that adds this file. Rewrite it when the machine
@@ -15,76 +16,77 @@
 # 33 ms, estimates and reflections simulated 500 ms, the scene built in
 # 100 ms, rays at least 1 M a second, the instanced scene committed and
 # moved in 1 ms a frame.
-binaural.plain.us 10.68
-binaural.still.us 13.23
-binaural.moving.us 17.3
-bed.encode.us 2.408
-bed.decode3.us 122.9
-direct.still.us 7.871
-direct.moving.us 8.267
-reverb.still.us 49.92
-reverb.changing.us 53.22
-scene.build.ms 9.061
-scene.any.mrays 2.065
-scene.closest.mrays 1.617
-steps.volumetric.ms 5.709
-estimate.ms 155.1
-reflections.simulate1.ms 176.9
-reflections.render1.us 89.13
-reflections.simulate3.ms 189.4
-reflections.render3.us 327.5
-instanced.commit.ms 0.3531
-instanced.closest.mrays 1.196
-instanced.moving.ms 0.3446
+binaural.plain.us 10.68 20
+binaural.still.us 13.23 20
+binaural.moving.us 17.3 20
+bed.encode.us 2.408 3
+bed.decode3.us 122.9 150
+direct.still.us 7.871 10
+direct.moving.us 8.267 10
+reverb.still.us 49.92 100
+reverb.changing.us 53.22 100
+scene.build.ms 9.061 100
+scene.any.mrays 2.065 1
+scene.closest.mrays 1.617 1
+steps.volumetric.ms 5.709 33
+estimate.ms 155.1 500
+reflections.simulate1.ms 176.9 500
+reflections.render1.us 89.13 500
+reflections.simulate3.ms 189.4 500
+reflections.render3.us 327.5 500
+instanced.commit.ms 0.3531 1
+instanced.closest.mrays 1.196 1
+instanced.moving.ms 0.3446 1
 # Probe sets (bench_scene): 32 probes generated over a 16 by 16 m corner
 # of the level on a 4 m grid, recorded 2026-10-19 at a load of 26; the
 # bake, run once, took 72 to 92 ms a probe over three runs. Baking aims
 # at 500 ms a probe (a 1,000-probe level in some 8 minutes of one core),
 # loading at 50 us a probe (the same level in 50 ms).
-probes.bake.ms 88.72
-probes.load.us 0.3725
+probes.bake.ms 88.72 500
+probes.load.us 0.3725 50
 # The speaker paths (bench_speakers), recorded 2026-10-19: the best of
 # three runs at a load of 17 to 28. Panning 64 sources aims at 100 us
 # per 10 ms block, 1 % of a core; decoding a third-order bed at 20 us.
-speakers.pan.us 62.95
-speakers.decode3.us 6.61
+speakers.pan.us 62.95 100
+speakers.decode3.us 6.61 20
 # Loading the shipped HRTF set (bench_binaural), recorded 2026-10-19:
 # the best of three runs at a load of 10 to 16, each the best of five
 # loads. Each aims at 50 ms, at the file's rate or resampled; resampled
 # to 44.1 kHz it took 0.7 to 1 s before its weights were computed once
 # for every response.
-hrtf.load.ms 3.48
-hrtf.load44.ms 20.44
+hrtf.load.ms 3.48 50
+hrtf.load44.ms 20.44 50
 # The voice processors' rows (the echo canceller with a 0.2 s path and
 # its suppressor), recorded again 2026-10-13: the best of five runs at
 # a load of 19 to 35, alternating with the code of this file's first
 # commit, which ran as fast; the first figures, taken at loads of 40
 # to 170, were the load's.
-noise.16k.mono.us 32.98
-noise.48k.mono.us 69.1
-noise.48k.stereo.us 72.52
-echo.16k.us 38.23
-echo.48k.us 112.6
+noise.16k.mono.us 32.98 71
+noise.48k.mono.us 69.1 71
+noise.48k.stereo.us 72.52 142
+echo.16k.us 38.23 115
+echo.48k.us 112.6 115
 # The voice detector and the gain control (bench_voice), recorded
-# 2026-10-19: the best of three runs at a load of 12 to 27. Each aims
-# at 10 us per 10 ms block at 48 kHz, so that a capture path with the
-# suppressor and the echo canceller stays within 2 % of a core.
-detector.16k.us 2.185
-detector.48k.us 6.341
-gain.16k.us 2.35
-gain.48k.us 6.825
+# 2026-10-19: the best of three runs at a load of 12 to 27. A capture
+# path's four processors share 2 % of a core, 200 us per 10 ms block:
+# the suppressor 71 a channel, the echo canceller 115, the detector and
+# the gain control 7 each, at either rate.
+detector.16k.us 2.185 7
+detector.48k.us 6.341 7
+gain.16k.us 2.35 7
+gain.48k.us 6.825 7
 # The stream path (bench_stream), recorded 2026-10-19: the best of
 # three runs at a load of 29 to 56. An offline stereo block aims at
 # 2 us, an object stream of 32 objects at 10 us, and a stereo block
 # converted to integers and back at 5 us.
-stream.render.us 0.093
-stream.objects.us 2.21
-convert.int16.us 1.392
-convert.int32.us 1.54
+stream.render.us 0.093 2
+stream.objects.us 2.21 10
+convert.int16.us 1.392 5
+convert.int32.us 1.54 5
 # The guarded control calls (bench_control), recorded 2026-10-19: the
 # best of five runs at a load of 200 to 250, each run itself the best of
 # seven; v1.0.0 built alike ran as fast, and its instruction count
 # (perf stat) is within 1 % of this code's, where wall time at that
 # load is not to be trusted further.
-control.poses.us 2.436
-control.drain.ns 12.56
+control.poses.us 2.436 10
+control.drain.ns 12.56 50
