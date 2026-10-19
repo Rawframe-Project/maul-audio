@@ -45,7 +45,7 @@ start)
     start wireplumber 2
     if ! pw-cli ls Node | grep -q maud-test-sink; then
         pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-sink node.description="Maud test sink" media.class=Audio/Sink audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
-        pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-source node.description="Maud test source" media.class=Audio/Source/Virtual audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
+        pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-source node.description="Maud test source ğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğ音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音" media.class=Audio/Source/Virtual audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
         sleep 1
     fi
     ;;

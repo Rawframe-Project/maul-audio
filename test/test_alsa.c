@@ -10,6 +10,7 @@
 
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_names.h"
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
@@ -257,6 +258,14 @@ static void TestDevices(const maudContext* context)
         CHECK(info.nativeSampleRate == 0 && info.nativeLayout == maud_layoutNone,
               "its rate is unknown until it opens");
         endpoints += count - 1;
+        for (uint32_t i = 0; i < count && i < 64; ++i)
+        {
+            char name[512];
+            size_t named = 0;
+            CHECK(maudGetDeviceName(context, ids[i], name, sizeof(name), &named) == maud_success &&
+                      named > 0 && named <= 256 && IsUtf8(name, named),
+                  "every device has a name in UTF-8 within the limit");
+        }
         for (uint32_t i = 1; i < count && i < 64; ++i)
         {
             char key[128];

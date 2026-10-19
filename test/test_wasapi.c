@@ -17,6 +17,7 @@
 #include "device.h"
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_names.h"
 #include "wasapi_core.h"
 #include "wasapi_stream.h"
 
@@ -357,6 +358,18 @@ static void TestDevices(maudContext* context)
             printf("endpoint %s: form factor %u, form %u, spatializer %u (%u objects)\n", endpoint,
                    formFactor, info.form, (unsigned)info.spatializer, info.spatialObjects);
             CHECK(FormMatches(info.form, formFactor), "and the form its form factor names");
+            char name[512];
+            size_t named = 0;
+            CHECK(maudGetDeviceName(context, ids[i], name, sizeof(name), &named) == maud_success &&
+                      named > 0 && named < 256 && IsUtf8(name, named) &&
+                      (named != length || memcmp(name, endpoint, length) != 0),
+                  "and a name in UTF-8, its friendly name, not its key");
+            // Under Wine, the test daemon's source, whose friendly name is
+            // longer than a name may be.
+            if (named > 17 && memcmp(name, "Maud test source ", 17) == 0)
+            {
+                CHECK(IsCutSourceName(name, named), "a long friendly name cut, not dropped");
+            }
             // An output says what spatial sound does there, with objects
             // exactly when a spatial format is on; Windows tracks no head.
             bool output = flows[f].direction == maud_directionOutput;

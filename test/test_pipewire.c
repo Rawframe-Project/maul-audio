@@ -9,6 +9,7 @@
 
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_names.h"
 
 #include "maul-audio/notification.h"
 
@@ -316,6 +317,10 @@ static void TestTheDaemonsDevices(maudContext* context)
     CHECK(length == 14 && memcmp(name, "Maud test sink", 14) == 0, "its description");
     maudDeviceId source = {0, 0};
     CHECK(FindByKey(context, maud_directionInput, "maud-test-source", &source), "test source");
+    char longName[512];
+    CHECK(maudGetDeviceName(context, source, longName, sizeof(longName), &length) == maud_success &&
+              IsCutSourceName(longName, length),
+          "a description past the limit is cut after a whole character");
     maudDeviceId fallback = {0, 0};
     CHECK(maudGetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &fallback) ==
               maud_success,

@@ -32,6 +32,9 @@ release could change the API, the ABI and every data format.
 
 ### Fixed
 
+- WASAPI: an endpoint whose friendly name is longer than 255 bytes in
+  UTF-8 is named by the name cut after its last whole character; it was
+  named by its endpoint ID.
 - On the web without cross-origin isolation (posted chunks), the
   stream clock's latency read by a callback during a burst of the
   device's pulls was up to a pull high: each report was answered as if

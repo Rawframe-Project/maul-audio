@@ -14,6 +14,7 @@
 
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_names.h"
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
@@ -330,10 +331,16 @@ static void TestDevices(const maudContext* context)
     size_t length = 0;
     CHECK(maudGetDeviceName(context, sink, name, sizeof(name), &length) == maud_success, "name");
     CHECK(length == 14 && memcmp(name, "Maud test sink", 14) == 0, "its description");
+    maudDeviceId source = FindByKey(context, maud_directionInput, "maud-test-source");
+    char longName[512];
+    CHECK(source.index1 != 0 &&
+              maudGetDeviceName(context, source, longName, sizeof(longName), &length) ==
+                  maud_success &&
+              IsCutSourceName(longName, length),
+          "a description past the limit is cut after a whole character");
     maudDeviceInfo info = {0};
     CHECK(maudGetDeviceInfo(context, sink, &info) == maud_success, "info");
     CHECK(info.nativeSampleRate == 48000 && info.nativeLayout == maud_layoutStereo, "48k stereo");
-    maudDeviceId source = FindByKey(context, maud_directionInput, "maud-test-source");
     CHECK(source.index1 != 0, "the test source is a device");
     CHECK(!HasMonitor(context), "no monitor source is a device");
     maudDeviceId current = {0, 0};
