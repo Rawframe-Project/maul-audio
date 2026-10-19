@@ -1,6 +1,7 @@
 # Maul Audio's further benchmarks: voice processing (the Device part);
 # the binaural renderer and the ambisonic bed on the shipped HRTF set,
-# acoustic scenes (the Spatial part); the guarded control calls (both).
+# acoustic scenes and the speaker paths (the Spatial part); the guarded
+# control calls (both).
 if(MAUL_AUDIO_DEVICE)
     add_executable(${PROJECT_NAME}_bench_voice bench_voice.c)
     target_link_libraries(${PROJECT_NAME}_bench_voice PRIVATE ${PROJECT_NAME})
@@ -52,3 +53,9 @@ target_link_libraries(${PROJECT_NAME}_bench_scene PRIVATE ${PROJECT_NAME})
 target_compile_definitions(${PROJECT_NAME}_bench_scene PRIVATE
     MAUD_BENCH_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 maul_apply_flags(${PROJECT_NAME}_bench_scene)
+
+add_executable(${PROJECT_NAME}_bench_speakers bench_speakers.c)
+target_link_libraries(${PROJECT_NAME}_bench_speakers PRIVATE ${PROJECT_NAME})
+target_compile_definitions(${PROJECT_NAME}_bench_speakers PRIVATE
+    MAUD_BENCH_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+maul_apply_flags(${PROJECT_NAME}_bench_speakers)

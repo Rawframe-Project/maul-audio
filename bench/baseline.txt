@@ -27,6 +27,11 @@ reflections.render3.us 1623
 instanced.commit.ms 0.3531
 instanced.closest.mrays 1.196
 instanced.moving.ms 0.3446
+# The speaker paths (bench_speakers), recorded 2026-10-19: the best of
+# three runs at a load of 17 to 28. Panning 64 sources aims at 100 us
+# per 10 ms block, 1 % of a core; decoding a third-order bed at 20 us.
+speakers.pan.us 62.95
+speakers.decode3.us 6.61
 # The voice processors' rows (the echo canceller with a 0.2 s path and
 # its suppressor), recorded again 2026-10-13: the best of five runs at
 # a load of 19 to 35, alternating with the code of this file's first
@@ -37,6 +42,14 @@ noise.48k.mono.us 69.1
 noise.48k.stereo.us 72.52
 echo.16k.us 38.23
 echo.48k.us 112.6
+# The voice detector and the gain control (bench_voice), recorded
+# 2026-10-19: the best of three runs at a load of 12 to 27. Each aims
+# at 10 us per 10 ms block at 48 kHz, so that a capture path with the
+# suppressor and the echo canceller stays within 2 % of a core.
+detector.16k.us 2.185
+detector.48k.us 6.341
+gain.16k.us 2.35
+gain.48k.us 6.825
 # The guarded control calls (bench_control), recorded 2026-10-19: the
 # best of five runs at a load of 200 to 250, each run itself the best of
 # seven; v1.0.0 built alike ran as fast, and its instruction count

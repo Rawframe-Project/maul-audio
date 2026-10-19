@@ -4,7 +4,8 @@
 // The voice processing's cost per 10 ms block: the noise suppressor at
 // 16 and 48 kHz, mono and stereo, on white noise with tone bursts; the
 // echo canceller at 16 and 48 kHz with a 0.2 s path, on a render of
-// noise and its echo.
+// noise and its echo; the voice detector and the gain control at 16 and
+// 48 kHz, mono.
 // Prints the best of five runs in microseconds per block, each row
 // beside its recorded baseline.
 
@@ -110,6 +111,52 @@ static void RunEcho(uint32_t rate, const char* key)
     maudDestroyEchoCanceller(c);
 }
 
+// The voice detector or the gain control, mono, on noise with tone
+// bursts as the suppressor's.
+static void RunLevel(uint32_t rate, bool gain, const char* key)
+{
+    maudVoiceDetectorDef detectorDef = maudDefaultVoiceDetectorDef();
+    maudGainControlDef gainDef = maudDefaultGainControlDef();
+    detectorDef.sampleRate = rate;
+    gainDef.sampleRate = rate;
+    maudVoiceDetector* detector = nullptr;
+    maudGainControl* control = nullptr;
+    if ((gain ? maudCreateGainControl(&gainDef, &control)
+              : maudCreateVoiceDetector(&detectorDef, &detector)) != maud_success)
+    {
+        return;
+    }
+    uint32_t block = rate / 100;
+    uint32_t state = 1;
+    double best = 1e9;
+    for (int run = 0; run < 5; ++run)
+    {
+        double start = Seconds();
+        for (int b = 0; b < BLOCKS; ++b)
+        {
+            for (uint32_t i = 0; i < block; ++i)
+            {
+                state = state * 1664525u + 1013904223u;
+                float noise = ((float)(state >> 8) / 16777216.0f - 0.5f) * 0.02f;
+                s_frames[i] = noise + ((b / 30) % 2 ? 0.2f * sinf(0.07f * (float)i) : 0.0f);
+            }
+            if ((gain ? maudApplyGainControl(control, s_frames, block, nullptr)
+                      : maudDetectVoice(detector, s_frames, block, nullptr)) != maud_success)
+            {
+                return;
+            }
+        }
+        double elapsed = Seconds() - start;
+        best = elapsed < best ? elapsed : best;
+    }
+    double micro = best / BLOCKS * 1e6;
+    printf("%s %3u kHz, mono      %7.2f us per 10 ms block\n",
+           gain ? "gain control,    " : "voice detector,  ", rate / 1000, micro);
+    Against(key, micro, false);
+    maudDestroyGainControl(control);
+    maudDestroyVoiceDetector(detector);
+}
+
 int main(void)
 {
     Run(16000, maud_layoutMono, 1, "noise.16k.mono.us");
@@ -117,5 +164,9 @@ int main(void)
     Run(48000, maud_layoutStereo, 2, "noise.48k.stereo.us");
     RunEcho(16000, "echo.16k.us");
     RunEcho(48000, "echo.48k.us");
+    RunLevel(16000, false, "detector.16k.us");
+    RunLevel(48000, false, "detector.48k.us");
+    RunLevel(16000, true, "gain.16k.us");
+    RunLevel(48000, true, "gain.48k.us");
     return 0;
 }
