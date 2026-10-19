@@ -282,6 +282,52 @@ static maudStreamId OpenDefault(maudContext* context, maudDirection direction, B
     return stream;
 }
 
+// Drains notifications for up to a second until one of kind for stream
+// arrives, with reason when it is a suspension.
+static bool NoticeFor(maudContext* context, maudStreamId stream, maudNotificationKind kind,
+                      maudSuspendReason reason)
+{
+    for (int tries = 0; tries < 100; ++tries)
+    {
+        maudNotification record;
+        while (maudNextNotification(context, &record) == maud_success)
+        {
+            if (record.kind == kind && record.stream.index1 == stream.index1 &&
+                record.stream.generation == stream.generation &&
+                (kind != maud_notifyStreamSuspended || record.reason == reason))
+            {
+                return true;
+            }
+        }
+        Sleep(10);
+    }
+    return false;
+}
+
+// The host suspends the context: the stream is suspended for the host,
+// gives no callbacks, and plays again once the host resumes.
+static void TestHostSuspended(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenDefault(context, maud_directionOutput, &blocks, &def);
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(&blocks, 20),
+          "it plays");
+    CHECK(maudSetContextSuspended(context, true) == maud_success &&
+              NoticeFor(context, stream, maud_notifyStreamSuspended, maud_suspendHost),
+          "suspended for the host");
+    Sleep(100);
+    uint32_t count = atomic_load(&blocks.count);
+    Sleep(300);
+    CHECK(atomic_load(&blocks.count) == count, "no callbacks while suspended");
+    CHECK(maudSetContextSuspended(context, false) == maud_success &&
+              NoticeFor(context, stream, maud_notifyStreamResumed, maud_suspendNone),
+          "resumed");
+    count = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(&blocks, count + 20), "and plays");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 // The server behind the default PCM ends its stream, as a PipeWire policy
 // or an administrator can, by destroying the newest sink input's node:
 // the PCM is recovered, which reconnects it, and plays on.
@@ -564,6 +610,7 @@ int main(void)
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the probe");
         TestOutputStream(context);
         TestServerEnded(context);
+        TestHostSuspended(context);
         TestXrun(context);
         TestSignals(context);
         TestExclusiveRefused(context);

@@ -985,6 +985,74 @@ static void TestRestart(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// The host suspends the context: a stream on the default and one on a
+// device are suspended for the host and give no callbacks, stay so
+// across a server restart, and play again once the host resumes.
+static void TestHostSuspended(maudContext* context)
+{
+    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
+    const char* start = getenv("MAUD_TEST_PIPEWIRE_START");
+    Restart seen = {.sink = FindByKey(context, maud_directionOutput, "maud-test-sink")};
+    Blocks blocks[2] = {0};
+    maudDeviceId none = {0, 0};
+    seen.streams[0] = OpenStream(context, maud_directionOutput, none, &blocks[0]);
+    seen.streams[1] = OpenStream(context, maud_directionOutput, seen.sink, &blocks[1]);
+    CHECK(maudStartStream(context, seen.streams[0]) == maud_success &&
+              maudStartStream(context, seen.streams[1]) == maud_success &&
+              WaitForBlocks(context, &blocks[0], 20) && WaitForBlocks(context, &blocks[1], 20),
+          "they play");
+    Note(context, &seen);
+    CHECK(maudSetContextSuspended(context, true) == maud_success, "the host suspends");
+    for (int tries = 0; tries < 100 && !(seen.reason[0] != 0 && seen.reason[1] != 0); ++tries)
+    {
+        Note(context, &seen);
+        Sleep(10);
+    }
+    CHECK(seen.reason[0] == maud_suspendHost && seen.reason[1] == maud_suspendHost,
+          "both suspended for the host");
+    Sleep(100);
+    uint32_t counts[2] = {atomic_load(&blocks[0].count), atomic_load(&blocks[1].count)};
+    Sleep(300);
+    CHECK(atomic_load(&blocks[0].count) == counts[0] && atomic_load(&blocks[1].count) == counts[1],
+          "no callbacks while suspended");
+    if (stop != nullptr && start != nullptr)
+    {
+        CHECK(Run(stop), "the server stops");
+        for (int tries = 0; tries < 30; ++tries)
+        {
+            Note(context, &seen);
+            Sleep(10);
+        }
+        CHECK(Run(start), "the server starts again");
+        maudDeviceId sink = {0, 0};
+        for (int tries = 0; tries < 500 && !SameDevice(sink, seen.sink); ++tries)
+        {
+            Note(context, &seen);
+            sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
+            Sleep(10);
+        }
+        Note(context, &seen);
+        CHECK(SameDevice(sink, seen.sink) && seen.reason[0] == maud_suspendHost &&
+                  seen.reason[1] == maud_suspendHost && !seen.resumed[0] && !seen.resumed[1],
+              "across a restart they stay suspended for the host");
+    }
+    CHECK(maudSetContextSuspended(context, false) == maud_success, "the host resumes");
+    for (int tries = 0; tries < 500 && !(seen.resumed[0] && seen.resumed[1]); ++tries)
+    {
+        Note(context, &seen);
+        Sleep(10);
+    }
+    counts[0] = atomic_load(&blocks[0].count);
+    counts[1] = atomic_load(&blocks[1].count);
+    CHECK(seen.resumed[0] && seen.resumed[1] &&
+              WaitForBlocks(context, &blocks[0], counts[0] + 20) &&
+              WaitForBlocks(context, &blocks[1], counts[1] + 20),
+          "both resume and play");
+    CHECK(maudDestroyStream(context, seen.streams[1]) == maud_success &&
+              maudDestroyStream(context, seen.streams[0]) == maud_success,
+          "destroy");
+}
+
 // With no PipeWire daemon to answer, native falls back to PulseAudio.
 static void TestNativeFallback(void)
 {
@@ -1112,6 +1180,7 @@ int main(void)
     TestRebuildFails(context);
     TestRebuildPacing(context);
     TestRestart(context);
+    TestHostSuspended(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestLimits();
     TestNativeFallback();

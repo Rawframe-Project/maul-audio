@@ -6,7 +6,8 @@
 // resume on the new daemon, one created meanwhile waits too, and one
 // stopped meanwhile starts on it. A device the new daemon does not list
 // goes once it has listed the rest; away longer than the backend keeps
-// them, every device goes.
+// them, every device goes. Streams the host suspended stay suspended for
+// it across a restart.
 // The daemon is stopped and started by the commands in
 // MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START; without them,
 // or without a daemon, the test is skipped.
@@ -223,6 +224,41 @@ int main(void)
     CHECK(seen.resumed[0] && WaitForBlocks(context, &before, resumed + 20),
           "the one on the default plays on the new sink");
     CHECK(OutputCount(context) >= 1, "the devices are back");
+    // The host suspends the context: both streams are suspended for the
+    // host and silent, stay so across a restart, and play on resume.
+    Seen host = {.sink = FindByKey(context, "maud-test-sink")};
+    Blocks blocks[2] = {0};
+    host.streams[0] = Open(context, (maudDeviceId){0, 0}, &blocks[0]);
+    host.streams[1] = Open(context, host.sink, &blocks[1]);
+    CHECK(WaitForBlocks(context, &blocks[0], 20) && WaitForBlocks(context, &blocks[1], 20),
+          "two more play");
+    Note(context, &host);
+    CHECK(maudSetContextSuspended(context, true) == maud_success, "the host suspends");
+    NOTE_UNTIL(context, &host, 100, host.reason[0] != 0 && host.reason[1] != 0);
+    CHECK(host.reason[0] == maud_suspendHost && host.reason[1] == maud_suspendHost,
+          "both suspended for the host");
+    Sleep(100);
+    uint32_t counts[2] = {atomic_load(&blocks[0].count), atomic_load(&blocks[1].count)};
+    Sleep(300);
+    CHECK(atomic_load(&blocks[0].count) == counts[0] && atomic_load(&blocks[1].count) == counts[1],
+          "no callbacks while suspended");
+    CHECK(system(stop) == 0, "the daemon stops");
+    NOTE_UNTIL(context, &host, 30, false);
+    CHECK(system(start) == 0, "the daemon starts again");
+    NOTE_UNTIL(context, &host, 500, SameDevice(FindByKey(context, "maud-test-sink"), host.sink));
+    Note(context, &host);
+    CHECK(SameDevice(FindByKey(context, "maud-test-sink"), host.sink) &&
+              host.reason[0] == maud_suspendHost && host.reason[1] == maud_suspendHost &&
+              !host.resumed[0] && !host.resumed[1],
+          "across a restart they stay suspended for the host");
+    CHECK(maudSetContextSuspended(context, false) == maud_success, "the host resumes");
+    NOTE_UNTIL(context, &host, 500, host.resumed[0] && host.resumed[1]);
+    counts[0] = atomic_load(&blocks[0].count);
+    counts[1] = atomic_load(&blocks[1].count);
+    CHECK(host.resumed[0] && host.resumed[1] &&
+              WaitForBlocks(context, &blocks[0], counts[0] + 20) &&
+              WaitForBlocks(context, &blocks[1], counts[1] + 20),
+          "both resume and play");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;
 }
