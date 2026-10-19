@@ -307,14 +307,17 @@ static void Cork(maudPulseStream* entry, bool cork)
     }
 }
 
-// The stream's thread: the loop until asked to return.
+// The stream's thread: the loop until asked to return, or until the
+// server ends the stream or the connection, which it marks as lost.
 static void RunStream(void* user)
 {
     maudPulseStream* entry = user;
     while (!atomic_load(&entry->quit))
     {
-        if (entry->api->mainloopIterate(entry->loop, 1, nullptr) < 0)
+        if (entry->api->mainloopIterate(entry->loop, 1, nullptr) < 0 ||
+            ContextProgress(entry) < 0 || StreamProgress(entry) < 0)
         {
+            atomic_store(&entry->lost, true);
             break;
         }
     }
@@ -324,6 +327,7 @@ static void StartThread(maudPulseStream* entry)
 {
     Cork(entry, false);
     atomic_store(&entry->quit, false);
+    atomic_store(&entry->lost, false);
     // Set before the thread starts, which reads it.
     entry->threadRunning = true;
     if (!maudStartWorker(&entry->worker, RunStream, entry, "maud-pulse"))
@@ -379,6 +383,12 @@ void maudPulseSetStreamActive(maudContext* context, maudStreamSlot* slot, bool a
         StopThread(entry);
         return;
     }
+    // A thread that returned on a lost connection is joined, and the
+    // stream rebuilt below.
+    if (entry->threadRunning && atomic_load(&entry->lost))
+    {
+        StopThread(entry);
+    }
     if (entry->threadRunning)
     {
         return;
@@ -423,9 +433,10 @@ void maudPulseResumeStreams(maudContext* context)
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
+        const maudPulseStream* entry = EntryOf(context, slot);
         if (slot->live &&
             atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning &&
-            !EntryOf(context, slot)->threadRunning)
+            (!entry->threadRunning || atomic_load(&entry->lost)))
         {
             maudPulseSetStreamActive(context, slot, true);
         }

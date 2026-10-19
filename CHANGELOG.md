@@ -34,6 +34,10 @@ release could change the API, the ABI and every data format.
   interpolating its timing, could report less and even a negative
   latency, which the clock took as 0, as if each block had been
   captured the instant it was read.
+- PulseAudio: a playing stream the server ends (its node destroyed by a
+  PipeWire policy or an administrator) is rebuilt by the next drains
+  and plays on. Its thread kept looping on the ended connection, the
+  stream reported as running with no callback and no notification.
 
 ## [1.1.0] - 2026-10-18
 

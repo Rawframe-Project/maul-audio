@@ -63,6 +63,9 @@ typedef struct maudPulseStream
     maudWorker worker;
     // Asks the thread to return; set by the control thread.
     atomic_bool quit;
+    // Set by the thread as it returns on its own: the server ended the
+    // stream or the connection, and the drain rebuilds it.
+    atomic_bool lost;
     bool threadRunning;
     bool used;
 } maudPulseStream;

@@ -613,6 +613,42 @@ static void TestFollowRate(maudContext* context)
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, other, &record), "it is removed");
 }
 
+// Ends the newest sink input at the server, as a PipeWire policy or an
+// administrator can, by destroying its node.
+static bool EndNewestSinkInput(void)
+{
+    return Run("pw-cli destroy \"$(pactl list sink-inputs | "
+               "awk -F'\\\"' '/object.id/{id=$2} END{print id}')\" >/dev/null 2>&1");
+}
+
+// The server ends a stream: a playing one is rebuilt by the drains and
+// plays on, and a stopped one is rebuilt when it starts.
+static void TestServerEnded(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 20),
+          "it plays");
+    CHECK(EndNewestSinkInput(), "the server ends it");
+    Sleep(200);
+    uint32_t ended = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, ended + 20), "it plays on, rebuilt");
+    Blocks idle = {0};
+    maudStreamId stopped = OpenStream(context, maud_directionOutput, none, &idle);
+    CHECK(maudStartStream(context, stopped) == maud_success && WaitForBlocks(context, &idle, 5) &&
+              maudStopStream(context, stopped) == maud_success,
+          "a second plays and stops");
+    CHECK(EndNewestSinkInput(), "the server ends the stopped one");
+    Sleep(200);
+    uint32_t before = atomic_load(&idle.count);
+    CHECK(maudStartStream(context, stopped) == maud_success &&
+              WaitForBlocks(context, &idle, before + 20),
+          "it starts, rebuilt");
+    CHECK(maudDestroyStream(context, stopped) == maud_success, "destroy it");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 // The server restarted: a playing stream plays on the new one, and one
 // stopped across the restart starts on it.
 static void TestRestart(maudContext* context)
@@ -800,6 +836,7 @@ int main(void)
     TestDuplexConverted(context);
     TestPinnedStream(context);
     TestFollowRate(context);
+    TestServerEnded(context);
     TestRestart(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestLimits();
