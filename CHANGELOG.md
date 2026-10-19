@@ -38,6 +38,9 @@ release could change the API, the ABI and every data format.
   PipeWire policy or an administrator) is rebuilt by the next drains
   and plays on. Its thread kept looping on the ended connection, the
   stream reported as running with no callback and no notification.
+- PipeWire: a stream the graph ends (its node destroyed) is built again
+  by the next drains, playing or stopped; it was reported as running
+  with no callback.
 
 ## [1.1.0] - 2026-10-18
 

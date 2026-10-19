@@ -114,6 +114,9 @@ typedef struct maudPipewireStream
     struct spa_hook listener;
     enum pw_stream_state state;
     bool used;
+    // Set on the main loop when the graph ends a stream it had taken (its
+    // node destroyed, or failed): the drain builds the stream again.
+    bool ended;
     // The graph's ticks at the last cycle and the frames it moved, to see
     // a skipped cycle; forgotten when the control thread sets
     // forgetTicks, as when the stream is activated.

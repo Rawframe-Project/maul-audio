@@ -557,6 +557,40 @@ static maudStreamId OpenStream(maudContext* context, maudDirection direction, ma
     return stream;
 }
 
+// Ends the newest output stream at the graph, as a policy or an
+// administrator can, by destroying its node (found through the daemon's
+// PulseAudio server, which lists every output stream).
+static bool EndNewestOutputStream(void)
+{
+    return system("pw-cli destroy \"$(pactl list sink-inputs | "
+                  "awk -F'\\\"' '/object.id/{id=$2} END{print id}')\" >/dev/null 2>&1") == 0;
+}
+
+// The graph ends a stream: a playing one is built again by the drains
+// and plays on, and so is a stopped one, which then starts.
+static void TestGraphEnded(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &blocks);
+    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    CHECK(EndNewestOutputStream(), "the graph ends it");
+    Sleep(200);
+    uint32_t ended = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, ended + 20), "it plays on, built again");
+    Blocks idle = {0};
+    maudStreamId stopped = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &idle);
+    CHECK(WaitForBlocks(context, &idle, 5) && maudStopStream(context, stopped) == maud_success,
+          "a second plays and stops");
+    CHECK(EndNewestOutputStream(), "the graph ends the stopped one");
+    Sleep(200);
+    uint32_t before = atomic_load(&idle.count);
+    CHECK(maudStartStream(context, stopped) == maud_success &&
+              WaitForBlocks(context, &idle, before + 20),
+          "it starts, built again");
+    CHECK(maudDestroyStream(context, stopped) == maud_success, "destroy it");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     Blocks blocks = {.tryControl = true};
@@ -964,6 +998,7 @@ int main(void)
     TestXruns(context);
     TestExclusiveRefused(context);
     TestDestroyWhileRendering(context);
+    TestGraphEnded(context);
     if (helped)
     {
         TestStreamsMoveAndAreLost(context, &helper);

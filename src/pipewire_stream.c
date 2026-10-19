@@ -31,10 +31,11 @@ static maudPipewireStream* EntryOf(maudContext* context, const maudStreamSlot* s
 static void OnStateChanged(void* data, enum pw_stream_state old, enum pw_stream_state state,
                            const char* error)
 {
-    (void)old;
     (void)error;
     maudPipewireStream* entry = data;
     entry->state = state;
+    entry->ended = entry->ended || state == PW_STREAM_STATE_ERROR ||
+                   (state == PW_STREAM_STATE_UNCONNECTED && old != PW_STREAM_STATE_UNCONNECTED);
 }
 
 // The latency of this cycle's buffer, from the graph's report: the
@@ -329,6 +330,10 @@ void maudPipewireReconnectStreams(maudContext* context)
         maudStreamSlot* slot = &context->streams.slots[i];
         const maudStreamBinding* binding = &slot->core.binding;
         bool wanted = binding->requested.index1 == 0 || binding->suspension == maud_suspendNone;
+        if (slot->live && EntryOf(context, slot)->ended)
+        {
+            maudPipewireDetachStream(context, slot);
+        }
         if (slot->live && wanted && !EntryOf(context, slot)->used)
         {
             // A failure leaves the entry unused, so the next drain tries
