@@ -171,9 +171,12 @@ while (maudNextNotification(context, &note) == maud_success)
 ```
 
 On backends whose platform reports through a loop the library owns
-(PipeWire), the drain also takes in what the platform reported and
-reconnects to a service that restarted, so a host that drains regularly
-keeps the device table current.
+(PulseAudio, PipeWire), the drain also takes in what the platform
+reported and reconnects to a service that restarted, so a host that
+drains regularly keeps the device table current. Across a restart of
+the audio service, devices keep their ids, and running streams are
+suspended with `maud_suspendPlatform` until they play on the new
+service; a device the new service does not bring back is removed.
 
 ## In a browser
 
