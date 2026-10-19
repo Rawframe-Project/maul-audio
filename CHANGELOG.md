@@ -41,6 +41,10 @@ release could change the API, the ABI and every data format.
 - PipeWire: a stream the graph ends (its node destroyed) is built again
   by the next drains, playing or stopped; it was reported as running
   with no callback.
+- ALSA: a stream on a plugin PCM whose server ended it (PulseAudio's
+  plugin, its stream destroyed) is recovered and plays on. The plugin
+  woke the stream's thread with no event while in an error state, which
+  the thread skipped, spinning on a silent stream until it stopped.
 
 ## [1.1.0] - 2026-10-18
 

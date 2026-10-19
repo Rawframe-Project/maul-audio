@@ -282,6 +282,25 @@ static maudStreamId OpenDefault(maudContext* context, maudDirection direction, B
     return stream;
 }
 
+// The server behind the default PCM ends its stream, as a PipeWire policy
+// or an administrator can, by destroying the newest sink input's node:
+// the PCM is recovered, which reconnects it, and plays on.
+static void TestServerEnded(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenDefault(context, maud_directionOutput, &blocks, &def);
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(&blocks, 20),
+          "it plays");
+    CHECK(system("pw-cli destroy \"$(pactl list sink-inputs | "
+                 "awk -F'\\\"' '/object.id/{id=$2} END{print id}')\" >/dev/null 2>&1") == 0,
+          "the server ends it");
+    Sleep(200);
+    uint32_t ended = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(&blocks, ended + 20), "it plays on, recovered");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -544,6 +563,7 @@ int main(void)
     {
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the probe");
         TestOutputStream(context);
+        TestServerEnded(context);
         TestXrun(context);
         TestSignals(context);
         TestExclusiveRefused(context);
