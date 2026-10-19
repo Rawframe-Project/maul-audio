@@ -92,7 +92,7 @@ pulse_core: context_core pulse_api worker
 pulse_stream: clock context context_core follow period pulse_core retry thread worker xrun
 real_fft: allocator
 reflection_response: fft
-reflections: allocator ambisonics partitioned reflection_response reverb_estimate
+reflections: allocator ambisonics reflection_response reverb_estimate staged
 retry: context_core
 reverb: allocator band_eq octave_eq
 reverb_estimate: portable_math spherical_harmonics
@@ -105,6 +105,7 @@ spatializer_state: pathing probe_sets reflections reverb_estimate
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator spherical_harmonics
 spherical_harmonics:
+staged: partitioned
 stream: backend clock context context_core duplex follow period stream_open thread
 sample_convert:
 stream_open: backend clock context context_core follow period voice

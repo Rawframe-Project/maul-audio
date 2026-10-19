@@ -163,6 +163,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/speaker_decoder.c
     src/speaker_panner.c
     src/spherical_harmonics.c
+    src/staged.c
     src/transmission.c
     src/watertight.c)
 add_library(maul-audio ${MAUL_LIBRARY_KIND} ${MAUL_AUDIO_BASE_SOURCES})
@@ -334,6 +335,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(band_eq WHITEBOX)
         maul_add_test(octave_eq WHITEBOX)
         maul_add_test(partitioned WHITEBOX)
+        maul_add_test(staged WHITEBOX)
         maul_add_test(path_refine WHITEBOX)
         maul_add_test(path_search WHITEBOX)
         maul_add_test(bake_file WHITEBOX)

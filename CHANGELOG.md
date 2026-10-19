@@ -17,6 +17,13 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- Geometric reflections render some five times faster (third order,
+  one second's response: 330 us a 10 ms block, against 1.6 ms): a long
+  response is convolved in two stages, short blocks for its start and
+  long ones for the rest, the long blocks' work spread over the calls.
+  A new response now takes over at the next long block and is heard
+  whole within three of them (128 ms for a second at 48 kHz), where it
+  took 128 frames.
 - Loading an HRTF set at another rate than its file's is some 30 times
   faster: the shipped set resampled to 44.1 kHz loads in 20 ms, against
   0.7 s, with the same responses bit for bit. The resampler's weights

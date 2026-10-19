@@ -524,10 +524,15 @@ extern "C"
                                                            maudDirectResult* resultOut);
 
     /// Renders geometric reflections: convolves the host's mono send with
-    /// the newest response published, crossfading over 128 frames to a
-    /// new one, and adds the result into a bed of the def's order (ACN,
-    /// SN3D) in the listener's frame. The response is advanced by the
-    /// convolution's 128-frame block, so the output does not lag.
+    /// the newest response published and adds the result into a bed of
+    /// the def's order (ACN, SN3D) in the listener's frame. The response is
+    /// advanced by the convolution's 128-frame block, so the output does
+    /// not lag. A long response is convolved in two stages, 128-frame
+    /// blocks for its start and longer ones (2,048 frames for a second at
+    /// 48 kHz) for the rest; a new response takes over at the next of
+    /// those longer blocks and is heard whole within three of them (128 ms
+    /// for a second at 48 kHz), its start crossfaded over 128 frames and
+    /// the rest over a block.
     ///
     /// @param spatializer  The spatializer.
     /// @param orientation  The listener's orientation at the call's end;

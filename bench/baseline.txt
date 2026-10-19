@@ -6,6 +6,15 @@
 # from the commit that adds this file. Rewrite it when the machine
 # changes or a change means to move a figure, and quote the ratios in
 # that commit.
+# Budgets for the rows of this first group (per 10 ms block on the audio
+# thread, from a share of 10 % of one core at a typical count; on worker
+# threads, from the update rate): binaural 20 us a source, a source into
+# the bed 3, the bed decoded 150, direct 10 a source, reverb 100, a
+# listener's reflections rendered 500 (re-recorded 2026-10-19 when they
+# went to two-stage convolution, from 406 and 1,623), volumetric steps
+# 33 ms, estimates and reflections simulated 500 ms, the scene built in
+# 100 ms, rays at least 1 M a second, the instanced scene committed and
+# moved in 1 ms a frame.
 binaural.plain.us 10.68
 binaural.still.us 13.23
 binaural.moving.us 17.3
@@ -21,9 +30,9 @@ scene.closest.mrays 1.617
 steps.volumetric.ms 5.709
 estimate.ms 155.1
 reflections.simulate1.ms 176.9
-reflections.render1.us 406.4
+reflections.render1.us 89.13
 reflections.simulate3.ms 189.4
-reflections.render3.us 1623
+reflections.render3.us 327.5
 instanced.commit.ms 0.3531
 instanced.closest.mrays 1.196
 instanced.moving.ms 0.3446

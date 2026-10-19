@@ -9,7 +9,9 @@
 // on time within 1 ms (the convolution's block taken back); the bed is
 // added to; nothing arrives
 // before the first path does; before any response the bed is silent; a
-// new response swaps in without a jump; misuse is refused. In an office
+// new response swaps in without a jump, at the convolver's next tail
+// boundary, so each render is preceded by enough silence for it to be
+// heard whole; misuse is refused. In an office
 // (1 s): the reverb at the published level and delay starts where the
 // reflections' response ends and has the energy of a response rendered
 // on past the join (0.35 to 0.6 s, within 15 %; measured 7 %), and
@@ -29,7 +31,10 @@
 
 enum
 {
-    FRAMES = 28800
+    FRAMES = 28800,
+    // Three tail blocks of the 0.5 s response's convolver (1,024 each)
+    // and a head block, in renders of 480.
+    SETTLE = 4320
 };
 
 // A wall 2 m to the listener's right (x = 2) facing away from it.
@@ -101,6 +106,7 @@ static maudSpatializer* Create(maudAcousticScene* scene)
 
 static float s_send[FRAMES];
 static float s_bed[4][FRAMES];
+static float s_discard[4][480];
 
 // Renders an impulse at frame 0 in blocks of 480 into a bed holding
 // base.
@@ -113,6 +119,12 @@ static void RenderOver(maudSpatializer* s, maudQuaternion orientation, float bas
         {
             s_bed[c][i] = base;
         }
+    }
+    for (int at = 0; at < SETTLE; at += 480)
+    {
+        float* bed[4] = {s_discard[0], s_discard[1], s_discard[2], s_discard[3]};
+        CHECK(maudRenderReflections(s, &orientation, s_send, bed, 480) == maud_success,
+              "render silence");
     }
     s_send[0] = 1.0f;
     for (int at = 0; at < FRAMES; at += 480)
