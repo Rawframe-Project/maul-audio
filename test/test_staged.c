@@ -90,9 +90,68 @@ static void TestPlans(void)
           "6000 samples in blocks of 64: a tail of 10 blocks of 512");
 }
 
+// A response the head covers alone: one stage, a new response taken at
+// the next call and faded over the head's next block, then the direct
+// convolution.
+static void TestOneStage(void)
+{
+    enum
+    {
+        SHORT = 150,
+        RUN = 2000
+    };
+    static float h[SHORT];
+    static float x[RUN];
+    static float y[RUN];
+    uint32_t state = 3;
+    for (uint32_t j = 0; j < SHORT; ++j)
+    {
+        h[j] = Noise(&state);
+    }
+    for (uint32_t n = 0; n < RUN; ++n)
+    {
+        x[n] = Noise(&state);
+    }
+    maudStagedPlan plan = maudPlanStaged(BLOCK, SHORT);
+    CHECK(plan.tailBlock == 0 && plan.headPartitions == 3,
+          "150 samples in blocks of 64: one stage");
+    maudStaged* s = malloc(sizeof(maudStaged));
+    void* memory = malloc(maudStagedBytes(&plan, 1));
+    float* response = malloc(maudStagedResponseFloats(&plan, 1) * sizeof(float));
+    float* scratch = malloc(maudStagedScratchFloats(&plan) * sizeof(float));
+    maudInitStaged(s, &plan, 1, memory);
+    const float* channels[1] = {h};
+    maudCutStagedResponse(s, channels, SHORT, response, scratch);
+    maudSetStagedResponse(s, response);
+    for (uint32_t at = 0; at < RUN; at += 100)
+    {
+        float* out[1] = {y + at};
+        maudRunStaged(s, x + at, out, 100);
+    }
+    double error = 0.0;
+    double largest = 0.0;
+    for (uint32_t n = 2 * BLOCK; n < RUN; ++n)
+    {
+        double sum = 0.0;
+        for (uint32_t j = 0; j < SHORT && j + BLOCK <= n; ++j)
+        {
+            sum += (double)h[j] * (double)x[n - BLOCK - j];
+        }
+        error = fmax(error, fabs(sum - (double)y[n]));
+        largest = fmax(largest, fabs(sum));
+    }
+    CHECK(!maudStagedSwitching(s) && largest > 0.1 && error < 1e-5 * largest,
+          "one stage: the direct convolution once its response is in");
+    free(scratch);
+    free(response);
+    free(memory);
+    free(s);
+}
+
 int main(void)
 {
     TestPlans();
+    TestOneStage();
     uint32_t state = 7;
     for (int r = 0; r < 2; ++r)
     {
