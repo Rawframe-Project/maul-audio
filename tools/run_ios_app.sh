@@ -35,7 +35,25 @@ else
     cat "$err"
     if ! kill -0 "$pid" 2>/dev/null; then
         report=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/"$name"* 2>/dev/null | head -1)
-        [ -n "$report" ] && head -c 6000 "$report"
+        if [ -n "$report" ]; then
+            head -c 2000 "$report"
+            echo
+            # The report is a header line and a JSON body; the faulting
+            # thread's frames and the abort's message lie past any head.
+            python3 - "$report" <<'PY' || true
+import json, sys
+body = json.loads(open(sys.argv[1]).read().split("\n", 1)[1])
+print("abort:", json.dumps(body.get("asi", {})))
+images = body.get("usedImages", [])
+thread = body["threads"][body["faultingThread"]]
+print("faulting thread", body["faultingThread"], thread.get("name", ""), thread.get("queue", ""))
+for frame in thread.get("frames", [])[:40]:
+    index = frame.get("imageIndex", -1)
+    image = images[index].get("name", "?") if 0 <= index < len(images) else "?"
+    print(" ", image, frame.get("symbol", "?"), frame.get("symbolLocation", ""),
+          frame.get("sourceFile", ""), frame.get("sourceLine", ""))
+PY
+        fi
     fi
 fi
 xcrun simctl terminate "$device" "$id" >/dev/null 2>&1 || true
