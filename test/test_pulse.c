@@ -21,12 +21,16 @@
 #include "maul-audio/stream.h"
 
 #include <dirent.h>
+#include <poll.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <time.h>
+#include <unistd.h>
 
 #define SKIP 77
 
@@ -744,6 +748,109 @@ static void Note(maudContext* context, Restart* seen)
     }
 }
 
+// A socket of the test's own that takes each connection and closes it
+// at once, counting them: a PulseAudio context sent there fails fast.
+typedef struct Refuser
+{
+    int socket;
+    atomic_int taken;
+    atomic_bool quit;
+    pthread_t thread;
+    char path[64];
+} Refuser;
+
+static void* TakeConnections(void* user)
+{
+    Refuser* refuser = user;
+    while (!atomic_load(&refuser->quit))
+    {
+        struct pollfd ready = {.fd = refuser->socket, .events = POLLIN};
+        if (poll(&ready, 1, 20) == 1)
+        {
+            int taken = accept(refuser->socket, nullptr, nullptr);
+            if (taken >= 0)
+            {
+                close(taken);
+                atomic_fetch_add(&refuser->taken, 1);
+            }
+        }
+    }
+    return nullptr;
+}
+
+static bool StartRefuser(Refuser* refuser)
+{
+    *refuser = (Refuser){.socket = socket(AF_UNIX, SOCK_STREAM, 0)};
+    struct sockaddr_un address = {.sun_family = AF_UNIX};
+    snprintf(refuser->path, sizeof(refuser->path), "/tmp/maud-refuser-%d.sock", (int)getpid());
+    snprintf(address.sun_path, sizeof(address.sun_path), "%s", refuser->path);
+    unlink(refuser->path);
+    if (refuser->socket < 0 ||
+        bind(refuser->socket, (const struct sockaddr*)&address, sizeof(address)) != 0 ||
+        listen(refuser->socket, 16) != 0)
+    {
+        return false;
+    }
+    return pthread_create(&refuser->thread, nullptr, TakeConnections, refuser) == 0;
+}
+
+static void StopRefuser(Refuser* refuser)
+{
+    atomic_store(&refuser->quit, true);
+    pthread_join(refuser->thread, nullptr);
+    close(refuser->socket);
+    unlink(refuser->path);
+}
+
+// A rebuild the server refuses at once is tried again after waits that
+// grow (250 ms, then 500 ms, then 1 s), not on every drain: the
+// stream's own connection is sent to a socket that closes it.
+static void TestRebuildPacing(maudContext* context)
+{
+    Refuser refuser;
+    if (!StartRefuser(&refuser))
+    {
+        CHECK(false, "a socket of the test's own");
+        return;
+    }
+    Blocks blocks = {0};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 20),
+          "it plays");
+    CHECK(EndNewestSinkInput(), "the server ends it");
+    // Undrained, so the stream is lost before the drains that rebuild it.
+    Sleep(300);
+    char server[80];
+    snprintf(server, sizeof(server), "unix:%s", refuser.path);
+    setenv("PULSE_SERVER", server, 1);
+    maudNotification record;
+    bool suspended = false;
+    for (int tries = 0; tries < 200; ++tries)
+    {
+        while (maudNextNotification(context, &record) == maud_success)
+        {
+            suspended = suspended || (record.kind == maud_notifyStreamSuspended &&
+                                      record.reason == maud_suspendPlatform);
+        }
+        Sleep(10);
+    }
+    int taken = atomic_load(&refuser.taken);
+    unsetenv("PULSE_SERVER");
+    // Tries at 0, 0.25, 0.75 and 1.75 s in two seconds of drains every
+    // 10 ms, and some time for each.
+    CHECK(suspended && taken >= 2 && taken <= 6, "refused, the rebuilds wait longer each time");
+    if (taken < 2 || taken > 6)
+    {
+        fprintf(stderr, "refused rebuilds: %d in two seconds\n", taken);
+    }
+    CHECK(WaitFor(context, maud_notifyStreamResumed, none, &record), "resumed once it works");
+    uint32_t resumed = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, resumed + 20), "and plays");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    StopRefuser(&refuser);
+}
+
 // The server restarted: its devices keep their ids, a playing stream on
 // the default and one on a device are suspended for the platform while
 // it is away and play on the new one, one created meanwhile waits and
@@ -1003,6 +1110,7 @@ int main(void)
     TestFollowRate(context);
     TestServerEnded(context);
     TestRebuildFails(context);
+    TestRebuildPacing(context);
     TestRestart(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestLimits();
