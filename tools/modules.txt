@@ -82,14 +82,14 @@ pipewire_api:
 pipewire_card: context context_core device form pipewire_core
 pipewire_core: context_core pipewire_api
 pipewire_parse:
-pipewire_stream: clock context context_core period pipewire_core pipewire_parse thread xrun
+pipewire_stream: clock context context_core follow period pipewire_core pipewire_parse retry thread xrun
 portable_math:
 probe_bake: allocator path_search portable_math probe_graph
 probe_graph: allocator
 probe_sets: allocator probe_bake probe_graph
 pulse_api:
 pulse_core: context_core pulse_api worker
-pulse_stream: clock context context_core period pulse_core thread worker xrun
+pulse_stream: clock context context_core follow period pulse_core retry thread worker xrun
 real_fft: allocator
 reflection_response: fft
 reflections: allocator ambisonics partitioned reflection_response reverb_estimate

@@ -10,9 +10,11 @@
 
 #include "clock.h"
 #include "context.h"
+#include "follow.h"
 #include "period.h"
 #include "pipewire_core.h"
 #include "pipewire_parse.h"
+#include "retry.h"
 #include "thread.h"
 #include "xrun.h"
 
@@ -323,23 +325,50 @@ void maudPipewireDropStreams(maudContext* context)
     }
 }
 
+// A rebuild the graph has not taken by the deadline failed, as one it
+// ended did (a stream with no device to negotiate with has no deadline): the stream is detached,
+// waits longer before each new try (retry.h), and is suspended for the platform until one is taken.
 void maudPipewireReconnectStreams(maudContext* context)
 {
+    int64_t now = maudNowNanoseconds();
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
+        maudPipewireStream* entry = EntryOf(context, slot);
         const maudStreamBinding* binding = &slot->core.binding;
-        bool wanted = binding->requested.index1 == 0 || binding->suspension == maud_suspendNone;
-        if (slot->live && EntryOf(context, slot)->ended)
+        if (!slot->live)
+        {
+            continue;
+        }
+        bool taken =
+            entry->state == PW_STREAM_STATE_PAUSED || entry->state == PW_STREAM_STATE_STREAMING;
+        bool rebuilt = entry->rebuiltAt != 0;
+        if (rebuilt && taken && !entry->ended)
+        {
+            entry->rebuiltAt = 0;
+            maudReportReopen(context, slot, true, now);
+        }
+        else if (entry->ended || (rebuilt && binding->current.index1 != 0 &&
+                                  now - entry->rebuiltAt > MAUD_PIPEWIRE_DEADLINE_NS))
         {
             maudPipewireDetachStream(context, slot);
+            if (rebuilt)
+            {
+                maudReportReopen(context, slot, false, now);
+            }
         }
-        if (slot->live && wanted && !EntryOf(context, slot)->used)
+        bool wanted = binding->requested.index1 == 0 || binding->suspension == maud_suspendNone ||
+                      binding->suspension == maud_suspendPlatform;
+        if (wanted && !entry->used && maudRetryDue(binding, now))
         {
-            // A failure leaves the entry unused, so the next drain tries
-            // again.
-            maudResult result = ConnectStream(context, slot, false);
-            (void)result;
+            if (ConnectStream(context, slot, false) != maud_success)
+            {
+                maudReportReopen(context, slot, false, now);
+            }
+            else if (entry->used)
+            {
+                entry->rebuiltAt = now;
+            }
         }
     }
 }

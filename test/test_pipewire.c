@@ -591,6 +591,66 @@ static void TestGraphEnded(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// Sends a signal to the test daemon's PipeWire, by the pid file the
+// daemon script keeps beside the directory its stop command names.
+static bool SignalDaemon(const char* signal)
+{
+    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
+    const char* dir = stop != nullptr ? strrchr(stop, ' ') : nullptr;
+    char command[512];
+    if (dir == nullptr || snprintf(command, sizeof(command), "kill -%s \"$(cat %s/pipewire.pid)\"",
+                                   signal, dir + 1) >= (int)sizeof(command))
+    {
+        return false;
+    }
+    return system(command) == 0;
+}
+
+// A rebuild that fails: the graph ends a playing stream, then stops
+// answering. The stream is suspended for the platform once its rebuild
+// is past the deadline, and resumes, playing, once the graph answers.
+static void TestRebuildFails(maudContext* context)
+{
+    if (getenv("MAUD_TEST_PIPEWIRE_STOP") == nullptr)
+    {
+        return;
+    }
+    Blocks blocks = {0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &blocks);
+    CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
+    CHECK(EndNewestOutputStream(), "the graph ends it");
+    // Undrained, so the end is queued for the drain that rebuilds it,
+    // which the stopped daemon leaves waiting.
+    Sleep(300);
+    CHECK(SignalDaemon("STOP"), "the daemon stops answering");
+    maudNotification record;
+    bool suspended = false;
+    for (int tries = 0; tries < 400 && !suspended; ++tries)
+    {
+        while (!suspended && maudNextNotification(context, &record) == maud_success)
+        {
+            suspended =
+                record.kind == maud_notifyStreamSuspended && record.reason == maud_suspendPlatform;
+        }
+        Sleep(10);
+    }
+    CHECK(SignalDaemon("CONT"), "the daemon answers again");
+    CHECK(suspended, "suspended for the platform while the rebuild fails");
+    bool resumed = false;
+    for (int tries = 0; tries < NOTICE_TRIES && !resumed; ++tries)
+    {
+        while (!resumed && maudNextNotification(context, &record) == maud_success)
+        {
+            resumed = record.kind == maud_notifyStreamResumed;
+        }
+        Sleep(10);
+    }
+    CHECK(resumed, "resumed once it works");
+    uint32_t since = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, since + 20), "and plays");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     Blocks blocks = {.tryControl = true};
@@ -999,6 +1059,7 @@ int main(void)
     TestExclusiveRefused(context);
     TestDestroyWhileRendering(context);
     TestGraphEnded(context);
+    TestRebuildFails(context);
     if (helped)
     {
         TestStreamsMoveAndAreLost(context, &helper);

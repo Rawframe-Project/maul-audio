@@ -45,6 +45,12 @@ release could change the API, the ABI and every data format.
   plugin, its stream destroyed) is recovered and plays on. The plugin
   woke the stream's thread with no event while in an error state, which
   the thread skipped, spinning on a silent stream until it stopped.
+- PulseAudio and PipeWire: a stream whose rebuild fails (a server that
+  refuses or stops answering, a graph that never takes the stream) is
+  suspended with `maud_suspendPlatform` and resumed once a rebuild
+  works, waiting longer after each failure, as WASAPI and AAudio do.
+  PulseAudio's rebuild blocked each drain for up to two seconds while
+  it failed; neither said anything to the host.
 
 ## [1.1.0] - 2026-10-18
 

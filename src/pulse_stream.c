@@ -11,8 +11,10 @@
 
 #include "clock.h"
 #include "context.h"
+#include "follow.h"
 #include "period.h"
 #include "pulse_core.h"
+#include "retry.h"
 #include "thread.h"
 #include "xrun.h"
 
@@ -428,17 +430,36 @@ void maudPulseRetargetStream(maudContext* context, maudStreamSlot* slot)
     }
 }
 
+// Rebuilds the started streams the server ended, or that have no
+// connection or no thread, once their retry is due (retry.h): a rebuild
+// waits up to the connection's deadline, so one that fails waits longer
+// before the next, and the stream is suspended with maud_suspendPlatform
+// until one works.
 void maudPulseResumeStreams(maudContext* context)
 {
+    int64_t now = maudNowNanoseconds();
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];
-        const maudPulseStream* entry = EntryOf(context, slot);
-        if (slot->live &&
-            atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning &&
-            (!entry->threadRunning || atomic_load(&entry->lost)))
+        maudPulseStream* entry = EntryOf(context, slot);
+        bool lost = entry->threadRunning && atomic_load(&entry->lost);
+        bool running =
+            atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning;
+        bool needed = lost || !entry->used || (running && !entry->threadRunning);
+        if (!needed || !maudWantsReopen(slot) || !maudRetryDue(&slot->core.binding, now))
         {
-            maudPulseSetStreamActive(context, slot, true);
+            continue;
         }
+        if (lost)
+        {
+            StopThread(entry);
+        }
+        Disconnect(entry);
+        bool opened = Connect(context, slot) == maud_success && entry->used;
+        if (opened && running)
+        {
+            StartThread(entry);
+        }
+        maudReportReopen(context, slot, opened, now);
     }
 }

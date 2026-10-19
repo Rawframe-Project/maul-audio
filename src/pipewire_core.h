@@ -117,6 +117,9 @@ typedef struct maudPipewireStream
     // Set on the main loop when the graph ends a stream it had taken (its
     // node destroyed, or failed): the drain builds the stream again.
     bool ended;
+    // When the drain rebuilt the stream, until the graph takes it (paused
+    // or streaming); zero for a stream the host opened or one taken.
+    int64_t rebuiltAt;
     // The graph's ticks at the last cycle and the frames it moved, to see
     // a skipped cycle; forgotten when the control thread sets
     // forgetTicks, as when the stream is activated.

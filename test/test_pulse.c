@@ -649,6 +649,60 @@ static void TestServerEnded(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// Sends a signal to the test daemon's PulseAudio server, by the pid file
+// the daemon script keeps beside the directory its stop command names.
+static bool SignalPulseServer(const char* signal)
+{
+    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
+    const char* dir = stop != nullptr ? strrchr(stop, ' ') : nullptr;
+    char command[512];
+    if (dir == nullptr ||
+        snprintf(command, sizeof(command), "kill -%s \"$(cat %s/pipewire-pulse.pid)\"", signal,
+                 dir + 1) >= (int)sizeof(command))
+    {
+        return false;
+    }
+    return Run(command);
+}
+
+// A rebuild that fails: the server ends a playing stream, then stops
+// answering. The stream is suspended for the platform while its rebuild
+// fails, and resumes, playing, once the server answers again.
+static void TestRebuildFails(maudContext* context)
+{
+    if (getenv("MAUD_TEST_PIPEWIRE_STOP") == nullptr)
+    {
+        return;
+    }
+    Blocks blocks = {0};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 20),
+          "it plays");
+    CHECK(EndNewestSinkInput(), "the server ends it");
+    // Undrained, so the stream's thread marks it lost before the drain
+    // that tries to rebuild it, which the stopped server leaves waiting.
+    Sleep(300);
+    CHECK(SignalPulseServer("STOP"), "the server stops answering");
+    maudNotification record;
+    bool suspended = false;
+    for (int tries = 0; tries < 100 && !suspended; ++tries)
+    {
+        while (!suspended && maudNextNotification(context, &record) == maud_success)
+        {
+            suspended =
+                record.kind == maud_notifyStreamSuspended && record.reason == maud_suspendPlatform;
+        }
+        Sleep(10);
+    }
+    CHECK(SignalPulseServer("CONT"), "the server answers again");
+    CHECK(suspended, "suspended for the platform while the rebuild fails");
+    CHECK(WaitFor(context, maud_notifyStreamResumed, none, &record), "resumed once it works");
+    uint32_t resumed = atomic_load(&blocks.count);
+    CHECK(WaitForBlocks(context, &blocks, resumed + 20), "and plays");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 // The server restarted: a playing stream plays on the new one, and one
 // stopped across the restart starts on it.
 static void TestRestart(maudContext* context)
@@ -837,6 +891,7 @@ int main(void)
     TestPinnedStream(context);
     TestFollowRate(context);
     TestServerEnded(context);
+    TestRebuildFails(context);
     TestRestart(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestLimits();
