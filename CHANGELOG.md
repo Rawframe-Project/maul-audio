@@ -17,6 +17,10 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- Loading an HRTF set at another rate than its file's is some 30 times
+  faster: the shipped set resampled to 44.1 kHz loads in 20 ms, against
+  0.7 s, with the same responses bit for bit. The resampler's weights
+  are computed once for every response.
 - A context's control calls ask for the calling thread's identity once
   to refuse a call from host code, as 1.0 did: 1.1's second check had
   made each call some 8 ns slower (a notification drain 21 ns against

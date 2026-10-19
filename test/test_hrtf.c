@@ -533,7 +533,10 @@ static void TestResampler(void)
         }
         uint32_t taps = maudResampledTaps(TAPS, 48000, 44100);
         CHECK(taps <= TAPS + 64, "room for the resampled burst");
-        maudResampleResponse(in, TAPS, 48000, out, taps, 44100);
+        static double weights[(TAPS + 64) * 80];
+        CHECK(maudResampleWidth(48000, 44100) <= 80, "room for the weights");
+        maudResampleWeights(TAPS, 48000, taps, 44100, weights);
+        maudResampleResponse(in, TAPS, 48000, out, taps, 44100, weights);
         double ratio = Energy(out, taps) / (Energy(in, TAPS) * 48000.0 / 44100.0);
         if (f < 2)
         {

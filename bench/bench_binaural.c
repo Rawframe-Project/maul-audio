@@ -6,7 +6,8 @@
 // still without the near field and with it, and one whose direction
 // changes every block, so that it fades in every block; then a source
 // encoded into a third-order ambisonic bed, and the bed decoded for both
-// ears. Prints the best of five runs as
+// ears; and the set loaded, at its rate and resampled to 44.1 kHz.
+// Prints the best of five runs as
 // microseconds per block and as sources per millisecond of one core for each 10 ms of audio,
 // each row beside its recorded baseline.
 
@@ -205,6 +206,35 @@ static void RunReverb(void)
     maudDestroyReverb(reverb);
 }
 
+// Loading the set from its bytes, at its own rate and resampled to
+// 44.1 kHz: the best of five loads, in milliseconds.
+static void RunLoad(size_t count)
+{
+    for (int resampled = 0; resampled < 2; ++resampled)
+    {
+        maudHrtfDef def = maudDefaultHrtfDef();
+        def.bytes = s_bytes;
+        def.byteCount = count;
+        def.sampleRate = resampled ? 44100 : 0;
+        double best = 1e9;
+        for (int run = 0; run < 5; ++run)
+        {
+            maudHrtf* hrtf = nullptr;
+            double start = Seconds();
+            if (maudLoadHrtf(&def, &hrtf) != maud_success)
+            {
+                return;
+            }
+            double elapsed = Seconds() - start;
+            best = elapsed < best ? elapsed : best;
+            maudDestroyHrtf(hrtf);
+        }
+        printf("hrtf load, %-24s %7.2f ms\n", resampled ? "resampled to 44.1 kHz" : "at its rate",
+               best * 1e3);
+        Against(resampled ? "hrtf.load44.ms" : "hrtf.load.ms", best * 1e3, false);
+    }
+}
+
 int main(void)
 {
     FILE* file = fopen(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", "rb");
@@ -224,6 +254,7 @@ int main(void)
         printf("the set does not load\n");
         return 1;
     }
+    RunLoad(count);
     for (int i = 0; i < FRAMES; ++i)
     {
         s_in[i] = sinf(0.05f * (float)i);

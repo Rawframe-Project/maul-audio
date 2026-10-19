@@ -57,9 +57,14 @@ static Parts LayOut(const maudHrtfFile* file, uint32_t taps)
 }
 
 // Copies the file's rings, delays and responses into the set, resampled
-// from the file's rate to the set's; scratch holds one response.
-static void Fill(maudHrtf* hrtf, const maudHrtfFile* file, float* scratch)
+// from the file's rate to the set's; scratch holds one response, and
+// weights the resampling's weights when the rates differ.
+static void Fill(maudHrtf* hrtf, const maudHrtfFile* file, float* scratch, double* weights)
 {
+    if (hrtf->sampleRate != file->sampleRate)
+    {
+        maudResampleWeights(file->taps, file->sampleRate, hrtf->taps, hrtf->sampleRate, weights);
+    }
     uint32_t first = 0;
     for (uint32_t ring = 0; ring < file->ringCount; ++ring)
     {
@@ -83,7 +88,7 @@ static void Fill(maudHrtf* hrtf, const maudHrtfFile* file, float* scratch)
             }
             maudHrtfFileResponse(file, direction, ear, scratch);
             maudResampleResponse(scratch, file->taps, file->sampleRate, response, hrtf->taps,
-                                 hrtf->sampleRate);
+                                 hrtf->sampleRate, weights);
         }
     }
 }
@@ -115,16 +120,22 @@ maudResult maudLoadHrtf(const maudHrtfDef* def, maudHrtf** hrtfOut)
         return maud_errorCapacity;
     }
     Parts parts = LayOut(&file, taps);
-    size_t scratchBytes = (size_t)file.taps * sizeof(float);
-    float* scratch =
-        parts.overflow ? nullptr : maudAllocate(&def->allocator, scratchBytes, alignof(float));
+    // One block for the resampling's weights, then one response.
+    size_t weightBytes =
+        rate == file.sampleRate
+            ? 0
+            : (size_t)taps * maudResampleWidth(file.sampleRate, rate) * sizeof(double);
+    size_t scratchBytes = weightBytes + (size_t)file.taps * sizeof(float);
+    double* weights =
+        parts.overflow ? nullptr : maudAllocate(&def->allocator, scratchBytes, alignof(double));
+    float* scratch = weights == nullptr ? nullptr : (float*)((unsigned char*)weights + weightBytes);
     unsigned char* block =
         scratch == nullptr ? nullptr : maudAllocate(&def->allocator, parts.size, alignof(maudHrtf));
     if (block == nullptr)
     {
         if (scratch != nullptr)
         {
-            maudRelease(&def->allocator, scratch, scratchBytes, alignof(float));
+            maudRelease(&def->allocator, weights, scratchBytes, alignof(double));
         }
         return maud_errorCapacity;
     }
@@ -150,8 +161,8 @@ maudResult maudLoadHrtf(const maudHrtfDef* def, maudHrtf** hrtfOut)
     };
     memcpy(hrtf->name, file.name, file.nameLength);
     memcpy(hrtf->license, file.license, file.licenseLength);
-    Fill(hrtf, &file, scratch);
-    maudRelease(&def->allocator, scratch, scratchBytes, alignof(float));
+    Fill(hrtf, &file, scratch, weights);
+    maudRelease(&def->allocator, weights, scratchBytes, alignof(double));
     *hrtfOut = hrtf;
     return maud_success;
 }

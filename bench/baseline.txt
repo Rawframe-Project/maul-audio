@@ -32,6 +32,13 @@ instanced.moving.ms 0.3446
 # per 10 ms block, 1 % of a core; decoding a third-order bed at 20 us.
 speakers.pan.us 62.95
 speakers.decode3.us 6.61
+# Loading the shipped HRTF set (bench_binaural), recorded 2026-10-19:
+# the best of three runs at a load of 10 to 16, each the best of five
+# loads. Each aims at 50 ms, at the file's rate or resampled; resampled
+# to 44.1 kHz it took 0.7 to 1 s before its weights were computed once
+# for every response.
+hrtf.load.ms 3.48
+hrtf.load44.ms 20.44
 # The voice processors' rows (the echo canceller with a 0.2 s path and
 # its suppressor), recorded again 2026-10-13: the best of five runs at
 # a load of 19 to 35, alternating with the code of this file's first
