@@ -74,6 +74,14 @@ static double s_lastStep;
 static double s_watchedFrames;
 static double s_mostAhead;
 static double s_lastAhead;
+// The steps whose short quanta nothing excused, the first few, printed
+// so the next failure says what its steps looked like.
+static struct
+{
+    double at, wall, ahead, aheadBefore;
+    int shorts;
+} s_unexcused[8];
+static int s_unexcusedCount;
 static bool s_sawRing;
 static int s_mostOverTarget;
 static double s_mostApart;
@@ -493,6 +501,13 @@ static void CheckBreaks(void)
            breaks, shorts, Shorts(), s_excused, s_mostApart, s_mostAhead, s_measuredApart,
            s_measuredAhead, PingSlowest());
     CHECK(breaks <= 2 * shorts, "the ramp plays in order");
+    for (int i = 0; i < s_unexcusedCount; ++i)
+    {
+        printf("unexcused: %d short quanta at %.0f ms, %.0f frames of wall time since the step "
+               "before, the clock %.0f frames ahead (%.0f the step before)\n",
+               s_unexcused[i].shorts, s_unexcused[i].at, s_unexcused[i].wall, s_unexcused[i].ahead,
+               s_unexcused[i].aheadBefore);
+    }
     CHECK(Shorts() - s_excused <= 4, "few short quanta from the start");
     CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
     CHECK(maudStopStream(s_context, s_capture) == maud_success, "stop the capture");
@@ -736,6 +751,15 @@ static void Watch(double now)
     if (shorts > s_watchedShorts && (late || s_wasLate))
     {
         s_excused += shorts - s_watchedShorts;
+    }
+    else if (shorts > s_watchedShorts && s_unexcusedCount < 8)
+    {
+        s_unexcused[s_unexcusedCount].at = now;
+        s_unexcused[s_unexcusedCount].wall = wall;
+        s_unexcused[s_unexcusedCount].ahead = ahead;
+        s_unexcused[s_unexcusedCount].aheadBefore = s_lastAhead;
+        s_unexcused[s_unexcusedCount].shorts = shorts - s_watchedShorts;
+        s_unexcusedCount += 1;
     }
     // The target grows from the step before's, or at the first step from
     // the one a correct backend starts with, which no load can move.
