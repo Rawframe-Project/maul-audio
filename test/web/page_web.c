@@ -74,6 +74,8 @@ static double s_lastStep;
 static double s_watchedFrames;
 static double s_mostAhead;
 static double s_lastAhead;
+static bool s_sawRing;
+static int s_mostOverTarget;
 static double s_mostApart;
 // The same while the rate and the ramp are measured.
 static double s_measuredAhead;
@@ -167,6 +169,13 @@ EM_JS(int, Shorts, (void), {
 });
 
 EM_JS(int, Isolated, (void), { return globalThis.crossOriginIsolated === true ? 1 : 0; });
+
+// The frames in the playback stream's ring, from its write and read
+// indices, or -1 on a page without one (posted chunks).
+EM_JS(int, RingBuffered, (void), {
+    const record = globalThis.maudWeb.nodes.filter(function (r) { return r !== null && r.target !== undefined; })[0];
+    return record.ring === null ? -1 : (Atomics.load(record.index, 0) - Atomics.load(record.index, 1)) | 0;
+});
 
 EM_JS(int, SinkIs, (const char* key), {
     const entry = globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0];
@@ -454,6 +463,12 @@ static void Measure(double now)
         CHECK(false, "at the context's rate");
     }
     CHECK(s_wrongSize == 0, "in whole stereo periods");
+    if (s_sawRing && s_mostOverTarget != 0)
+    {
+        printf("the ring held at most %d frames past the target\n", s_mostOverTarget);
+    }
+    CHECK(!s_sawRing || s_mostOverTarget == 0,
+          "the ring is topped up to its target, never past it");
     CHECK(s_clockSound, "its clock maps frames to host time");
     CheckCapture(format.sampleRate);
     ProbeCount(0);
@@ -739,6 +754,16 @@ static void Watch(double now)
     s_watchedShorts = shorts;
     s_watchedFrames = frames;
     s_watchedTarget = Target();
+    // The ring's fill against the target: a correct backend refills to
+    // exactly the target after each pull, and most steps fall between
+    // pulls, so the most seen is the target, never less or more.
+    int buffered = RingBuffered();
+    if (buffered >= 0)
+    {
+        int over = buffered - s_watchedTarget;
+        s_mostOverTarget = s_sawRing && s_mostOverTarget > over ? s_mostOverTarget : over;
+        s_sawRing = true;
+    }
     s_lastStep = now;
 }
 
