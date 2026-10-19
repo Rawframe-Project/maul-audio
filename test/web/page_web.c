@@ -471,7 +471,7 @@ static void CheckBreaks(void)
     }
     int shorts = Shorts() - s_shortsAtMeasure;
     // Printed on every run: what a quiet machine's steps look like is
-    // what the floors in Watch rest on.
+    // what the measures in Watch are read against.
     printf("breaks %d, short quanta %d while measuring, %d in all, %d with a thread late; "
            "steps at most %.0f ms apart, the audio clock at most %.0f frames ahead (while "
            "measuring %.0f ms, %.0f frames), the slowest ping %.0f ms\n",
@@ -670,16 +670,18 @@ static void StartSink(void)
           "the same device is not");
 }
 
-// Either thread empties the buffer the backend left: the main thread
-// away from a step for longer than that buffer lasts (and than 50 ms),
-// or the audio thread running ahead of the step's wall time by more than
-// it (and than 20 ms), as Chrome's does when the device starts and,
-// starved, when it catches up. Or the browser holds messages to the
-// worklet's thread, where posted chunks wait while a burst plays: a ping
-// to that thread out for more than 10 ms. The short quanta seen then, or
-// at the next step (the worklet's report may queue behind the step's
-// timer), are the host's. No measure is the backend's to move, and the
-// buffer is never taken as less than a correct backend starts with.
+// The device pulls its base latency at once, and a correct backend holds
+// a pull and two quanta, refilling after each pull. Either thread then
+// empties that buffer: the main thread away from a step while more pulls
+// may fall than the buffer covers, or the audio thread running more than
+// a pull ahead of the step's wall time (over one step or two), as Chrome's
+// does when the device starts and, starved, when it catches up. Or the
+// browser holds messages to the worklet's thread, where posted chunks
+// wait while a pull plays: a ping to that thread out for more than 10 ms.
+// The short quanta seen then, or at the next step (the worklet's report
+// may queue behind the step's timer), are the host's. No measure is the
+// backend's to move, and the buffer is never taken as less than a correct
+// backend starts with.
 static void Watch(double now)
 {
     maudStreamFormat format;
@@ -706,11 +708,13 @@ static void Watch(double now)
         s_measuredAhead = ahead > s_measuredAhead ? ahead : s_measuredAhead;
         s_measuredApart = now - s_lastStep > s_measuredApart ? now - s_lastStep : s_measuredApart;
     }
-    bool away = wall > (target > 0.05 * rate ? target : 0.05 * rate);
-    // Over two steps as well: the device's catch-up may straddle one. A
-    // device pulling on time is never more than one pull ahead over any
-    // span, and a correct backend holds a pull and two quanta.
-    double most = target > 0.02 * rate ? target : 0.02 * rate;
+    // The device's pull: away for more pulls than the buffer covers (one
+    // more than fit whole in the time away may fall in it), or a lead past
+    // a pull, which a device pulling on time never reaches over any span.
+    double pull = (double)(StartTarget() - 256);
+    bool away = (floor(wall / pull) + 1.0) * pull > target;
+    // Over two steps as well, since a catch-up may straddle one.
+    double most = pull + 128.0;
     bool burst = ahead > most || (s_lastStep > 0.0 && ahead + s_lastAhead > most);
     bool held = PingLate() == 1;
     bool late = s_lastStep > 0.0 && (away || burst || held);
