@@ -656,9 +656,23 @@ static void TestRestart(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, resumed + 20), "the stream plays on the new server");
     CHECK(atomic_load(&blocks.onControl) == 0, "rebuilt without a callback on this thread");
     uint32_t before = atomic_load(&idle.count);
-    CHECK(maudStartStream(context, stopped) == maud_success &&
-              WaitForBlocks(context, &idle, before + 20),
-          "the stopped one starts on the new server");
+    int64_t asked = maudGetHostNanoseconds();
+    bool started = maudStartStream(context, stopped) == maud_success &&
+                   WaitForBlocks(context, &idle, before + 20);
+    if (!started)
+    {
+        // What the next failure looked like, since none has been made to
+        // happen again on purpose.
+        maudStreamStatus status = {0};
+        maudResult result = maudGetStreamStatus(context, stopped, &status);
+        fprintf(stderr,
+                "stopped stream: %u blocks after its start, %.0f ms; status %d, started %d, "
+                "suspension %d, device %u, underruns %llu\n",
+                atomic_load(&idle.count) - before, (double)(maudGetHostNanoseconds() - asked) / 1e6,
+                (int)result, (int)status.started, (int)status.suspension, status.device.index1,
+                (unsigned long long)status.underruns);
+    }
+    CHECK(started, "the stopped one starts on the new server");
     CHECK(maudDestroyStream(context, stopped) == maud_success, "destroy it");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
