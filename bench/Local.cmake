@@ -1,4 +1,5 @@
-# Maul Audio's further benchmarks: voice processing (the Device part);
+# Maul Audio's further benchmarks: voice processing and the stream path
+# (the Device part);
 # the binaural renderer and the ambisonic bed on the shipped HRTF set,
 # acoustic scenes and the speaker paths (the Spatial part); the guarded
 # control calls (both).
@@ -8,6 +9,16 @@ if(MAUL_AUDIO_DEVICE)
     target_compile_definitions(${PROJECT_NAME}_bench_voice PRIVATE
         MAUD_BENCH_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     maul_apply_flags(${PROJECT_NAME}_bench_voice)
+    # The stream path, which reaches the sample conversion inside the
+    # library, so it is left out of shared builds as white-box tests are.
+    if(NOT MAUL_AUDIO_BUILD_SHARED)
+        add_executable(${PROJECT_NAME}_bench_stream bench_stream.c)
+        target_link_libraries(${PROJECT_NAME}_bench_stream PRIVATE ${PROJECT_NAME})
+        target_include_directories(${PROJECT_NAME}_bench_stream PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        target_compile_definitions(${PROJECT_NAME}_bench_stream PRIVATE
+            MAUD_BENCH_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        maul_apply_flags(${PROJECT_NAME}_bench_stream)
+    endif()
 endif()
 
 # A feature's download on the web, each linked alone (size_web.c).

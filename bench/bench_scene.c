@@ -5,7 +5,8 @@
 // 32 rooms, 4 m square and 3 m high, joined by doorways (about 17,000
 // triangles). Rays of up to 16 m between random points, queried for any
 // hit and for the closest hit directly; then a spatializer's volumetric
-// occlusion and transmission steps through the scene as its hooks; then
+// occlusion and transmission steps through the scene as its hooks; a
+// probe set over a corner of the level baked, saved and loaded; then
 // geometric reflections over the level, simulated and rendered at
 // orders 1 and 3; then the level with an instance of a 6,000-triangle
 // object in every room, committed, queried and moved. Each row is
@@ -219,6 +220,75 @@ static void Steps(maudAcousticScene* scene)
            elapsed * 1e3, (double)s_hookRays * 1e-6, (double)reverb.reverbTime[0],
            (double)reverb.reverbTime[1], (double)reverb.reverbTime[2]);
     Against("estimate.ms", elapsed * 1e3, false);
+    maudDestroySpatializer(s);
+}
+
+// A probe set generated over a 16 by 16 m corner of the level on a 4 m
+// grid, baked once, saved, and loaded into another spatializer: the bake
+// and the load per probe, the load the best of seven.
+static void Probes(maudAcousticScene* scene)
+{
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    def.anyHit = CountAny;
+    def.closestHit = CountClosest;
+    def.rayContext = scene;
+    def.probeSetCapacity = 1;
+    maudSpatializer* s = nullptr;
+    maudSpatializer* loader = nullptr;
+    maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
+    if (maudCreateSpatializer(&def, &s) != maud_success ||
+        maudCreateSpatializer(&def, &loader) != maud_success ||
+        maudSetMaterials(s, &wall, 1) != maud_success ||
+        maudSetMaterials(loader, &wall, 1) != maud_success)
+    {
+        return;
+    }
+    maudProbeSetDef pd = maudDefaultProbeSetDef();
+    pd.boxMin = (maudVector3){0.5f, -1.0f, 0.5f};
+    pd.boxMax = (maudVector3){16.5f, TALL + 4.0f, 16.5f};
+    pd.spacing = 4.0f;
+    pd.height = 1.5f;
+    pd.range = 12.0f;
+    maudProbeSetId set = {0, 0};
+    maudProbeSetInfo info = {0};
+    double start = Seconds();
+    if (maudCreateProbeSet(s, &pd, &set) != maud_success ||
+        maudBakeProbeSet(s, set) != maud_success ||
+        maudGetProbeSet(s, set, &info, 0, 0, nullptr) != maud_success || info.probes == 0)
+    {
+        return;
+    }
+    double bake = Seconds() - start;
+    size_t size = 0;
+    void* bytes = nullptr;
+    if (maudSaveProbeSet(s, set, nullptr, 0, &size) != maud_success ||
+        (bytes = malloc(size)) == nullptr ||
+        maudSaveProbeSet(s, set, bytes, size, &size) != maud_success)
+    {
+        free(bytes);
+        return;
+    }
+    double best = 1e9;
+    for (int run = 0; run < 7; ++run)
+    {
+        maudProbeSetId loaded = {0, 0};
+        start = Seconds();
+        if (maudLoadProbeSet(loader, bytes, size, &loaded) != maud_success)
+        {
+            free(bytes);
+            return;
+        }
+        double elapsed = Seconds() - start;
+        best = elapsed < best ? elapsed : best;
+        (void)maudDestroyProbeSet(loader, loaded);
+    }
+    printf("probes: %u probes, %u links, %zu bytes; baked in %.0f ms a probe, loaded in %.1f us "
+           "a probe\n",
+           info.probes, info.links, size, bake / info.probes * 1e3, best / info.probes * 1e6);
+    Against("probes.bake.ms", bake / info.probes * 1e3, false);
+    Against("probes.load.us", best / info.probes * 1e6, false);
+    free(bytes);
+    maudDestroySpatializer(loader);
     maudDestroySpatializer(s);
 }
 
@@ -437,6 +507,7 @@ int main(void)
     printf("closest hit: %.2f M rays/s\n", RAYS / best * 1e-6);
     Against("scene.closest.mrays", RAYS / best * 1e-6, true);
     Steps(scene);
+    Probes(scene);
     Reflections(scene, 1);
     Reflections(scene, 3);
     Instanced(&mesh, hits);
