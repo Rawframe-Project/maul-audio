@@ -72,10 +72,13 @@ hrtf.load44.ms 20.44 50
 # their own and the suppressor's noise estimate a floor above the
 # subnormal range: the best of five runs at a load of 22 to 26,
 # alternating with the code before (echo 1.41x and 1.47x as fast, noise
-# at 48 kHz 1.05x and 1.08x).
-noise.16k.mono.us 32.98 71
-noise.48k.mono.us 67.16 71
-noise.48k.stereo.us 66.7 142
+# at 48 kHz 1.05x and 1.08x). The noise rows recorded again 2026-10-20,
+# when the exponential integral took a fixed-degree series: the best of
+# five at a load of 15, alternating with the code before (1.31x at 16
+# and 48 kHz mono, 1.20x stereo, silence as fast).
+noise.16k.mono.us 25.97 71
+noise.48k.mono.us 54.4 71
+noise.48k.stereo.us 58.31 142
 echo.16k.us 26.84 115
 echo.48k.us 75.86 115
 # The voice detector and the gain control (bench_voice), recorded
@@ -98,7 +101,7 @@ gain.48k.us 4.614 7
 # the flushes, echo 151, gain 11.6, detector 7.05, noise 54). Recorded
 # 2026-10-20, the best over two ticks at a load of 20 to 26; the
 # detector's and the gain control's again with their rows above.
-noise.48k.silent.us 39.94 71
+noise.48k.silent.us 37.98 71
 echo.48k.silent.us 64.57 115
 detector.48k.silent.us 3.182 7
 gain.48k.silent.us 3.725 7

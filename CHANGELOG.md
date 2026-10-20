@@ -17,6 +17,13 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- The noise suppressor runs some 1.3 times faster (54 us a 10 ms block
+  at 48 kHz, against 71): the exponential integral its gains take is
+  its series at a fixed degree for the argument's range, without a
+  division or a test per term, and nearer its value (2e-13 against
+  3e-12). Its output may differ from 1.1's in the last bit of a few
+  samples (32 of 3.84 M in a test scene, by 1.2e-10 at most); the echo
+  suppressor's likewise.
 - The voice detector and the gain control run some 1.47 times faster
   (at 48 kHz, 4.2 and 4.6 us a 10 ms block, against 6.2 and 6.8), with
   the same results bit for bit: the detector's analysis takes a
