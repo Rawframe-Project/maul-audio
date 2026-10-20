@@ -51,6 +51,16 @@ release could change the API, the ABI and every data format.
 
 ### Fixed
 
+- The voice processors in digital silence after a signal (a muted
+  microphone, a call's pause) ran up to twice as slow as on a signal:
+  their filters' states, envelopes and estimates decayed into the
+  subnormal range, where every multiply on them takes many times its
+  usual time. They now stop at zero (or, for the noise estimates, at a
+  floor far below any figure they meet): at 48 kHz in silence the
+  detector takes 9 us a 10 ms block against 17, the gain control 11
+  against 20, the noise suppressor 50 against 64, and the echo
+  canceller, which also skips its filter's steps while their error is
+  zero, 80 against 180. Results on a signal are unchanged.
 - WASAPI: an endpoint whose friendly name is longer than 255 bytes in
   UTF-8 is named by the name cut after its last whole character; it was
   named by its endpoint ID.

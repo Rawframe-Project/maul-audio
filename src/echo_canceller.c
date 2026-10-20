@@ -20,6 +20,7 @@
 #include "echo_filter.h"
 #include "echo_suppressor.h"
 #include "real_fft.h"
+#include "voice_dsp.h"
 
 #include "maul-audio/voice.h"
 
@@ -189,7 +190,9 @@ static void Front(maudEchoCanceller* c)
     {
         double in = (double)c->capture[i];
         double out = c->notch0 + in;
-        c->notch0 = c->notch1 + 2.0 * (-in + r * out);
+        // notch0 flushed, the output is zero or no smaller than the
+        // floor, and notch1, a share of it, stays normal.
+        c->notch0 = maudFlushDouble(c->notch1 + 2.0 * (-in + r * out));
         c->notch1 = in - c->notchDen * out;
         float notched = (float)(r * out);
         float render = c->render[i];
@@ -208,9 +211,9 @@ static void Block(maudEchoCanceller* c)
     maudRunEchoFilter(&c->filter, c->render, c->capture, c->linear, c->echo);
     for (uint32_t i = 0; i < c->block; ++i)
     {
-        c->linear[i] += c->preemph * c->lastOutput;
+        c->linear[i] = maudFlush(c->linear[i] + c->preemph * c->lastOutput);
         c->lastOutput = c->linear[i];
-        c->echo[i] += c->preemph * c->lastEcho;
+        c->echo[i] = maudFlush(c->echo[i] + c->preemph * c->lastEcho);
         c->lastEcho = c->echo[i];
     }
     maudRunEchoSuppressor(&c->suppressor, c->linear, c->echo, c->filter.bandLeak,

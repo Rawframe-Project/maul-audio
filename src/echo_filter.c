@@ -12,6 +12,7 @@
 #include "echo_filter.h"
 
 #include "allocator.h"
+#include "voice_dsp.h"
 
 #include <math.h>
 #include <string.h>
@@ -29,6 +30,11 @@
 #define POWER_FLOOR 0.01
 // The block's length the measured constants were set for, in seconds.
 #define MEASURED_BLOCK (128.0 / 16000.0)
+// The smallest weight kept: the constraint's transforms take values
+// down to a billionth of the smallest they are given (small twiddles,
+// then cancellation), so a floor of 1e-30 still left them subnormal;
+// 1e-20 is far below any weight that adds to an estimate.
+#define WEIGHT_TINY 1e-20f
 
 typedef struct Sums
 {
@@ -175,6 +181,7 @@ void maudResetEchoFilter(maudEchoFilter* f)
     f->started = 0.0;
     f->adapted = false;
     f->constrain = 0;
+    f->still = 0;
 }
 
 // The spectrum of a block after zeros (a block of zeros, then x).
@@ -231,10 +238,12 @@ static void Paths(maudEchoFilter* f, Sums* s, const float* yb, const float* yf, 
     double drop = s->foreground - s->background;
     double w1 = f->window1;
     double w2 = f->window2;
-    f->drop1 = w1 * f->drop1 + (1.0 - w1) * drop;
-    f->drop2 = w2 * f->drop2 + (1.0 - w2) * drop;
-    f->noise1 = w1 * w1 * f->noise1 + (1.0 - w1) * (1.0 - w1) * s->foreground * differ;
-    f->noise2 = w2 * w2 * f->noise2 + (1.0 - w2) * (1.0 - w2) * s->foreground * differ;
+    f->drop1 = maudFlushDouble(w1 * f->drop1 + (1.0 - w1) * drop);
+    f->drop2 = maudFlushDouble(w2 * f->drop2 + (1.0 - w2) * drop);
+    f->noise1 =
+        maudFlushDouble(w1 * w1 * f->noise1 + (1.0 - w1) * (1.0 - w1) * s->foreground * differ);
+    f->noise2 =
+        maudFlushDouble(w2 * w2 * f->noise2 + (1.0 - w2) * (1.0 - w2) * s->foreground * differ);
     size_t bytes = (size_t)f->partitions * 2 * f->bins * sizeof(float);
     if (drop * fabs(drop) > s->foreground * differ || f->drop1 * fabs(f->drop1) > 0.5 * f->noise1 ||
         f->drop2 * fabs(f->drop2) > 0.25 * f->noise2)
@@ -295,8 +304,8 @@ static void Leakage(maudEchoFilter* f, const Sums* s)
             variance += yh * yh;
             bandCovariance += eh * yh;
             bandVariance += yh * yh;
-            f->errorRecent[k] = keep * f->errorRecent[k] + (1.0 - keep) * e2;
-            f->echoRecent[k] = keep * f->echoRecent[k] + (1.0 - keep) * y2;
+            f->errorRecent[k] = maudFlushDouble(keep * f->errorRecent[k] + (1.0 - keep) * e2);
+            f->echoRecent[k] = maudFlushDouble(keep * f->echoRecent[k] + (1.0 - keep) * y2);
         }
         f->bandNow[2 * q] = bandCovariance;
         f->bandNow[2 * q + 1] = bandVariance;
@@ -355,8 +364,8 @@ static void Shares(maudEchoFilter* f)
 // its mean over the bins (so that bins the render leaves empty, as a
 // band-limited stream played at a higher rate does, do not take steps
 // from rounding noise). Each bin's rate and power first, then each
-// partition's steps across the bins.
-static void Adapt(maudEchoFilter* f, double rer, double startRate)
+// partition's steps across the bins; still, only the power is followed.
+static void Adapt(maudEchoFilter* f, double rer, double startRate, bool still)
 {
     const float* newest = Partition(f->render, f->bins, f->head);
     double smooth = 0.35 / f->partitions;
@@ -365,6 +374,10 @@ static void Adapt(maudEchoFilter* f, double rer, double startRate)
         double p = (double)newest[2 * k] * (double)newest[2 * k] +
                    (double)newest[2 * k + 1] * (double)newest[2 * k + 1];
         f->slowPower[k] = (1.0 - smooth) * f->slowPower[k] + smooth * p + 1e-10;
+    }
+    if (still)
+    {
+        return;
     }
     double mean = 0.0;
     for (uint32_t k = 0; k < f->bins; ++k)
@@ -404,8 +417,14 @@ static void Adapt(maudEchoFilter* f, double rer, double startRate)
     }
 }
 
+static float FlushWeight(float x)
+{
+    return fabsf(x) < WEIGHT_TINY ? 0.0f : x;
+}
+
 // One partition of the background in turn made a linear convolution:
-// its impulse response's second half set to zero.
+// its impulse response's second half set to zero, and its weights too
+// small to matter set to zero, so that none lingers subnormal.
 static void Constrain(maudEchoFilter* f)
 {
     float* w = f->background + (size_t)f->constrain * 2 * f->bins;
@@ -413,6 +432,10 @@ static void Constrain(maudEchoFilter* f)
     maudInverseRealFft(f->fft, f->spectrum, f->time);
     memset(f->time + f->block, 0, f->block * sizeof(float));
     maudForwardRealFft(f->fft, f->time, w);
+    for (uint32_t k = 0; k < 2 * f->bins; ++k)
+    {
+        w[k] = FlushWeight(w[k]);
+    }
     f->constrain = (f->constrain + 1) % f->partitions;
 }
 
@@ -467,7 +490,24 @@ void maudRunEchoFilter(maudEchoFilter* f, const float* render, const float* capt
     Leakage(f, &s);
     double startRate = 0.0;
     double rer = Rates(f, render, &s, &startRate);
-    Shares(f);
-    Adapt(f, rer, startRate);
-    Constrain(f);
+    // A background error of zeros takes no step (each is a multiple of
+    // its spectrum): the shares and steps are skipped, and once every
+    // partition has been constrained since the last step, the
+    // constraint too, so that silence costs less and no transform of
+    // weights near their floor meets a subnormal.
+    bool still = true;
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        still = still && eb[i] == 0.0f;
+    }
+    f->still = !still ? 0 : f->still < f->partitions ? f->still + 1 : f->still;
+    if (!still)
+    {
+        Shares(f);
+    }
+    Adapt(f, rer, startRate, still);
+    if (f->still < f->partitions)
+    {
+        Constrain(f);
+    }
 }

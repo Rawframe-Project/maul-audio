@@ -5,7 +5,9 @@
 // linear stage's output all residual echo, for a minute at 48 kHz, its
 // noise estimate decays to its floor and no lower, so that no bin's
 // estimate turns subnormal (each multiply on one many times slower);
-// the echo is still taken down by the echo floor.
+// the echo is still taken down by the echo floor; then through 8,000
+// blocks of silence no state is ever subnormal (the residual echo held
+// against its decay, the last speech level).
 
 #include "echo_suppressor.h"
 #include "real_fft.h"
@@ -72,6 +74,18 @@ int main(void)
     {
         printf("echo_suppressor: the echo down %.1f dB\n", down);
     }
+    static float zeros[BLOCK];
+    bool kept = true;
+    for (uint32_t b = 0; b < 8000; ++b)
+    {
+        maudRunEchoSuppressor(&s, zeros, zeros, leak, s.bins, out);
+        for (uint32_t k = 0; k < s.bins; ++k)
+        {
+            kept = kept && fpclassify(s.residual[k]) != FP_SUBNORMAL &&
+                   fpclassify(s.lastSpeech[k]) != FP_SUBNORMAL && isnormal(s.noise[k]);
+        }
+    }
+    CHECK(kept, "silence: no state ever subnormal");
     free(memory);
     free(plan);
     return s_failures == 0 ? 0 : 1;

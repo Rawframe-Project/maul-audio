@@ -138,6 +138,12 @@ bool maudVadSample(maudVadCore* core, float sample)
         return false;
     }
     core->filled = 0;
+    maudFlushBiquad(&core->highPass[0]);
+    maudFlushBiquad(&core->highPass[1]);
+    for (uint32_t b = 0; b < MAUD_VAD_BANDS; ++b)
+    {
+        maudFlushBiquad(&core->bands[b]);
+    }
     Decide(core);
     return true;
 }

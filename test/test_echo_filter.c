@@ -11,7 +11,9 @@
 // below: the step's power floor keeps the empty bins from stepping on
 // the near end's noise (0.17 to 0.24 over four seeds, what each
 // partition's constraint spreads from the bins below; 0.9 to 4.8
-// without the floor).
+// without the floor); after noise, through 3,000 blocks of silence, no
+// state is ever subnormal (the recent powers, the paths' windows, the
+// weights).
 
 #include "echo_filter.h"
 #include "real_fft.h"
@@ -192,9 +194,52 @@ static void TestEmptyBins(void)
     Close(&x);
 }
 
+static bool Kept(double x)
+{
+    return fpclassify(x) != FP_SUBNORMAL;
+}
+
+// Whether no state of the filter is subnormal.
+static bool AllKept(const maudEchoFilter* f)
+{
+    bool kept = Kept(f->drop1) && Kept(f->drop2) && Kept(f->noise1) && Kept(f->noise2);
+    for (uint32_t k = 0; k < f->bins; ++k)
+    {
+        kept = kept && Kept(f->errorRecent[k]) && Kept(f->echoRecent[k]);
+    }
+    size_t spectra = (size_t)PARTITIONS * 2 * f->bins;
+    for (size_t i = 0; i < spectra; ++i)
+    {
+        kept = kept && Kept((double)f->background[i]) && Kept((double)f->foreground[i]);
+    }
+    return kept;
+}
+
+static void TestSilence(void)
+{
+    Filter x;
+    Open(&x);
+    maudEchoFilter* f = &x.f;
+    uint32_t state = 13;
+    bool kept = true;
+    for (uint32_t b = 0; b < 3300; ++b)
+    {
+        for (uint32_t i = 0; i < BLOCK; ++i)
+        {
+            s_render[i] = b < 300 ? 0.2f * Noise(&state) : 0.0f;
+        }
+        Capture(&state, b < 300 ? 0.01f : 0.0f);
+        maudRunEchoFilter(f, s_render, s_capture, s_error, s_echo);
+        kept = kept && (b < 300 || AllKept(f));
+    }
+    CHECK(kept, "silence after noise: no state ever subnormal");
+    Close(&x);
+}
+
 int main(void)
 {
     TestShares();
     TestEmptyBins();
+    TestSilence();
     return s_failures == 0 ? 0 : 1;
 }

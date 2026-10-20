@@ -302,7 +302,7 @@ static void Gains(maudNoiseSuppressor* s)
         s->gain[k] = BinGain(s, k, p);
         speech += p;
         double expected = (1.0 - p) * s->power[k] + p * s->noise[k];
-        s->noise[k] = ALPHA_NOISE * s->noise[k] + (1.0 - ALPHA_NOISE) * expected;
+        s->noise[k] = fmax(ALPHA_NOISE * s->noise[k] + (1.0 - ALPHA_NOISE) * expected, MAUD_TINY);
     }
     s->speech = (float)(speech / s->bins);
 }
@@ -392,7 +392,8 @@ static void Process(maudNoiseSuppressor* s)
 static float Filter(const Biquad* f, BiquadState* z, float in)
 {
     double x = (double)in;
-    double y = f->b0 * x + f->b1 * z->x1 + f->b2 * z->x2 - f->a1 * z->y1 - f->a2 * z->y2;
+    double y =
+        maudFlushDouble(f->b0 * x + f->b1 * z->x1 + f->b2 * z->x2 - f->a1 * z->y1 - f->a2 * z->y2);
     z->x2 = z->x1;
     z->x1 = x;
     z->y2 = z->y1;

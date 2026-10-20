@@ -400,6 +400,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(gain_control)
     maul_add_test(noise_suppressor)
     maul_add_test(echo_canceller)
+    maul_add_test(voice_silence)
     maul_add_test(voice_refusals)
     maul_add_test(device_refusals)
     # The guide's snippets (docs/guide.md), as written there: both parts'.

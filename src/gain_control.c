@@ -162,6 +162,10 @@ static void UpdateLevel(maudGainControl* gain, bool confident, float level)
 // Chooses the next frame's gain and sets the ramp to it.
 static void UpdateGain(maudGainControl* gain)
 {
+    // The limiter's envelope, flushed once a frame: a frame's release
+    // takes it down a few tens of percent, so from the floor it stays
+    // normal until the next.
+    gain->envelope = maudFlush(gain->envelope);
     const maudGainControlDef* def = &gain->def;
     const maudVadCore* vad = &gain->vad;
     bool confident = vad->probability >= CONFIDENT;

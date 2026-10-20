@@ -6,7 +6,24 @@
 #ifndef MAUL_AUDIO_SRC_VOICE_DSP_H
 #define MAUL_AUDIO_SRC_VOICE_DSP_H
 
+#include <math.h>
 #include <stdint.h>
+
+// The smallest magnitude a decaying state keeps: below it the state is
+// set to zero rather than left to decay into the subnormal range, where
+// each multiply on it is many times slower; a recursive filter or an
+// envelope gets there within seconds of silence.
+#define MAUD_TINY 1e-30
+
+static inline float maudFlush(float x)
+{
+    return fabsf(x) < (float)MAUD_TINY ? 0.0f : x;
+}
+
+static inline double maudFlushDouble(double x)
+{
+    return fabs(x) < MAUD_TINY ? 0.0 : x;
+}
 
 // A second-order section in transposed direct form II.
 typedef struct maudBiquad
@@ -33,6 +50,22 @@ static inline float maudFilter(maudBiquad* filter, float in)
     filter->z1 = filter->b1 * in - filter->a1 * out + filter->z2;
     filter->z2 = filter->b2 * in - filter->a2 * out;
     return out;
+}
+
+// The smallest biquad state kept, checked once a 10 ms frame rather than
+// on each sample's dependency chain: within a frame the detector's
+// filters' states fall by 2e-14 at most (their slowest poles' radius
+// to the frame's length, at 8 to 96 kHz), so from 1e-20 they stay
+// normal until the next check.
+#define MAUD_BIQUAD_TINY 1e-20f
+
+static inline void maudFlushBiquad(maudBiquad* filter)
+{
+    if (fabsf(filter->z1) < MAUD_BIQUAD_TINY && fabsf(filter->z2) < MAUD_BIQUAD_TINY)
+    {
+        filter->z1 = 0.0f;
+        filter->z2 = 0.0f;
+    }
 }
 
 // The level of a mean square, in dBFS, no lower than MAUD_FLOOR_DBFS.
