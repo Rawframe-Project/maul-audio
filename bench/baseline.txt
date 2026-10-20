@@ -15,12 +15,15 @@
 # went to two-stage convolution, from 406 and 1,623), volumetric steps
 # 33 ms, estimates and reflections simulated 500 ms, the scene built in
 # 100 ms, rays at least 1 M a second, the instanced scene committed and
-# moved in 1 ms a frame.
-binaural.plain.us 10.68 20
-binaural.still.us 13.23 20
-binaural.moving.us 17.3 20
+# moved in 1 ms a frame. The three binaural rows and the bed's decode
+# recorded again 2026-10-20, when the FIR held a block of outputs while
+# its taps passed: the best of five at a load of 14 to 24, alternating
+# with the code before (1.68x, 1.44x, 1.43x and 1.74x as fast).
+binaural.plain.us 6.478 20
+binaural.still.us 9.177 20
+binaural.moving.us 12.2 20
 bed.encode.us 2.408 3
-bed.decode3.us 122.9 150
+bed.decode3.us 71.99 150
 direct.still.us 7.871 10
 direct.moving.us 8.267 10
 reverb.still.us 49.92 100
@@ -29,7 +32,7 @@ reverb.changing.us 53.22 100
 # silence after a signal, a minute of zeros settled first (bench_binaural),
 # with their signal rows' budgets; recorded 2026-10-20 as the voice
 # processors' silent rows below.
-binaural.silent.us 13.5 20
+binaural.silent.us 12.5 20
 direct.silent.us 7.552 10
 reverb.silent.us 52.04 100
 scene.build.ms 9.061 100

@@ -17,6 +17,12 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- Binaural rendering runs some 1.4 to 1.7 times faster, with the same
+  output bit for bit: a source 6.5 us a 10 ms block (9.2 with its near
+  field, 12.2 moving, against 10.9, 13.2 and 17.4) and a third-order
+  bed decoded for both ears 72 us against 125. The FIR holds a block of
+  outputs while every tap passes over it, instead of loading and
+  storing every output once per tap.
 - The noise suppressor runs some 1.3 times faster (54 us a 10 ms block
   at 48 kHz, against 71): the exponential integral its gains take is
   its series at a fixed degree for the argument's range, without a
