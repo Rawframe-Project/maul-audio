@@ -208,6 +208,29 @@ int main(void)
     CHECK(maudStartStream(context, stopped) == maud_success &&
               WaitForBlocks(context, &idle, idled + 20),
           "the stopped one starts on the new daemon");
+    // A second sink, loaded now, takes a node slot below the test sink's
+    // (adopted into a new slot by the restart above), so across another
+    // restart the returning test sink meets it first and must pass it by
+    // name.
+    CHECK(system("pactl load-module module-null-sink sink_name=maud-test-gone >/dev/null") == 0,
+          "a second sink the restart will not bring back");
+    seen.gone = (maudDeviceId){0, 0};
+    seen.goneRemoved = false;
+    NOTE_UNTIL(context, &seen, 300, (seen.gone = FindByKey(context, "maud-test-gone")).index1 != 0);
+    CHECK(seen.gone.index1 != 0 && !SameDevice(seen.gone, seen.sink), "the second sink listed");
+    for (int i = 0; i < 3; ++i)
+    {
+        seen.reason[i] = 0;
+        seen.resumed[i] = false;
+    }
+    CHECK(system(stop) == 0, "the daemon stops again");
+    NOTE_UNTIL(context, &seen, 500, seen.reason[1] != 0);
+    CHECK(seen.reason[1] == maud_suspendPlatform, "the pinned stream waits again");
+    CHECK(system(start) == 0, "the daemon starts once more");
+    NOTE_UNTIL(context, &seen, 500, seen.resumed[1] && seen.goneRemoved);
+    CHECK(seen.resumed[1] && seen.goneRemoved, "the pinned stream resumes, the second sink goes");
+    CHECK(!seen.sinkRemoved && SameDevice(FindByKey(context, "maud-test-sink"), seen.sink),
+          "the sink keeps its id past the other name");
     // Away for longer than the devices are kept.
     Note(context, &seen);
     seen.resumed[0] = false;
