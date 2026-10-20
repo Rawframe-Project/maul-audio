@@ -114,7 +114,7 @@ static void TestStreamDefs(void)
     }
     bad[0].cookie = 0;
     bad[1].callback = nullptr;
-    bad[2].direction = maud_directionDuplex + 1;
+    bad[2].direction = maud_directionLoopback + 1;
     bad[3].mode = maud_modePull + 1;
     bad[4].ratePolicy = maud_ratePlatformConverted + 1;
     bad[5].role = maud_roleCommunications + 1;

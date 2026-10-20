@@ -15,6 +15,15 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Added
+
+- Loopback streams (`maud_directionLoopback`): capture what an output
+  device plays, delivered as input blocks, on a given output or
+  following the role's default one. `loopbackExcludesSelf` asks to
+  leave the host process's own output out, where the platform can. The
+  offline backend has them, fed with `maudFeedStream` as an input
+  stream is; the platform backends follow.
+
 ## [1.1.1] - 2026-10-20
 
 The processors run faster throughout (the noise suppressor 1.75 times,

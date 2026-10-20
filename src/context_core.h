@@ -158,6 +158,13 @@ typedef struct maudDeviceTable
     maudDeviceId defaults[2][2];
 } maudDeviceTable;
 
+// The direction of the device a stream of the direction runs on: a
+// loopback stream's is an output.
+static inline maudDirection maudDeviceDirection(maudDirection direction)
+{
+    return direction == maud_directionLoopback ? maud_directionOutput : direction;
+}
+
 typedef struct maudNotificationQueue
 {
     maudNotification* records;

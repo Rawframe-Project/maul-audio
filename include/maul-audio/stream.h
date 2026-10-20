@@ -158,7 +158,9 @@ extern "C"
         // the offline backend.
         uint32_t periodFrames;
         // The device, or the null id to follow the default device of the
-        // stream's direction and role. For a duplex stream, the output.
+        // stream's direction and role. For a duplex stream, the output;
+        // for a loopback stream, the output whose sound it captures (the
+        // null id follows the role's default output).
         maudDeviceId device;
         // A duplex stream's input device, or the null id to follow the
         // default input of its role. Unused by other streams.
@@ -183,6 +185,13 @@ extern "C"
         // spatializer processes it again; the status says what the
         // platform did with the mark. Input streams take false.
         bool contentSpatialized;
+        // A loopback stream's request to leave the host process's own
+        // output out of what it captures, so that an echo canceller's
+        // reference holds only the other sounds the device plays. Refused
+        // with maud_errorUnsupported where the platform cannot (the
+        // offline backend, PipeWire, PulseAudio, Android, the web). Other
+        // streams take false.
+        bool loopbackExcludesSelf;
         // An output stream's positioned objects, up to
         // MAUD_MAX_STREAM_OBJECTS: an object stream (maul-audio/objects.h),
         // whose layout is its bed's. Shared only; refused with
@@ -305,7 +314,8 @@ extern "C"
     /// @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def
     ///         without its cookie or callback, or a value out of range;
     ///         `maud_errorUnsupported` for what the backend cannot do (the
-    ///         offline backend has only pull mode and no converter);
+    ///         offline backend has only pull mode and no converter; ALSA
+    ///         and iOS have no loopback, and no platform an exclusive one);
     ///         `maud_errorCapacity` past the stream or period limit or when the
     ///         allocator fails; `maud_errorState` on a thread rendering one of
     ///         the context's streams or running its allocator.
@@ -457,11 +467,12 @@ extern "C"
 
     /// Feeds the next frames to an offline input stream from a caller
     /// buffer, calling the stream's callback once per completed period, on
-    /// the calling thread. The stream's clock advances by frameCount.
+    /// the calling thread. The stream's clock advances by frameCount. A
+    /// loopback stream is fed the same way, with what its device played.
     ///
     /// @param context     The context.
-    /// @param stream      A started, running input stream of an offline
-    ///                    context.
+    /// @param stream      A started, running input or loopback stream of
+    ///                    an offline context.
     /// @param frames      frameCount interleaved frames. May be NULL when
     ///                    frameCount is 0.
     /// @param frameCount  The number of frames.

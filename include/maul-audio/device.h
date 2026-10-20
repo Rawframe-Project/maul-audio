@@ -38,6 +38,9 @@ extern "C"
         // Streams only: capture and playback in one callback, on a device
         // of each direction.
         maud_directionDuplex = 2,
+        // Streams only: capture of what an output device plays, its
+        // blocks delivered as an input stream's.
+        maud_directionLoopback = 3,
     };
 
     // What a default device is the default for.

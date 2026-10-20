@@ -47,7 +47,7 @@ maudStreamDef maudDefaultStreamDef(void)
 static bool DefValid(const maudStreamDef* def)
 {
     if (def->cookie != STREAM_DEF_COOKIE || def->callback == nullptr ||
-        def->direction > maud_directionDuplex || def->mode > maud_modePull ||
+        def->direction > maud_directionLoopback || def->mode > maud_modePull ||
         def->ratePolicy > maud_ratePlatformConverted || def->role > maud_roleCommunications ||
         maudGetLayoutChannelCount(def->layout) == 0)
     {
@@ -55,14 +55,16 @@ static bool DefValid(const maudStreamDef* def)
     }
     const maudVoiceProcessing parts =
         maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
+    bool loopback = def->direction == maud_directionLoopback;
     if ((def->voice & ~parts) != 0 ||
-        (def->voice != maud_voiceNone && def->direction == maud_directionOutput))
+        (def->voice != maud_voiceNone && (def->direction == maud_directionOutput || loopback)))
     {
         return false;
     }
     if (def->share > maud_shareExclusive ||
         (def->share == maud_shareExclusive && def->device.index1 == 0) ||
-        (def->contentSpatialized && def->direction == maud_directionInput))
+        (def->contentSpatialized && (def->direction == maud_directionInput || loopback)) ||
+        (def->loopbackExcludesSelf && !loopback))
     {
         return false;
     }
@@ -98,7 +100,9 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def, maud
         maudCountMisuse(context);
         return maud_errorInvalid;
     }
-    if (def->direction == maud_directionDuplex && def->share == maud_shareExclusive)
+    // No platform captures loopback for one stream alone.
+    if ((def->direction == maud_directionDuplex || def->direction == maud_directionLoopback) &&
+        def->share == maud_shareExclusive)
     {
         return maud_errorUnsupported;
     }
@@ -315,9 +319,12 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
         slot = slot->duplex->input;
     }
     maudStreamCore* core = &slot->core;
+    // A loopback stream is fed as an input stream is: what its device
+    // played.
+    maudDirection fed =
+        core->def.direction == maud_directionLoopback ? maud_directionInput : core->def.direction;
     size_t samples;
-    if (core->def.direction != direction || core->def.objectCount != objects ||
-        (frameCount != 0 && !haveFrames) ||
+    if (fed != direction || core->def.objectCount != objects || (frameCount != 0 && !haveFrames) ||
         ckd_mul(&samples, (size_t)frameCount, (size_t)core->period.channelCount) ||
         ckd_mul(&samples, samples, sizeof(float)))
     {

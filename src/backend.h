@@ -66,6 +66,11 @@ struct maudBackend
     // Whether it can open a stream for exclusive use; its openStream
     // still refuses a device that cannot be.
     bool exclusive;
+    // Whether it can open a loopback stream, and one that leaves the
+    // host's own output out; its openStream still refuses a system too
+    // old for it.
+    bool loopback;
+    bool loopbackExcludesSelf;
     // What a stream marked contentSpatialized gets from the platform,
     // from its def and settled format; a backend whose platform says only
     // once the stream is open reports again through the core's
