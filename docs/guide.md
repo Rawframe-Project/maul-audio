@@ -243,7 +243,31 @@ if (result == maud_success)
 }
 ```
 
-`maudFeedStream` feeds an input stream the same way.
+`maudFeedStream` feeds an input stream the same way, and a loopback
+stream, which captures what an output device plays, with what the
+device played:
+
+```c
+maudStreamDef loopbackDef = maudDefaultStreamDef();
+loopbackDef.direction = maud_directionLoopback;   // what the speakers play
+loopbackDef.device = speakers;
+loopbackDef.mode = maud_modePull;
+loopbackDef.callback = Reference;
+loopbackDef.user = &reference;
+maudStreamId loopback = {0, 0};
+if (result == maud_success)
+{
+    result = maudCreateStream(context, &loopbackDef, &loopback);
+}
+if (result == maud_success)
+{
+    result = maudStartStream(context, loopback);
+}
+if (result == maud_success)
+{
+    result = maudFeedStream(context, loopback, frames, 480);   // what they played
+}
+```
 
 ## Voice processing
 
@@ -282,6 +306,14 @@ maudDestroyEchoCanceller(canceller);
 
 The voice detector (`maudDetectVoice`) and the gain control
 (`maudApplyGainControl`) follow the same shape.
+
+When the host does not render the far end itself (a call in another
+application, say), a loopback stream (`maud_directionLoopback`)
+captures what the output device plays, as the echo canceller's
+`played`. PulseAudio, PipeWire, WASAPI and the web have them; ALSA,
+Core Audio, iOS and Android refuse them with `maud_errorUnsupported`.
+On the web the user picks what is captured in the browser's picker,
+and the stream is created in a gesture's handler.
 
 ## An HRTF set
 

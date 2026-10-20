@@ -225,6 +225,25 @@ static void GuideNotifications(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// What a loopback stream heard: its frames and its loudest sample.
+typedef struct Heard
+{
+    uint32_t frames;
+    float loudest;
+} Heard;
+
+static void Reference(const maudStreamBlock* block, void* user)
+{
+    Heard* heard = user;
+    uint32_t channels = maudGetLayoutChannelCount(block->layout);
+    for (uint32_t i = 0; i < block->frameCount * channels; ++i)
+    {
+        heard->loudest =
+            fabsf(block->input[i]) > heard->loudest ? fabsf(block->input[i]) : heard->loudest;
+    }
+    heard->frames += block->frameCount;
+}
+
 static void GuideOffline(void)
 {
     Synth synth = {0};
@@ -268,6 +287,31 @@ static void GuideOffline(void)
         loudest = fabsf(frames[i]) > loudest ? fabsf(frames[i]) : loudest;
     }
     CHECK(loudest > 0.05f, "of the tone");
+    Heard reference = {0};
+    // clang-format off
+    maudStreamDef loopbackDef = maudDefaultStreamDef();
+    loopbackDef.direction = maud_directionLoopback;   // what the speakers play
+    loopbackDef.device = speakers;
+    loopbackDef.mode = maud_modePull;
+    loopbackDef.callback = Reference;
+    loopbackDef.user = &reference;
+    maudStreamId loopback = {0, 0};
+    if (result == maud_success)
+    {
+        result = maudCreateStream(context, &loopbackDef, &loopback);
+    }
+    if (result == maud_success)
+    {
+        result = maudStartStream(context, loopback);
+    }
+    if (result == maud_success)
+    {
+        result = maudFeedStream(context, loopback, frames, 480);   // what they played
+    }
+    // clang-format on
+    CHECK(result == maud_success && reference.frames == 480 &&
+              fabsf(reference.loudest - loudest) < 1e-6f,
+          "the loopback snippet hears what the speakers played");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
