@@ -472,6 +472,7 @@ static const maudBackend s_wasapi = {
     .pump = Pump,
     .openStream = OpenStream,
     .exclusive = true,
+    .loopback = true,
     .attachStream = AttachStream,
     .detachStream = DetachStream,
     .setStreamActive = SetStreamActive,

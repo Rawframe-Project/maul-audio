@@ -24,7 +24,9 @@ release could change the API, the ABI and every data format.
   offline backend has them, fed with `maudFeedStream` as an input
   stream is; PulseAudio, recording the sink's monitor (a stream on the
   default moves with the default sink, which the server does not do
-  for a monitor); and PipeWire, capturing the sink's monitor ports.
+  for a monitor); PipeWire, capturing the sink's monitor ports; and
+  WASAPI, a loopback client on the render endpoint (drained on a timer
+  too, as Windows before 10 1703 sends a loopback client no events).
   The other platform backends follow.
 
 ## [1.1.1] - 2026-10-20

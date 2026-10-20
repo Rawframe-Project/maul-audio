@@ -26,6 +26,7 @@
 #include "maul-audio/objects.h"
 #include "maul-audio/stream.h"
 
+#include <math.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -164,6 +165,11 @@ typedef struct Blocks
     uint32_t periodFrames;
     // The block at which the callback stalls for 300 ms, or 0.
     uint32_t stallAt;
+    // Whether an output plays a 1 kHz tone at 0.5, and the loudest input
+    // sample so far, in thousandths.
+    bool tone;
+    float phase;
+    _Atomic(uint32_t) peak;
 } Blocks;
 
 // Whether the calling thread's description is maud-wasapi, through
@@ -199,6 +205,28 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (block->input != nullptr)
     {
         atomic_fetch_add(&blocks->withInput, 1);
+        uint32_t channels = maudGetLayoutChannelCount(block->layout);
+        uint32_t peak = atomic_load(&blocks->peak);
+        for (uint32_t i = 0; i < block->frameCount * channels; ++i)
+        {
+            float level = fabsf(block->input[i]) * 1000.0f;
+            peak = level > (float)peak ? (uint32_t)level : peak;
+        }
+        atomic_store(&blocks->peak, peak);
+    }
+    if (blocks->tone && block->output != nullptr)
+    {
+        uint32_t channels = maudGetLayoutChannelCount(block->layout);
+        for (uint32_t i = 0; i < block->frameCount; ++i)
+        {
+            float sample = 0.5f * sinf(blocks->phase);
+            blocks->phase =
+                fmodf(blocks->phase + 6.2831853f * 1000.0f / block->sampleRate, 6.2831853f);
+            for (uint32_t c = 0; c < channels; ++c)
+            {
+                block->output[i * channels + c] = sample;
+            }
+        }
     }
     if (atomic_load(&blocks->count) == 0)
     {
@@ -441,6 +469,47 @@ static void TestInputStream(maudContext* context)
     CHECK(StreamClockIsSound(context, stream, false, true, Pause),
           "its clock maps frames to host time");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
+// A loopback stream on the default endpoint captures the tone an output
+// stream plays there. Wine before 9.12 has no loopback, so this runs
+// only with MAUD_WASAPI_LOOPBACK set, as the gate does under a Wine that
+// has it.
+static void TestLoopback(maudContext* context)
+{
+    const char* loopSwitch = getenv("MAUD_WASAPI_LOOPBACK");
+    if (loopSwitch == nullptr || loopSwitch[0] == '\0')
+    {
+        return;
+    }
+    Blocks played = {.tone = true};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId tone = OpenStream(context, &def, &played);
+    Blocks heard = {0};
+    def = maudDefaultStreamDef();
+    def.direction = maud_directionLoopback;
+    maudStreamId loop = OpenStream(context, &def, &heard);
+    CHECK(maudStartStream(context, tone) == maud_success &&
+              maudStartStream(context, loop) == maud_success,
+          "a tone and a loopback on the default endpoint");
+    for (int tries = 0; tries < 300 && atomic_load(&heard.peak) < 400; ++tries)
+    {
+        Pause(10);
+    }
+    CHECK(atomic_load(&heard.peak) >= 400 && atomic_load(&heard.peak) <= 600,
+          "the loopback captures the tone");
+    CHECK(atomic_load(&heard.withInput) == atomic_load(&heard.count) &&
+              atomic_load(&heard.wrongSize) == 0,
+          "as input, in whole periods");
+    CHECK(maudDestroyStream(context, loop) == maud_success &&
+              maudDestroyStream(context, tone) == maud_success,
+          "destroy both");
+    def = maudDefaultStreamDef();
+    def.direction = maud_directionLoopback;
+    def.callback = CountBlocks;
+    def.loopbackExcludesSelf = true;
+    CHECK(maudCreateStream(context, &def, &loop) == maud_errorUnsupported,
+          "leaving the host out is not there yet");
 }
 
 // Wine's ntdll exports wine_get_version; Windows' does not.
@@ -823,6 +892,7 @@ int main(void)
     TestDevices(context);
     TestOutputStream(context);
     TestInputStream(context);
+    TestLoopback(context);
     TestVoiceInput(context);
     TestUnderrun(context);
     TestExclusive(context);

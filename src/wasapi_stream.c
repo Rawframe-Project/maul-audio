@@ -217,7 +217,9 @@ static HRESULT Drain(maudWasapiStream* entry)
 }
 
 // Runs in the MTA under MMCSS: fills a render buffer before starting,
-// then serves each period until the stop event or a failure.
+// then serves each period until the stop event or a failure. Before
+// Windows 10 1703 a loopback client gets no events, so a loopback stream
+// also drains each period on a timer.
 static void Serve(maudWasapiStream* entry)
 {
     bool objects = entry->objects.stream != nullptr;
@@ -230,8 +232,14 @@ static void Serve(maudWasapiStream* entry)
                          : IAudioClient_Start(entry->client);
     }
     HANDLE events[2] = {entry->stopEvent, entry->bufferEvent};
+    const maudStreamFormat* format = &entry->core->format;
+    DWORD period = (DWORD)((uint64_t)format->periodFrames * 1000 / format->sampleRate);
+    DWORD wait =
+        entry->core->def.direction == maud_directionLoopback ? (period > 0 ? period : 1) : INFINITE;
+    DWORD woke = 0;
     while (SUCCEEDED(result) &&
-           WaitForMultipleObjects(2, events, FALSE, INFINITE) == WAIT_OBJECT_0 + 1)
+           ((woke = WaitForMultipleObjects(2, events, FALSE, wait)) == WAIT_OBJECT_0 + 1 ||
+            woke == WAIT_TIMEOUT))
     {
         result = output ? Fill(entry) : Drain(entry);
     }
@@ -338,7 +346,8 @@ static WAVEFORMATEXTENSIBLE FormatOf(const maudStreamCore* core)
 }
 
 // Initializes the client in shared, event-driven mode, converting
-// channels always and the rate only for a platform-converted stream.
+// channels always and the rate only for a platform-converted stream; a
+// loopback stream's client captures its render endpoint.
 static maudResult Initialize(maudWasapiStream* entry)
 {
     const maudStreamCore* core = entry->core;
@@ -347,6 +356,10 @@ static maudResult Initialize(maudWasapiStream* entry)
     if (core->format.ratePolicy == maud_ratePlatformConverted)
     {
         flags |= AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+    }
+    if (core->def.direction == maud_directionLoopback)
+    {
+        flags |= AUDCLNT_STREAMFLAGS_LOOPBACK;
     }
     REFERENCE_TIME duration = (REFERENCE_TIME)core->format.periodFrames * BUFFER_PERIODS *
                               10000000 / core->format.sampleRate;
