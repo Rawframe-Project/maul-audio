@@ -79,14 +79,21 @@ maudResult maudDetectVoice(maudVoiceDetector* detector, const float* frames, uin
         return maud_errorInvalid;
     }
     maudVadCore* core = &detector->core;
-    for (uint32_t i = 0; i < frameCount; ++i)
+    for (uint32_t i = 0; i < frameCount;)
     {
-        float sum = 0.0f;
-        for (uint32_t c = 0; c < detector->channels; ++c)
+        float mono[MAUD_VAD_CHUNK];
+        uint32_t n = frameCount - i < MAUD_VAD_CHUNK ? frameCount - i : MAUD_VAD_CHUNK;
+        for (uint32_t k = 0; k < n; ++k)
         {
-            sum += frames[(size_t)i * detector->channels + c];
+            float sum = 0.0f;
+            for (uint32_t c = 0; c < detector->channels; ++c)
+            {
+                sum += frames[(size_t)(i + k) * detector->channels + c];
+            }
+            mono[k] = sum * detector->scale;
         }
-        maudVadSample(core, sum * detector->scale);
+        bool done = false;
+        i += maudVadSamples(core, mono, n, &done);
     }
     if (stateOut != nullptr)
     {

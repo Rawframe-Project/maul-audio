@@ -203,27 +203,40 @@ static void UpdateGain(maudGainControl* gain)
     gain->gainStep = (DbToGain(gain->gainDb) - gain->gain) / (float)vad->frameSamples;
 }
 
-// Applies the current gain and the limiter to one frame of channels.
-static void ApplyFrame(maudGainControl* gain, float* frame)
+// Applies the current gain and the limiter to count frames of channels,
+// the gain and the envelope held in locals (the frames' stores could
+// otherwise be theirs, so each frame would reload them).
+static void ApplyFrames(maudGainControl* gain, float* frames, uint32_t count)
 {
-    float peak = 0.0f;
-    for (uint32_t c = 0; c < gain->channels; ++c)
+    float g = gain->gain;
+    float envelope = gain->envelope;
+    const float step = gain->gainStep;
+    const float release = gain->release;
+    const uint32_t channels = gain->channels;
+    for (uint32_t i = 0; i < count; ++i)
     {
-        frame[c] *= gain->gain;
-        float magnitude = fabsf(frame[c]);
-        peak = magnitude > peak ? magnitude : peak;
-    }
-    float released = gain->envelope * gain->release;
-    gain->envelope = peak > released ? peak : released;
-    if (gain->envelope > CEILING)
-    {
-        float limit = CEILING / gain->envelope;
-        for (uint32_t c = 0; c < gain->channels; ++c)
+        float* frame = frames + (size_t)i * channels;
+        float peak = 0.0f;
+        for (uint32_t c = 0; c < channels; ++c)
         {
-            frame[c] *= limit;
+            frame[c] *= g;
+            float magnitude = fabsf(frame[c]);
+            peak = magnitude > peak ? magnitude : peak;
         }
+        float released = envelope * release;
+        envelope = peak > released ? peak : released;
+        if (envelope > CEILING)
+        {
+            float limit = CEILING / envelope;
+            for (uint32_t c = 0; c < channels; ++c)
+            {
+                frame[c] *= limit;
+            }
+        }
+        g += step;
     }
-    gain->gain += gain->gainStep;
+    gain->gain = g;
+    gain->envelope = envelope;
 }
 
 maudResult maudApplyGainControl(maudGainControl* gain, float* frames, uint32_t frameCount,
@@ -233,22 +246,33 @@ maudResult maudApplyGainControl(maudGainControl* gain, float* frames, uint32_t f
     {
         return maud_errorInvalid;
     }
-    for (uint32_t i = 0; i < frameCount; ++i)
+    // A chunk at a time, up to a frame's end: the detector's samples are
+    // the frames before the gain, and the gain changes only once a frame
+    // completes, so analysing a chunk before applying it is the same.
+    for (uint32_t i = 0; i < frameCount;)
     {
-        float* frame = frames + (size_t)i * gain->channels;
-        float sum = 0.0f;
-        for (uint32_t c = 0; c < gain->channels; ++c)
+        float mono[MAUD_VAD_CHUNK];
+        uint32_t n = frameCount - i < MAUD_VAD_CHUNK ? frameCount - i : MAUD_VAD_CHUNK;
+        for (uint32_t k = 0; k < n; ++k)
         {
-            sum += frame[c];
+            const float* frame = frames + (size_t)(i + k) * gain->channels;
+            float sum = 0.0f;
+            for (uint32_t c = 0; c < gain->channels; ++c)
+            {
+                sum += frame[c];
+            }
+            mono[k] = sum * gain->scale;
         }
-        bool done = maudVadSample(&gain->vad, sum * gain->scale);
-        ApplyFrame(gain, frame);
+        bool done = false;
+        n = maudVadSamples(&gain->vad, mono, n, &done);
+        ApplyFrames(gain, frames + (size_t)i * gain->channels, n);
         if (done)
         {
             // The ramp lands exactly on the frame's gain before the next.
             gain->gain = DbToGain(gain->gainDb);
             UpdateGain(gain);
         }
+        i += n;
     }
     if (stateOut != nullptr)
     {

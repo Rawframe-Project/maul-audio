@@ -82,20 +82,26 @@ echo.48k.us 75.86 115
 # 2026-10-19: the best of three runs at a load of 12 to 27. A capture
 # path's four processors share 2 % of a core, 200 us per 10 ms block:
 # the suppressor 71 a channel, the echo canceller 115, the detector and
-# the gain control 7 each, at either rate.
-detector.16k.us 2.185 7
-detector.48k.us 6.341 7
-gain.16k.us 2.35 7
-gain.48k.us 6.825 7
+# the gain control 7 each, at either rate. Recorded again 2026-10-20,
+# when the detector's core took a frame's samples at a time, its six
+# band filters side by side, and the gain control held its limiter in
+# locals: the best of five runs at a load of 9 to 27, alternating with
+# the code before (detector 1.46x and 1.48x as fast, gain control 1.46x
+# and 1.47x).
+detector.16k.us 1.467 7
+detector.48k.us 4.18 7
+gain.16k.us 1.616 7
+gain.48k.us 4.614 7
 # The same processors at 48 kHz on digital silence after a signal, a
 # minute of zeros settled first, with their signal rows' budgets: a
 # state that decays into the subnormal range again shows here (before
 # the flushes, echo 151, gain 11.6, detector 7.05, noise 54). Recorded
-# 2026-10-20, the best over two ticks at a load of 20 to 26.
+# 2026-10-20, the best over two ticks at a load of 20 to 26; the
+# detector's and the gain control's again with their rows above.
 noise.48k.silent.us 39.94 71
 echo.48k.silent.us 64.57 115
-detector.48k.silent.us 5.334 7
-gain.48k.silent.us 6.145 7
+detector.48k.silent.us 3.182 7
+gain.48k.silent.us 3.725 7
 # The stream path (bench_stream), recorded 2026-10-19: the best of
 # three runs at a load of 29 to 56. An offline stereo block aims at
 # 2 us, an object stream of 32 objects at 10 us, and a stereo block

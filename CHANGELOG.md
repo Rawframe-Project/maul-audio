@@ -17,6 +17,11 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- The voice detector and the gain control run some 1.47 times faster
+  (at 48 kHz, 4.2 and 4.6 us a 10 ms block, against 6.2 and 6.8), with
+  the same results bit for bit: the detector's analysis takes a
+  frame's samples at a time with its six band filters side by side,
+  and the gain control's limiter keeps its state in registers.
 - The echo canceller runs some 1.45 times faster (76 us a 10 ms block
   at 48 kHz, against 112; 27 against 38 at 16 kHz), with the same
   output bit for bit: while echo alone played, its suppressor's noise
