@@ -12,6 +12,7 @@
 // for energy.
 
 #include "allocator.h"
+#include "ramp.h"
 #include "spherical_harmonics.h"
 
 #include "maul-audio/speakers.h"
@@ -405,6 +406,16 @@ static bool OutValid(const maudSpeakerPanner* panner, float* const* out)
     return true;
 }
 
+// One speaker's share of the source, its gain ramped across the block.
+static inline void AddRamped(float* out, const float* in, float a, float step, uint32_t frames,
+                             bool isSigned)
+{
+    for (uint32_t n = 0; n < frames; ++n)
+    {
+        out[n] += (a + step * maudFramePlace(n, isSigned)) * in[n];
+    }
+}
+
 maudResult maudPanToSpeakers(const maudSpeakerPanner* panner, const maudPanSource* from,
                              const maudPanSource* to, const float* in, float* const* out,
                              uint32_t frames)
@@ -427,9 +438,13 @@ maudResult maudPanToSpeakers(const maudSpeakerPanner* panner, const maudPanSourc
             continue;
         }
         float step = frames > 0 ? (b - a) / (float)frames : 0.0f;
-        for (uint32_t n = 0; n < frames; ++n)
+        if (maudRampSigned(frames))
         {
-            out[c][n] += (a + step * (float)(n + 1)) * in[n];
+            AddRamped(out[c], in, a, step, frames, true);
+        }
+        else
+        {
+            AddRamped(out[c], in, a, step, frames, false);
         }
     }
     return maud_success;

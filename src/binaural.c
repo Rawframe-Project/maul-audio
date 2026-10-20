@@ -18,6 +18,7 @@
 #include "hrtf_core.h"
 #include "hrtf_lookup.h"
 #include "near_field.h"
+#include "ramp.h"
 
 #include <math.h>
 #include <string.h>
@@ -319,7 +320,8 @@ static void RenderFade(maudBinaural* effect, const float* x, float* const out[2]
         maudFir(signal, effect->next.response[ear], effect->taps, effect->scratch, span);
         for (uint32_t n = 0; n < span; ++n)
         {
-            float share = (float)(faded + n + 1) / fade;
+            // A fade is far shorter than 2^31 frames.
+            float share = maudFramePlace(faded + n, true) / fade;
             old[n] += share * (effect->scratch[n] - old[n]);
         }
     }
@@ -394,7 +396,8 @@ maudResult maudProcessBinaural(maudBinaural* effect, const maudBinauralParams* p
     {
         for (uint32_t n = 0; n < frames; ++n)
         {
-            out[ear][n] *= from + step * (float)(n + 1);
+            // frames is at most MAX_FRAMES.
+            out[ear][n] *= from + step * maudFramePlace(n, true);
         }
     }
     effect->gain = params->gain;

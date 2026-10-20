@@ -17,6 +17,14 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- The direct effect runs some 2.4 times faster (3.6 us a 10 ms block for
+  a moving source, against 8.3), a source's ambisonic encode 1.9 times
+  (1.3 against 2.4) and panning 64 sources to speakers 1.6 times (39
+  against 62), with the same output bit for bit: the band EQ runs its
+  three bands as a wavefront, each band a sample behind the one before
+  so that their steps no longer wait on each other, and the gain ramps
+  convert the frame's place with one signed conversion where SSE2 took
+  several for an unsigned one.
 - Binaural rendering runs some 1.4 to 1.7 times faster, with the same
   output bit for bit: a source 6.5 us a 10 ms block (9.2 with its near
   field, 12.2 moving, against 10.9, 13.2 and 17.4) and a third-order

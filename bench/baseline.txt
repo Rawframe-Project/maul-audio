@@ -18,14 +18,18 @@
 # moved in 1 ms a frame. The three binaural rows and the bed's decode
 # recorded again 2026-10-20, when the FIR held a block of outputs while
 # its taps passed: the best of five at a load of 14 to 24, alternating
-# with the code before (1.68x, 1.44x, 1.43x and 1.74x as fast).
+# with the code before (1.68x, 1.44x, 1.43x and 1.74x as fast). The
+# direct rows and the bed's encode recorded again the same day, when the
+# band EQ ran its three bands as a wavefront and the ramps took the
+# frame's place by a signed conversion: the best of five at a load of 15
+# to 18 (direct 2.57x, 2.32x and 2.52x, the encode 1.95x as fast).
 binaural.plain.us 6.478 20
 binaural.still.us 9.177 20
 binaural.moving.us 12.2 20
-bed.encode.us 2.408 3
+bed.encode.us 1.294 3
 bed.decode3.us 71.99 150
-direct.still.us 7.871 10
-direct.moving.us 8.267 10
+direct.still.us 3.047 10
+direct.moving.us 3.564 10
 reverb.still.us 49.92 100
 reverb.changing.us 53.22 100
 # A near-field source, the direct effect and the reverb on digital
@@ -33,7 +37,7 @@ reverb.changing.us 53.22 100
 # with their signal rows' budgets; recorded 2026-10-20 as the voice
 # processors' silent rows below.
 binaural.silent.us 12.5 20
-direct.silent.us 7.552 10
+direct.silent.us 3.038 10
 reverb.silent.us 52.04 100
 scene.build.ms 9.061 100
 scene.any.mrays 2.065 1
@@ -57,7 +61,10 @@ probes.load.us 0.3725 50
 # The speaker paths (bench_speakers), recorded 2026-10-19: the best of
 # three runs at a load of 17 to 28. Panning 64 sources aims at 100 us
 # per 10 ms block, 1 % of a core; decoding a third-order bed at 20 us.
-speakers.pan.us 62.95 100
+# The pan recorded again 2026-10-20 with the ramps' signed conversion:
+# the best of six at a load of 17, alternating with the code before
+# (1.58x as fast).
+speakers.pan.us 39.07 100
 speakers.decode3.us 6.61 20
 # Loading the shipped HRTF set (bench_binaural), recorded 2026-10-19:
 # the best of three runs at a load of 10 to 16, each the best of five
