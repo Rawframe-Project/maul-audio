@@ -359,13 +359,17 @@ jobs:
         # The web backend in headless Chrome, on a cross-origin isolated
         # page and on a plain one, and with the microphone refused. The
         # page checks timing on a shared runner, so each run gets a second
-        # attempt; a real failure fails both.
+        # attempt; a real failure fails both. A loopback stream captures
+        # the page's own tab on both kinds of page.
         run: |
           npm install --prefix "$RUNNER_TEMP/web" puppeteer@25.12.0
           export MAUD_PUPPETEER="$RUNNER_TEMP/web/node_modules/puppeteer"
           for mode in "1" "0" "0 deny"; do
             node test/web/run_page.js build page_web.html $mode ||
               node test/web/run_page.js build page_web.html $mode || exit 1
+          done
+          for isolated in 1 0; do
+            node test/web/run_page.js build page_loopback.html $isolated loopback || exit 1
           done
       - name: Size
         # The static library's size, reported, not gated (family record

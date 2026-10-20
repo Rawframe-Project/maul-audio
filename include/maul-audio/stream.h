@@ -188,9 +188,9 @@ extern "C"
         // A loopback stream's request to leave the host process's own
         // output out of what it captures, so that an echo canceller's
         // reference holds only the other sounds the device plays. Refused
-        // with maud_errorUnsupported where the platform cannot (the
-        // offline backend, PipeWire, PulseAudio, Android, the web). Other
-        // streams take false.
+        // with maud_errorUnsupported by every backend for now: PipeWire,
+        // PulseAudio and the web have no way, and WASAPI's process
+        // loopback is not yet offered. Other streams take false.
         bool loopbackExcludesSelf;
         // An output stream's positioned objects, up to
         // MAUD_MAX_STREAM_OBJECTS: an object stream (maul-audio/objects.h),
@@ -314,8 +314,9 @@ extern "C"
     /// @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def
     ///         without its cookie or callback, or a value out of range;
     ///         `maud_errorUnsupported` for what the backend cannot do (the
-    ///         offline backend has only pull mode and no converter; ALSA
-    ///         and iOS have no loopback, and no platform an exclusive one);
+    ///         offline backend has only pull mode and no converter; ALSA,
+    ///         Core Audio, iOS and AAudio have no loopback, and no platform
+    ///         an exclusive one);
     ///         `maud_errorCapacity` past the stream or period limit or when the
     ///         allocator fails; `maud_errorState` on a thread rendering one of
     ///         the context's streams or running its allocator.

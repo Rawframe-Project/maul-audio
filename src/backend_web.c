@@ -409,7 +409,7 @@ static maudResult AttachStream(maudContext* context, maudStreamSlot* slot)
     {
         return maud_errorCapacity;
     }
-    if (slot->core.def.direction == maud_directionInput)
+    if (slot->core.def.direction != maud_directionOutput)
     {
         entry->node = maudWebOpenCapture(context, slot, web->handle, entry->chunk);
         return maud_success;
@@ -423,7 +423,7 @@ static maudResult AttachStream(maudContext* context, maudStreamSlot* slot)
 static void DetachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudWebStream* entry = EntryOf(context, slot);
-    if (slot->core.def.direction == maud_directionInput)
+    if (slot->core.def.direction != maud_directionOutput)
     {
         maudWebCloseCapture(entry->node);
     }
@@ -476,6 +476,7 @@ static const maudBackend s_web = {
     .resumeContext = ResumeContext,
     .suspendContext = SuspendContext,
     .rendersOnCaller = false,
+    .loopback = true,
 };
 
 const maudBackend* maudGetWebBackend(void)

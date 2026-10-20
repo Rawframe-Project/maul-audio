@@ -650,6 +650,12 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         set_target_properties(page_web PROPERTIES SUFFIX ".html")
         maul_apply_flags(page_web)
         target_link_options(page_web PRIVATE "--shell-file=${PROJECT_SOURCE_DIR}/test/web/shell.html")
+        add_executable(page_loopback test/web/page_loopback.c)
+        target_link_libraries(page_loopback PRIVATE maul-audio)
+        set_target_properties(page_loopback PROPERTIES SUFFIX ".html")
+        maul_apply_flags(page_loopback)
+        target_link_options(page_loopback PRIVATE
+                            "--shell-file=${PROJECT_SOURCE_DIR}/test/web/shell.html")
     endif()
     # The audio-thread trap exists only where invariants are checked. In
     # WebAssembly a trap ends the module, with no signal to catch.

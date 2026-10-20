@@ -26,8 +26,11 @@ release could change the API, the ABI and every data format.
   default moves with the default sink, which the server does not do
   for a monitor); PipeWire, capturing the sink's monitor ports; and
   WASAPI, a loopback client on the render endpoint (drained on a timer
-  too, as Windows before 10 1703 sends a loopback client no events).
-  The other platform backends follow.
+  too, as Windows before 10 1703 sends a loopback client no events);
+  and the web, the browser's display capture of what the user picks,
+  asked for in a gesture's handler with its voice processing off. ALSA,
+  Core Audio, iOS and AAudio refuse them, and every backend refuses
+  `loopbackExcludesSelf` for now.
 
 ## [1.1.1] - 2026-10-20
 

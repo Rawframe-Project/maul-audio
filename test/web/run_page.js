@@ -1,8 +1,11 @@
 // Runs a test page in headless Chrome: serves its directory, with the
 // cross-origin isolation headers or without, clicks once the page logs
 // that it waits for a gesture, and exits with the page's result.
-// Usage: node run_page.js <directory> <page> <isolated: 1|0> [deny]
+// Usage: node run_page.js <directory> <page> <isolated: 1|0> [deny|loopback]
 // With deny, the browser refuses the microphone and the page is told so.
+// With loopback, the browser picks the tab titled MaudLoopback when the
+// page asks for display capture, and its audio is not muted, so that the
+// tab's own sound reaches the capture.
 // Puppeteer comes from MAUD_PUPPETEER, a path to its module.
 const http = require("http");
 const fs = require("fs");
@@ -12,6 +15,7 @@ const puppeteer = require(process.env.MAUD_PUPPETEER || "puppeteer");
 const [directory, page, isolatedArgument, denyArgument] = process.argv.slice(2);
 const isolated = isolatedArgument === "1";
 const deny = denyArgument === "deny";
+const loopback = denyArgument === "loopback";
 const types = {".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm"};
 
 const server = http.createServer((request, response) => {
@@ -37,11 +41,15 @@ server.listen(0, "127.0.0.1", async () => {
   // to about one a second unless told not to.
   const browser = await puppeteer.launch({
     headless: true,
+    ignoreDefaultArgs: loopback ? ["--mute-audio"] : [],
     args: [
+      ...(loopback ? ["--auto-select-tab-capture-source-by-title=MaudLoopback"] : []),
       "--no-sandbox",
-      // A fake microphone, granted without asking unless denied.
-      "--use-fake-device-for-media-stream",
-      ...(deny ? [] : ["--use-fake-ui-for-media-stream"]),
+      // A fake microphone, granted without asking unless denied. Not for
+      // loopback: the fake UI would answer display capture with a fake
+      // source, not the tab.
+      ...(loopback ? [] : ["--use-fake-device-for-media-stream"]),
+      ...(deny || loopback ? [] : ["--use-fake-ui-for-media-stream"]),
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
       "--disable-backgrounding-occluded-windows",

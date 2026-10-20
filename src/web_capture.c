@@ -78,7 +78,7 @@ EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
 // with the parts the track's settings say are on, through
 // maudWebGranted.
 EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int channels, int capacity,
-                                    float* chunk, int voice, const char* device), {
+                                    float* chunk, int voice, const char* device, int loopback), {
     const web = globalThis.maudWeb;
     const entry = web.contexts[handle];
     const record = {node: null, source: null, stream: null, closed: false, ring: null, index: null, data: null,
@@ -132,9 +132,21 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
     if (deviceId !== "") {
         constraints.audio.deviceId = {exact: deviceId};
     }
-    Promise.all([entry.captureWorklet, navigator.mediaDevices.getUserMedia(constraints)]).then(function (results) {
+    // A loopback stream captures what the user picks in the browser's
+    // picker (a tab, a window or the screen, with its audio where the
+    // browser gives it): the video track is stopped, and the browser's
+    // voice processing, which it would apply to the display's audio too,
+    // is asked off.
+    const request = loopback !== 0
+        ? navigator.mediaDevices.getDisplayMedia({video: true, systemAudio: "include", selfBrowserSurface: "include",
+                                                  audio: {echoCancellation: false, noiseSuppression: false,
+                                                          autoGainControl: false}})
+        : navigator.mediaDevices.getUserMedia(constraints);
+    Promise.all([entry.captureWorklet, request]).then(function (results) {
         const stream = results[1];
-        if (record.closed) {
+        stream.getVideoTracks().forEach(function (track) { track.stop(); });
+        if (record.closed || stream.getAudioTracks().length === 0) {
+            record.refused = !record.closed;
             stream.getTracks().forEach(function (track) { track.stop(); });
             return;
         }
@@ -231,8 +243,13 @@ int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, f
 {
     int index = (int)(slot - context->streams.slots);
     maudAwaitPermission(context, slot, true);
-    char device[MAUD_WEB_KEY_BYTES];
-    maudWebCaptureDevice(context, slot, device, sizeof(device));
+    char device[MAUD_WEB_KEY_BYTES] = {0};
+    bool loopback = slot->core.def.direction == maud_directionLoopback;
+    if (!loopback)
+    {
+        maudWebCaptureDevice(context, slot, device, sizeof(device));
+    }
     return maudWebOpenCaptureNode(handle, context, index, (int)slot->core.period.channelCount,
-                                  (int)MAUD_WEB_CAPACITY, chunk, (int)slot->core.def.voice, device);
+                                  (int)MAUD_WEB_CAPACITY, chunk, (int)slot->core.def.voice, device,
+                                  loopback ? 1 : 0);
 }

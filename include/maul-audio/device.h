@@ -39,7 +39,11 @@ extern "C"
         // of each direction.
         maud_directionDuplex = 2,
         // Streams only: capture of what an output device plays, its
-        // blocks delivered as an input stream's.
+        // blocks delivered as an input stream's. On the web it captures
+        // what the user picks in the browser's display capture (a tab, a
+        // window or the screen, with its audio where the browser gives
+        // it), whatever the stream's device, and is created in a user
+        // gesture's handler, where the browser allows asking.
         maud_directionLoopback = 3,
     };
 
