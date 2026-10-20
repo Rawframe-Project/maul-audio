@@ -6,7 +6,10 @@
 // still without the near field and with it, and one whose direction
 // changes every block, so that it fades in every block; then a source
 // encoded into a third-order ambisonic bed, and the bed decoded for both
-// ears; and the set loaded, at its rate and resampled to 44.1 kHz.
+// ears; and the set loaded, at its rate and resampled to 44.1 kHz; and
+// a near-field source, the direct effect and the reverb on digital
+// silence after a signal, their decaying states long settled (a state
+// left to decay into the subnormal range shows there first).
 // Prints the best of five runs as
 // microseconds per block and as sources per millisecond of one core for each 10 ms of audio,
 // each row beside its recorded baseline.
@@ -206,6 +209,99 @@ static void RunReverb(void)
     maudDestroyReverb(reverb);
 }
 
+// The three effects with recursive states, by row.
+typedef enum Effect
+{
+    EFFECT_BINAURAL,
+    EFFECT_DIRECT,
+    EFFECT_REVERB
+} Effect;
+
+typedef struct Effects
+{
+    maudBinaural* binaural;
+    maudDirectEffect* direct;
+    maudReverb* reverb;
+} Effects;
+
+static maudResult Step(Effects* e, Effect which)
+{
+    static float s_reverbBed[4][FRAMES];
+    float* out[2] = {s_left, s_right};
+    float* bed[4] = {s_reverbBed[0], s_reverbBed[1], s_reverbBed[2], s_reverbBed[3]};
+    maudBinauralParams binaural = {{0.2f, 0.1f, -0.3f}, 1.0f};
+    maudDirectParams direct = maudDefaultDirectParams();
+    direct.occlusion = 0.8f;
+    direct.transmission[0] = 0.5f;
+    direct.transmission[1] = 0.2f;
+    direct.transmission[2] = 0.05f;
+    direct.distance = 20.0f;
+    maudReverbParams reverb = {
+        {1.5f, 1.0f, 0.5f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
+    switch (which)
+    {
+    case EFFECT_BINAURAL:
+        return maudProcessBinaural(e->binaural, &binaural, s_in, out, FRAMES);
+    case EFFECT_DIRECT:
+        return maudProcessDirect(e->direct, &direct, s_in, s_left, FRAMES);
+    case EFFECT_REVERB:
+        return maudProcessReverb(e->reverb, &reverb, s_in, bed, FRAMES);
+    }
+    return maud_errorInvalid;
+}
+
+// One effect on silence: 3 s of noise, 60 s of zeros for its slowest
+// states to settle (a 1.5 s reverb's reach the subnormal range in some
+// twenty), then the timed blocks of zeros.
+static void RunSilent(const maudHrtf* hrtf, Effect which, const char* name, const char* key)
+{
+    maudBinauralDef binauralDef = maudDefaultBinauralDef();
+    binauralDef.hrtf = hrtf;
+    binauralDef.maxFrames = FRAMES;
+    binauralDef.nearField = true;
+    maudDirectEffectDef directDef = maudDefaultDirectEffectDef();
+    maudReverbDef reverbDef = maudDefaultReverbDef();
+    Effects e = {nullptr, nullptr, nullptr};
+    maudResult made = which == EFFECT_BINAURAL ? maudCreateBinaural(&binauralDef, &e.binaural)
+                      : which == EFFECT_DIRECT ? maudCreateDirectEffect(&directDef, &e.direct)
+                                               : maudCreateReverb(&reverbDef, &e.reverb);
+    if (made != maud_success)
+    {
+        return;
+    }
+    uint32_t state = 5;
+    bool failed = false;
+    for (int b = 0; b < 6300 && !failed; ++b)
+    {
+        for (int i = 0; i < FRAMES; ++i)
+        {
+            state = state * 1664525u + 1013904223u;
+            s_in[i] = b < 300 ? 0.3f * ((float)(state >> 8) / 16777216.0f - 0.5f) : 0.0f;
+        }
+        failed = Step(&e, which) != maud_success;
+    }
+    const int blocks = BLOCKS / 10;
+    double best = 1e9;
+    for (int run = 0; run < 5 && !failed; ++run)
+    {
+        double start = Seconds();
+        for (int b = 0; b < blocks && !failed; ++b)
+        {
+            failed = Step(&e, which) != maud_success;
+        }
+        double elapsed = Seconds() - start;
+        best = elapsed < best ? elapsed : best;
+    }
+    if (!failed)
+    {
+        printf("%-30s %7.2f us per 10 ms block\n", name, best / blocks * 1e6);
+        Against(key, best / blocks * 1e6, false);
+    }
+    maudDestroyBinaural(e.binaural);
+    maudDestroyDirectEffect(e.direct);
+    maudDestroyReverb(e.reverb);
+}
+
 // Loading the set from its bytes, at its own rate and resampled to
 // 44.1 kHz: the best of five loads, in milliseconds.
 static void RunLoad(size_t count)
@@ -271,6 +367,9 @@ int main(void)
     RunBed(hrtf);
     RunDirect();
     RunReverb();
+    RunSilent(hrtf, EFFECT_BINAURAL, "binaural, near field, silent", "binaural.silent.us");
+    RunSilent(hrtf, EFFECT_DIRECT, "direct effect, silent", "direct.silent.us");
+    RunSilent(hrtf, EFFECT_REVERB, "reverb, silent", "reverb.silent.us");
     maudDestroyHrtf(hrtf);
     return 0;
 }

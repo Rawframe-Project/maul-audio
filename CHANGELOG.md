@@ -68,6 +68,10 @@ release could change the API, the ABI and every data format.
   some twenty seconds of a 1.5 s tail), on every call from then on.
   They now stop at zero, checked once a call, at a cost of about 1 % of
   the reverb's instructions on a signal.
+- The benchmarks time each voice processor and the near-field
+  binaural, direct and reverb effects on digital silence after a signal
+  too (`*.silent.us` rows, with their signal rows' budgets), so a state
+  that decays into the subnormal range again shows in the baseline.
 - WASAPI: an endpoint whose friendly name is longer than 255 bytes in
   UTF-8 is named by the name cut after its last whole character; it was
   named by its endpoint ID.

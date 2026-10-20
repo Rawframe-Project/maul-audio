@@ -5,7 +5,9 @@
 // 16 and 48 kHz, mono and stereo, on white noise with tone bursts; the
 // echo canceller at 16 and 48 kHz with a 0.2 s path, on a render of
 // noise and its echo; the voice detector and the gain control at 16 and
-// 48 kHz, mono.
+// 48 kHz, mono; and each of the four at 48 kHz on digital silence after a
+// signal, its decaying states long settled (a state left to decay into
+// the subnormal range shows there first).
 // Prints the best of five runs in microseconds per block, each row
 // beside its recorded baseline.
 
@@ -157,6 +159,107 @@ static void RunLevel(uint32_t rate, bool gain, const char* key)
     maudDestroyVoiceDetector(detector);
 }
 
+// The four processors, by row.
+typedef enum Part
+{
+    PART_NOISE,
+    PART_ECHO,
+    PART_DETECTOR,
+    PART_GAIN
+} Part;
+
+typedef struct Processors
+{
+    maudNoiseSuppressor* noise;
+    maudEchoCanceller* echo;
+    maudVoiceDetector* detector;
+    maudGainControl* gain;
+} Processors;
+
+static maudResult Step(Processors* p, Part part, uint32_t block)
+{
+    switch (part)
+    {
+    case PART_NOISE:
+        return maudSuppressNoise(p->noise, s_frames, block, nullptr);
+    case PART_ECHO:
+        return maudCancelEcho(p->echo, s_frames, s_render, block, nullptr);
+    case PART_DETECTOR:
+        return maudDetectVoice(p->detector, s_frames, block, nullptr);
+    case PART_GAIN:
+        return maudApplyGainControl(p->gain, s_frames, block, nullptr);
+    }
+    return maud_errorInvalid;
+}
+
+// One processor at 48 kHz on silence: 3 s of noise with tone bursts (and
+// for the echo canceller a render of noise and its echo), 60 s of zeros
+// for its slowest states to settle, then the timed blocks of zeros.
+static void RunSilent(Part part, const char* name, const char* key)
+{
+    const uint32_t rate = 48000;
+    const uint32_t block = rate / 100;
+    maudNoiseSuppressorDef noiseDef = maudDefaultNoiseSuppressorDef();
+    maudEchoCancellerDef echoDef = maudDefaultEchoCancellerDef();
+    maudVoiceDetectorDef detectorDef = maudDefaultVoiceDetectorDef();
+    maudGainControlDef gainDef = maudDefaultGainControlDef();
+    noiseDef.sampleRate = rate;
+    echoDef.sampleRate = rate;
+    detectorDef.sampleRate = rate;
+    gainDef.sampleRate = rate;
+    Processors p = {nullptr, nullptr, nullptr, nullptr};
+    maudResult made = part == PART_NOISE      ? maudCreateNoiseSuppressor(&noiseDef, &p.noise)
+                      : part == PART_ECHO     ? maudCreateEchoCanceller(&echoDef, &p.echo)
+                      : part == PART_DETECTOR ? maudCreateVoiceDetector(&detectorDef, &p.detector)
+                                              : maudCreateGainControl(&gainDef, &p.gain);
+    if (made != maud_success)
+    {
+        return;
+    }
+    uint32_t state = 1;
+    float echo = 0.0f;
+    bool failed = false;
+    for (int b = 0; b < 6300 && !failed; ++b)
+    {
+        bool loud = b < 300;
+        for (uint32_t i = 0; i < block; ++i)
+        {
+            state = state * 1664525u + 1013904223u;
+            float noise = ((float)(state >> 8) / 16777216.0f - 0.5f) * 0.2f;
+            s_render[i] = loud ? noise : 0.0f;
+            echo = loud ? 0.9f * echo + 0.05f * noise : 0.0f;
+            float burst = (b / 30) % 2 ? 0.2f * sinf(0.07f * (float)i) : 0.0f;
+            s_frames[i] = loud ? (part == PART_ECHO ? echo : 0.1f * noise + burst) : 0.0f;
+        }
+        failed = Step(&p, part, block) != maud_success;
+    }
+    double best = 1e9;
+    for (int run = 0; run < 5 && !failed; ++run)
+    {
+        double start = Seconds();
+        for (int b = 0; b < BLOCKS && !failed; ++b)
+        {
+            for (uint32_t i = 0; i < block; ++i)
+            {
+                s_frames[i] = 0.0f;
+            }
+            failed = Step(&p, part, block) != maud_success;
+        }
+        double elapsed = Seconds() - start;
+        best = elapsed < best ? elapsed : best;
+    }
+    if (!failed)
+    {
+        double micro = best / BLOCKS * 1e6;
+        printf("%-17s  48 kHz, silent    %7.2f us per 10 ms block\n", name, micro);
+        Against(key, micro, false);
+    }
+    maudDestroyNoiseSuppressor(p.noise);
+    maudDestroyEchoCanceller(p.echo);
+    maudDestroyVoiceDetector(p.detector);
+    maudDestroyGainControl(p.gain);
+}
+
 int main(void)
 {
     Run(16000, maud_layoutMono, 1, "noise.16k.mono.us");
@@ -168,5 +271,9 @@ int main(void)
     RunLevel(48000, false, "detector.48k.us");
     RunLevel(16000, true, "gain.16k.us");
     RunLevel(48000, true, "gain.48k.us");
+    RunSilent(PART_NOISE, "noise suppressor,", "noise.48k.silent.us");
+    RunSilent(PART_ECHO, "echo canceller,", "echo.48k.silent.us");
+    RunSilent(PART_DETECTOR, "voice detector,", "detector.48k.silent.us");
+    RunSilent(PART_GAIN, "gain control,", "gain.48k.silent.us");
     return 0;
 }
