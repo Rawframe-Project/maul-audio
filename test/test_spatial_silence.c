@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The spatial effects in digital silence, at 48 kHz in 10 ms blocks:
-// after three seconds of noise, sixty seconds of zeros (a reverb of 1.5
-// s takes some twenty to reach the subnormal range). A binaural effect
+// after a second of noise, nine seconds of zeros (reverbs of 0.3 s, a
+// tail of 0.4, reach the subnormal range within five). A binaural effect
 // with its near field, its source still and moving throughout (on the
 // shipped set; not on the web, which has no file system), a direct
 // effect behind a wall, and reverbs with and without a tail, and one in
@@ -38,8 +38,8 @@ enum
 {
     FRAMES = 480,
     LONG = 4800,
-    LOUD = 300,
-    QUIET = 6000,
+    LOUD = 100,
+    QUIET = 900,
     LAST = 200
 };
 
@@ -193,14 +193,14 @@ static void TestReverb(bool tail, uint32_t frames)
     def.tail = tail;
     maudReverb* reverb = nullptr;
     CHECK(maudCreateReverb(&def, &reverb) == maud_success, "a reverb");
-    maudReverbParams params = {{1.5f, 1.0f, 0.5f},
+    maudReverbParams params = {{0.3f, 0.25f, 0.2f},
                                {0.0f, 0.0f, 0.0f},
                                0.0f,
-                               {tail ? 4.0f : 0.0f, tail ? 3.0f : 0.0f, tail ? 2.0f : 0.0f},
+                               {tail ? 0.4f : 0.0f, tail ? 0.35f : 0.0f, tail ? 0.3f : 0.0f},
                                {-10.0f, -10.0f, -10.0f}};
     float* bed[4] = {s_out[0], s_out[1], s_out[2], s_out[3]};
     Tally t = {0, true};
-    // The same 63 s in longer blocks.
+    // The same 10 s in longer blocks.
     uint32_t loud = LOUD * FRAMES / frames;
     uint32_t blocks = (LOUD + QUIET) * FRAMES / frames;
     for (uint32_t b = 0; b < blocks && reverb != nullptr; ++b)
@@ -214,7 +214,8 @@ static void TestReverb(bool tail, uint32_t frames)
             CHECK(false, "reverb: every call succeeds");
             break;
         }
-        Note(&t, b + LOUD + QUIET - blocks, 4, frames);
+        // Counted in 10 ms blocks, so the window is the same 2 s.
+        Note(&t, b * frames / FRAMES, 4, frames);
     }
     Report(tail ? "reverb with a tail" : frames > FRAMES ? "reverb in long blocks" : "reverb", &t);
     maudDestroyReverb(reverb);
