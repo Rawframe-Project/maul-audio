@@ -7,7 +7,9 @@
 // gains set directly to the targets miss by more than 1 dB; zero targets
 // pass the signal unchanged; a ramp ends on the new filters and a step in
 // the targets makes no click in a sine; coefficients changing every 16
-// samples keep the output bounded; every supported rate holds.
+// samples keep the output bounded; every supported rate holds; a ramp
+// between equal filters, in segments down to one frame, matches the
+// steady run bit for bit.
 
 #include "band_eq.h"
 #include "test_harness.h"
@@ -297,6 +299,42 @@ static void TestModulation(void)
     CHECK(peak < 4.0f, "modulation keeps the output bounded");
 }
 
+// A ramp between two copies of the same filters runs in segments of
+// its own, the last one short when the block is not a whole number of
+// them, through the steady run: it matches the steady run bit for bit,
+// in blocks of uneven lengths down to one frame.
+static void TestSegments(void)
+{
+    maudBandEqSetup setup;
+    maudSetupBandEq(&setup, 48000.0f);
+    double gains[3] = {-6.0, -12.0, -24.0};
+    maudBandEqFilters filters;
+    maudDesignBandEq(&setup, gains, &filters);
+    maudBandEqFilters copy = filters;
+    maudBandEqState steady = {{0.0f}, {0.0f}};
+    maudBandEqState ramped = {{0.0f}, {0.0f}};
+    static const uint32_t lengths[] = {1, 2, 3, 7, 13, 500, 9, 1};
+    float in[500];
+    float a[500];
+    float b[500];
+    bool same = true;
+    for (int round = 0; round < 20; ++round)
+    {
+        for (size_t i = 0; i < sizeof(lengths) / sizeof(lengths[0]); ++i)
+        {
+            uint32_t frames = lengths[i];
+            for (uint32_t n = 0; n < frames; ++n)
+            {
+                in[n] = (float)(2.0 * Uniform() - 1.0);
+            }
+            maudRunBandEq(&steady, &filters, &filters, in, a, frames);
+            maudRunBandEq(&ramped, &filters, &copy, in, b, frames);
+            same = same && memcmp(a, b, frames * sizeof(float)) == 0;
+        }
+    }
+    CHECK(same, "a ramp between equal filters matches the steady run, short segments too");
+}
+
 int main(void)
 {
     TestResponse();
@@ -305,5 +343,6 @@ int main(void)
     TestBell();
     TestRamp();
     TestModulation();
+    TestSegments();
     return s_failures == 0 ? 0 : 1;
 }

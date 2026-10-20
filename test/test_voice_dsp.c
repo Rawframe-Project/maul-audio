@@ -65,5 +65,11 @@ int main(void)
     maudDesignHighPass(&high, 80.0, 48000.0);
     maudDesignBandPass(&band, 250.0, 500.0, 48000.0);
     CHECK(Decays(&high) && Decays(&band), "a biquad's states decay to zero, never subnormal");
+    // One state tiny and the other not: the flush keeps both.
+    maudBiquad held = {.z1 = 0.0f, .z2 = 0.5f};
+    maudFlushBiquad(&held);
+    maudBiquad held2 = {.z1 = 0.5f, .z2 = 0.0f};
+    maudFlushBiquad(&held2);
+    CHECK(held.z2 == 0.5f && held2.z1 == 0.5f, "a flush needs both states tiny");
     return s_failures == 0 ? 0 : 1;
 }
