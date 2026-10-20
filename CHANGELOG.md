@@ -15,12 +15,17 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-20
+
+The processors run faster throughout (the noise suppressor 1.75 times,
+the echo canceller 1.45, binaural rendering 1.4 to 1.7, the direct
+effect 2.4, geometric reflections five times), the voice and spatial
+processors no longer slow down in digital silence, and PulseAudio and
+PipeWire keep their devices and streams across a server restart. No
+API or ABI changes: a program built against 1.1.0 runs with 1.1.1.
+
 ### Changed
 
-- The noise suppressor runs some 1.35 times faster (40.6 us a 10 ms
-  block of 48 kHz mono, against 56.3): its gain is taken in logarithms,
-  one exponential where it took two powers. Its output is the same on
-  the comparison signal; the gain's last bits in double may differ.
 - The direct effect runs some 2.4 times faster (3.6 us a 10 ms block for
   a moving source, against 8.3), a source's ambisonic encode 1.9 times
   (1.3 against 2.4) and panning 64 sources to speakers 1.6 times (39
@@ -35,13 +40,14 @@ release could change the API, the ABI and every data format.
   bed decoded for both ears 72 us against 125. The FIR holds a block of
   outputs while every tap passes over it, instead of loading and
   storing every output once per tap.
-- The noise suppressor runs some 1.3 times faster (54 us a 10 ms block
-  at 48 kHz, against 71): the exponential integral its gains take is
-  its series at a fixed degree for the argument's range, without a
-  division or a test per term, and nearer its value (2e-13 against
-  3e-12). Its output may differ from 1.1's in the last bit of a few
-  samples (32 of 3.84 M in a test scene, by 1.2e-10 at most); the echo
-  suppressor's likewise.
+- The noise suppressor runs some 1.75 times faster (40.6 us a 10 ms
+  block of 48 kHz mono, against 71): the exponential integral its gains
+  take is its series at a fixed degree for the argument's range,
+  without a division or a test per term, and nearer its value (2e-13
+  against 3e-12), and the gain is taken in logarithms, one exponential
+  where it took two powers. Its output may differ from 1.1.0's in the
+  last bit of a few samples (32 of 3.84 M in a test scene, by 1.2e-10
+  at most); the echo suppressor's likewise.
 - The voice detector and the gain control run some 1.47 times faster
   (at 48 kHz, 4.2 and 4.6 us a 10 ms block, against 6.2 and 6.8), with
   the same results bit for bit: the detector's analysis takes a
