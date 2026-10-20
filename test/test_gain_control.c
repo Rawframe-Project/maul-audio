@@ -299,12 +299,14 @@ static void TestLimiter(void)
 }
 
 // Stereo of identical channels comes out as mono does, whatever the
-// chunks, and nothing allocates after creation.
+// chunks, the limiter's release across them too (a loud tone for the
+// last second), and nothing allocates after creation.
 static void TestLayoutAndChunks(void)
 {
     Signal signal = MakeSignal(48000, 4.0);
     AddNoise(&signal, -70, 5);
     AddSpeech(&signal, -40, 0.5, 4.0);
+    AddTone(&signal, 1000.0, -3, 3.0);
     float* stereo = Interleave(&signal, 2);
     maudGainControlDef def = maudDefaultGainControlDef();
     maudGainControl* mono = nullptr;
