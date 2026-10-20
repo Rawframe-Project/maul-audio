@@ -15,6 +15,16 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-21
+
+Loopback streams capture what an output device plays: the reference an
+echo canceller needs when the host does not render the far end, or a
+recording of what a device plays. PulseAudio, PipeWire, WASAPI, the web
+and the offline backend have them. A program built against 1.1 is
+rebuilt to run with 1.2, since the stream def has a new field; a
+library of another minor refuses its root defs with
+`maud_errorVersion`.
+
 ### Added
 
 - Loopback streams (`maud_directionLoopback`): capture what an output
