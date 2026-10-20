@@ -227,7 +227,9 @@ static void DescribeFormat(const maudStreamCore* core, pa_sample_spec* spec, pa_
 
 // Creates the pa_stream and connects it corked: to the device it was
 // opened on and no other, or to the server's default, which the server
-// moves it with. A period of latency at the server, two queued.
+// moves it with. A loopback stream records the monitor of the sink it
+// is on now, which the server names after the sink, and the library
+// moves it. A period of latency at the server, two queued.
 static bool ConnectStream(maudContext* context, maudPulseStream* entry, int64_t deadline)
 {
     const maudPulseApi* api = entry->api;
@@ -254,13 +256,22 @@ static bool ConnectStream(maudContext* context, maudPulseStream* entry, int64_t 
         .fragsize = period,
     };
     char name[MAUD_PULSE_NAME_BYTES] = {0};
-    const maudDeviceSlot* device = maudFindDevice(context, core->binding.requested);
+    static const char monitor[] = ".monitor";
+    bool loopback = core->def.direction == maud_directionLoopback;
+    const maudDeviceSlot* device =
+        maudFindDevice(context, loopback ? core->binding.current : core->binding.requested);
+    size_t suffix = loopback ? sizeof(monitor) - 1 : 0;
+    if (loopback && (device == nullptr || device->key.length + suffix >= sizeof(name)))
+    {
+        return false;
+    }
     // Timing updates keep pa_stream_get_latency current for the clock.
     pa_stream_flags_t flags = PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY |
                               PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING;
-    if (device != nullptr && device->key.length < sizeof(name))
+    if (device != nullptr && device->key.length + suffix < sizeof(name))
     {
         memcpy(name, device->key.bytes, device->key.length);
+        memcpy(name + device->key.length, monitor, suffix);
         flags |= PA_STREAM_DONT_MOVE;
     }
     const char* target = name[0] != '\0' ? name : nullptr;

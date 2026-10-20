@@ -152,8 +152,10 @@ static void Move(maudContext* context, maudStreamSlot* slot, maudDeviceId device
                                       .stream = id,
                                   });
     // A backend whose streams are bound to one endpoint reopens them on
-    // every move; the others only when the rate changed.
-    if (TakeDeviceRate(context, slot) || context->backend->reopensOnMove)
+    // every move, as every backend does a loopback stream, bound to one
+    // output's sound; the others only when the rate changed.
+    if (TakeDeviceRate(context, slot) || context->backend->reopensOnMove ||
+        core->def.direction == maud_directionLoopback)
     {
         Retarget(context, slot);
     }

@@ -619,6 +619,7 @@ static const maudBackend s_pulse = {
     .setStreamActive = maudPulseSetStreamActive,
     .retargetStream = maudPulseRetargetStream,
     .rendersOnCaller = false,
+    .loopback = true,
 };
 
 const maudBackend* maudGetPulseBackend(void)

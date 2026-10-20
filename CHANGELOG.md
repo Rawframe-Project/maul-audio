@@ -22,7 +22,9 @@ release could change the API, the ABI and every data format.
   following the role's default one. `loopbackExcludesSelf` asks to
   leave the host process's own output out, where the platform can. The
   offline backend has them, fed with `maudFeedStream` as an input
-  stream is; the platform backends follow.
+  stream is, and PulseAudio, recording the sink's monitor (a stream on
+  the default moves with the default sink, which the server does not
+  do for a monitor); the other platform backends follow.
 
 ## [1.1.1] - 2026-10-20
 

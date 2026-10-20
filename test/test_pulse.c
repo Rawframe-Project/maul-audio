@@ -22,6 +22,7 @@
 #include "maul-audio/stream.h"
 
 #include <dirent.h>
+#include <math.h>
 #include <poll.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -142,6 +143,11 @@ typedef struct Blocks
     uint32_t periodFrames;
     // The block at which the callback stalls for 300 ms, or 0.
     uint32_t stallAt;
+    // Whether an output plays a 1 kHz tone at 0.5, and the loudest input
+    // sample since peak was last cleared, in thousandths.
+    bool tone;
+    float phase;
+    _Atomic(uint32_t) peak;
 } Blocks;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
@@ -158,6 +164,28 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (block->input != nullptr)
     {
         atomic_fetch_add(&blocks->withInput, 1);
+        uint32_t channels = maudGetLayoutChannelCount(block->layout);
+        uint32_t peak = atomic_load(&blocks->peak);
+        for (uint32_t i = 0; i < block->frameCount * channels; ++i)
+        {
+            float level = fabsf(block->input[i]) * 1000.0f;
+            peak = level > (float)peak ? (uint32_t)level : peak;
+        }
+        atomic_store(&blocks->peak, peak);
+    }
+    if (blocks->tone && block->output != nullptr)
+    {
+        uint32_t channels = maudGetLayoutChannelCount(block->layout);
+        for (uint32_t i = 0; i < block->frameCount; ++i)
+        {
+            float sample = 0.5f * sinf(blocks->phase);
+            blocks->phase =
+                fmodf(blocks->phase + 6.2831853f * 1000.0f / block->sampleRate, 6.2831853f);
+            for (uint32_t c = 0; c < channels; ++c)
+            {
+                block->output[i * channels + c] = sample;
+            }
+        }
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
@@ -1149,6 +1177,79 @@ static void TestLimits(void)
 
 // PulseAudio has no exclusive mode: a stream asking for it on
 // the default output device is refused, not shared.
+// The loudest input since the peak was cleared reaching at least
+// thousandths within two seconds, or staying below it for half a second.
+static bool Hears(const Blocks* blocks, uint32_t thousandths)
+{
+    for (int tries = 0; tries < 200; ++tries)
+    {
+        if (atomic_load(&blocks->peak) >= thousandths)
+        {
+            return true;
+        }
+        Sleep(10);
+    }
+    return false;
+}
+
+static bool StaysBelow(const Blocks* blocks, uint32_t thousandths)
+{
+    Sleep(500);
+    return atomic_load(&blocks->peak) < thousandths;
+}
+
+// A loopback stream records what a sink plays, from its monitor:
+// silence while nothing plays there, the tone a stream plays once one
+// does. One on the default follows the default sink, which the server
+// does not do for a monitor: away to a silent sink and back.
+static void TestLoopback(maudContext* context)
+{
+    maudDeviceId home = FindByKey(context, maud_directionOutput, "maud-test-sink");
+    Blocks heard = {0};
+    maudStreamId loop = OpenStream(context, maud_directionLoopback, home, &heard);
+    CHECK(maudStartStream(context, loop) == maud_success, "start a loopback on the test sink");
+    CHECK(WaitForBlocks(context, &heard, 20), "its blocks arrive");
+    CHECK(atomic_load(&heard.withInput) == atomic_load(&heard.count) &&
+              atomic_load(&heard.wrongSize) == 0,
+          "each with input, in whole periods");
+    CHECK(StaysBelow(&heard, 10), "silence while nothing plays");
+    Blocks played = {.tone = true};
+    maudStreamId tone = OpenStream(context, maud_directionOutput, home, &played);
+    CHECK(maudStartStream(context, tone) == maud_success, "play a tone on the test sink");
+    CHECK(Hears(&heard, 400) && atomic_load(&heard.peak) <= 600, "the tone it plays");
+    CHECK(maudDestroyStream(context, loop) == maud_success, "destroy it");
+    CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-loop "
+              "sink_properties=device.description=Loop > /dev/null"),
+          "load a silent sink");
+    maudDeviceId away = WaitForKey(context, maud_directionOutput, "maud-pulse-loop");
+    Blocks following = {0};
+    loop = OpenStream(context, maud_directionLoopback, (maudDeviceId){0, 0}, &following);
+    CHECK(maudStartStream(context, loop) == maud_success && Hears(&following, 400),
+          "one on the default hears the tone");
+    maudNotification record;
+    CHECK(Run("pactl set-default-sink maud-pulse-loop") &&
+              WaitFor(context, maud_notifyStreamMoved, away, &record),
+          "it moves with the default");
+    Sleep(200);
+    atomic_store(&following.peak, 0);
+    CHECK(StaysBelow(&following, 10), "and hears the silent sink");
+    CHECK(Run("pactl set-default-sink maud-test-sink") &&
+              WaitFor(context, maud_notifyStreamMoved, home, &record),
+          "back with the default");
+    atomic_store(&following.peak, 0);
+    CHECK(Hears(&following, 400), "and hears the tone again");
+    CHECK(maudDestroyStream(context, loop) == maud_success &&
+              maudDestroyStream(context, tone) == maud_success,
+          "destroy both");
+    CHECK(Run("pactl unload-module module-null-sink"), "unload the silent sink");
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionLoopback;
+    def.callback = CountBlocks;
+    def.loopbackExcludesSelf = true;
+    CHECK(maudCreateStream(context, &def, &loop) == maud_errorUnsupported,
+          "PulseAudio cannot leave the host out");
+}
+
 static void TestExclusiveRefused(maudContext* context)
 {
     maudStreamDef def = maudDefaultStreamDef();
@@ -1180,6 +1281,7 @@ int main(void)
     TestUnderrun(context);
     TestExclusiveRefused(context);
     TestInputStream(context);
+    TestLoopback(context);
     TestDuplexConverted(context);
     TestPinnedStream(context);
     TestFollowRate(context);
