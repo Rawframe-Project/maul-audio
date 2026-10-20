@@ -73,7 +73,9 @@ struct maudNoiseSuppressor
     uint32_t bins;
     // How far into the hop the stream is.
     uint32_t position;
+    // The gain's floor and its logarithm.
     double floor;
+    double logFloor;
     bool highPass;
     Biquad filter;
     uint64_t frames;
@@ -231,6 +233,7 @@ maudResult maudCreateNoiseSuppressor(const maudNoiseSuppressorDef* def,
                                .highPass = def->highPassHz > 0.0f,
                                .bytes = l.layout.size,
                                .noiseDbfs = -120.0f};
+    s->logFloor = log(s->floor);
     if (s->highPass)
     {
         s->filter = HighPass((double)def->highPassHz, (double)def->sampleRate);
@@ -279,10 +282,13 @@ static float BinGain(maudNoiseSuppressor* s, uint32_t k, double p)
                 (1.0 - ALPHA_XI) * fmax(gamma - 1.0, 0.0);
     xi = fmax(xi, XI_MIN);
     double v = gamma * xi / (1.0 + xi);
-    double gainH1 = fmin(xi / (1.0 + xi) * exp(0.5 * maudExpIntegral(fmax(v, 1e-10))), 1.0);
+    // The gain in logarithms: gain^p floor^(1 - p) is then one
+    // exponential where it was two powers.
+    double logGain = fmin(log(xi / (1.0 + xi)) + 0.5 * maudExpIntegral(fmax(v, 1e-10)), 0.0);
+    double gainH1 = exp(logGain);
     s->lastGain[k] = gainH1;
     s->lastGamma[k] = gamma;
-    double g = pow(gainH1, p) * pow(s->floor, 1.0 - p);
+    double g = exp(p * logGain + (1.0 - p) * s->logFloor);
     return (float)fmin(fmax(g, s->floor), 1.0);
 }
 

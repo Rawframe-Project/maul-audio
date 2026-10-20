@@ -17,6 +17,10 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- The noise suppressor runs some 1.35 times faster (40.6 us a 10 ms
+  block of 48 kHz mono, against 56.3): its gain is taken in logarithms,
+  one exponential where it took two powers. Its output is the same on
+  the comparison signal; the gain's last bits in double may differ.
 - The direct effect runs some 2.4 times faster (3.6 us a 10 ms block for
   a moving source, against 8.3), a source's ambisonic encode 1.9 times
   (1.3 against 2.4) and panning 64 sources to speakers 1.6 times (39
