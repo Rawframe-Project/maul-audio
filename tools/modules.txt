@@ -25,10 +25,10 @@ backend_pulse: allocator backend context context_core device form layout pulse_a
 backend_wasapi: allocator backend context device layout wasapi_apartment wasapi_core wasapi_stream
 backend_web: allocator backend clock context device follow period thread web_capture web_core web_devices
 bake_file: allocator crc32 probe_bake probe_graph
-band_eq:
+band_eq: flush
 binaural: allocator binaural_dsp hrtf_core hrtf_lookup near_field
 binaural_decoder: allocator binaural_dsp hrtf_core magls
-binaural_dsp:
+binaural_dsp: flush
 base:
 buffer:
 bvh: watertight
@@ -45,10 +45,11 @@ device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq
 direct_step:
 duplex: context context_core stream_open
-echo_canceller: allocator echo_filter echo_suppressor real_fft voice_dsp
-echo_filter: allocator real_fft voice_dsp
-echo_suppressor: allocator real_fft voice_dsp
+echo_canceller: allocator echo_filter echo_suppressor flush real_fft
+echo_filter: allocator flush real_fft
+echo_suppressor: allocator flush real_fft voice_dsp
 fft:
+flush:
 focus: backend context context_core notify
 follow: backend context context_core notify retry
 form:
@@ -57,7 +58,7 @@ hrtf_core:
 hrtf_file: crc32
 hrtf_lookup: hrtf_core
 hrtf_resample:
-gain_control: allocator vad_core voice_dsp
+gain_control: allocator flush vad_core voice_dsp
 invariant:
 ios_core: apple_objects context_core device
 ios_session: ios_core
@@ -68,7 +69,7 @@ lifecycle: backend context context_core follow
 magls: allocator fft hrtf_core least_squares spherical_harmonics
 near_field: near_field_table
 near_field_table:
-noise_suppressor: allocator real_fft voice_dsp
+noise_suppressor: allocator flush real_fft voice_dsp
 notify: backend context context_core invariant
 occlusion:
 octave_eq: least_squares
@@ -94,7 +95,7 @@ real_fft: allocator
 reflection_response: fft
 reflections: allocator ambisonics reflection_response reverb_estimate staged
 retry: context_core
-reverb: allocator band_eq octave_eq
+reverb: allocator band_eq flush octave_eq
 reverb_estimate: portable_math spherical_harmonics
 scene: allocator bvh scene_state
 scene_instances: allocator bvh scene_state
@@ -114,7 +115,7 @@ transmission:
 vad_core: voice_dsp
 voice: context_core
 voice_detector: allocator vad_core voice_dsp
-voice_dsp:
+voice_dsp: flush
 wasapi_apartment: worker
 wasapi_core: context_core device sample_convert wasapi_apartment wasapi_notify wasapi_objects worker
 wasapi_exclusive: context_core sample_convert wasapi_core wasapi_format

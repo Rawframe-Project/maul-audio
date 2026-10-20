@@ -322,6 +322,8 @@ if(MAUL_AUDIO_BUILD_TESTS)
         maul_add_test(scene)
         maul_add_test(scene_refusals)
         maul_add_test(reverb)
+        maul_add_test(spatial_silence)
+        maul_audio_test_data(spatial_silence)
         maul_add_test(effect_refusals)
         maul_add_test(transmission)
         # The two sides on two threads; Emscripten builds have none.

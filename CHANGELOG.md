@@ -61,6 +61,13 @@ release could change the API, the ABI and every data format.
   against 20, the noise suppressor 50 against 64, and the echo
   canceller, which also skips its filter's steps while their error is
   zero, 80 against 180. Results on a signal are unchanged.
+- The reverb, the direct effect and a binaural effect with its near
+  field did the same once their input fell silent: the reverb's delay
+  lines and filters, the direct effect's band filters and the near
+  field's shelf decayed into the subnormal range (the reverb's within
+  some twenty seconds of a 1.5 s tail), on every call from then on.
+  They now stop at zero, checked once a call, at a cost of about 1 % of
+  the reverb's instructions on a signal.
 - WASAPI: an endpoint whose friendly name is longer than 255 bytes in
   UTF-8 is named by the name cut after its last whole character; it was
   named by its endpoint ID.

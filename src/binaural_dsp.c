@@ -5,6 +5,8 @@
 
 #include "binaural_dsp.h"
 
+#include "flush.h"
+
 void maudFir(const float* restrict x, const float* restrict h, uint32_t taps, float* restrict out,
              uint32_t frames)
 {
@@ -98,7 +100,7 @@ void maudShelve(float* samples, uint32_t frames, const float start[3], const flo
             y1 = y;
         }
         state[0] = x1;
-        state[1] = y1;
+        state[1] = maudFlush(y1);
         return;
     }
     for (uint32_t n = 0; n < frames; ++n)
@@ -113,5 +115,5 @@ void maudShelve(float* samples, uint32_t frames, const float start[3], const flo
         y1 = y;
     }
     state[0] = x1;
-    state[1] = y1;
+    state[1] = maudFlush(y1);
 }

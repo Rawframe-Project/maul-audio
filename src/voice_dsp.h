@@ -6,24 +6,10 @@
 #ifndef MAUL_AUDIO_SRC_VOICE_DSP_H
 #define MAUL_AUDIO_SRC_VOICE_DSP_H
 
+#include "flush.h"
+
 #include <math.h>
 #include <stdint.h>
-
-// The smallest magnitude a decaying state keeps: below it the state is
-// set to zero rather than left to decay into the subnormal range, where
-// each multiply on it is many times slower; a recursive filter or an
-// envelope gets there within seconds of silence.
-#define MAUD_TINY 1e-30
-
-static inline float maudFlush(float x)
-{
-    return fabsf(x) < (float)MAUD_TINY ? 0.0f : x;
-}
-
-static inline double maudFlushDouble(double x)
-{
-    return fabs(x) < MAUD_TINY ? 0.0 : x;
-}
 
 // A second-order section in transposed direct form II.
 typedef struct maudBiquad

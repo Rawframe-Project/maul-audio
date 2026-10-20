@@ -11,6 +11,7 @@
 // and a peak limiter keeps every sample under -1 dBFS.
 
 #include "allocator.h"
+#include "flush.h"
 #include "vad_core.h"
 
 #include "maul-audio/voice.h"

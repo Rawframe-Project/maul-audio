@@ -11,6 +11,8 @@
 
 #include "band_eq.h"
 
+#include "flush.h"
+
 #include <math.h>
 
 #define PI_D        3.14159265358979323846
@@ -234,8 +236,10 @@ static void RunSteady(maudBandEqState* state, const maudBandEqFilters* f, const 
     }
     for (int i = 0; i < MAUD_BANDS; ++i)
     {
-        state->ic1[i] = ic1[i];
-        state->ic2[i] = ic2[i];
+        // Once a run: a state stuck subnormal stays so for the rest of
+        // one block at most.
+        state->ic1[i] = maudFlush(ic1[i]);
+        state->ic2[i] = maudFlush(ic2[i]);
     }
 }
 

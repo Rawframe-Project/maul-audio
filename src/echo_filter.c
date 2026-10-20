@@ -12,7 +12,7 @@
 #include "echo_filter.h"
 
 #include "allocator.h"
-#include "voice_dsp.h"
+#include "flush.h"
 
 #include <math.h>
 #include <string.h>

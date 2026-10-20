@@ -18,6 +18,7 @@
 // keeps its place. The output lags the input by 10 ms.
 
 #include "allocator.h"
+#include "flush.h"
 #include "real_fft.h"
 #include "voice_dsp.h"
 

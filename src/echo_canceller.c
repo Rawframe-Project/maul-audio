@@ -19,8 +19,8 @@
 #include "allocator.h"
 #include "echo_filter.h"
 #include "echo_suppressor.h"
+#include "flush.h"
 #include "real_fft.h"
-#include "voice_dsp.h"
 
 #include "maul-audio/voice.h"
 

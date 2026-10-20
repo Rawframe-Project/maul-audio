@@ -19,6 +19,7 @@
 
 #include "allocator.h"
 #include "band_eq.h"
+#include "flush.h"
 #include "octave_eq.h"
 
 #include <math.h>
@@ -403,6 +404,25 @@ static void Run(Network* r, const Bank* k, const float* in, float* const* bed, u
     }
 }
 
+// After a block: the samples each line took in it and the filters'
+// states flushed, off each sample's recursion. A line is longer than
+// any run, so nothing written is read back before its flush.
+static void Flush(Network* n, uint32_t count)
+{
+    for (int i = 0; i < LINES; ++i)
+    {
+        uint32_t length = n->lengths[i];
+        uint32_t written = count < length ? count : length;
+        uint32_t end = n->positions[i];
+        uint32_t first = end >= written ? end - written : 0;
+        maudFlushAll(n->lines[i] + first, end - first);
+        uint32_t wrapped = written - (end - first);
+        maudFlushAll(n->lines[i] + length - wrapped, wrapped);
+    }
+    maudFlushAll(&n->s1[0][0], FILTERS * LINES);
+    maudFlushAll(&n->s2[0][0], FILTERS * LINES);
+}
+
 static void Blend(const Bank* from, const Bank* to, float t, Bank* out)
 {
     const float* a = &from->b0[0][0];
@@ -581,6 +601,7 @@ static void Render(Network* n, const float* x, float* const* bed, uint32_t done,
         Blend(&n->current, &n->target, (float)(done + start + m) / (float)frames, &at);
         Run(n, &at, x + start, segment, m);
     }
+    Flush(n, count);
 }
 
 // A network's filters and levels after a call: those it moved to.

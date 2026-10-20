@@ -19,6 +19,7 @@
 #include "echo_suppressor.h"
 
 #include "allocator.h"
+#include "flush.h"
 #include "voice_dsp.h"
 
 #include <math.h>
