@@ -162,7 +162,9 @@ static const struct pw_stream_events s_streamEvents = {
 };
 
 // The stream's properties: what it is, its period as a latency hint,
-// and, for a stream opened on a device, that device and no other.
+// and, for a stream opened on a device, that device and no other. A
+// loopback stream captures the monitor of the sink it is on now, and
+// the library moves it.
 static struct pw_properties* StreamProperties(const maudContext* context,
                                               const maudStreamCore* core)
 {
@@ -177,7 +179,13 @@ static struct pw_properties* StreamProperties(const maudContext* context,
     }
     api->propertiesSetf(props, PW_KEY_NODE_LATENCY, "%u/%u", core->format.periodFrames,
                         core->format.sampleRate);
-    const maudDeviceSlot* device = maudFindDevice(context, core->binding.requested);
+    bool loopback = core->def.direction == maud_directionLoopback;
+    const maudDeviceSlot* device =
+        maudFindDevice(context, loopback ? core->binding.current : core->binding.requested);
+    if (loopback)
+    {
+        api->propertiesSetf(props, PW_KEY_STREAM_CAPTURE_SINK, "true");
+    }
     if (device != nullptr)
     {
         api->propertiesSetf(props, PW_KEY_TARGET_OBJECT, "%.*s", (int)device->key.length,

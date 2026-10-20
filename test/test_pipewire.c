@@ -13,6 +13,7 @@
 
 #include "maul-audio/notification.h"
 
+#include <math.h>
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/pipewire.h>
 #include <stdatomic.h>
@@ -425,6 +426,11 @@ typedef struct Blocks
     bool tryControl;
     maudContext* context;
     maudStreamId stream;
+    // Whether an output plays a 1 kHz tone at 0.5, and the loudest input
+    // sample since peak was last cleared, in thousandths.
+    bool tone;
+    float phase;
+    _Atomic(uint32_t) peak;
 } Blocks;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
@@ -437,6 +443,28 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (block->input != nullptr)
     {
         atomic_fetch_add(&blocks->withInput, 1);
+        uint32_t channels = maudGetLayoutChannelCount(block->layout);
+        uint32_t peak = atomic_load(&blocks->peak);
+        for (uint32_t i = 0; i < block->frameCount * channels; ++i)
+        {
+            float level = fabsf(block->input[i]) * 1000.0f;
+            peak = level > (float)peak ? (uint32_t)level : peak;
+        }
+        atomic_store(&blocks->peak, peak);
+    }
+    if (blocks->tone && block->output != nullptr)
+    {
+        uint32_t channels = maudGetLayoutChannelCount(block->layout);
+        for (uint32_t i = 0; i < block->frameCount; ++i)
+        {
+            float sample = 0.5f * sinf(blocks->phase);
+            blocks->phase =
+                fmodf(blocks->phase + 6.2831853f * 1000.0f / block->sampleRate, 6.2831853f);
+            for (uint32_t c = 0; c < channels; ++c)
+            {
+                block->output[i * channels + c] = sample;
+            }
+        }
     }
     atomic_store(&blocks->lastRate, block->sampleRate);
     if (blocks->tryControl && atomic_load(&blocks->count) == 2)
@@ -937,6 +965,88 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
     ResetDefaults(context, helper);
 }
 
+// Drains notifications, which runs PipeWire's main loop, until the
+// loudest input since the peak was cleared reaches thousandths, for up
+// to two seconds; or for half a second, whether it stays below it.
+static bool Hears(maudContext* context, const Blocks* blocks, uint32_t thousandths)
+{
+    for (int tries = 0; tries < 200 && atomic_load(&blocks->peak) < thousandths; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    return atomic_load(&blocks->peak) >= thousandths;
+}
+
+static bool StaysBelow(maudContext* context, const Blocks* blocks, uint32_t thousandths)
+{
+    for (int tries = 0; tries < 50; ++tries)
+    {
+        maudNotification ignored;
+        while (maudNextNotification(context, &ignored) == maud_success)
+        {
+        }
+        Sleep(10);
+    }
+    return atomic_load(&blocks->peak) < thousandths;
+}
+
+// A loopback stream captures what a sink plays, from its monitor:
+// silence while nothing plays there, the tone a stream plays once one
+// does. One on the default follows the default sink away to a silent
+// sink and back.
+static void TestLoopback(maudContext* context, Helper* helper)
+{
+    ResetDefaults(context, helper);
+    maudDeviceId home = {0, 0};
+    CHECK(FindByKey(context, maud_directionOutput, "maud-test-sink", &home), "the test sink");
+    Blocks heard = {0};
+    maudStreamId loop = OpenStream(context, maud_directionLoopback, home, &heard);
+    CHECK(WaitForBlocks(context, &heard, 10), "a loopback on the test sink runs");
+    CHECK(atomic_load(&heard.withInput) == atomic_load(&heard.count) &&
+              atomic_load(&heard.wrongSize) == 0,
+          "each block with input, one period");
+    CHECK(StaysBelow(context, &heard, 10), "silence while nothing plays");
+    Blocks played = {.tone = true};
+    maudStreamId tone = OpenStream(context, maud_directionOutput, home, &played);
+    CHECK(Hears(context, &heard, 400) && atomic_load(&heard.peak) <= 600, "the tone it plays");
+    CHECK(maudDestroyStream(context, loop) == maud_success, "destroy it");
+    Blocks following = {0};
+    loop = OpenStream(context, maud_directionLoopback, (maudDeviceId){0, 0}, &following);
+    CHECK(Hears(context, &following, 400), "one on the default hears the tone");
+    PlugSink(helper);
+    maudDeviceId plugged = {0, 0};
+    CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
+    maudNotification record;
+    CHECK(WaitForStream(context, maud_notifyStreamMoved, loop, &record) &&
+              KeyIs(context, record.device, "maud-test-hotplug"),
+          "it moves with the default");
+    StaysBelow(context, &following, UINT32_MAX);
+    atomic_store(&following.peak, 0);
+    CHECK(StaysBelow(context, &following, 10), "and hears the silent sink");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
+    CHECK(WaitForStream(context, maud_notifyStreamMoved, loop, &record) &&
+              KeyIs(context, record.device, "maud-test-sink"),
+          "back with the default");
+    atomic_store(&following.peak, 0);
+    CHECK(Hears(context, &following, 400), "and hears the tone again");
+    CHECK(maudDestroyStream(context, loop) == maud_success &&
+              maudDestroyStream(context, tone) == maud_success,
+          "destroy both");
+    UnplugSink(helper);
+    ResetDefaults(context, helper);
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionLoopback;
+    def.callback = CountBlocks;
+    def.loopbackExcludesSelf = true;
+    CHECK(maudCreateStream(context, &def, &loop) == maud_errorUnsupported,
+          "PipeWire cannot leave the host out");
+}
+
 // PipeWire has no exclusive mode for a client: a stream asking for it on
 // the default output device is refused, not shared.
 static void TestExclusiveRefused(maudContext* context)
@@ -1068,6 +1178,7 @@ int main(void)
     if (helped)
     {
         TestStreamsMoveAndAreLost(context, &helper);
+        TestLoopback(context, &helper);
     }
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

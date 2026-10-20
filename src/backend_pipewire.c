@@ -799,6 +799,7 @@ static const maudBackend s_pipewire = {
     .retargetStream = maudPipewireRetargetStream,
     .sharesClock = SharesClock,
     .rendersOnCaller = false,
+    .loopback = true,
 };
 
 const maudBackend* maudGetPipewireBackend(void)
