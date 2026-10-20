@@ -56,6 +56,8 @@ typedef struct maudEchoFilter
     double* slowPower;
     double* errorRecent;
     double* echoRecent;
+    // Per bin, this block: the step's rate, then the power it is over.
+    double* rates;
     // Per band: the regression's sums this block (covariance, then
     // variance), its smoothed sums, and the leakage.
     double* bandNow;

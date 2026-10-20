@@ -60,12 +60,17 @@ hrtf.load44.ms 20.44 50
 # its suppressor), recorded again 2026-10-13: the best of five runs at
 # a load of 19 to 35, alternating with the code of this file's first
 # commit, which ran as fast; the first figures, taken at loads of 40
-# to 170, were the load's.
+# to 170, were the load's. The echo rows and the 48 kHz noise rows
+# recorded again 2026-10-20, when the transform's stages took tables of
+# their own and the suppressor's noise estimate a floor above the
+# subnormal range: the best of five runs at a load of 22 to 26,
+# alternating with the code before (echo 1.41x and 1.47x as fast, noise
+# at 48 kHz 1.05x and 1.08x).
 noise.16k.mono.us 32.98 71
-noise.48k.mono.us 69.1 71
-noise.48k.stereo.us 72.52 142
-echo.16k.us 38.23 115
-echo.48k.us 112.6 115
+noise.48k.mono.us 67.16 71
+noise.48k.stereo.us 66.7 142
+echo.16k.us 26.84 115
+echo.48k.us 75.86 115
 # The voice detector and the gain control (bench_voice), recorded
 # 2026-10-19: the best of three runs at a load of 12 to 27. A capture
 # path's four processors share 2 % of a core, 200 us per 10 ms block:

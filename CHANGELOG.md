@@ -17,6 +17,14 @@ release could change the API, the ABI and every data format.
 
 ### Changed
 
+- The echo canceller runs some 1.45 times faster (76 us a 10 ms block
+  at 48 kHz, against 112; 27 against 38 at 16 kHz), with the same
+  output bit for bit: while echo alone played, its suppressor's noise
+  estimate decayed into the subnormal range, where every multiply on
+  it is many times slower, and now stops at a floor far below it. The
+  real FFT reads each stage's twiddles in order, which makes it some
+  1.5 times faster for every user of it (the noise suppressor, the
+  convolvers).
 - Geometric reflections render some five times faster (third order,
   one second's response: 330 us a 10 ms block, against 1.6 ms): a long
   response is convolved in two stages, short blocks for its start and

@@ -30,6 +30,10 @@
 // The bands below 8 kHz, and the a priori SNR's floor.
 #define SPEECH_BANDS 24u
 #define XI_MIN       0.003162
+// The noise estimate's floor, far below the 1e-20 the SNRs add to it:
+// while echo alone plays, the estimate decays geometrically and would
+// turn subnormal, which makes each multiply on it many times slower.
+#define NOISE_MIN 1e-30
 // The echo floor at the frame probability's two ends, in dB.
 #define ECHO_FLOOR_QUIET  (-40.0)
 #define ECHO_FLOOR_SPEECH (-15.0)
@@ -264,7 +268,7 @@ static float Gain(maudEchoSuppressor* s, uint32_t k, double echoFloor)
     double g = exp(p * log(fmax(gain, 1e-30)) + (1.0 - p) * log(fmax(floor, 1e-30)));
     g = fmin(fmax(g, floor), 1.0);
     double expected = (1.0 - p) * fmax(e2 - echo, 0.0) + p * noise;
-    s->noise[k] = s->noiseKeep * noise + (1.0 - s->noiseKeep) * expected;
+    s->noise[k] = fmax(s->noiseKeep * noise + (1.0 - s->noiseKeep) * expected, NOISE_MIN);
     return (float)g;
 }
 

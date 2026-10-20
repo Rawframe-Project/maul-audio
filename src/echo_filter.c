@@ -56,7 +56,7 @@ typedef struct Places
     maudLayout layout;
     size_t render, background, foreground, last, time, backgroundEcho, foregroundEcho,
         backgroundError, spectrum, errorSpectrum, echoSpectrum, bandLeak;
-    size_t slowPower, errorRecent, echoRecent, bandNow, bandCovariance, bandVariance, shares;
+    size_t slowPower, errorRecent, echoRecent, rates, bandNow, bandCovariance, bandVariance, shares;
 } Places;
 
 static size_t Floats(maudLayout* layout, size_t count)
@@ -79,6 +79,7 @@ static Places PlacesOf(uint32_t block, uint32_t partitions, double sampleRate)
     p.slowPower = Doubles(l, p.bins);
     p.errorRecent = Doubles(l, p.bins);
     p.echoRecent = Doubles(l, p.bins);
+    p.rates = Doubles(l, 2 * (size_t)p.bins);
     p.bandNow = Doubles(l, 2 * (size_t)p.bands);
     p.bandCovariance = Doubles(l, p.bands);
     p.bandVariance = Doubles(l, p.bands);
@@ -136,6 +137,7 @@ void maudInitEchoFilter(maudEchoFilter* filter, uint32_t block, uint32_t partiti
         .slowPower = (double*)(m + p.slowPower),
         .errorRecent = (double*)(m + p.errorRecent),
         .echoRecent = (double*)(m + p.echoRecent),
+        .rates = (double*)(m + p.rates),
         .bandNow = (double*)(m + p.bandNow),
         .bandCovariance = (double*)(m + p.bandCovariance),
         .bandVariance = (double*)(m + p.bandVariance),
@@ -314,20 +316,27 @@ static void Leakage(maudEchoFilter* f, const Sums* s)
 
 // Each partition's share of the step: its share of the filter's energy
 // plus a tenth of the largest share, summing to 0.99; uniform until the
-// filter has adapted.
+// filter has adapted. The partitions' energies are summed side by side,
+// each over the bins in order, so that no sum waits on the one before.
 static void Shares(maudEchoFilter* f)
 {
     double largest = 0.0;
     double sum = 0.0;
+    size_t stride = 2 * (size_t)f->bins;
+    memset(f->shares, 0, f->partitions * sizeof(double));
+    for (uint32_t k = 0; k < f->bins; ++k)
+    {
+        const float* w = f->background + 2 * (size_t)k;
+        for (uint32_t m = 0; m < f->partitions; ++m)
+        {
+            double re = (double)w[m * stride];
+            double im = (double)w[m * stride + 1];
+            f->shares[m] += re * re + im * im;
+        }
+    }
     for (uint32_t m = 0; m < f->partitions; ++m)
     {
-        const float* w = f->background + (size_t)m * 2 * f->bins;
-        double e = 0.0;
-        for (uint32_t k = 0; k < f->bins; ++k)
-        {
-            e += (double)w[2 * k] * (double)w[2 * k] + (double)w[2 * k + 1] * (double)w[2 * k + 1];
-        }
-        f->shares[m] = sqrt(e);
+        f->shares[m] = sqrt(f->shares[m]);
         largest = fmax(largest, f->shares[m]);
     }
     for (uint32_t m = 0; m < f->partitions; ++m)
@@ -345,7 +354,8 @@ static void Shares(maudEchoFilter* f)
 // over the render's power smoothed over the filter plus a hundredth of
 // its mean over the bins (so that bins the render leaves empty, as a
 // band-limited stream played at a higher rate does, do not take steps
-// from rounding noise).
+// from rounding noise). Each bin's rate and power first, then each
+// partition's steps across the bins.
 static void Adapt(maudEchoFilter* f, double rer, double startRate)
 {
     const float* newest = Partition(f->render, f->bins, f->head);
@@ -362,25 +372,34 @@ static void Adapt(maudEchoFilter* f, double rer, double startRate)
         mean += f->slowPower[k];
     }
     double floorPower = POWER_FLOOR * mean / f->bins;
+    const float* e = f->errorSpectrum;
+    double* mu = f->rates;
+    double* power = f->rates + f->bins;
     for (uint32_t k = 0; k < f->bins; ++k)
     {
-        float er = f->errorSpectrum[2 * k];
-        float ei = f->errorSpectrum[2 * k + 1];
         const float* y = f->echoSpectrum + 2 * k;
-        double e2 = (double)er * (double)er + (double)ei * (double)ei;
+        double e2 =
+            (double)e[2 * k] * (double)e[2 * k] + (double)e[2 * k + 1] * (double)e[2 * k + 1];
         double y2 = (double)y[0] * (double)y[0] + (double)y[1] * (double)y[1];
-        double mu = f->adapted
-                        ? LEAK_SHARE * fmin(f->leak * y2 / (e2 + 1e-12), MU_MAX) + RER_SHARE * rer
-                        : startRate;
-        for (uint32_t m = 0; m < f->partitions; ++m)
+        mu[k] = f->adapted
+                    ? LEAK_SHARE * fmin(f->leak * y2 / (e2 + 1e-12), MU_MAX) + RER_SHARE * rer
+                    : startRate;
+        power[k] = f->slowPower[k] + floorPower;
+    }
+    for (uint32_t m = 0; m < f->partitions; ++m)
+    {
+        const float* x = Partition(f->render, f->bins, (f->head + m) % f->partitions);
+        float* w = f->background + (size_t)m * 2 * f->bins;
+        double share = f->shares[m];
+        for (uint32_t k = 0; k < f->bins; ++k)
         {
-            const float* x = Partition(f->render, f->bins, (f->head + m) % f->partitions);
-            float* w = f->background + (size_t)m * 2 * f->bins + 2 * k;
-            double step = mu * f->shares[m] / (f->slowPower[k] + floorPower);
+            double step = mu[k] * share / power[k];
+            float er = e[2 * k];
+            float ei = e[2 * k + 1];
             float xr = x[2 * k];
             float xi = x[2 * k + 1];
-            w[0] += (float)(step * (double)(er * xr + ei * xi));
-            w[1] += (float)(step * (double)(ei * xr - er * xi));
+            w[2 * k] += (float)(step * (double)(er * xr + ei * xi));
+            w[2 * k + 1] += (float)(step * (double)(ei * xr - er * xi));
         }
     }
 }
