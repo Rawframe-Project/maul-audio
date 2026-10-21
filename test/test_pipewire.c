@@ -521,12 +521,24 @@ static bool WaitForLinkIntoPlugged(maudContext* context, Helper* helper)
 }
 
 // Frames the stream moves per second of wall time over one window.
-static double MeasureWindow(maudContext* context, maudStreamId stream, int milliseconds)
+// The stream's xruns so far, under- and overruns together.
+static uint64_t Xruns(maudContext* context, maudStreamId stream)
+{
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    return status.underruns + status.overruns;
+}
+
+// The frames a window of the given length moved per second; *stalled
+// says whether the graph skipped a cycle in it.
+static double MeasureWindow(maudContext* context, maudStreamId stream, int milliseconds,
+                            bool* stalled)
 {
     struct timespec start;
     struct timespec end;
     uint64_t first = 0;
     uint64_t last = 0;
+    uint64_t xruns = Xruns(context, stream);
     clock_gettime(CLOCK_MONOTONIC, &start);
     CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
     for (int i = 0; i < milliseconds / 10; ++i)
@@ -541,21 +553,32 @@ static double MeasureWindow(maudContext* context, maudStreamId stream, int milli
     clock_gettime(CLOCK_MONOTONIC, &end);
     double seconds =
         (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) * 1e-9;
+    *stalled = Xruns(context, stream) != xruns;
     return (double)(last - first) / seconds;
 }
 
-// The stream's rate: the best of five windows of a second. A
-// loaded machine can stall the platform's clock, which only lowers a
-// window's count, so the best window is the one that shows the rate.
+// The stream's rate: the best of three windows of a second in which
+// the graph skipped no cycle, out of fifteen at most. A loaded machine
+// stalls the graph, which lowers a window's count and shows as an xrun
+// (a stopped daemon: every such window), so those windows are left out;
+// with none clean, the best of all.
 static double MeasureRate(maudContext* context, maudStreamId stream)
 {
     double best = 0.0;
-    for (int window = 0; window < 5; ++window)
+    double bestOfAll = 0.0;
+    int clean = 0;
+    for (int window = 0; window < 15 && clean < 3; ++window)
     {
-        double rate = MeasureWindow(context, stream, 1000);
-        best = rate > best ? rate : best;
+        bool stalled = false;
+        double rate = MeasureWindow(context, stream, 1000, &stalled);
+        bestOfAll = rate > bestOfAll ? rate : bestOfAll;
+        if (!stalled)
+        {
+            best = rate > best ? rate : best;
+            clean += 1;
+        }
     }
-    return best;
+    return clean > 0 ? best : bestOfAll;
 }
 
 // Whether a measured rate is the expected one: at most 2% above it,
