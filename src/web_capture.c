@@ -145,8 +145,9 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
     Promise.all([entry.captureWorklet, request]).then(function (results) {
         const stream = results[1];
         stream.getVideoTracks().forEach(function (track) { track.stop(); });
+        // A display grant without audio (a window, or a browser that
+        // shares no system audio) is a refusal: the stream keeps waiting.
         if (record.closed || stream.getAudioTracks().length === 0) {
-            record.refused = !record.closed;
             stream.getTracks().forEach(function (track) { track.stop(); });
             return;
         }
@@ -175,9 +176,7 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
         record.node.port.onmessage = take;
         record.source.connect(record.node);
         _maudWebGranted(context, slot, active);
-    }, function () {
-        record.refused = true;
-    });
+    }, function () {});
     return id;
 });
 
