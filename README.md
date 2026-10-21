@@ -8,6 +8,7 @@ audio APIs and an MIT license.
 It has two parts, each usable without the other:
 
 - **Device:** playback, capture and duplex streams on every platform,
+  loopback capture of what an output plays (where the platform has it),
   device enumeration and hotplug, default-device following, typed
   device loss, format and latency reporting, a stream clock, platform
   voice processing and the library's own (voice activity, gain

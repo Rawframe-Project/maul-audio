@@ -455,6 +455,29 @@ static void TestUnderrun(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// PulseAudio cannot say whether it spatializes a stream: a stream marked
+// contentSpatialized reports the mark's fate as unknown, an unmarked one
+// as no mark.
+static void TestMark(maudContext* context)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.contentSpatialized = true;
+    maudStreamId stream = {0, 0};
+    maudStreamStatus status = {0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.spatialMark == maud_markUnknown,
+          "a marked stream's fate is unknown");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy it");
+    def.contentSpatialized = false;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.spatialMark == maud_markNone &&
+              maudDestroyStream(context, stream) == maud_success,
+          "an unmarked one has no mark");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -1293,6 +1316,7 @@ int main(void)
     TestDevices(context);
     TestHotplug(context);
     TestListedDefault(context);
+    TestMark(context);
     TestOutputStream(context);
     TestMono(context);
     TestUnderrun(context);

@@ -411,6 +411,30 @@ static void TestDevices(maudContext* context)
     IMMDeviceEnumerator_Release(enumerator);
 }
 
+// A mono or stereo shared stream goes to the ears unvirtualized, so its
+// mark is honored; with more channels the user's spatial format may
+// take it, and the fate is unknown.
+static void TestMark(maudContext* context)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = CountBlocks;
+    def.contentSpatialized = true;
+    def.layout = maud_layoutStereo;
+    maudStreamId stream = {0, 0};
+    maudStreamStatus status = {0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.spatialMark == maud_markHonored &&
+              maudDestroyStream(context, stream) == maud_success,
+          "a marked stereo stream's mark is honored");
+    def.layout = maud_layout5Point1;
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              status.spatialMark == maud_markUnknown &&
+              maudDestroyStream(context, stream) == maud_success,
+          "a marked 5.1 stream's fate is unknown");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -897,6 +921,7 @@ int main(void)
     }
     TestApartment(context);
     TestDevices(context);
+    TestMark(context);
     TestOutputStream(context);
     TestInputStream(context);
     TestLoopback(context);

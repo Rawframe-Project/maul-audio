@@ -8,7 +8,8 @@
 // output. A stream pinned to the first is suspended as a lost device
 // rather than running on a sink it never reached; a stream pinned to the
 // second plays until the device leaves the list, then is suspended,
-// while a capture following the default runs on.
+// while a capture following the default runs on. The browser cannot say
+// whether it spatializes an output, so a marked one's fate is unknown.
 
 #include "../test_harness.h"
 #include "maul-audio/context.h"
@@ -205,6 +206,16 @@ int main(void)
     CHECK(maudCreateStream(s_context, &captureDef, &s_capture) == maud_success &&
               maudStartStream(s_context, s_capture) == maud_success,
           "a capture following the default, whose grant names the outputs");
+    maudStreamDef marked = maudDefaultStreamDef();
+    marked.callback = Play;
+    marked.contentSpatialized = true;
+    maudStreamId markedId = {0, 0};
+    maudStreamStatus status = {0};
+    CHECK(maudCreateStream(s_context, &marked, &markedId) == maud_success &&
+              maudGetStreamStatus(s_context, markedId, &status) == maud_success &&
+              status.spatialMark == maud_markUnknown &&
+              maudDestroyStream(s_context, markedId) == maud_success,
+          "a marked output's fate is unknown");
     ListenForGesture();
     printf("MAUD_TEST_WAITING_FOR_GESTURE\n");
     s_interval = emscripten_set_interval(Step_, 10.0, nullptr);

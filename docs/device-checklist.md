@@ -74,6 +74,18 @@ USB or Bluetooth headset):
    PipeWire's plugin, which absorbs a stall without an xrun and has no
    cards, so this is where ALSA's recovery and card scan run.
 
+8. Loopback, where the platform has it (PulseAudio, PipeWire, WASAPI,
+   the web): open a loopback stream on the default output while the
+   tone plays. Expect the tone in its blocks at its level. On Windows,
+   stop every sound: its blocks pause (Windows delivers no packets
+   from an idle endpoint) and come back with the next sound. Unplug
+   the output it captures: a stream opened on that output reports
+   `maud_suspendDeviceLost`, one on the default moves with it. On the
+   web, in each browser, share a tab with audio, then press the
+   browser's "Stop sharing": the stream reports
+   `maud_suspendPermission`; sharing a window, or anything in a
+   browser that shares no audio, leaves it there from the start.
+
 Record for each step: the platform and version, the devices, the
 notifications seen, and anything else heard (a click, a gap, a stuck
 stream).
