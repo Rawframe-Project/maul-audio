@@ -360,6 +360,7 @@ static void Pump(maudContext* context)
     maudHoldStreams(context, maudWebHeld(web->handle) != 0);
     maudResult result = maudWebSyncDevices(context);
     (void)result;
+    maudWebFollowDefaultInput(context);
 }
 
 static void ResumeContext(maudContext* context)

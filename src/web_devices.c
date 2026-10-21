@@ -8,7 +8,10 @@
 // and "communications" entries are the Default devices already, and
 // entries without an id (before the microphone is granted) name nothing.
 // A sink the browser refuses is queued the same way, and the drain
-// suspends the streams pinned to it.
+// suspends the streams pinned to it. The default microphone's group is
+// kept from each list, the "default" entry's where the browser lists one
+// and the first input's otherwise, and a change of it is marked: an open
+// track stays on its device when the system's default moves.
 
 #include "web_devices.h"
 
@@ -26,6 +29,8 @@ EM_JS(void, maudWebListDevices, (int handle), {
     entry.devices = [];
     entry.devicesNew = false;
     entry.refusedSinks = [];
+    entry.defaultInputGroup = "";
+    entry.defaultInputMoved = false;
     entry.listDevices = function () {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
             return;
@@ -38,6 +43,18 @@ EM_JS(void, maudWebListDevices, (int handle), {
                        (device.kind === "audioinput" || (outputs && device.kind === "audiooutput"));
             });
             entry.devicesNew = true;
+            const inputs = list.filter(function (device) {
+                return device.kind === "audioinput" && device.deviceId !== "";
+            });
+            const first = inputs.find(function (device) { return device.deviceId === "default"; }) ||
+                          inputs[0];
+            const group = first ? first.groupId : "";
+            if (group !== "" && entry.defaultInputGroup !== "" && group !== entry.defaultInputGroup) {
+                entry.defaultInputMoved = true;
+            }
+            if (group !== "") {
+                entry.defaultInputGroup = group;
+            }
         }, function () {});
     };
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -94,6 +111,27 @@ EM_JS(int, maudWebTakeRefusedSink, (int handle, char* key, int keyBytes), {
     }
     stringToUTF8(entry.refusedSinks.shift(), key, keyBytes);
     return 1;
+});
+
+// 1 once if the default microphone's group changed since the last call.
+EM_JS(int, maudWebTakeDefaultInputMoved, (int handle), {
+    const entry = globalThis.maudWeb.contexts[handle];
+    const moved = entry.defaultInputMoved;
+    entry.defaultInputMoved = false;
+    return moved ? 1 : 0;
+});
+
+// 1 if a capture node's track is on another group than the default
+// microphone's; 0 while its track has not arrived or either is unknown.
+EM_JS(int, maudWebCaptureOffDefault, (int handle, int node), {
+    const record = globalThis.maudWeb.nodes[node];
+    const group = globalThis.maudWeb.contexts[handle].defaultInputGroup;
+    if (!record || !record.stream || group === "") {
+        return 0;
+    }
+    const track = record.stream.getAudioTracks()[0];
+    const settings = track ? track.getSettings() : {};
+    return settings.groupId && settings.groupId !== group ? 1 : 0;
 });
 
 EM_JS_DEPS(maudWebDevices, "$stringToUTF8,$UTF8ToString");

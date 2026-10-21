@@ -15,6 +15,12 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: a capture on the default device moves to the new default
+  microphone when the system's default changes; browsers leave an open
+  track on its device.
+
 ## [1.2.1] - 2026-10-21
 
 A patch release: no change to the source or binary interface. Device

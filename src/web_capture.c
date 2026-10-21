@@ -266,6 +266,30 @@ void maudWebEnded(maudContext* context, int slotIndex)
     entry->node = maudWebOpenCapture(context, slot, web->handle, entry->chunk);
 }
 
+void maudWebFollowDefaultInput(maudContext* context)
+{
+    maudWeb* web = context->native;
+    if (maudWebTakeDefaultInputMoved(web->handle) == 0)
+    {
+        return;
+    }
+    for (uint32_t i = 0; i < context->streams.capacity; ++i)
+    {
+        maudStreamSlot* slot = &context->streams.slots[i];
+        char device[MAUD_WEB_KEY_BYTES] = {0};
+        if (!slot->live || slot->core.def.direction != maud_directionInput ||
+            web->streams[i].chunk == nullptr)
+        {
+            continue;
+        }
+        maudWebCaptureDevice(context, slot, device, sizeof(device));
+        if (device[0] == '\0' && maudWebCaptureOffDefault(web->handle, web->streams[i].node) != 0)
+        {
+            maudWebEnded(context, (int)i);
+        }
+    }
+}
+
 int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, float* chunk)
 {
     int index = (int)(slot - context->streams.slots);

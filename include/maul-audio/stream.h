@@ -236,8 +236,10 @@ extern "C"
         // until the user allows the microphone. A refusal leaves it here.
         // When the browser ends a capture's track (its microphone went,
         // or its permission was withdrawn), the capture is opened again,
-        // on the default if its device went, and waits here meanwhile. A
-        // loopback stream whose sharing the user stopped stays here: only
+        // on the default if its device went, and waits here meanwhile; a
+        // capture on the default is opened again the same way when the
+        // system's default microphone moves, as an open track stays on
+        // its device. A loopback stream whose sharing the user stopped stays here: only
         // a new stream made in a gesture's handler can ask again.
         maud_suspendPermission = 4,
         // The host suspended the context (maudSetContextSuspended): its
