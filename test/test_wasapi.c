@@ -501,9 +501,16 @@ static void TestLoopback(maudContext* context)
     CHECK(atomic_load(&heard.withInput) == atomic_load(&heard.count) &&
               atomic_load(&heard.wrongSize) == 0,
           "as input, in whole periods");
-    CHECK(maudDestroyStream(context, loop) == maud_success &&
-              maudDestroyStream(context, tone) == maud_success,
-          "destroy both");
+    CHECK(maudDestroyStream(context, tone) == maud_success, "the tone ends");
+    Pause(200);
+    uint32_t before = atomic_load(&heard.count);
+    atomic_store(&heard.peak, 0);
+    Pause(1000);
+    uint32_t during = atomic_load(&heard.count) - before;
+    printf("loopback in silence: %u blocks in 1 s, peak %u\n", during, atomic_load(&heard.peak));
+    CHECK(during >= 50 && atomic_load(&heard.peak) < 10,
+          "silent periods while the endpoint delivers them");
+    CHECK(maudDestroyStream(context, loop) == maud_success, "destroy it");
     def = maudDefaultStreamDef();
     def.direction = maud_directionLoopback;
     def.callback = CountBlocks;

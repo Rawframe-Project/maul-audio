@@ -43,7 +43,9 @@ extern "C"
         // what the user picks in the browser's display capture (a tab, a
         // window or the screen, with its audio where the browser gives
         // it), whatever the stream's device, and is created in a user
-        // gesture's handler, where the browser allows asking.
+        // gesture's handler, where the browser allows asking. On WASAPI
+        // (Windows 10 1703 and later) its blocks pause while the device
+        // plays nothing: Windows delivers no packets then.
         maud_directionLoopback = 3,
     };
 

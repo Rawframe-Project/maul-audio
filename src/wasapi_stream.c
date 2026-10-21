@@ -217,9 +217,10 @@ static HRESULT Drain(maudWasapiStream* entry)
 }
 
 // Runs in the MTA under MMCSS: fills a render buffer before starting,
-// then serves each period until the stop event or a failure. Before
-// Windows 10 1703 a loopback client gets no events, so a loopback stream
-// also drains each period on a timer.
+// then serves each period until the stop event or a failure. A loopback
+// client gets its events from Windows 10 1703 on, the oldest Windows in
+// support; while its endpoint plays nothing it gets none, and its stream
+// pauses.
 static void Serve(maudWasapiStream* entry)
 {
     bool objects = entry->objects.stream != nullptr;
@@ -232,14 +233,8 @@ static void Serve(maudWasapiStream* entry)
                          : IAudioClient_Start(entry->client);
     }
     HANDLE events[2] = {entry->stopEvent, entry->bufferEvent};
-    const maudStreamFormat* format = &entry->core->format;
-    DWORD period = (DWORD)((uint64_t)format->periodFrames * 1000 / format->sampleRate);
-    DWORD wait =
-        entry->core->def.direction == maud_directionLoopback ? (period > 0 ? period : 1) : INFINITE;
-    DWORD woke = 0;
     while (SUCCEEDED(result) &&
-           ((woke = WaitForMultipleObjects(2, events, FALSE, wait)) == WAIT_OBJECT_0 + 1 ||
-            woke == WAIT_TIMEOUT))
+           WaitForMultipleObjects(2, events, FALSE, INFINITE) == WAIT_OBJECT_0 + 1)
     {
         result = output ? Fill(entry) : Drain(entry);
     }
