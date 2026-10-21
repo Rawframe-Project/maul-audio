@@ -125,6 +125,10 @@ gain.48k.silent.us 3.725 7
 # converted to integers and back at 5 us.
 stream.render.us 0.093 2
 stream.objects.us 2.21 10
+# A duplex block, fed and rendered across the ring between its halves,
+# recorded 2026-10-21 at a load of 40 (the stereo row read 0.114 then),
+# aims at the stereo block's 2 us.
+stream.duplex.us 0.272 2
 convert.int16.us 1.392 5
 convert.int32.us 1.54 5
 # The guarded control calls (bench_control), recorded 2026-10-19: the
