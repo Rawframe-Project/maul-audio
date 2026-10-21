@@ -162,6 +162,59 @@ static void TestBothInOneCallback(void)
     CHECK(s_live == 0, "every block returned");
 }
 
+// Frames keep their order across the ring's wrap, on both sides. Both
+// halves move whole periods, and a period of 48 frames does not divide
+// the ring (eight periods rounded up to 512 frames), so the writes and
+// the reads meet its end inside a period. Each frame carries its index
+// plus one (left) and its negation (right): a 0 is silence the ring made
+// up, before the first period arrived.
+static void TestAcrossTheWrap(void)
+{
+    enum
+    {
+        STEP = 48,
+        STEPS = 40
+    };
+    maudContext* context = OfflineContext();
+    Echo echo = {0};
+    maudStreamDef def = DuplexDef(&echo);
+    def.periodFrames = STEP;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
+              maudStartStream(context, stream) == maud_success,
+          "a duplex stream of 48-frame periods");
+    float in[2 * STEP];
+    float out[2 * STEP];
+    uint32_t fed = 0;
+    uint32_t next = 1;
+    uint32_t silent = 0;
+    bool ordered = true;
+    for (int step = 0; step < STEPS; ++step)
+    {
+        for (uint32_t i = 0; i < STEP; ++i)
+        {
+            fed++;
+            in[2 * i] = (float)fed;
+            in[2 * i + 1] = -(float)fed;
+        }
+        CHECK(maudFeedStream(context, stream, in, STEP) == maud_success &&
+                  maudRenderStream(context, stream, out, STEP) == maud_success,
+              "fed and rendered");
+        for (uint32_t i = 0; i < STEP; ++i)
+        {
+            if (out[2 * i] == 0.0f && out[2 * i + 1] == 0.0f && next == 1)
+            {
+                silent++;
+                continue;
+            }
+            ordered = ordered && out[2 * i] == (float)next && out[2 * i + 1] == -(float)next;
+            next++;
+        }
+    }
+    CHECK(ordered && silent <= STEP && next > 3 * 512, "every frame in order across the wraps");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 static void TestDefs(void)
 {
     maudContext* context = OfflineContext();
@@ -207,6 +260,7 @@ static void TestStopsBothHalves(void)
 int main(void)
 {
     TestBothInOneCallback();
+    TestAcrossTheWrap();
     TestDefs();
     TestStopsBothHalves();
     return s_failures == 0 ? 0 : 1;

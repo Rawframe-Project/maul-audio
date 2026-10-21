@@ -3,7 +3,9 @@
 //
 // The stream path's own cost per 10 ms block at 48 kHz, the host's
 // callback doing next to nothing: an offline stereo stream rendered, an
-// offline object stream with 32 active objects rendered, and the
+// offline object stream with 32 active objects rendered, an offline
+// duplex stream fed a block of input and rendered (its input queued in
+// the ring between the halves and taken back out), and the
 // conversion of a stereo block to 16- and 32-bit integers and back, as
 // the ALSA and WASAPI paths convert for devices that take integers.
 // Prints the best of five runs in microseconds per block, each row
@@ -29,6 +31,7 @@
 #define OBJECTS 32
 
 static float s_frames[2 * BLOCK];
+static float s_input[2 * BLOCK];
 static float s_objectFrames[OBJECTS][BLOCK];
 static int32_t s_integers[2 * BLOCK];
 
@@ -102,6 +105,51 @@ static void Render(bool objects)
     (void)maudDestroyContext(context);
 }
 
+// A duplex stream's block: the input half fed, the ring between the
+// halves crossed, the output half rendered with the input beside it.
+static void Duplex(void)
+{
+    maudContextDef cd = maudDefaultContextDef();
+    cd.backend = maud_backendOffline;
+    maudContext* context = nullptr;
+    if (maudCreateContext(&cd, &context) != maud_success)
+    {
+        return;
+    }
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = maud_directionDuplex;
+    def.mode = maud_modePull;
+    def.periodFrames = BLOCK;
+    def.callback = Touch;
+    maudStreamId stream = {0, 0};
+    if (maudCreateStream(context, &def, &stream) != maud_success ||
+        maudStartStream(context, stream) != maud_success)
+    {
+        (void)maudDestroyContext(context);
+        return;
+    }
+    double best = 1e9;
+    for (int run = 0; run < 5; ++run)
+    {
+        double start = Seconds();
+        for (int b = 0; b < BLOCKS; ++b)
+        {
+            if (maudFeedStream(context, stream, s_input, BLOCK) != maud_success ||
+                maudRenderStream(context, stream, s_frames, BLOCK) != maud_success)
+            {
+                (void)maudDestroyContext(context);
+                return;
+            }
+        }
+        double elapsed = Seconds() - start;
+        best = elapsed < best ? elapsed : best;
+    }
+    double micro = best / BLOCKS * 1e6;
+    printf("%-36s %7.3f us per 10 ms block\n", "offline duplex stream, fed and rendered", micro);
+    Against("stream.duplex.us", micro, false);
+    (void)maudDestroyContext(context);
+}
+
 static void Convert(maudSampleKind kind, const char* name, const char* key)
 {
     for (int i = 0; i < 2 * BLOCK; ++i)
@@ -129,6 +177,7 @@ int main(void)
 {
     Render(false);
     Render(true);
+    Duplex();
     Convert(maud_sampleInt16, "stereo to 16 bits and back", "convert.int16.us");
     Convert(maud_sampleInt32, "stereo to 32 bits and back", "convert.int32.us");
     return 0;

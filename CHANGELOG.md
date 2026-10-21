@@ -15,6 +15,13 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Changed
+
+- A duplex stream's ring between its halves copies a block in two runs
+  at most instead of a frame at a time: a 10 ms duplex block's own cost
+  falls about tenfold (4.7 to 0.45 us on the offline backend, under the
+  same load).
+
 ### Fixed
 
 - On the web, a capture whose track the browser ends (its microphone
