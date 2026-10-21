@@ -24,6 +24,9 @@ release could change the API, the ABI and every data format.
 
 ### Fixed
 
+- A stream thread the library starts (ALSA, PulseAudio, WASAPI) also
+  names itself before its first block; its creator named it after it
+  started, so under load its first blocks could run unnamed.
 - On the web, a capture whose track the browser ends (its microphone
   unplugged, its permission withdrawn, or a loopback stream's sharing
   stopped by the user) no longer runs on silent: a microphone's capture
