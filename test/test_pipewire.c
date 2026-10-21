@@ -1037,7 +1037,14 @@ static void TestLoopback(maudContext* context, Helper* helper)
     CHECK(maudDestroyStream(context, loop) == maud_success &&
               maudDestroyStream(context, tone) == maud_success,
           "destroy both");
+    Blocks pinnedHeard = {0};
+    maudStreamId pinned = OpenStream(context, maud_directionLoopback, plugged, &pinnedHeard);
+    CHECK(WaitForBlocks(context, &pinnedHeard, 10), "one pinned to the plugged sink runs");
     UnplugSink(helper);
+    CHECK(WaitForStream(context, maud_notifyStreamSuspended, pinned, &record) &&
+              record.reason == maud_suspendDeviceLost,
+          "it is lost with its sink");
+    CHECK(maudDestroyStream(context, pinned) == maud_success, "destroy it");
     ResetDefaults(context, helper);
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionLoopback;

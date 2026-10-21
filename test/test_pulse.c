@@ -1241,7 +1241,24 @@ static void TestLoopback(maudContext* context)
     CHECK(maudDestroyStream(context, loop) == maud_success &&
               maudDestroyStream(context, tone) == maud_success,
           "destroy both");
-    CHECK(Run("pactl unload-module module-null-sink"), "unload the silent sink");
+    Blocks pinnedHeard = {0};
+    maudStreamId pinned = OpenStream(context, maud_directionLoopback, away, &pinnedHeard);
+    CHECK(maudStartStream(context, pinned) == maud_success &&
+              WaitForBlocks(context, &pinnedHeard, 20),
+          "one pinned to the silent sink runs");
+    CHECK(Run("pactl unload-module module-null-sink"), "unplug the silent sink");
+    bool lost = false;
+    for (int tries = 0; tries < 500 && !lost; ++tries)
+    {
+        while (!lost && maudNextNotification(context, &record) == maud_success)
+        {
+            lost = record.kind == maud_notifyStreamSuspended &&
+                   record.reason == maud_suspendDeviceLost && record.stream.index1 == pinned.index1;
+        }
+        Sleep(10);
+    }
+    CHECK(lost, "it is lost with its sink");
+    CHECK(maudDestroyStream(context, pinned) == maud_success, "destroy it");
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionLoopback;
     def.callback = CountBlocks;

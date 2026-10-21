@@ -132,6 +132,53 @@ static void TestDevices(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
+// Loopback streams lose their output as output streams do: a pinned
+// one is suspended as lost and fed no more, a following one moves to the
+// new default output, or waits for one when no output is left.
+static void TestLost(void)
+{
+    maudContext* context = Offline();
+    maudDeviceId initial = {0, 0};
+    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &initial) ==
+              maud_success,
+          "the default output");
+    maudDeviceId second = AddDevice(context, maud_directionOutput);
+    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, second) == maud_success,
+          "the second output is the default");
+    Recorder pinnedHeard = {0};
+    Recorder followerHeard = {0};
+    maudStreamDef def = LoopbackDef(&pinnedHeard);
+    def.device = second;
+    maudStreamId pinned = {0, 0};
+    maudStreamId follower = {0, 0};
+    CHECK(maudCreateStream(context, &def, &pinned) == maud_success &&
+              maudStartStream(context, pinned) == maud_success,
+          "a loopback stream pinned to the second output");
+    def = LoopbackDef(&followerHeard);
+    CHECK(maudCreateStream(context, &def, &follower) == maud_success &&
+              maudStartStream(context, follower) == maud_success,
+          "one following the default");
+    CHECK(maudRemoveOfflineDevice(context, second) == maud_success, "unplug the second output");
+    maudStreamStatus status;
+    CHECK(maudGetStreamStatus(context, pinned, &status) == maud_success && status.started &&
+              status.suspension == maud_suspendDeviceLost && status.device.index1 == 0,
+          "the pinned one is lost");
+    CHECK(maudGetStreamStatus(context, follower, &status) == maud_success &&
+              status.suspension == maud_suspendNone && SameDevice(status.device, initial),
+          "the follower moved to the default output left");
+    float played[8 * 480] = {0};
+    CHECK(maudFeedStream(context, pinned, played, 480) == maud_errorState,
+          "the lost one is fed no more");
+    CHECK(maudFeedStream(context, follower, played, 480) == maud_success &&
+              followerHeard.blocks > 0 && pinnedHeard.blocks == 0,
+          "the follower is");
+    CHECK(maudRemoveOfflineDevice(context, initial) == maud_success &&
+              maudGetStreamStatus(context, follower, &status) == maud_success &&
+              status.suspension == maud_suspendNoDevice,
+          "with no output left, it waits for one");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
 static void TestRefusals(void)
 {
     maudContext* context = Offline();
@@ -179,6 +226,7 @@ int main(void)
 {
     TestFedAsInput();
     TestDevices();
+    TestLost();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
