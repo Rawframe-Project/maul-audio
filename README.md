@@ -48,14 +48,14 @@ figures in `bench/baseline.txt`), per 10 ms of 48 kHz audio:
 
 | Work | Time | One core in real time |
 |---|---|---|
-| A binaural source, moving | 17.3 us | about 580 sources |
-| A binaural source, still (with the near field) | 10.7 (13.2) us | about 940 (750) sources |
-| A source's direct effects (air absorption, a wall's transmission), moving | 8.3 us | about 1,200 sources |
-| A source into the third-order bed | 2.4 us | about 4,100 sources |
-| The bed decoded binaurally | 123 us | once per listener |
+| A binaural source, moving | 12.2 us | about 820 sources |
+| A binaural source, still (with the near field) | 6.5 (9.2) us | about 1,500 (1,100) sources |
+| A source's direct effects (air absorption, a wall's transmission), moving | 3.6 us | about 2,800 sources |
+| A source into the third-order bed | 1.3 us | about 7,700 sources |
+| The bed decoded binaurally | 72 us | once per listener |
 | A reverb | 53 us | about 190 reverbs |
-| Noise suppression, mono (16 kHz, 48 kHz) | 33, 69 us | |
-| Echo cancellation, mono (16 kHz, 48 kHz) | 38, 113 us | |
+| Noise suppression, mono (16 kHz, 48 kHz) | 20, 41 us | |
+| Echo cancellation, mono (16 kHz, 48 kHz) | 27, 76 us | |
 
 On the web, each feature linked alone costs a page, gzipped: a
 playback stream about 16 KB of WebAssembly and JavaScript, the
