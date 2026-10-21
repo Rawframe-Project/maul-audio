@@ -6,8 +6,10 @@
 // driver clicks, creates a loopback stream in the gesture's handler (the
 // browser asks for display capture only then). The driver's browser
 // picks this tab by its title, so the stream captures the page's own
-// tone, which it must hear at its level. Leaving the host's output out
-// is refused.
+// tone, which it must hear at its level. When the browser ends its
+// track (the user's "Stop sharing", which the page stands in for by
+// stopping the track and sending its ended event), the stream waits for
+// the permission withdrawn. Leaving the host's output out is refused.
 
 #include "../test_harness.h"
 #include "maul-audio/context.h"
@@ -61,6 +63,21 @@ EM_JS(void, ListenForGesture, (void),
 
 EM_JS(void, NameTab, (void), { document.title = "MaudLoopback"; });
 
+// clang-format off
+// Ends every capture's audio track as the browser would: stopped, with
+// its ended event, which a page's own stop does not send.
+EM_JS(void, EndCaptureTracks, (void), {
+    globalThis.maudWeb.nodes.forEach(function (record) {
+        if (record !== null && record.stream) {
+            record.stream.getAudioTracks().forEach(function (track) {
+                track.stop();
+                track.dispatchEvent(new Event("ended"));
+            });
+        }
+    });
+});
+// clang-format on
+
 EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 
 void TestGesture(void)
@@ -80,6 +97,11 @@ static void Finish(void)
     printf("loopback: %u blocks, peak %.3f\n", s_heard, (double)s_peak);
     CHECK(s_heard > 0, "its blocks arrive");
     CHECK(s_peak >= 0.4f && s_peak <= 0.6f, "it hears the page's tone at its level");
+    EndCaptureTracks();
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(s_context, s_loop, &status) == maud_success &&
+              status.suspension == maud_suspendPermission,
+          "its sharing stopped, it waits for the permission");
     CHECK(maudDestroyStream(s_context, s_loop) == maud_success &&
               maudDestroyStream(s_context, s_tone) == maud_success,
           "destroy both");

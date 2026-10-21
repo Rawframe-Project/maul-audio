@@ -231,6 +231,11 @@ extern "C"
         maud_suspendPolicy = 3,
         // The platform has not granted access to its device: on the web,
         // until the user allows the microphone. A refusal leaves it here.
+        // When the browser ends a capture's track (its microphone went,
+        // or its permission was withdrawn), the capture is opened again,
+        // on the default if its device went, and waits here meanwhile. A
+        // loopback stream whose sharing the user stopped stays here: only
+        // a new stream made in a gesture's handler can ask again.
         maud_suspendPermission = 4,
         // The host suspended the context (maudSetContextSuspended): its
         // application is in the background, hidden, or asleep.

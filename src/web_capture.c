@@ -151,6 +151,13 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
             return;
         }
         record.stream = stream;
+        // The browser ends the track when the user stops sharing, the
+        // microphone goes, or its permission is withdrawn.
+        stream.getAudioTracks()[0].addEventListener("ended", function () {
+            if (!record.closed) {
+                _maudWebEnded(context, slot);
+            }
+        });
         const settings = stream.getAudioTracks()[0].getSettings();
         latency = settings.latency || 0;
         const active = (settings.echoCancellation === true ? 1 : 0) |
@@ -237,6 +244,27 @@ void maudWebGranted(maudContext* context, int slotIndex, int active)
     maudAwaitPermission(context, slot, false);
     // Granted, the page sees its devices' ids and labels.
     maudWebRelistDevices(((maudWeb*)context->native)->handle);
+}
+
+// The browser ended a capture's track. A loopback stream waits for the
+// permission the user withdrew, which only a new stream made in a
+// gesture's handler can ask for again; a microphone's capture is opened
+// again, on the default if its device went, and waits for the
+// permission while it opens or if it was withdrawn.
+EMSCRIPTEN_KEEPALIVE void maudWebEnded(maudContext* context, int slotIndex);
+
+void maudWebEnded(maudContext* context, int slotIndex)
+{
+    maudWeb* web = context->native;
+    maudStreamSlot* slot = &context->streams.slots[slotIndex];
+    if (slot->core.def.direction == maud_directionLoopback)
+    {
+        maudAwaitPermission(context, slot, true);
+        return;
+    }
+    maudWebStream* entry = &web->streams[slotIndex];
+    maudWebCloseCapture(entry->node);
+    entry->node = maudWebOpenCapture(context, slot, web->handle, entry->chunk);
 }
 
 int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, float* chunk)

@@ -370,6 +370,7 @@ jobs:
           done
           for isolated in 1 0; do
             node test/web/run_page.js build page_loopback.html $isolated loopback || exit 1
+            node test/web/run_page.js build page_ended.html $isolated || exit 1
           done
       - name: Size
         # The static library's size, reported, not gated (family record

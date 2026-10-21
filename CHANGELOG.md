@@ -15,6 +15,14 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Fixed
+
+- On the web, a capture whose track the browser ends (its microphone
+  unplugged, its permission withdrawn, or a loopback stream's sharing
+  stopped by the user) no longer runs on silent: a microphone's capture
+  waits in `maud_suspendPermission` while it is opened again and
+  resumes, and a loopback stream stays there.
+
 ## [1.2.0] - 2026-10-21
 
 Loopback streams capture what an output device plays: the reference an
