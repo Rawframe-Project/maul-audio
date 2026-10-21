@@ -58,6 +58,11 @@ instanced.moving.ms 0.3446 1
 # loading at 50 us a probe (the same level in 50 ms).
 probes.bake.ms 88.72 500
 probes.load.us 0.3725 50
+# A direct step with pathing (bench_scene): 64 sources over the probe
+# set's sixteen rooms, 23 of them pathed, recorded 2026-10-21 at a load
+# of 15 (the volumetric step at its baseline then). It aims at a third of
+# a 30 Hz update, 11 ms.
+pathing.step.ms 1.81 11
 # The speaker paths (bench_speakers), recorded 2026-10-19: the best of
 # three runs at a load of 17 to 28. Panning 64 sources aims at 100 us
 # per 10 ms block, 1 % of a core; decoding a third-order bed at 20 us.
