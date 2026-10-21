@@ -22,6 +22,10 @@ release could change the API, the ABI and every data format.
   stopped by the user) no longer runs on silent: a microphone's capture
   waits in `maud_suspendPermission` while it is opened again and
   resumes, and a loopback stream stays there.
+- On the web, an output pinned to a device the browser refuses to play
+  on (`setSinkId` fails: the device left since it was listed, or the
+  page may not choose outputs) is suspended with
+  `maud_suspendDeviceLost`, where it reported itself running.
 
 ## [1.2.0] - 2026-10-21
 

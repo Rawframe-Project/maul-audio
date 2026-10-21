@@ -219,7 +219,10 @@ extern "C"
     {
         // It is not suspended.
         maud_suspendNone = 0,
-        // Its device disappeared, and it was opened on that device.
+        // Its device disappeared, and it was opened on that device. On
+        // the web, also when the browser refuses to play on it (the
+        // device left since it was listed, or the page may not choose
+        // outputs).
         maud_suspendDeviceLost = 1,
         // It follows the default device, and its direction has no device.
         maud_suspendNoDevice = 2,

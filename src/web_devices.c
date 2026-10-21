@@ -7,11 +7,14 @@
 // where AudioContext.setSinkId can choose one. The browser's "default"
 // and "communications" entries are the Default devices already, and
 // entries without an id (before the microphone is granted) name nothing.
+// A sink the browser refuses is queued the same way, and the drain
+// suspends the streams pinned to it.
 
 #include "web_devices.h"
 
 #include "context.h"
 #include "device.h"
+#include "follow.h"
 
 #include <emscripten/em_js.h>
 #include <string.h>
@@ -22,6 +25,7 @@ EM_JS(void, maudWebListDevices, (int handle), {
     const entry = globalThis.maudWeb.contexts[handle];
     entry.devices = [];
     entry.devicesNew = false;
+    entry.refusedSinks = [];
     entry.listDevices = function () {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
             return;
@@ -72,11 +76,24 @@ EM_JS(int, maudWebDeviceAt, (int handle, int index, char* key, int keyBytes, cha
     return device.kind === "audiooutput" ? 0 : 1;
 });
 
+// The browser refuses a sink it cannot play on: the device left since it
+// was listed, or the page may not choose outputs.
 EM_JS(void, maudWebSetSinkId, (int handle, const char* key), {
-    const context = globalThis.maudWeb.contexts[handle].context;
-    if (typeof context.setSinkId === "function") {
-        context.setSinkId(UTF8ToString(key)).catch(function () {});
+    const entry = globalThis.maudWeb.contexts[handle];
+    if (typeof entry.context.setSinkId === "function") {
+        const sinkId = UTF8ToString(key);
+        entry.context.setSinkId(sinkId).catch(function () { entry.refusedSinks.push(sinkId); });
     }
+});
+
+// Copies the oldest refused sink's id; 0 when none is queued.
+EM_JS(int, maudWebTakeRefusedSink, (int handle, char* key, int keyBytes), {
+    const entry = globalThis.maudWeb.contexts[handle];
+    if (entry.refusedSinks.length === 0) {
+        return 0;
+    }
+    stringToUTF8(entry.refusedSinks.shift(), key, keyBytes);
+    return 1;
 });
 
 EM_JS_DEPS(maudWebDevices, "$stringToUTF8,$UTF8ToString");
@@ -86,6 +103,16 @@ EM_JS_DEPS(maudWebDevices, "$stringToUTF8,$UTF8ToString");
 maudResult maudWebSyncDevices(maudContext* context)
 {
     maudWeb* web = context->native;
+    char refused[MAUD_WEB_KEY_BYTES];
+    while (maudWebTakeRefusedSink(web->handle, refused, sizeof(refused)) != 0)
+    {
+        maudDeviceId device =
+            maudFindDeviceByKey(context, maud_directionOutput, refused, strlen(refused));
+        if (device.index1 != 0)
+        {
+            maudLoseDevice(context, device);
+        }
+    }
     int listed = maudWebTakeDevices(web->handle);
     if (listed < 0)
     {
