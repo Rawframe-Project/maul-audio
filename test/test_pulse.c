@@ -404,8 +404,15 @@ static void TestHotplug(maudContext* context)
     CHECK(WaitFor(context, maud_notifyDefaultChanged, plugged, &record), "the default follows");
     CHECK(WaitForDefaults(context, plugged), "for both roles");
     CHECK(Run("pactl set-default-sink maud-test-sink"), "restore the default");
-    CHECK(WaitForDefaults(context, FindByKey(context, maud_directionOutput, "maud-test-sink")),
-          "and back");
+    bool back =
+        WaitForDefaults(context, FindByKey(context, maud_directionOutput, "maud-test-sink"));
+    if (!back)
+    {
+        // Whether the server or the library was late: the server's own
+        // answer beside the library's.
+        (void)Run("printf 'the server says: ' >&2; pactl get-default-sink >&2");
+    }
+    CHECK(back, "and back");
     CHECK(Run("pactl unload-module module-null-sink"), "unload it");
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, plugged, &record), "it is removed");
     CHECK(FindByKey(context, maud_directionOutput, "maud-pulse-hotplug").index1 == 0, "gone");
