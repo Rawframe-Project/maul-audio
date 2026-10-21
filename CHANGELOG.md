@@ -15,6 +15,13 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-21
+
+A patch release: no change to the source or binary interface. Device
+loss and refusal on the web are reported where they ran on silent, a
+duplex block costs a tenth of what it did, and the library's stream
+threads carry their names from their first block.
+
 ### Changed
 
 - A duplex stream's ring between its halves copies a block in two runs
