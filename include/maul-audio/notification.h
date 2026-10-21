@@ -40,6 +40,9 @@ extern "C"
         maud_notifyOverflow = 8,
         // device, of direction, now leads to form: its route changed,
         // as when headphones are plugged into the jack its port serves.
+        // On the web, the Default device of a direction reports it when
+        // the browser's default for that direction moves to another
+        // device; the Default itself stays the default.
         maud_notifyRouteChanged = 9,
         // The context's audio focus is now focus (maudRequestFocus).
         maud_notifyFocusChanged = 10,

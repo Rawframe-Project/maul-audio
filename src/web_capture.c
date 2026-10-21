@@ -269,10 +269,6 @@ void maudWebEnded(maudContext* context, int slotIndex)
 void maudWebFollowDefaultInput(maudContext* context)
 {
     maudWeb* web = context->native;
-    if (maudWebTakeDefaultInputMoved(web->handle) == 0)
-    {
-        return;
-    }
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
         maudStreamSlot* slot = &context->streams.slots[i];

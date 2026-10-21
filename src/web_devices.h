@@ -23,8 +23,12 @@ void maudWebStopListing(int handle);
 // arrived; the two Default devices stay.
 maudResult maudWebSyncDevices(maudContext* context);
 
-// 1 once after the browser's default microphone moved to another device.
-int maudWebTakeDefaultInputMoved(int handle);
+// 1 once after a direction's default moved to another device.
+int maudWebTakeDefaultMoved(int handle, int direction);
+
+// Once after the browser's default of a direction moved to another
+// device, posts the Default stand-in's route change and returns true.
+bool maudWebDefaultMoved(maudContext* context, maudDirection direction);
 
 // 1 if a capture node's track is on another device than the default
 // microphone.

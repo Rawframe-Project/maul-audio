@@ -20,8 +20,8 @@ int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, f
 // Disconnects a capture node and stops its track.
 void maudWebCloseCapture(int node);
 
-// Once the browser's default microphone moved, opens again each capture
-// on the default whose track is on another device.
+// Opens again each capture on the default whose track is on another
+// device than the browser's default microphone, once it moved.
 void maudWebFollowDefaultInput(maudContext* context);
 
 #endif // MAUL_AUDIO_SRC_WEB_CAPTURE_H

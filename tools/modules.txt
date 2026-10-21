@@ -127,7 +127,7 @@ wasapi_stream: clock context context_core follow period retry sample_convert thr
 wasapi_voice: context_core voice wasapi_core
 watertight:
 web_capture: clock context context_core follow period thread voice web_core web_devices xrun
-web_devices: context context_core device follow web_core
+web_devices: context context_core device follow notify web_core
 web_core: context_core device
 worker:
 xrun: context_core

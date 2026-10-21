@@ -8,16 +8,18 @@
 // and "communications" entries are the Default devices already, and
 // entries without an id (before the microphone is granted) name nothing.
 // A sink the browser refuses is queued the same way, and the drain
-// suspends the streams pinned to it. The default microphone's group is
+// suspends the streams pinned to it. Each direction's default group is
 // kept from each list, the "default" entry's where the browser lists one
-// and the first input's otherwise, and a change of it is marked: an open
-// track stays on its device when the system's default moves.
+// and the first device's otherwise, and a change of it is marked: the
+// Default stand-in then leads elsewhere, and an open track stays on its
+// device when the system's default microphone moves.
 
 #include "web_devices.h"
 
 #include "context.h"
 #include "device.h"
 #include "follow.h"
+#include "notify.h"
 
 #include <emscripten/em_js.h>
 #include <string.h>
@@ -29,8 +31,8 @@ EM_JS(void, maudWebListDevices, (int handle), {
     entry.devices = [];
     entry.devicesNew = false;
     entry.refusedSinks = [];
-    entry.defaultInputGroup = "";
-    entry.defaultInputMoved = false;
+    entry.defaultGroups = ["", ""];
+    entry.defaultMoved = [false, false];
     entry.listDevices = function () {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
             return;
@@ -43,18 +45,20 @@ EM_JS(void, maudWebListDevices, (int handle), {
                        (device.kind === "audioinput" || (outputs && device.kind === "audiooutput"));
             });
             entry.devicesNew = true;
-            const inputs = list.filter(function (device) {
-                return device.kind === "audioinput" && device.deviceId !== "";
+            ["audiooutput", "audioinput"].forEach(function (kind, direction) {
+                const of = list.filter(function (device) {
+                    return device.kind === kind && device.deviceId !== "";
+                });
+                const first = of.find(function (device) { return device.deviceId === "default"; }) || of[0];
+                const group = first ? first.groupId : "";
+                const known = entry.defaultGroups[direction];
+                if (group !== "" && known !== "" && group !== known) {
+                    entry.defaultMoved[direction] = true;
+                }
+                if (group !== "") {
+                    entry.defaultGroups[direction] = group;
+                }
             });
-            const first = inputs.find(function (device) { return device.deviceId === "default"; }) ||
-                          inputs[0];
-            const group = first ? first.groupId : "";
-            if (group !== "" && entry.defaultInputGroup !== "" && group !== entry.defaultInputGroup) {
-                entry.defaultInputMoved = true;
-            }
-            if (group !== "") {
-                entry.defaultInputGroup = group;
-            }
         }, function () {});
     };
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -113,11 +117,11 @@ EM_JS(int, maudWebTakeRefusedSink, (int handle, char* key, int keyBytes), {
     return 1;
 });
 
-// 1 once if the default microphone's group changed since the last call.
-EM_JS(int, maudWebTakeDefaultInputMoved, (int handle), {
+// 1 once if a direction's default group changed since the last call.
+EM_JS(int, maudWebTakeDefaultMoved, (int handle, int direction), {
     const entry = globalThis.maudWeb.contexts[handle];
-    const moved = entry.defaultInputMoved;
-    entry.defaultInputMoved = false;
+    const moved = entry.defaultMoved[direction];
+    entry.defaultMoved[direction] = false;
     return moved ? 1 : 0;
 });
 
@@ -125,7 +129,7 @@ EM_JS(int, maudWebTakeDefaultInputMoved, (int handle), {
 // microphone's; 0 while its track has not arrived or either is unknown.
 EM_JS(int, maudWebCaptureOffDefault, (int handle, int node), {
     const record = globalThis.maudWeb.nodes[node];
-    const group = globalThis.maudWeb.contexts[handle].defaultInputGroup;
+    const group = globalThis.maudWeb.contexts[handle].defaultGroups[1];
     if (!record || !record.stream || group === "") {
         return 0;
     }
@@ -178,6 +182,27 @@ maudResult maudWebSyncDevices(maudContext* context)
         };
     }
     return maudSyncDevices(context, web->specs, count, "default");
+}
+
+bool maudWebDefaultMoved(maudContext* context, maudDirection direction)
+{
+    maudWeb* web = context->native;
+    if (maudWebTakeDefaultMoved(web->handle, (int)direction) == 0)
+    {
+        return false;
+    }
+    maudDeviceId device = maudFindDeviceByKey(context, direction, "default", 7);
+    const maudDeviceSlot* slot = maudFindDevice(context, device);
+    if (slot != nullptr)
+    {
+        maudPostNotification(context, &(maudNotification){
+                                          .kind = maud_notifyRouteChanged,
+                                          .direction = direction,
+                                          .device = device,
+                                          .form = slot->info.form,
+                                      });
+    }
+    return true;
 }
 
 // The key of a device, or "" for Default or a device that is gone.

@@ -20,6 +20,9 @@ release could change the API, the ABI and every data format.
 - Web: a capture on the default device moves to the new default
   microphone when the system's default changes; browsers leave an open
   track on its device.
+- Web: the Default device of a direction reports a route change when
+  the browser's default output or microphone moves, as the default
+  does not change.
 
 ## [1.2.1] - 2026-10-21
 
