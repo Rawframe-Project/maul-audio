@@ -15,6 +15,13 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Added
+
+- `sample_devices` captures the default input with `capture` as its
+  second argument, printing each second the frames and their peak, and
+  builds as a page on the web, where it runs with the capture from a
+  click; the device checklist gains the web's steps.
+
 ### Fixed
 
 - Web: a capture on the default device moves to the new default

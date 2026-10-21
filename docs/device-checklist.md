@@ -13,6 +13,7 @@ result goes in the release notes.
 | PulseAudio | a sink loaded and unloaded with `pactl` (`test_pulse`) | yes, with `pactl` | the server stopped and started: devices keep their ids, streams wait and resume; away past ten seconds, the devices go (`test_pulse`) | a playing and a stopped stream's node destroyed, both rebuilt (`test_pulse`) |
 | ALSA | made-up endpoint lists, and card nodes a test directory gains and loses (`test_alsa_hotplug`) | not reported by ALSA | none (no service) | the default PCM's stream ended at its PulseAudio server, the PCM recovered (`test_alsa`) |
 | Core Audio | an aggregate device over BlackHole made and destroyed (`test_coreaudio`) | yes, the system default set to it and back | `coreaudiod` killed under a running stream (`test_coreaudio`, macOS cell) | not tested; the backend listens for the device's loss and the service's restart, not for a unit stopped from outside |
+| Web | the browser's device list changed by the page (`page_web`, `page_sink`) | a "default" entry of another group and a devicechange, standing in for the system (`page_default`) | none (no service) | the track stopped with its ended event, a sink the browser refuses (`page_ended`, `page_sink`) |
 | WASAPI | the notification callbacks called by the test; streams moved between the endpoints there are (`test_wasapi`) | the same | not on Windows; under Wine, its PulseAudio server restarted under a playing stream, which stalls with no error or notification and plays on (by hand, the test daemon) | a stream whose thread failed is opened again on a later drain, waiting longer after each failure (`test_wasapi`) |
 
 After `coreaudiod` restarts on the CI's BlackHole, a lone stream runs
@@ -26,10 +27,14 @@ audio endpoint. Wine does not enforce COM apartments.
 ## By hand, before a release
 
 Use a build with tests (`ctest` passes first). Run `sample_devices
-600` (samples/devices.c): it lists the devices, plays a quiet tone on
-the default output, and prints every notification with its kind,
-device and stream, the stream's latency when it moves, and its
-underrun count when it grows.
+600 capture` (samples/devices.c): it lists the devices, plays a quiet
+tone on the default output, captures the default input, and prints
+every notification with its kind, device and stream, the stream's
+latency when it moves by more than 100 ms, its underrun count when it
+grows, and each second the frames captured and their peak. On the web
+it builds as `sample_devices.html`; serve its directory from
+localhost (`python3 -m http.server`), open the page, allow the
+microphone and click it: it runs ten minutes with the capture.
 
 On each platform, with two outputs at least (built-in speakers and a
 USB or Bluetooth headset):
@@ -85,6 +90,22 @@ USB or Bluetooth headset):
    browser's "Stop sharing": the stream reports
    `maud_suspendPermission`; sharing a window, or anything in a
    browser that shares no audio, leaves it there from the start.
+
+9. The web, in Chrome, Firefox and Safari (the tests stand in for the
+   browser; these steps check what a real one does), with the page
+   playing and capturing:
+   - Change the system's default microphone. Expect `route changed`
+     for the input's Default, then the capture's `stream suspended`
+     (reason 4) and `stream resumed`, and its peak following the new
+     microphone. Change the default output: expect `route changed` for
+     the output's Default and the tone on the new output.
+   - Unplug the microphone the capture is on, or withdraw the page's
+     microphone permission in the address bar: expect `stream
+     suspended` (reason 4); with another microphone left, `stream
+     resumed` on it.
+   - Where outputs are listed (Chrome), plug an output in and out:
+     expect `device added` and `device removed` for it, and the tone
+     staying on the default.
 
 Record for each step: the platform and version, the devices, the
 notifications seen, and anything else heard (a click, a gap, a stuck

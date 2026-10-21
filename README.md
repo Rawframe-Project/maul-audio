@@ -80,7 +80,9 @@ part alone. Neither part's code uses the other's, so a host links only
 what it uses.
 
 Two samples show the parts in use: `sample_devices` lists the devices,
-plays a tone on the default output and prints every notification;
+plays a tone on the default output and prints every notification,
+with the default input's capture on request (and always on the web,
+where it builds as a page);
 `sample_binaural` renders a source circling the listener to a WAV file
 with the shipped HRTF set, without a device.
 

@@ -5,6 +5,11 @@ if(MAUL_AUDIO_DEVICE)
     add_executable(sample_devices devices.c)
     target_link_libraries(sample_devices PRIVATE maul-audio)
     maul_apply_flags(sample_devices)
+    if(EMSCRIPTEN)
+        # A page that prints into its own text box; served from
+        # localhost or https, as the microphone needs.
+        set_target_properties(sample_devices PROPERTIES SUFFIX ".html")
+    endif()
 endif()
 
 if(MAUL_AUDIO_SPATIAL)

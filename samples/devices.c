@@ -3,10 +3,13 @@
 //
 // Lists the devices, plays a quiet tone on the default output, and
 // prints every notification with the stream's latency, for a number of
-// seconds (the first argument, 60 by default). It is the host the
+// seconds (the first argument, 60 by default). With "capture" as the
+// second argument it also captures from the default input and prints,
+// each second, the frames captured and their peak. It is the host the
 // device checklist (docs/device-checklist.md) runs while devices are
 // plugged in and out, defaults changed and the audio service
-// restarted.
+// restarted. On the web it runs ten minutes with the capture, from the
+// first click on the page, which lets the browser start the sound.
 
 #define _POSIX_C_SOURCE 200809L
 
@@ -17,10 +20,16 @@
 #include "maul-audio/stream.h"
 
 #include <math.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-#if defined(_WIN32)
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/em_js.h>
+#include <emscripten/emscripten.h>
+#include <emscripten/eventloop.h>
+#elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 static void Pause(int milliseconds)
@@ -51,6 +60,29 @@ static void Tone(const maudStreamBlock* block, void* user)
             block->output[(size_t)i * channels + c] = value;
         }
     }
+}
+
+// What the capture brought since the last report: frames, and the peak
+// in millionths of full scale.
+static atomic_uint_least64_t s_capturedFrames;
+static atomic_uint_least32_t s_capturedPeak;
+
+static void Capture(const maudStreamBlock* block, void* user)
+{
+    (void)user;
+    uint32_t samples = block->frameCount * maudGetLayoutChannelCount(block->layout);
+    float peak = 0.0f;
+    for (uint32_t i = 0; i < samples; ++i)
+    {
+        float value = fabsf(block->input[i]);
+        peak = value > peak ? value : peak;
+    }
+    uint32_t scaled = (uint32_t)(fminf(peak, 1.0f) * 1e6f);
+    uint32_t seen = atomic_load(&s_capturedPeak);
+    while (scaled > seen && !atomic_compare_exchange_weak(&s_capturedPeak, &seen, scaled))
+    {
+    }
+    atomic_fetch_add(&s_capturedFrames, block->frameCount);
 }
 
 static void PrintDevice(const maudContext* context, maudDeviceId id)
@@ -132,65 +164,145 @@ static const char* KindName(maudNotificationKind kind)
     return "unknown";
 }
 
+// The run's state, stepped every 50 ms.
+static maudContext* s_context;
+static maudStreamId s_stream;
+static maudStreamId s_capture;
+static int s_ticks;
+static int s_tick;
+static int64_t s_lastLatency = -1;
+static uint64_t s_lastUnderruns;
+
+// One step: the notifications, the latency and underruns as they move,
+// and the capture once a second. False once the run is over.
+static bool Step(void)
+{
+    double at = s_tick / 20.0;
+    maudNotification record;
+    while (maudNextNotification(s_context, &record) == maud_success)
+    {
+        printf("%6.2f s  %-22s device %u.%u, stream %u, reason %u, %u Hz\n", at,
+               KindName(record.kind), record.device.index1, record.device.generation,
+               record.stream.index1, (unsigned)record.reason, record.sampleRate);
+    }
+    maudStreamClock clock = {0};
+    // The latency when first known, then each time it moves by more
+    // than 100 ms: a Bluetooth route adds hundreds, and the web's moves
+    // by tens as its buffers fill.
+    if (maudGetStreamClock(s_context, s_stream, &clock) == maud_success &&
+        clock.hostNanoseconds != 0 &&
+        (s_lastLatency < 0 || llabs(clock.latencyNanoseconds - s_lastLatency) > 100000000))
+    {
+        printf("%6.2f s  latency %.1f ms\n", at, clock.latencyNanoseconds / 1e6);
+        s_lastLatency = clock.latencyNanoseconds;
+    }
+    // Underruns as the platform reveals them.
+    maudStreamStatus status = {0};
+    if (maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+        status.underruns != s_lastUnderruns)
+    {
+        printf("%6.2f s  underruns %llu\n", at, (unsigned long long)status.underruns);
+        s_lastUnderruns = status.underruns;
+    }
+    if (s_capture.index1 != 0 && s_tick % 20 == 19)
+    {
+        unsigned long long frames = atomic_exchange(&s_capturedFrames, 0);
+        double peak = atomic_exchange(&s_capturedPeak, 0) / 1e6;
+        printf("%6.2f s  captured %llu frames, peak %.1f dBFS\n", at, frames,
+               peak > 0.0 ? 20.0 * log10(peak) : -120.0);
+    }
+    return ++s_tick < s_ticks;
+}
+
+static void Finish(void)
+{
+    if (s_capture.index1 != 0)
+    {
+        (void)maudDestroyStream(s_context, s_capture);
+    }
+    (void)maudDestroyStream(s_context, s_stream);
+    (void)maudDestroyContext(s_context);
+    printf("Done.\n");
+}
+
+#if defined(__EMSCRIPTEN__)
+static long s_interval;
+
+static void StepOnTheWeb(void* user)
+{
+    (void)user;
+    if (!Step())
+    {
+        emscripten_clear_interval(s_interval);
+        Finish();
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE void SampleClicked(void);
+
+void SampleClicked(void)
+{
+    (void)maudResumeContext(s_context);
+}
+
+EM_JS(void, ListenForClicks, (void),
+      { document.addEventListener("click", function() { _SampleClicked(); }); });
+#endif
+
+// Opens and starts a stream on the default device of its direction.
+static maudResult Open(maudDirection direction, maudStreamCallback callback, maudStreamId* out)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.direction = direction;
+    def.callback = callback;
+    maudResult result = maudCreateStream(s_context, &def, out);
+    return result == maud_success ? maudStartStream(s_context, *out) : result;
+}
+
 int main(int argc, char** argv)
 {
+#if defined(__EMSCRIPTEN__)
+    (void)argc;
+    (void)argv;
+    int seconds = 600;
+    bool capture = true;
+#else
     int seconds = argc > 1 ? atoi(argv[1]) : 60;
+    bool capture = argc > 2 && strcmp(argv[2], "capture") == 0;
+#endif
+    s_ticks = seconds * 20;
     maudContextDef def = maudDefaultContextDef();
-    maudContext* context = nullptr;
-    maudResult result = maudCreateContext(&def, &context);
+    maudResult result = maudCreateContext(&def, &s_context);
     if (result != maud_success)
     {
         fprintf(stderr, "no context: %s\n", maudResultName(result));
         return 1;
     }
-    ListDevices(context);
-    maudStreamDef streamDef = maudDefaultStreamDef();
-    streamDef.callback = Tone;
-    maudStreamId stream = {0, 0};
-    result = maudCreateStream(context, &streamDef, &stream);
-    if (result == maud_success)
-    {
-        result = maudStartStream(context, stream);
-    }
+    ListDevices(s_context);
+    result = Open(maud_directionOutput, Tone, &s_stream);
     if (result != maud_success)
     {
         fprintf(stderr, "no stream: %s\n", maudResultName(result));
-        (void)maudDestroyContext(context);
+        (void)maudDestroyContext(s_context);
         return 1;
     }
-    printf("Playing a tone on the default output for %d s.\n", seconds);
-    int64_t lastLatency = -1;
-    uint64_t lastUnderruns = 0;
-    for (int tick = 0; tick < seconds * 20; ++tick)
+    if (capture && (result = Open(maud_directionInput, Capture, &s_capture)) != maud_success)
     {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            printf("%6.2f s  %-22s device %u.%u, stream %u, reason %u, %u Hz\n", tick / 20.0,
-                   KindName(record.kind), record.device.index1, record.device.generation,
-                   record.stream.index1, (unsigned)record.reason, record.sampleRate);
-        }
-        maudStreamClock clock = {0};
-        // The latency when first known, then each time it moves by more
-        // than 5 ms (a Bluetooth route adds hundreds).
-        if (maudGetStreamClock(context, stream, &clock) == maud_success &&
-            clock.hostNanoseconds != 0 &&
-            (lastLatency < 0 || llabs(clock.latencyNanoseconds - lastLatency) > 5000000))
-        {
-            printf("%6.2f s  latency %.1f ms\n", tick / 20.0, clock.latencyNanoseconds / 1e6);
-            lastLatency = clock.latencyNanoseconds;
-        }
-        // Underruns as the platform reveals them.
-        maudStreamStatus status = {0};
-        if (maudGetStreamStatus(context, stream, &status) == maud_success &&
-            status.underruns != lastUnderruns)
-        {
-            printf("%6.2f s  underruns %llu\n", tick / 20.0, (unsigned long long)status.underruns);
-            lastUnderruns = status.underruns;
-        }
+        fprintf(stderr, "no capture: %s\n", maudResultName(result));
+        s_capture = (maudStreamId){0, 0};
+    }
+    printf("Playing a tone on the default output%s for %d s.\n",
+           s_capture.index1 != 0 ? " and capturing the default input" : "", seconds);
+#if defined(__EMSCRIPTEN__)
+    printf("Click the page to let the browser start the sound.\n");
+    ListenForClicks();
+    s_interval = emscripten_set_interval(StepOnTheWeb, 50.0, nullptr);
+#else
+    while (Step())
+    {
         Pause(50);
     }
-    (void)maudDestroyStream(context, stream);
-    (void)maudDestroyContext(context);
+    Finish();
+#endif
     return 0;
 }
