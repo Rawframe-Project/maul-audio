@@ -26,10 +26,11 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define GRID 32
-#define ROOM 4.0f
-#define TALL 3.0f
-#define RAYS 200000
+#define GRID   32
+#define ROOM   4.0f
+#define TALL   3.0f
+#define RAYS   200000
+#define PATHED 64
 
 static maudVector3* s_vertices;
 static uint32_t* s_indices;
@@ -226,6 +227,54 @@ static void Steps(maudAcousticScene* scene)
 // A probe set generated over a 16 by 16 m corner of the level on a 4 m
 // grid, baked once, saved, and loaded into another spatializer: the bake
 // and the load per probe, the load the best of seven.
+// A direct step with pathing: sources over the probe set's sixteen
+// rooms, the listener in a corner one, so most are occluded and look for
+// a path through the doorways over the set's probes.
+static void Pathing(maudSpatializer* s, maudProbeSetId set)
+{
+    maudSourceDef sd = maudDefaultSourceDef();
+    sd.pathing = true;
+    maudSourceId sources[PATHED];
+    for (int i = 0; i < PATHED; ++i)
+    {
+        maudPose pose = {{Uniform(0.5f, 15.5f), 1.5f, Uniform(0.5f, 15.5f)},
+                         {0.0f, 0.0f, 0.0f, 1.0f}};
+        if (maudCreateSource(s, &sd, &sources[i]) != maud_success ||
+            maudSetSourcePose(s, sources[i], &pose) != maud_success)
+        {
+            return;
+        }
+    }
+    maudPose listener = {{2.0f, 1.6f, 2.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    if (maudSetPathing(s, set) != maud_success || maudSimulateDirect(s, &listener) != maud_success)
+    {
+        return;
+    }
+    double best = 1e9;
+    for (int run = 0; run < 5; ++run)
+    {
+        double start = Seconds();
+        for (int step = 0; step < 10; ++step)
+        {
+            if (maudSimulateDirect(s, &listener) != maud_success)
+            {
+                return;
+            }
+        }
+        double elapsed = (Seconds() - start) / 10;
+        best = elapsed < best ? elapsed : best;
+    }
+    int pathed = 0;
+    maudDirectResult result;
+    (void)maudLatchResults(s);
+    for (int i = 0; i < PATHED; ++i)
+    {
+        pathed += maudGetDirectResult(s, sources[i], &result) == maud_success && result.pathed;
+    }
+    printf("pathing: %d sources, %d pathed, %.2f ms per direct step\n", PATHED, pathed, best * 1e3);
+    Against("pathing.step.ms", best * 1e3, false);
+}
+
 static void Probes(maudAcousticScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
@@ -233,6 +282,7 @@ static void Probes(maudAcousticScene* scene)
     def.closestHit = CountClosest;
     def.rayContext = scene;
     def.probeSetCapacity = 1;
+    def.maxPaths = PATHED;
     maudSpatializer* s = nullptr;
     maudSpatializer* loader = nullptr;
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
@@ -287,6 +337,7 @@ static void Probes(maudAcousticScene* scene)
            info.probes, info.links, size, bake / info.probes * 1e3, best / info.probes * 1e6);
     Against("probes.bake.ms", bake / info.probes * 1e3, false);
     Against("probes.load.us", best / info.probes * 1e6, false);
+    Pathing(s, set);
     free(bytes);
     maudDestroySpatializer(loader);
     maudDestroySpatializer(s);
