@@ -38,6 +38,9 @@ jobs:
           python3 tools/check_lengths.py
           python3 tools/check_guide.py
           python3 tools/check_litmus.py
+      - name: README cost table
+        # The table's figures are bench/baseline.txt's (tools/cost_table.py).
+        run: python3 tools/cost_table.py --check
       - name: clang-tidy
         run: |
           cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
