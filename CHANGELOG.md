@@ -15,6 +15,14 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-22
+
+A patch release: no change to the source or binary interface. On the
+web, a capture on the default follows the system's default microphone
+and the Default devices report when the browser's defaults move; the
+devices sample captures and runs as a page, for the web's checks by
+hand.
+
 ### Added
 
 - `sample_devices` captures the default input with `capture` as its
