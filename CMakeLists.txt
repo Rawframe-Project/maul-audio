@@ -638,9 +638,11 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
             target_sources(test_wasapi_format PRIVATE src/wasapi_format.c)
         endif()
     endif()
-    # The web backend's transport on a simulated Web Audio, under Node.
+    # The web backend's transport and capture on a simulated Web Audio,
+    # under Node.
     if(EMSCRIPTEN)
         maul_add_test(web_transport)
+        maul_add_test(web_capture)
     endif()
     # The web backend's page, run in a browser by test/web/run_page.js,
     # not by CTest; its name keeps it out of the test_*.js runs.
