@@ -13,19 +13,19 @@
 
 void maudWebResetClock(maudWebClock* clock)
 {
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < MAUD_WEB_CLOCK_SPANS; ++i)
     {
-        clock->second[i] = INT64_MIN;
+        clock->span[i] = INT64_MIN;
     }
 }
 
 int64_t maudWebEarliest(maudWebClock* clock, int64_t origin, int64_t now)
 {
-    int64_t second = now / 1000000000LL;
-    int slot = (int)(second % 5);
-    if (clock->second[slot] != second)
+    int64_t span = now / (MAUD_WEB_CLOCK_SPAN_SECONDS * 1000000000LL);
+    int slot = (int)(span % MAUD_WEB_CLOCK_SPANS);
+    if (clock->span[slot] != span)
     {
-        clock->second[slot] = second;
+        clock->span[slot] = span;
         clock->earliest[slot] = origin;
     }
     else if (origin < clock->earliest[slot])
@@ -33,9 +33,9 @@ int64_t maudWebEarliest(maudWebClock* clock, int64_t origin, int64_t now)
         clock->earliest[slot] = origin;
     }
     int64_t least = origin;
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < MAUD_WEB_CLOCK_SPANS; ++i)
     {
-        if (clock->second[i] > second - 5 && clock->earliest[i] < least)
+        if (clock->span[i] > span - MAUD_WEB_CLOCK_SPANS && clock->earliest[i] < least)
         {
             least = clock->earliest[i];
         }

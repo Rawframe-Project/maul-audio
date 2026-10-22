@@ -17,6 +17,14 @@ release could change the API, the ABI and every data format.
 
 ### Fixed
 
+- Web: the output timestamps a context gives in its first quarter
+  second run early, by up to 450 ms, and some of them passed the
+  library's age check (250 ms), so a clock could start that far early;
+  stamps now count once the context has run 0.25 s and while under
+  100 ms old. The clocks hold the earliest frame-0 time over 30 s where
+  they held it over 5 s: through PulseAudio the estimate comes back to
+  its low only every tens of seconds, and the held time rose with it.
+
 - Web: frames the browser loses before a stream (a starved page's
   microphone buffer) or silence it plays without the stream move frame
   0 later for good. A stamped frame-0 time 50 ms later than the held

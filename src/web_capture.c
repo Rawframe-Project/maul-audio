@@ -100,9 +100,9 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
     // that the graph processed it; deliveries come in a batch after the
     // device's burst, so the context's current time would place the frame
     // only as near as a burst. Before the first timestamp, without the
-    // method, or with a timestamp older than a quarter second or placing
-    // the capture in the future: the frames as if the last were captured
-    // now.
+    // method, in the context's first quarter second (its first stamps run
+    // early), or with a timestamp 100 ms old or placing the capture in the
+    // future: the frames as if the last were captured now.
     function deliver(frames, first) {
         if (frames <= 0) {
             return;
@@ -112,8 +112,8 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
         let ago = latency + frames / rate;
         let stamped = 0;
         const now = performance.now() / 1000;
-        if (first !== undefined && stamp && stamp.contextTime && stamp.performanceTime &&
-            now - stamp.performanceTime / 1000 <= 0.25) {
+        if (first !== undefined && stamp && stamp.contextTime >= 0.25 && stamp.performanceTime &&
+            now - stamp.performanceTime / 1000 <= 0.1) {
             const processed = stamp.performanceTime / 1000 + first / rate - stamp.contextTime -
                               entry.context.baseLatency - (entry.context.outputLatency || 0);
             if (now - processed + latency >= 0) {

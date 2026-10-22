@@ -205,18 +205,19 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
     // heard, on the page's clock. Reports come in a batch after the
     // device pulls a burst of quanta, so the context's current time,
     // which moves by those bursts, would place the frame only as near as
-    // a burst. Before the first timestamp, without the method, or with a
-    // timestamp older than a quarter second or placing the frame in the
-    // past (a starved device's): the frames queued and the context's own
+    // a burst. Before the first timestamp, without the method, in the
+    // context's first quarter second (its first stamps run early), or with
+    // a timestamp 100 ms old or placing the frame in the past (a starved
+    // device's): the frames queued and the context's own
     // latencies, the ring's as read now, a posted report's less the frames
     // rendered since it.
     function latency(frame, ahead, buffered) {
         const stamp = entry.context.getOutputTimestamp ? entry.context.getOutputTimestamp() : null;
         const now = performance.now() / 1000;
-        const heard = stamp && stamp.contextTime && stamp.performanceTime && frame !== undefined
+        const heard = stamp && stamp.contextTime >= 0.25 && stamp.performanceTime && frame !== undefined
                           ? stamp.performanceTime / 1000 + (frame + ahead) / rate - stamp.contextTime
                           : -1;
-        if (heard < now || now - stamp.performanceTime / 1000 > 0.25) {
+        if (heard < now || now - stamp.performanceTime / 1000 > 0.1) {
             const behind = frame === undefined || record.ring
                                ? 0
                                : Math.max(0, Math.round(entry.context.currentTime * rate) - frame);

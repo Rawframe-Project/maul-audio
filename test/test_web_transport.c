@@ -32,8 +32,18 @@
 // 16 ms, worklet modules evaluated from their Blob source, and ports
 // whose messages wait in two queues until the test delivers them.
 EM_JS(void, InstallWeb, (int isolated), {
-    const sim = {toMain: [], toWorklet: [], nodes: [], frame: 0, sources: {}, processors: {}, port: null, played: []};
+    // The context has run a second, past the quarter second whose stamps
+    // the library ignores.
+    const sim = {toMain: [], toWorklet: [], nodes: [], frame: 48000, sources: {}, processors: {}, port: null, played: []};
     globalThis.maudSim = sim;
+    // The page's clock is the test's: it moves only with the frames the
+    // device takes, and on from one install to the next, so the library's
+    // host clock (which reads it) and the mock's timestamps agree to the
+    // nanosecond however long the test takes to run.
+    const before = globalThis.maudClock ? globalThis.maudClock() : 0;
+    sim.offset = before + 1 - sim.frame / 48;
+    globalThis.maudClock = function () { return sim.offset + sim.frame / 48; };
+    performance.now = globalThis.maudClock;
     globalThis.maudWeb = undefined;
     globalThis.crossOriginIsolated = isolated !== 0;
     function Port(queue) { this.onmessage = null; this.peer = null; this.queue = queue; }
@@ -82,11 +92,8 @@ EM_JS(void, InstallWeb, (int isolated), {
 // Gives the context an output timestamp, or takes it away: with 1, the
 // frame rendered last is heard 40 ms from now; with 2, the timestamp is a
 // second old, as a starved device's; with 3, a fresh one 5 ms later at
-// each call, as a PulseAudio server's drifts; with 4, a 1 ms drift a call
-// on a clock that runs with the device's frames (heard times then follow
-// the frames as a real device's do, where 1 to 3 hold to the page's
-// clock, which stands still while the test pulls), moved later by
-// Jump's milliseconds.
+// each call, as a PulseAudio server's drifts; with 4, a 1 ms drift a call;
+// 1 and 4 moved later by Jump's milliseconds.
 EM_JS(void, Stamp, (int on), {
     globalThis.maudSim.base = performance.now() - globalThis.maudSim.frame / 48;
     if (on === 0) {
@@ -100,7 +107,7 @@ EM_JS(void, Stamp, (int on), {
         const sim = globalThis.maudSim;
         const step = on === 4 ? 1 : 5;
         const late = on >= 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + step) : 0;
-        const now = on === 4 ? sim.base + sim.frame / 48 + (sim.jump || 0) : performance.now();
+        const now = performance.now() + (on === 1 || on === 4 ? sim.jump || 0 : 0);
         return {contextTime: globalThis.maudSim.frame / 48000 - old,
                 performanceTime: now + 40 - old * 1000 + late};
     };
@@ -155,12 +162,29 @@ EM_JS(void, DeliverToMain, (void), {
     }
 });
 
-// Moves the frame-driven clock's heard times later by `ms` from now on,
+// A timestamp `age` seconds old (now less its performanceTime) that
+// puts the frame rendered last 100 ms from now: a consistent pair, old
+// only by its age.
+EM_JS(void, StampAged, (double age), {
+    const sim = globalThis.maudSim;
+    globalThis.AudioContext.prototype.getOutputTimestamp = function () {
+        return {contextTime: sim.frame / 48000 - age - 0.1, performanceTime: performance.now() - age * 1000};
+    };
+});
+
+// Puts the context `frame` frames into its run.
+EM_JS(void, SetFrame, (int frame), {
+    const sim = globalThis.maudSim;
+    sim.offset += (sim.frame - frame) / 48;
+    sim.frame = frame;
+});
+
+// Moves Stamp 1's and 4's heard times later by `ms` from now on,
 // as frames the device played without the stream (silence it inserted).
 EM_JS(void, Jump, (double ms), { globalThis.maudSim.jump = ms; });
 
-// Where the frame-driven clock (Stamp 4) started, in milliseconds of the
-// page's clock.
+// Where the page's clock stood at frame 0 when the timestamp was given,
+// in milliseconds: times from it depend only on the frames and drifts.
 EM_JS(double, StampBase, (void), { return globalThis.maudSim.base; });
 
 // The short count the oldest waiting report carries; -1 when none waits.
@@ -234,17 +258,16 @@ static double Heard(const maudStreamClock* clock)
 
 // A batch's report checked: the first's latency as expected, and every
 // report's frame 0 heard when the first's is, which the filter holds to,
-// or up to 2 ms earlier: a later stamp that reached the library sooner
-// on a loaded machine.
+// to a microsecond (the page's clock is the test's).
 static bool Holds(const maudStreamClock* clock, int report, int64_t expected, double* first)
 {
     double heard = Heard(clock);
     *first = report == 0 ? heard : *first;
-    bool ok = heard <= *first + 1000.0 && heard >= *first - 2e6;
+    bool ok = heard <= *first + 1000.0 && heard >= *first - 1000.0;
     if (report == 0)
     {
-        ok = clock->latencyNanoseconds >= expected - 2000000 &&
-             clock->latencyNanoseconds <= expected + 2000000;
+        ok = clock->latencyNanoseconds >= expected - 1000 &&
+             clock->latencyNanoseconds <= expected + 1000;
     }
     if (!ok)
     {
@@ -383,8 +406,7 @@ static void RunTransport(bool isolated)
 
     // A timestamp that drifts late at each report is held at the
     // earliest time frame 0 was heard, on a new route: the same figures
-    // as above. (The mock's context frames run ahead of the page's clock,
-    // so each batch's timestamps agree only among themselves.)
+    // as above.
     NewRoute();
     Stamp(3);
     Pull(BASE / QUANTUM);
@@ -550,8 +572,8 @@ static double FilterRun(bool isolated, int kind, bool route)
     DeliverOneToMain();
     maudStreamClock clock = {0};
     CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
-    // When frame 0 is heard, from the frame-driven clock's start: the
-    // pulls and the drift alone decide it, not how long the run took.
+    // When frame 0 is heard, from where the page's clock stood at frame 0
+    // when the timestamp was given: the pulls and the drift decide it.
     double heard =
         (double)clock.hostNanoseconds - (double)clock.position * 1e9 / RATE - StampBase() * 1e6;
     Stamp(0);
@@ -567,7 +589,7 @@ static void RunFilterResets(bool isolated)
     {
         double measured = FilterRun(isolated, kind, false);
         double reference = FilterRun(isolated, kind, true);
-        if (measured < reference - 1e6 || measured > reference + 1e6)
+        if (measured < reference - 1000.0 || measured > reference + 1000.0)
         {
             printf("after %s: frame 0 heard at %.0f ns, with a fresh filter at %.0f\n", kinds[kind],
                    measured, reference);
@@ -632,6 +654,110 @@ static void RunLoss(bool isolated)
     CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
 }
 
+// The filter holds the earliest frame-0 time for 30 seconds: a time
+// 30 ms later, under the bound for lost frames, is still held 10 s on,
+// and followed once the earliest has left the window, by 35 s.
+static void RunWindow(void)
+{
+    InstallWeb(0);
+    maudContextDef cdef = maudDefaultContextDef();
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context on the mock");
+    if (context == nullptr)
+    {
+        return;
+    }
+    maudStreamDef def = maudDefaultStreamDef();
+    def.layout = maud_layoutStereo;
+    def.callback = Ramp;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
+    DeliverToWorklet();
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    Stamp(1);
+    Cycle();
+    maudStreamClock clock = {0};
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    double before = Heard(&clock);
+    Jump(30.0);
+    // A cycle is 16 ms of the device's frames.
+    for (int i = 0; i < 625; ++i)
+    {
+        Cycle();
+    }
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    CHECK(Heard(&clock) <= before + 1000.0, "10 s on, the earliest is held");
+    for (int i = 0; i < 1563; ++i)
+    {
+        Cycle();
+    }
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    if (Heard(&clock) < before + 30e6 - 1000.0 || Heard(&clock) > before + 30e6 + 1000.0)
+    {
+        printf("35 s on: frame 0 %.0f ns from the earliest\n", Heard(&clock) - before);
+        CHECK(false, "35 s on, the window has moved past the earliest");
+    }
+    Jump(0.0);
+    Stamp(0);
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+}
+
+// The latency the clock tells now.
+static int64_t ToldLatency(maudContext* context, maudStreamId stream)
+{
+    maudStreamClock clock = {0};
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    return clock.latencyNanoseconds;
+}
+
+// Which timestamps count: none in the context's first quarter second
+// (its first stamps run early), none 100 ms old or more. A stamp here
+// puts frames 100 ms or more out, the queue and the context's latencies
+// under 50 ms, so the latency tells which figure the clock took.
+static void RunGuards(bool isolated)
+{
+    InstallWeb(isolated ? 1 : 0);
+    SetFrame(4800);
+    maudContextDef cdef = maudDefaultContextDef();
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context on the mock");
+    if (context == nullptr)
+    {
+        return;
+    }
+    maudStreamDef def = maudDefaultStreamDef();
+    def.layout = maud_layoutStereo;
+    def.callback = Ramp;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
+    DeliverToWorklet();
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    StampAged(0.0);
+    Cycle();
+    CHECK(ToldLatency(context, stream) < 50000000, "a tenth of a second in: no stamp counts");
+    for (int i = 0; i < 20; ++i)
+    {
+        Cycle();
+    }
+    CHECK(ToldLatency(context, stream) >= 100000000, "past a quarter second: the stamp counts");
+    // Far enough in that an old stamp's own context time is past the
+    // quarter second too.
+    for (int i = 0; i < 20; ++i)
+    {
+        Cycle();
+    }
+    StampAged(0.15);
+    Cycle();
+    CHECK(ToldLatency(context, stream) < 50000000, "a stamp 150 ms old does not count");
+    StampAged(0.06);
+    Cycle();
+    CHECK(ToldLatency(context, stream) >= 100000000, "a stamp 60 ms old counts");
+    Stamp(0);
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+}
+
 int main(void)
 {
     RunTransport(true);
@@ -640,5 +766,8 @@ int main(void)
     RunFilterResets(false);
     RunLoss(true);
     RunLoss(false);
+    RunGuards(true);
+    RunGuards(false);
+    RunWindow();
     return s_failures == 0 ? 0 : 1;
 }
