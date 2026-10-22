@@ -79,8 +79,8 @@ EM_JS(void, InstallWeb, (int isolated), {
 
 // Gives the context an output timestamp, or takes it away: with 1, the
 // frame rendered last is heard 40 ms from now; with 2, the timestamp is a
-// second old, as a starved device's; with 3, a fresh one a millisecond
-// later at each call, as a PulseAudio server's drifts.
+// second old, as a starved device's; with 3, a fresh one 5 ms later at
+// each call, as a PulseAudio server's drifts.
 EM_JS(void, Stamp, (int on), {
     if (on === 0) {
         delete globalThis.AudioContext.prototype.getOutputTimestamp;
@@ -91,7 +91,7 @@ EM_JS(void, Stamp, (int on), {
         // earlier, a second of frames before.
         const old = on === 2 ? 1 : 0;
         const sim = globalThis.maudSim;
-        const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 1) : 0;
+        const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 5) : 0;
         return {contextTime: globalThis.maudSim.frame / 48000 - old,
                 performanceTime: performance.now() + 40 - old * 1000 + late};
     };
@@ -314,7 +314,9 @@ static void RunTransport(bool isolated)
     // it writes at its own context frame plus what was queued ahead of
     // them then: here, the same queue as above, heard 40 ms after the
     // frame rendered last rather than the base and output latencies'
-    // 26 ms, whichever report of the batch is answered.
+    // 26 ms, whichever report of the batch is answered, less the page's
+    // time since the batch's first report, which the clock's filter holds
+    // to (a millisecond allowed for a slow runner).
     Stamp(1);
     Pull(BASE / QUANTUM);
     for (int report = 0; DeliverOneToMain() == 1; ++report)
@@ -322,8 +324,8 @@ static void RunTransport(bool isolated)
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
         CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
-        if (clock.latencyNanoseconds < expected - 50000 ||
-            clock.latencyNanoseconds > expected + 50000)
+        if (clock.latencyNanoseconds < expected - 1000000 ||
+            clock.latencyNanoseconds > expected + 1000000)
         {
             printf("stamped report %d: latency %lld ns, expected %lld\n", report,
                    (long long)clock.latencyNanoseconds, (long long)expected);
@@ -334,10 +336,8 @@ static void RunTransport(bool isolated)
 
     // A timestamp that drifts late at each report is held at the
     // earliest time frame 0 was heard, on a new route: the same figures
-    // as above, less the page's time since the batch's first report
-    // (under half a millisecond here). (The mock's context frames run ahead
-    // of the page's clock, so each batch's timestamps agree only among
-    // themselves.)
+    // as above, less the page's time since the batch's first report. (The mock's context frames run
+    // ahead of the page's clock, so each batch's timestamps agree only among themselves.)
     NewRoute();
     Stamp(3);
     Pull(BASE / QUANTUM);
@@ -346,8 +346,8 @@ static void RunTransport(bool isolated)
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
         CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
-        if (clock.latencyNanoseconds < expected - 500000 ||
-            clock.latencyNanoseconds > expected + 500000)
+        if (clock.latencyNanoseconds < expected - 1000000 ||
+            clock.latencyNanoseconds > expected + 1000000)
         {
             printf("drifting report %d: latency %lld ns, expected %lld\n", report,
                    (long long)clock.latencyNanoseconds, (long long)expected);

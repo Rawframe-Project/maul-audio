@@ -233,7 +233,9 @@ static void Granted(void* user)
 
     // With the context's output timestamp: the first frame delivered was
     // taken at its context frame, which the graph processed 26 ms before
-    // it is heard; the frame taken last is heard 20 ms from now.
+    // it is heard; the frame taken last is heard 20 ms from now. The
+    // clock's filter holds the batch's first report, so a later one is
+    // off by the page's time since (a millisecond allowed).
     Stamp(1);
     Pull(3);
     for (int report = 0; DeliverOneToMain() == 1; ++report)
@@ -245,7 +247,7 @@ static void Granted(void* user)
         // The first frame's distance back from the frame taken last.
         int64_t back = s_isolated ? 3 * QUANTUM : (3 - report) * QUANTUM;
         int64_t expected = back * 1000000000LL / RATE - 20000000LL + 26000000LL + LATENCY;
-        CHECK(Near(Latency(), expected, 50000, "stamped", report),
+        CHECK(Near(Latency(), expected, 1000000, "stamped", report),
               "stamped, at the context frame that took the first frame");
     }
 
