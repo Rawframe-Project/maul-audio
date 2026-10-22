@@ -37,24 +37,24 @@ int64_t maudWebEarliest(maudWebClock* clock, int64_t origin, int64_t now)
     return least;
 }
 
-int64_t maudWebFilterLatency(maudWebClock* clock, int* clockEpoch, const maudStreamCore* core,
-                             int64_t latency, int epoch, bool output)
+void maudWebStampClock(maudWebClock* clock, int* clockEpoch, maudStreamCore* core, int64_t latency,
+                       bool stamped, int epoch, bool output)
 {
-    if (epoch != *clockEpoch)
-    {
-        maudWebResetClock(clock);
-        *clockEpoch = epoch;
-    }
-    uint32_t rate = core->period.sampleRate;
-    if (rate == 0)
-    {
-        return latency;
-    }
-    uint64_t position = atomic_load_explicit(&core->position, memory_order_relaxed);
-    int64_t place = (int64_t)((double)position * 1e9 / rate);
     int64_t now = maudNowNanoseconds();
-    int64_t origin = output ? now + latency - place : now - latency - place;
-    int64_t least = maudWebEarliest(clock, origin, now);
-    int64_t filtered = output ? least + place - now : now - least - place;
-    return filtered > 0 ? filtered : 0;
+    uint32_t rate = core->period.sampleRate;
+    if (stamped && rate != 0)
+    {
+        if (epoch != *clockEpoch)
+        {
+            maudWebResetClock(clock);
+            *clockEpoch = epoch;
+        }
+        uint64_t position = atomic_load_explicit(&core->position, memory_order_relaxed);
+        int64_t place = (int64_t)((double)position * 1e9 / rate);
+        int64_t origin = output ? now + latency - place : now - latency - place;
+        int64_t least = maudWebEarliest(clock, origin, now);
+        int64_t filtered = output ? least + place - now : now - least - place;
+        latency = filtered > 0 ? filtered : 0;
+    }
+    maudStampClockAt(core, output ? now + latency : now - latency, latency);
 }

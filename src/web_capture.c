@@ -11,7 +11,6 @@
 
 #include "web_capture.h"
 
-#include "clock.h"
 #include "context.h"
 #include "follow.h"
 #include "period.h"
@@ -248,12 +247,8 @@ void maudWebCapture(maudContext* context, int slotIndex, int frames, double late
     maudPushPeriod(&core->period, web->streams[slotIndex].chunk, (uint32_t)frames);
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
     maudWebStream* stream = &web->streams[slotIndex];
-    int64_t told = (int64_t)(latency * 1e9);
-    if (stamped != 0)
-    {
-        told = maudWebFilterLatency(&stream->clock, &stream->epoch, core, told, epoch, false);
-    }
-    maudStampInputClock(core, told);
+    maudWebStampClock(&stream->clock, &stream->epoch, core, (int64_t)(latency * 1e9), stamped != 0,
+                      epoch, false);
     atomic_fetch_add_explicit(&core->position, (uint64_t)frames, memory_order_release);
 }
 
@@ -328,7 +323,6 @@ void maudWebFollowDefaultInput(maudContext* context)
 int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, float* chunk)
 {
     int index = (int)(slot - context->streams.slots);
-    maudWebResetClock(&((maudWeb*)context->native)->streams[index].clock);
     maudAwaitPermission(context, slot, true);
     char device[MAUD_WEB_KEY_BYTES] = {0};
     bool loopback = slot->core.def.direction == maud_directionLoopback;

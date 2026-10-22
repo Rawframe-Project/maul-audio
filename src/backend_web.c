@@ -15,7 +15,6 @@
 
 #include "allocator.h"
 #include "backend.h"
-#include "clock.h"
 #include "context.h"
 #include "device.h"
 #include "follow.h"
@@ -286,12 +285,8 @@ float* maudWebRender(maudContext* context, int slotIndex, int frames, double lat
     if (running)
     {
         maudPullPeriod(&core->period, chunk, (uint32_t)frames);
-        int64_t told = (int64_t)(latency * 1e9);
-        if (stamped != 0)
-        {
-            told = maudWebFilterLatency(&stream->clock, &stream->epoch, core, told, epoch, true);
-        }
-        maudStampOutputClock(core, told);
+        maudWebStampClock(&stream->clock, &stream->epoch, core, (int64_t)(latency * 1e9),
+                          stamped != 0, epoch, true);
         atomic_fetch_add_explicit(&core->position, (uint64_t)frames, memory_order_release);
     }
     else

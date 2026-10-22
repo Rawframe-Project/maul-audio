@@ -15,6 +15,13 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: a stream clock's host time is worked out against the one reading
+  of the host clock its latency was measured against; a page delayed
+  between two readings moved it by the delay, by milliseconds on a
+  loaded machine.
+
 ## [1.2.4] - 2026-10-22
 
 A patch release: no change to the source or binary interface. A failed

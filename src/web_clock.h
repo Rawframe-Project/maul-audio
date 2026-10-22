@@ -29,11 +29,13 @@ void maudWebResetClock(maudWebClock* clock);
 // nanoseconds, and returns the earliest of the last five seconds.
 int64_t maudWebEarliest(maudWebClock* clock, int64_t origin, int64_t now);
 
-// Filters a latency from the browser's timestamp for the frame at the
-// stream's position: through the earliest time frame 0 is heard (an
-// output) or was captured (an input) over the last five seconds. A route
-// epoch other than *clockEpoch starts the filter again.
-int64_t maudWebFilterLatency(maudWebClock* clock, int* clockEpoch, const maudStreamCore* core,
-                             int64_t latency, int epoch, bool output);
+// Stamps a stream's clock with a latency for the frame at its position,
+// against one reading of the host clock. A latency from the browser's
+// timestamp (stamped) goes through the earliest time frame 0 is heard
+// (an output) or was captured (an input) over the last five seconds,
+// and the host time is that frame-0 time plus the frame's place; a
+// route epoch other than *clockEpoch starts the filter again.
+void maudWebStampClock(maudWebClock* clock, int* clockEpoch, maudStreamCore* core, int64_t latency,
+                       bool stamped, int epoch, bool output);
 
 #endif // MAUL_AUDIO_SRC_WEB_CLOCK_H

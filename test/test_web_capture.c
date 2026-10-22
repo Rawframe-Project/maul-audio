@@ -106,17 +106,38 @@ EM_JS(void, InstallWeb, (int isolated), {
 
 // Gives the context an output timestamp, or takes it away: with 1, the
 // frame the graph took last is heard 20 ms from now; with 2, the same
-// timestamp taken a second earlier, as a starved device's.
+// timestamp taken a second earlier, as a starved device's; with 3, one
+// on a clock that runs with the device's frames, from 60 ms behind the
+// page's (1 and 2 hold to the page's clock, which stands still while the
+// test pulls), 5 ms later at each call, as a PulseAudio server's drifts.
 EM_JS(void, Stamp, (int on), {
+    const sim = globalThis.maudSim;
+    sim.base = performance.now() - 60 - sim.frame / 48;
     if (on === 0) {
         delete globalThis.AudioContext.prototype.getOutputTimestamp;
         return;
     }
     globalThis.AudioContext.prototype.getOutputTimestamp = function () {
-        const old = on === 1 ? 0 : 1;
-        return {contextTime: globalThis.maudSim.frame / 48000 - old,
-                performanceTime: performance.now() + 20 - old * 1000};
+        const old = on === 2 ? 1 : 0;
+        const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 5) : 0;
+        const now = on === 3 ? sim.base + sim.frame / 48 : performance.now();
+        return {contextTime: sim.frame / 48000 - old,
+                performanceTime: now + 20 - old * 1000 + late};
     };
+});
+
+// Where the frame-driven clock (Stamp 3) started, in milliseconds of the
+// page's clock.
+EM_JS(double, StampBase, (void), { return globalThis.maudSim.base; });
+
+// Moves the context to a new route, as a microphone change does: the
+// clock's filter starts again.
+EM_JS(void, NewRoute, (void), {
+    globalThis.maudWeb.contexts.forEach(function (entry) {
+        if (entry !== null) {
+            entry.routeEpoch++;
+        }
+    });
 });
 
 // The device takes quanta from the microphone, a ramp, into the capture
@@ -202,6 +223,26 @@ static bool Near(int64_t value, int64_t expected, int64_t tolerance, const char*
 }
 
 static void Begin(bool isolated);
+static void BeginFilter(bool isolated);
+
+// When the capture's clock says frame 0 was captured, from the
+// frame-driven clock's start: a capture's host time is when the frame at
+// its position was captured.
+static double Taken(void)
+{
+    maudStreamClock clock = {0};
+    CHECK(maudGetStreamClock(s_context, s_stream, &clock) == maud_success, "the clock");
+    return (double)clock.hostNanoseconds - (double)clock.position * 1e9 / RATE - StampBase() * 1e6;
+}
+
+// Delivers every waiting report; the frame-0 time after the last.
+static double TakeAll(void)
+{
+    while (DeliverOneToMain() == 1)
+    {
+    }
+    return Taken();
+}
 
 // After the grant: the frames, the clock three ways, and the ring's
 // overruns.
@@ -235,9 +276,10 @@ static void Granted(void* user)
     // taken at its context frame, which the graph processed 26 ms before
     // it is heard; the frame taken last is heard 20 ms from now. The
     // clock's filter holds the batch's first report, so a later one is
-    // off by the page's time since (a millisecond allowed).
+    // taken at the same frame-0 time.
     Stamp(1);
     Pull(3);
+    double first = 0.0;
     for (int report = 0; DeliverOneToMain() == 1; ++report)
     {
         if (s_isolated && report > 0)
@@ -247,8 +289,18 @@ static void Granted(void* user)
         // The first frame's distance back from the frame taken last.
         int64_t back = s_isolated ? 3 * QUANTUM : (3 - report) * QUANTUM;
         int64_t expected = back * 1000000000LL / RATE - 20000000LL + 26000000LL + LATENCY;
-        CHECK(Near(Latency(), expected, 1000000, "stamped", report),
-              "stamped, at the context frame that took the first frame");
+        maudStreamClock clock = {0};
+        CHECK(maudGetStreamClock(s_context, s_stream, &clock) == maud_success, "the clock");
+        // A capture's host time is when the frame at its position was
+        // captured; the filter holds the earliest frame-0 time, which a
+        // later stamp that reached the library sooner on a loaded machine
+        // moves up to 2 ms earlier.
+        double taken = (double)clock.hostNanoseconds - (double)clock.position * 1e9 / RATE;
+        first = report == 0 ? taken : first;
+        CHECK(
+            (report != 0 || Near(clock.latencyNanoseconds, expected, 2000000, "stamped", report)) &&
+                taken <= first + 1000.0 && taken >= first - 2e6,
+            "stamped, at the context frame that took the first frame");
     }
 
     // A timestamp a second old is no measure: the unstamped figure again.
@@ -283,13 +335,62 @@ static void Granted(void* user)
         Begin(false);
         return;
     }
+    BeginFilter(true);
+}
+
+// After the grant, the clock's filter: a timestamp drifting late is held
+// at the earliest time frame 0 was captured; a new route, and frames
+// dropped while the stream was stopped, each start it again, so frame 0
+// moves later by the drift or by what was dropped.
+static void FilterGranted(void* user)
+{
+    (void)user;
+    Drain();
+    Stamp(3);
+    Pull(3);
+    double held = TakeAll();
+    Pull(3);
+    double still = TakeAll();
+    if (still < held - 2e6 || still > held + 2e6)
+    {
+        printf("drifting: frame 0 at %.0f ns, held at %.0f\n", still, held);
+        CHECK(false, "a timestamp drifting late is held at the earliest");
+    }
+    NewRoute();
+    Pull(1);
+    double routed = TakeAll();
+    if (routed < still + 4e6)
+    {
+        printf("new route: frame 0 at %.0f ns, held at %.0f\n", routed, still);
+        CHECK(false, "a new route starts the filter again");
+    }
+    // Six quanta dropped while stopped: frame 0 moves 16 ms later.
+    CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
+    Pull(6);
+    (void)TakeAll();
+    CHECK(maudStartStream(s_context, s_stream) == maud_success, "start again");
+    Pull(1);
+    double restarted = TakeAll();
+    if (restarted < routed + 10e6)
+    {
+        printf("restarted: frame 0 at %.0f ns, before the stop at %.0f\n", restarted, routed);
+        CHECK(false, "frames dropped while stopped start the filter again");
+    }
+    Stamp(0);
+    CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy the capture");
+    CHECK(maudDestroyContext(s_context) == maud_success, "destroy the context");
+    if (s_isolated)
+    {
+        BeginFilter(false);
+        return;
+    }
     printf("capture: %s\n", s_failures == 0 ? "pass" : "fail");
     ExitWith(s_failures == 0 ? 0 : 1);
 }
 
 // Opens a capture; it waits for the permission until getUserMedia's
-// promise settles, after this step.
-static void Begin(bool isolated)
+// promise settles, after this step, then runs `then`.
+static void Open(bool isolated, void (*then)(void*))
 {
     s_isolated = isolated;
     s_frames = 0;
@@ -314,7 +415,17 @@ static void Begin(bool isolated)
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendPermission,
           "it waits for the permission");
-    emscripten_set_timeout(Granted, 0, nullptr);
+    emscripten_set_timeout(then, 0, nullptr);
+}
+
+static void Begin(bool isolated)
+{
+    Open(isolated, Granted);
+}
+
+static void BeginFilter(bool isolated)
+{
+    Open(isolated, FilterGranted);
 }
 
 int main(void)

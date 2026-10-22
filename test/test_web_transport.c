@@ -10,7 +10,9 @@
 // refill to the target after each pull, the samples in order, short
 // quanta when the main thread is away and the target's growth to the
 // ring's capacity, the drop when the stream stops, and the latency the
-// callback is told, with and without the context's output timestamp.
+// callback is told, with and without the context's output timestamp, and
+// the clock's filter holding a drifting timestamp and starting again on a
+// new route, a short quantum and a stop.
 
 #include "test_harness.h"
 
@@ -80,8 +82,12 @@ EM_JS(void, InstallWeb, (int isolated), {
 // Gives the context an output timestamp, or takes it away: with 1, the
 // frame rendered last is heard 40 ms from now; with 2, the timestamp is a
 // second old, as a starved device's; with 3, a fresh one 5 ms later at
-// each call, as a PulseAudio server's drifts.
+// each call, as a PulseAudio server's drifts; with 4, that drift on a
+// clock that runs with the device's frames (heard times then follow the
+// frames as a real device's do, where 1 to 3 hold to the page's clock,
+// which stands still while the test pulls).
 EM_JS(void, Stamp, (int on), {
+    globalThis.maudSim.base = performance.now() - globalThis.maudSim.frame / 48;
     if (on === 0) {
         delete globalThis.AudioContext.prototype.getOutputTimestamp;
         return;
@@ -91,9 +97,10 @@ EM_JS(void, Stamp, (int on), {
         // earlier, a second of frames before.
         const old = on === 2 ? 1 : 0;
         const sim = globalThis.maudSim;
-        const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 5) : 0;
+        const late = on >= 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 5) : 0;
+        const now = on === 4 ? sim.base + sim.frame / 48 : performance.now();
         return {contextTime: globalThis.maudSim.frame / 48000 - old,
-                performanceTime: performance.now() + 40 - old * 1000 + late};
+                performanceTime: now + 40 - old * 1000 + late};
     };
 });
 
@@ -144,6 +151,16 @@ EM_JS(void, DeliverToMain, (void), {
             message.port.onmessage({data: message.data});
         }
     }
+});
+
+// Where the frame-driven clock (Stamp 4) started, in milliseconds of the
+// page's clock.
+EM_JS(double, StampBase, (void), { return globalThis.maudSim.base; });
+
+// The short count the oldest waiting report carries; -1 when none waits.
+EM_JS(int, NextShort, (void), {
+    const queue = globalThis.maudSim.toMain;
+    return queue.length === 0 ? -1 : queue[0].data[1];
 });
 
 // Delivers the oldest report alone; 0 when none waits.
@@ -201,6 +218,35 @@ EM_JS(void, ForgetPlayed, (void), {
 // clang-format on
 
 static uint64_t s_rendered;
+
+// When a clock says frame 0 is heard: an output's host time is when the
+// frame at its position is heard.
+static double Heard(const maudStreamClock* clock)
+{
+    return (double)clock->hostNanoseconds - (double)clock->position * 1e9 / RATE;
+}
+
+// A batch's report checked: the first's latency as expected, and every
+// report's frame 0 heard when the first's is, which the filter holds to,
+// or up to 2 ms earlier: a later stamp that reached the library sooner
+// on a loaded machine.
+static bool Holds(const maudStreamClock* clock, int report, int64_t expected, double* first)
+{
+    double heard = Heard(clock);
+    *first = report == 0 ? heard : *first;
+    bool ok = heard <= *first + 1000.0 && heard >= *first - 2e6;
+    if (report == 0)
+    {
+        ok = clock->latencyNanoseconds >= expected - 2000000 &&
+             clock->latencyNanoseconds <= expected + 2000000;
+    }
+    if (!ok)
+    {
+        printf("report %d: latency %lld ns, expected %lld; frame 0 %.0f ns from the first's\n",
+               report, (long long)clock->latencyNanoseconds, (long long)expected, heard - *first);
+    }
+    return ok;
+}
 
 static void Ramp(const maudStreamBlock* block, void* user)
 {
@@ -314,45 +360,36 @@ static void RunTransport(bool isolated)
     // it writes at its own context frame plus what was queued ahead of
     // them then: here, the same queue as above, heard 40 ms after the
     // frame rendered last rather than the base and output latencies'
-    // 26 ms, whichever report of the batch is answered, less the page's
-    // time since the batch's first report, which the clock's filter holds
-    // to (a millisecond allowed for a slow runner).
+    // 26 ms, at the batch's first report; every later one hears frame 0
+    // when the first does, which the clock's filter holds to.
     Stamp(1);
     Pull(BASE / QUANTUM);
+    double first = 0.0;
     for (int report = 0; DeliverOneToMain() == 1; ++report)
     {
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
         CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
-        if (clock.latencyNanoseconds < expected - 1000000 ||
-            clock.latencyNanoseconds > expected + 1000000)
-        {
-            printf("stamped report %d: latency %lld ns, expected %lld\n", report,
-                   (long long)clock.latencyNanoseconds, (long long)expected);
-            CHECK(false, "the output timestamp places every report's frames");
-        }
+        CHECK(Holds(&clock, report, expected, &first),
+              "the output timestamp places every report's frames");
     }
     DeliverToWorklet();
 
     // A timestamp that drifts late at each report is held at the
     // earliest time frame 0 was heard, on a new route: the same figures
-    // as above, less the page's time since the batch's first report. (The mock's context frames run
-    // ahead of the page's clock, so each batch's timestamps agree only among themselves.)
+    // as above. (The mock's context frames run ahead of the page's clock,
+    // so each batch's timestamps agree only among themselves.)
     NewRoute();
     Stamp(3);
     Pull(BASE / QUANTUM);
+    first = 0.0;
     for (int report = 0; DeliverOneToMain() == 1; ++report)
     {
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
         CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
-        if (clock.latencyNanoseconds < expected - 1000000 ||
-            clock.latencyNanoseconds > expected + 1000000)
-        {
-            printf("drifting report %d: latency %lld ns, expected %lld\n", report,
-                   (long long)clock.latencyNanoseconds, (long long)expected);
-            CHECK(false, "a timestamp drifting late is held at the earliest");
-        }
+        CHECK(Holds(&clock, report, expected, &first),
+              "a timestamp drifting late is held at the earliest");
     }
     DeliverToWorklet();
 
@@ -439,9 +476,104 @@ static void RunTransport(bool isolated)
     CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
 }
 
+// The clock's filter starts again after a short quantum (kind 0) and
+// after a stop (kind 1): a timestamp drifting late is held at the
+// earliest frame-0 time, then the device runs dry or the stream stops,
+// which moves frame 0 later, and the next report is measured. The
+// reference run is the same but for a new route just before that report,
+// which starts the filter again for certain; the two runs hear frame 0
+// at the same time when the path under test starts it too, and apart by
+// the silence and the drift (over 10 ms) when it does not.
+static double FilterRun(bool isolated, int kind, bool route)
+{
+    InstallWeb(isolated ? 1 : 0);
+    maudContextDef cdef = maudDefaultContextDef();
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context on the mock");
+    if (context == nullptr)
+    {
+        return 0.0;
+    }
+    maudStreamDef def = maudDefaultStreamDef();
+    def.layout = maud_layoutStereo;
+    def.callback = Ramp;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
+    DeliverToWorklet();
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    for (int i = 0; i < 4; ++i)
+    {
+        Cycle();
+    }
+    NewRoute();
+    Stamp(4);
+    Cycle();
+    if (kind == 0)
+    {
+        // Two pulls with no refill between: the reports before the first
+        // short quantum are answered, and that one is measured.
+        Pull(BASE / QUANTUM);
+        Pull(BASE / QUANTUM);
+        while (NextShort() == 0)
+        {
+            DeliverOneToMain();
+        }
+    }
+    else
+    {
+        // Stopped, the worklet drops its frames and is refilled with
+        // silence, then plays 64 ms of it, more than it dropped, with no
+        // quantum short; started again, one pull's first report is
+        // measured.
+        CHECK(maudStopStream(context, stream) == maud_success, "stop");
+        DeliverToWorklet();
+        DeliverToMain();
+        DeliverToWorklet();
+        for (int i = 0; i < 4; ++i)
+        {
+            Cycle();
+        }
+        CHECK(maudStartStream(context, stream) == maud_success, "start again");
+        Pull(BASE / QUANTUM);
+    }
+    if (route)
+    {
+        NewRoute();
+    }
+    DeliverOneToMain();
+    maudStreamClock clock = {0};
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    // When frame 0 is heard, from the frame-driven clock's start: the
+    // pulls and the drift alone decide it, not how long the run took.
+    double heard =
+        (double)clock.hostNanoseconds - (double)clock.position * 1e9 / RATE - StampBase() * 1e6;
+    Stamp(0);
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+    return heard;
+}
+
+static void RunFilterResets(bool isolated)
+{
+    static const char* const kinds[2] = {"a short quantum", "a stop"};
+    for (int kind = 0; kind < 2; ++kind)
+    {
+        double measured = FilterRun(isolated, kind, false);
+        double reference = FilterRun(isolated, kind, true);
+        if (measured < reference - 1e6 || measured > reference + 1e6)
+        {
+            printf("after %s: frame 0 heard at %.0f ns, with a fresh filter at %.0f\n", kinds[kind],
+                   measured, reference);
+            CHECK(false, "the clock's filter starts again");
+        }
+    }
+}
+
 int main(void)
 {
     RunTransport(true);
     RunTransport(false);
+    RunFilterResets(true);
+    RunFilterResets(false);
     return s_failures == 0 ? 0 : 1;
 }
