@@ -15,6 +15,13 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-10-22
+
+A patch release: no change to the source or binary interface. On the
+web, output and capture clocks place their frames through the
+AudioContext's output timestamp, so the time a frame is heard or was
+captured no longer moves with the browser's render bursts.
+
 ### Fixed
 
 - Web: an output stream's clock places its frames through the
