@@ -79,7 +79,8 @@ EM_JS(void, InstallWeb, (int isolated), {
 
 // Gives the context an output timestamp, or takes it away: with 1, the
 // frame rendered last is heard 40 ms from now; with 2, the timestamp is a
-// second old, as a starved device's.
+// second old, as a starved device's; with 3, a fresh one a millisecond
+// later at each call, as a PulseAudio server's drifts.
 EM_JS(void, Stamp, (int on), {
     if (on === 0) {
         delete globalThis.AudioContext.prototype.getOutputTimestamp;
@@ -88,10 +89,22 @@ EM_JS(void, Stamp, (int on), {
     globalThis.AudioContext.prototype.getOutputTimestamp = function () {
         // The stale one agrees with the fresh one but was taken a second
         // earlier, a second of frames before.
-        const old = on === 1 ? 0 : 1;
+        const old = on === 2 ? 1 : 0;
+        const sim = globalThis.maudSim;
+        const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 1) : 0;
         return {contextTime: globalThis.maudSim.frame / 48000 - old,
-                performanceTime: performance.now() + 40 - old * 1000};
+                performanceTime: performance.now() + 40 - old * 1000 + late};
     };
+});
+
+// Moves the context to a new route, as a sink change does: the clock's
+// filter starts again.
+EM_JS(void, NewRoute, (void), {
+    globalThis.maudWeb.contexts.forEach(function (entry) {
+        if (entry !== null) {
+            entry.routeEpoch++;
+        }
+    });
 });
 
 // Plays quanta: the device pulls them from every playback node in turn,
@@ -315,6 +328,30 @@ static void RunTransport(bool isolated)
             printf("stamped report %d: latency %lld ns, expected %lld\n", report,
                    (long long)clock.latencyNanoseconds, (long long)expected);
             CHECK(false, "the output timestamp places every report's frames");
+        }
+    }
+    DeliverToWorklet();
+
+    // A timestamp that drifts late at each report is held at the
+    // earliest time frame 0 was heard, on a new route: the same figures
+    // as above, less the page's time since the batch's first report
+    // (under half a millisecond here). (The mock's context frames run ahead
+    // of the page's clock, so each batch's timestamps agree only among
+    // themselves.)
+    NewRoute();
+    Stamp(3);
+    Pull(BASE / QUANTUM);
+    for (int report = 0; DeliverOneToMain() == 1; ++report)
+    {
+        int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
+        int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
+        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        if (clock.latencyNanoseconds < expected - 500000 ||
+            clock.latencyNanoseconds > expected + 500000)
+        {
+            printf("drifting report %d: latency %lld ns, expected %lld\n", report,
+                   (long long)clock.latencyNanoseconds, (long long)expected);
+            CHECK(false, "a timestamp drifting late is held at the earliest");
         }
     }
     DeliverToWorklet();

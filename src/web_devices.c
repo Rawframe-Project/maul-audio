@@ -54,6 +54,7 @@ EM_JS(void, maudWebListDevices, (int handle), {
                 const known = entry.defaultGroups[direction];
                 if (group !== "" && known !== "" && group !== known) {
                     entry.defaultMoved[direction] = true;
+                    entry.routeEpoch++;
                 }
                 if (group !== "") {
                     entry.defaultGroups[direction] = group;
@@ -103,6 +104,7 @@ EM_JS(void, maudWebSetSinkId, (int handle, const char* key), {
     const entry = globalThis.maudWeb.contexts[handle];
     if (typeof entry.context.setSinkId === "function") {
         const sinkId = UTF8ToString(key);
+        entry.routeEpoch++;
         entry.context.setSinkId(sinkId).catch(function () { entry.refusedSinks.push(sinkId); });
     }
 });

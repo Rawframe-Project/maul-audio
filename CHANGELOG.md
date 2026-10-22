@@ -15,6 +15,15 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: through a PulseAudio server, Chrome's output timestamp drifts
+  late for seconds and snaps back while the frames reach the device
+  evenly; output and capture clocks now hold the earliest time frame 0
+  was heard or captured over the last five seconds, within 1 ms where
+  they moved by 10 to 24 ms. A sink change, a default's move, a short
+  quantum or a stop starts the filter again.
+
 ## [1.2.3] - 2026-10-22
 
 A patch release: no change to the source or binary interface. On the

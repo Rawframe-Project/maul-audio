@@ -111,14 +111,18 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
         const rate = entry.context.sampleRate;
         const stamp = entry.context.getOutputTimestamp ? entry.context.getOutputTimestamp() : null;
         let ago = latency + frames / rate;
+        let stamped = 0;
         const now = performance.now() / 1000;
         if (first !== undefined && stamp && stamp.contextTime && stamp.performanceTime &&
             now - stamp.performanceTime / 1000 <= 0.25) {
             const processed = stamp.performanceTime / 1000 + first / rate - stamp.contextTime -
                               entry.context.baseLatency - (entry.context.outputLatency || 0);
-            ago = now - processed + latency >= 0 ? now - processed + latency : ago;
+            if (now - processed + latency >= 0) {
+                ago = now - processed + latency;
+                stamped = 1;
+            }
         }
-        _maudWebCapture(context, slot, frames, ago);
+        _maudWebCapture(context, slot, frames, ago, stamped, entry.routeEpoch);
     }
     function take(event) {
         if (record.closed) {
@@ -226,21 +230,30 @@ EM_JS_DEPS(maudWebCaptureDeps, "$UTF8ToString");
 // runs; latency is how long ago the first of them was captured, in
 // seconds.
 EMSCRIPTEN_KEEPALIVE void maudWebCapture(maudContext* context, int slotIndex, int frames,
-                                         double latency);
+                                         double latency, int stamped, int epoch);
 
-void maudWebCapture(maudContext* context, int slotIndex, int frames, double latency)
+void maudWebCapture(maudContext* context, int slotIndex, int frames, double latency, int stamped,
+                    int epoch)
 {
-    const maudWeb* web = context->native;
+    maudWeb* web = context->native;
     maudStreamCore* core = &context->streams.slots[slotIndex].core;
     if (atomic_load_explicit(&core->state, memory_order_acquire) != maud_streamRunning)
     {
+        // Frames dropped while stopped: frame 0's time moves.
+        maudWebResetClock(&web->streams[slotIndex].clock);
         return;
     }
     atomic_store_explicit(&core->renderingThread, maudCurrentThread(), memory_order_release);
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
     maudPushPeriod(&core->period, web->streams[slotIndex].chunk, (uint32_t)frames);
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
-    maudStampInputClock(core, (int64_t)(latency * 1e9));
+    maudWebStream* stream = &web->streams[slotIndex];
+    int64_t told = (int64_t)(latency * 1e9);
+    if (stamped != 0)
+    {
+        told = maudWebFilterLatency(&stream->clock, &stream->epoch, core, told, epoch, false);
+    }
+    maudStampInputClock(core, told);
     atomic_fetch_add_explicit(&core->position, (uint64_t)frames, memory_order_release);
 }
 
@@ -255,6 +268,7 @@ void maudWebXrun(maudContext* context, int slotIndex, int count)
     {
         maudCountXrun(core);
     }
+    maudWebResetClock(&((maudWeb*)context->native)->streams[slotIndex].clock);
 }
 
 // The browser granted the microphone to a stream's node, with the voice
@@ -314,6 +328,7 @@ void maudWebFollowDefaultInput(maudContext* context)
 int maudWebOpenCapture(maudContext* context, maudStreamSlot* slot, int handle, float* chunk)
 {
     int index = (int)(slot - context->streams.slots);
+    maudWebResetClock(&((maudWeb*)context->native)->streams[index].clock);
     maudAwaitPermission(context, slot, true);
     char device[MAUD_WEB_KEY_BYTES] = {0};
     bool loopback = slot->core.def.direction == maud_directionLoopback;
