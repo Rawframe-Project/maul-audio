@@ -7,7 +7,10 @@
 # LIMIT lines and a source file within FILE_LIMIT, unless
 # tools/length-exceptions.txt lists it with a ceiling and a reason (a
 # file is listed with the function name "*"; a file of src/ by its name,
-# one of DIR/src by its path). The list only shrinks: a listed item may not grow past its
+# one of DIR/src by its path). A GPU kernel source (*.wgsl, anywhere
+# but build trees and tools/external-dirs.txt's directories) stays
+# within FILE_LIMIT too, listed by its path; its functions are not
+# measured. The list only shrinks: a listed item may not grow past its
 # ceiling, and an entry that is back under its limit (or gone) must be
 # deleted.
 #
@@ -78,8 +81,35 @@ def library_sources():
                             for top in SOURCE_DIRS]
 
 
+def external_dirs():
+    """Directories, relative to the root, whose files come from outside."""
+    path = os.path.join(ROOT, "tools", "external-dirs.txt")
+    if not os.path.exists(path):
+        return set()
+    result = set()
+    for line in open(path, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if line:
+            result.add(os.path.normpath(line))
+    return result
+
+
+def kernel_sources():
+    """The paths, relative to the root, of the library's GPU kernels."""
+    external = external_dirs()
+    for folder, dirs, files in os.walk(ROOT):
+        relative = os.path.relpath(folder, ROOT)
+        dirs[:] = sorted(d for d in dirs if not d.startswith((".", "build", "_deps"))
+                         and os.path.normpath(os.path.join(relative, d)) not in external)
+        for name in sorted(files):
+            if name.endswith(".wgsl"):
+                yield os.path.relpath(os.path.join(folder, name), ROOT).replace(os.sep, "/")
+
+
 def measured():
     found = {}
+    for path in kernel_sources():
+        found[(path, "*")] = len(open(os.path.join(ROOT, path), encoding="utf-8").read().split("\n")) - 1
     for top, prefix in library_sources():
         src = os.path.join(ROOT, top)
         for name in sorted(os.listdir(src)):

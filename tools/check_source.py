@@ -168,6 +168,11 @@ def libm_allowed():
 
 LIBM_ALLOWED = libm_allowed()
 
+# The family's SIMD header spells the scalar backend's fused multiply-add
+# (section 11's one place for it), so that file alone may call fmaf
+# whatever tools/libm-allowed.txt lists.
+LIBM_BY_FILE = {os.path.join("src", "simd.h"): {"fmaf"}}
+
 
 def external_dirs():
     """Directories, relative to the root, whose files come from outside."""
@@ -238,7 +243,8 @@ def check_c_file(path, rel, in_src, bans, findings):
             reason = bans.get(name)
             if reason:
                 findings.append(f"{rel}:{number}: banned call {name}(): {reason}")
-            elif LIBM_ALLOWED is not None and name in LIBM and name not in LIBM_ALLOWED:
+            elif (LIBM_ALLOWED is not None and name in LIBM and name not in LIBM_ALLOWED
+                  and name not in LIBM_BY_FILE.get(rel, ())):
                 findings.append(
                     f"{rel}:{number}: libm call {name}() not in tools/libm-allowed.txt:"
                     " its results may differ between C libraries"

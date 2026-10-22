@@ -252,6 +252,23 @@ em dash, `/* */` comments); review (content).
   context) counts one misuse on that object, readable at any time.
 - A validity query (`P..._IsValid`) on a stale id is not misuse and is
   not counted.
+- Every out-parameter documents what a failure leaves in it. A call
+  whose first parameter is an owner object (the object it works on)
+  clears its outputs on any failure, an id or handle to null and a
+  value to zero, and clears them before it checks the owner, so a
+  missing or busy owner's failure clears them too; an output that the
+  failure itself defines (the length a too-small buffer needed, the
+  count that fit) is written instead. A call without an owner (a maker,
+  a sample, a size query) leaves its outputs as they were, so a failed
+  remake keeps the caller's last good value. An output may not alias an
+  input.
+- Reserved fields of public structs are zero. A call that takes such a
+  struct in refuses one whose reserved bytes are not 0 (an input error,
+  checked where the struct is taken in, not on hot sampling paths); every
+  struct a library writes has them 0; each reserved field says so in its
+  documentation. A value that only sampling functions read may instead
+  declare its reserved bytes padding for the whole major version, in its
+  documentation and its design record.
 - Running out of memory is a returned capacity status. Every
   allocation is checked. Byte sizes derived from counts are computed
   with checked arithmetic (`ckd_mul`, `ckd_add`) and refused when they
@@ -264,7 +281,8 @@ em dash, `/* */` comments); review (content).
 
 Checked by: compiler warnings (`PP_NODISCARD`); `tools/check_source.py`
 (`assert`, `abort`, thread-local variables); `tools/check_docs.py`
-(documented statuses); review (fuzz targets).
+(documented statuses); review (fuzz targets, outputs on failure,
+reserved fields) and each library's tests of them.
 
 ## 9. Memory
 
@@ -334,8 +352,10 @@ from each callback; review.
   `fabs`, `floor`, `ceil`, `trunc`, `round`, `lround`, `rint`,
   `nearbyint`, `fmin`, `fmax`, `fmod`, `remainder`, `copysign`,
   `frexp`, `ldexp`, `scalbn`, `modf`, `nextafter` and their `f` forms),
-  never `fma` (above). Every other `<math.h>` function is refused in
-  its sources; the library writes its own where it needs one.
+  never `fma` (above; the SIMD header's scalar `fmaf` passes the
+  check in that file alone). Every other `<math.h>` function is
+  refused in its sources; the library writes its own where it needs
+  one.
 
 Checked by: `cmake/` (flags); `tools/check_source.py` (calls the
 profile bans, and `<math.h>` calls against `tools/libm-allowed.txt`);
