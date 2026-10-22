@@ -107,24 +107,31 @@ EM_JS(void, InstallWeb, (int isolated), {
 // Gives the context an output timestamp, or takes it away: with 1, the
 // frame the graph took last is heard 20 ms from now; with 2, the same
 // timestamp taken a second earlier, as a starved device's; with 3, one
-// on a clock that runs with the device's frames, from 60 ms behind the
-// page's (1 and 2 hold to the page's clock, which stands still while the
-// test pulls), 5 ms later at each call, as a PulseAudio server's drifts.
+// on a clock that runs with the device's frames (1 and 2 hold to the
+// page's clock, which stands still while the test pulls), 1 ms later at
+// each call, as a PulseAudio server's drifts, and later by Jump's
+// milliseconds. It starts 200 ms behind the page's clock: room for what
+// the test pulls and jumps within the capture's guards, a capture not
+// in the future and a timestamp under a quarter second old.
 EM_JS(void, Stamp, (int on), {
     const sim = globalThis.maudSim;
-    sim.base = performance.now() - 60 - sim.frame / 48;
+    sim.base = performance.now() - 200 - sim.frame / 48;
     if (on === 0) {
         delete globalThis.AudioContext.prototype.getOutputTimestamp;
         return;
     }
     globalThis.AudioContext.prototype.getOutputTimestamp = function () {
         const old = on === 2 ? 1 : 0;
-        const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 5) : 0;
-        const now = on === 3 ? sim.base + sim.frame / 48 : performance.now();
+        const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 1) : 0;
+        const now = on === 3 ? sim.base + sim.frame / 48 + (sim.jump || 0) : performance.now();
         return {contextTime: sim.frame / 48000 - old,
                 performanceTime: now + 20 - old * 1000 + late};
     };
 });
+
+// Moves the frame-driven clock's times later by `ms` from now on, as
+// microphone frames the browser lost before the stream got them.
+EM_JS(void, Jump, (double ms), { globalThis.maudSim.jump = ms; });
 
 // Where the frame-driven clock (Stamp 3) started, in milliseconds of the
 // page's clock.
@@ -341,7 +348,7 @@ static void Granted(void* user)
 // After the grant, the clock's filter: a timestamp drifting late is held
 // at the earliest time frame 0 was captured; a new route, and frames
 // dropped while the stream was stopped, each start it again, so frame 0
-// moves later by the drift or by what was dropped.
+// moves later by the route's time or by what was dropped.
 static void FilterGranted(void* user)
 {
     (void)user;
@@ -356,10 +363,13 @@ static void FilterGranted(void* user)
         printf("drifting: frame 0 at %.0f ns, held at %.0f\n", still, held);
         CHECK(false, "a timestamp drifting late is held at the earliest");
     }
+    // A route that takes 20 ms longer: within the drift, so only the new
+    // route's own start lets the clock follow.
+    Jump(20.0);
     NewRoute();
     Pull(1);
     double routed = TakeAll();
-    if (routed < still + 4e6)
+    if (routed < still + 15e6)
     {
         printf("new route: frame 0 at %.0f ns, held at %.0f\n", routed, still);
         CHECK(false, "a new route starts the filter again");
@@ -376,6 +386,29 @@ static void FilterGranted(void* user)
         printf("restarted: frame 0 at %.0f ns, before the stop at %.0f\n", restarted, routed);
         CHECK(false, "frames dropped while stopped start the filter again");
     }
+    // Frames the browser lost before the stream: 30 ms later is within
+    // the estimate's drift, held and uncounted; 70 ms is an overrun,
+    // counted once, and the clock follows it.
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    uint64_t overruns = status.overruns;
+    Jump(50.0);
+    Pull(1);
+    double near = TakeAll();
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(near <= restarted + 1000.0 && status.overruns == overruns,
+          "30 ms later is drift: held, nothing counted");
+    Jump(90.0);
+    Pull(1);
+    double lost = TakeAll();
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    if (lost < restarted + 60e6 || status.overruns != overruns + 1)
+    {
+        printf("70 ms later: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
+               lost - restarted, (unsigned long long)status.overruns, (unsigned long long)overruns);
+        CHECK(false, "70 ms later is frames lost: one overrun, and the clock follows");
+    }
+    Jump(0.0);
     Stamp(0);
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy the capture");
     CHECK(maudDestroyContext(s_context) == maud_success, "destroy the context");

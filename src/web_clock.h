@@ -5,7 +5,8 @@
 // output timestamp drifts late for seconds and then snaps back, while the
 // frames reach the device evenly (research in the docs): the earliest
 // time a stream's frame 0 is heard or was captured, over the last five
-// seconds, is the one that holds.
+// seconds, is the one that holds. A time well past the drift is frames
+// lost before the library, which it counts.
 
 #ifndef MAUL_AUDIO_SRC_WEB_CLOCK_H
 #define MAUL_AUDIO_SRC_WEB_CLOCK_H
@@ -34,7 +35,9 @@ int64_t maudWebEarliest(maudWebClock* clock, int64_t origin, int64_t now);
 // timestamp (stamped) goes through the earliest time frame 0 is heard
 // (an output) or was captured (an input) over the last five seconds,
 // and the host time is that frame-0 time plus the frame's place; a
-// route epoch other than *clockEpoch starts the filter again.
+// route epoch other than *clockEpoch starts the filter again. A frame-0
+// time 50 ms later than the earliest is frames the browser lost before
+// the stream: it counts an xrun and starts the filter there.
 void maudWebStampClock(maudWebClock* clock, int* clockEpoch, maudStreamCore* core, int64_t latency,
                        bool stamped, int epoch, bool output);
 

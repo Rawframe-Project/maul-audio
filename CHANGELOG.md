@@ -17,6 +17,13 @@ release could change the API, the ABI and every data format.
 
 ### Fixed
 
+- Web: frames the browser loses before a stream (a starved page's
+  microphone buffer) or silence it plays without the stream move frame
+  0 later for good. A stamped frame-0 time 50 ms later than the held
+  one now counts an overrun (capture) or underrun (output) and the
+  clock follows it at once; it was held at the old time for up to five
+  seconds, uncounted.
+
 - Web: a stream clock's host time is worked out against the one reading
   of the host clock its latency was measured against; a page delayed
   between two readings moved it by the delay, by milliseconds on a

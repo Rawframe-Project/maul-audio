@@ -4,6 +4,12 @@
 #include "web_clock.h"
 
 #include "clock.h"
+#include "xrun.h"
+
+// How much later than the held earliest a frame-0 time may come before
+// it is frames lost, not the estimate's drift: twice the largest drift
+// measured through PulseAudio (research in the docs).
+#define MAUD_WEB_LOSS_NANOSECONDS 50000000LL
 
 void maudWebResetClock(maudWebClock* clock)
 {
@@ -53,6 +59,14 @@ void maudWebStampClock(maudWebClock* clock, int* clockEpoch, maudStreamCore* cor
         int64_t place = (int64_t)((double)position * 1e9 / rate);
         int64_t origin = output ? now + latency - place : now - latency - place;
         int64_t least = maudWebEarliest(clock, origin, now);
+        if (origin - least > MAUD_WEB_LOSS_NANOSECONDS)
+        {
+            // Frame 0 later for good: the browser lost frames before the
+            // stream got them (or played silence it never asked for).
+            maudCountXrun(core);
+            maudWebResetClock(clock);
+            least = maudWebEarliest(clock, origin, now);
+        }
         int64_t filtered = output ? least + place - now : now - least - place;
         latency = filtered > 0 ? filtered : 0;
     }

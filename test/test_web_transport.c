@@ -82,10 +82,11 @@ EM_JS(void, InstallWeb, (int isolated), {
 // Gives the context an output timestamp, or takes it away: with 1, the
 // frame rendered last is heard 40 ms from now; with 2, the timestamp is a
 // second old, as a starved device's; with 3, a fresh one 5 ms later at
-// each call, as a PulseAudio server's drifts; with 4, that drift on a
-// clock that runs with the device's frames (heard times then follow the
-// frames as a real device's do, where 1 to 3 hold to the page's clock,
-// which stands still while the test pulls).
+// each call, as a PulseAudio server's drifts; with 4, a 1 ms drift a call
+// on a clock that runs with the device's frames (heard times then follow
+// the frames as a real device's do, where 1 to 3 hold to the page's
+// clock, which stands still while the test pulls), moved later by
+// Jump's milliseconds.
 EM_JS(void, Stamp, (int on), {
     globalThis.maudSim.base = performance.now() - globalThis.maudSim.frame / 48;
     if (on === 0) {
@@ -97,8 +98,9 @@ EM_JS(void, Stamp, (int on), {
         // earlier, a second of frames before.
         const old = on === 2 ? 1 : 0;
         const sim = globalThis.maudSim;
-        const late = on >= 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 5) : 0;
-        const now = on === 4 ? sim.base + sim.frame / 48 : performance.now();
+        const step = on === 4 ? 1 : 5;
+        const late = on >= 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + step) : 0;
+        const now = on === 4 ? sim.base + sim.frame / 48 + (sim.jump || 0) : performance.now();
         return {contextTime: globalThis.maudSim.frame / 48000 - old,
                 performanceTime: now + 40 - old * 1000 + late};
     };
@@ -152,6 +154,10 @@ EM_JS(void, DeliverToMain, (void), {
         }
     }
 });
+
+// Moves the frame-driven clock's heard times later by `ms` from now on,
+// as frames the device played without the stream (silence it inserted).
+EM_JS(void, Jump, (double ms), { globalThis.maudSim.jump = ms; });
 
 // Where the frame-driven clock (Stamp 4) started, in milliseconds of the
 // page's clock.
@@ -522,14 +528,15 @@ static double FilterRun(bool isolated, int kind, bool route)
     else
     {
         // Stopped, the worklet drops its frames and is refilled with
-        // silence, then plays 64 ms of it, more than it dropped, with no
-        // quantum short; started again, one pull's first report is
-        // measured.
+        // silence, then plays 32 ms of it, more than it dropped (21 ms)
+        // and with no quantum short, so frame 0 moves 11 ms later, under
+        // the bound past which frames count as lost; started again, one
+        // pull's first report is measured.
         CHECK(maudStopStream(context, stream) == maud_success, "stop");
         DeliverToWorklet();
         DeliverToMain();
         DeliverToWorklet();
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 2; ++i)
         {
             Cycle();
         }
@@ -569,11 +576,69 @@ static void RunFilterResets(bool isolated)
     }
 }
 
+// Frames the browser played without the stream move frame 0 later for
+// good: 30 ms is within the estimate's drift and stays held, uncounted;
+// 70 ms is an underrun, counted once, and the clock follows it.
+static void RunLoss(bool isolated)
+{
+    InstallWeb(isolated ? 1 : 0);
+    maudContextDef cdef = maudDefaultContextDef();
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context on the mock");
+    if (context == nullptr)
+    {
+        return;
+    }
+    maudStreamDef def = maudDefaultStreamDef();
+    def.layout = maud_layoutStereo;
+    def.callback = Ramp;
+    maudStreamId stream = {0, 0};
+    CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
+    DeliverToWorklet();
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    Cycle();
+    NewRoute();
+    Stamp(4);
+    Cycle();
+    maudStreamClock clock = {0};
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success,
+          "the clock and status");
+    double before = Heard(&clock);
+    uint64_t underruns = status.underruns;
+    Jump(30.0);
+    Cycle();
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success,
+          "the clock and status");
+    CHECK(Heard(&clock) <= before + 1000.0 && status.underruns == underruns,
+          "30 ms later is drift: held, nothing counted");
+    Jump(70.0);
+    Cycle();
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success,
+          "the clock and status");
+    if (Heard(&clock) < before + 60e6 || status.underruns != underruns + 1)
+    {
+        printf("70 ms later: frame 0 %.0f ns from before, %llu underruns, %llu before\n",
+               Heard(&clock) - before, (unsigned long long)status.underruns,
+               (unsigned long long)underruns);
+        CHECK(false, "70 ms later is frames lost: one underrun, and the clock follows");
+    }
+    Jump(0.0);
+    Stamp(0);
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+}
+
 int main(void)
 {
     RunTransport(true);
     RunTransport(false);
     RunFilterResets(true);
     RunFilterResets(false);
+    RunLoss(true);
+    RunLoss(false);
     return s_failures == 0 ? 0 : 1;
 }
