@@ -15,6 +15,13 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-10-22
+
+A patch release: no change to the source or binary interface. A failed
+query or step on an object now leaves its outputs cleared and says so
+in its documentation, and on the web output and capture clocks hold
+steady through a PulseAudio server's drifting timestamps.
+
 ### Changed
 
 - A query or step on an object (a context, spatializer, HRTF set or
