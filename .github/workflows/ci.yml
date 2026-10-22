@@ -378,6 +378,19 @@ jobs:
             node test/web/run_page.js build page_sink.html $isolated || exit 1
             node test/web/run_page.js build page_display.html $isolated || exit 1
           done
+      - name: Clock figures
+        # The stream clocks' page, read rather than checked: a runner's
+        # Chrome once moved its heard time by 240 ms, so the page runs in
+        # the commit gate alone until these figures show how the clock's
+        # filter holds here.
+        continue-on-error: true
+        run: |
+          export MAUD_PUPPETEER="$RUNNER_TEMP/web/node_modules/puppeteer"
+          for run in 1 2 3; do
+            for isolated in 1 0; do
+              node test/web/run_page.js build page_clock.html $isolated 2>&1 | grep -E "clock:|page_clock" || true
+            done
+          done
       - name: Size
         # The static library's size, reported, not gated (family record
         # 0013), and what each feature costs a page: its program linked
