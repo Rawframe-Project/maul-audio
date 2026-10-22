@@ -362,8 +362,9 @@ jobs:
         # The web backend in headless Chrome, on a cross-origin isolated
         # page and on a plain one, and with the microphone refused. The
         # page checks timing on a shared runner, so each run gets a second
-        # attempt; a real failure fails both. A loopback stream captures
-        # the page's own tab on both kinds of page.
+        # attempt; a real failure fails both, and the stream clocks' page
+        # the same. A loopback stream captures the page's own tab on both
+        # kinds of page.
         run: |
           npm install --prefix "$RUNNER_TEMP/web" puppeteer@25.12.0
           export MAUD_PUPPETEER="$RUNNER_TEMP/web/node_modules/puppeteer"
@@ -375,21 +376,10 @@ jobs:
             node test/web/run_page.js build page_loopback.html $isolated loopback || exit 1
             node test/web/run_page.js build page_ended.html $isolated || exit 1
             node test/web/run_page.js build page_default.html $isolated || exit 1
+            node test/web/run_page.js build page_clock.html $isolated ||
+              node test/web/run_page.js build page_clock.html $isolated || exit 1
             node test/web/run_page.js build page_sink.html $isolated || exit 1
             node test/web/run_page.js build page_display.html $isolated || exit 1
-          done
-      - name: Clock figures
-        # The stream clocks' page, read rather than checked: a runner's
-        # Chrome once moved its heard time by 240 ms, so the page runs in
-        # the commit gate alone until these figures show how the clock's
-        # filter holds here.
-        continue-on-error: true
-        run: |
-          export MAUD_PUPPETEER="$RUNNER_TEMP/web/node_modules/puppeteer"
-          for run in 1 2 3; do
-            for isolated in 1 0; do
-              node test/web/run_page.js build page_clock.html $isolated 2>&1 | grep -E "clock:|page_clock" || true
-            done
           done
       - name: Size
         # The static library's size, reported, not gated (family record

@@ -8,11 +8,10 @@
 // however the browser batches its pulls (by 40 ms in headless Chrome).
 // An underrun moves when frames are heard, so it starts that stream's
 // window again; a loaded machine gets up to twelve seconds. It runs on
-// Chrome's own fake output, in the commit gate: through a PulseAudio
-// server Chrome's figures wander by 10 to 20 ms, before this clock and
-// after it alike. A CI runner's 240 ms spread was the page itself, which
-// read a 44.1 kHz context at 48 kHz; CI prints the page's figures until
-// they show it holds there too.
+// Chrome's own fake output, in the commit gate and in CI: through a
+// PulseAudio server Chrome's figures wander by 10 to 20 ms, before this
+// clock and after it alike. A runner's Chrome opens its context at
+// 44.1 kHz, so a frame's place is read at the stream's own rate.
 
 #include "../test_harness.h"
 #include "maul-audio/context.h"
