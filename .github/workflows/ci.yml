@@ -11,11 +11,13 @@ env:
   PREFIX: MAUL_AUDIO
   # A mirror that stalls is retried and timed out rather than waited on.
   # A download that trickles never trips the inactivity timeout, so the
-  # packages are fetched alone under a time limit, up to three times (apt
+  # packages are fetched alone under a time limit, up to four times (apt
   # resumes what it fetched), then installed from the cache with no limit
-  # (a kill never lands in dpkg).
+  # (a kill never lands in dpkg). The runner's own mirror can stay slow
+  # (95 KB/s seen), so a try that runs out moves the sources to the
+  # Ubuntu archive for the next.
   APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30
-  APT_FETCH: for try in 1 2 3; do sudo timeout 180 apt-get $APT_OPTIONS install -y -q --download-only --no-install-recommends $PACKAGES && break; [ $try -lt 3 ] || exit 1; done
+  APT_FETCH: for try in 1 2 3 4; do sudo timeout 180 apt-get $APT_OPTIONS install -y -q --download-only --no-install-recommends $PACKAGES && break; [ $try -lt 4 ] || exit 1; sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|' /etc/apt/sources.list.d/ubuntu.sources || true; sudo timeout 120 apt-get $APT_OPTIONS update -q || true; done
 
 jobs:
   # The rules no compiler checks: formatting, static analysis and the
@@ -96,7 +98,7 @@ jobs:
         # without it libpipewire leaks on its own failed setup. The
         # daemon, its PulseAudio server, WirePlumber and a session bus
         # for it run the PipeWire and PulseAudio tests, which drive the
-        # server with pactl. A mirror that stalls past three fetches fails
+        # server with pactl. A mirror that stalls past four fetches fails
         # the step for a rerun.
         if: runner.os == 'Linux'
         timeout-minutes: 15
