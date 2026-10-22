@@ -10,9 +10,9 @@
 // window again; a loaded machine gets up to twelve seconds. It runs on
 // Chrome's own fake output, in the commit gate: through a PulseAudio
 // server Chrome's figures wander by 10 to 20 ms, before this clock and
-// after it alike, and a CI runner's Chrome jumped by 240 ms with no
-// underrun, so the page is no CI check; the transport test checks the
-// output's stamped clock exactly everywhere.
+// after it alike. A CI runner's 240 ms spread was the page itself, which
+// read a 44.1 kHz context at 48 kHz; CI prints the page's figures until
+// they show it holds there too.
 
 #include "../test_harness.h"
 #include "maul-audio/context.h"
@@ -30,6 +30,7 @@ typedef struct Watch
 {
     maudStreamId stream;
     const char* name;
+    uint32_t rate;
     double lowest;
     double highest;
     double lowestLatency;
@@ -71,13 +72,17 @@ static void Restart(Watch* watch)
     watch->highestLatency = -1e300;
 }
 
-// Samples a stream's clock; the stream runs at the context's rate, 48 kHz
-// in headless Chrome.
+// Samples a stream's clock, at the stream's own rate: the context's, 48 kHz
+// in a local headless Chrome but 44.1 kHz on a CI runner's, where a fixed
+// 48 kHz put frame 0's time 8 % of the window apart.
 static void Sample(Watch* watch)
 {
     maudStreamClock clock = {0};
     maudStreamStatus status = {0};
-    if (maudGetStreamClock(s_context, watch->stream, &clock) != maud_success ||
+    maudStreamFormat format = {0};
+    if (maudGetStreamFormat(s_context, watch->stream, &format) != maud_success ||
+        format.sampleRate == 0 ||
+        maudGetStreamClock(s_context, watch->stream, &clock) != maud_success ||
         clock.hostNanoseconds == 0 ||
         maudGetStreamStatus(s_context, watch->stream, &status) != maud_success)
     {
@@ -89,7 +94,9 @@ static void Sample(Watch* watch)
         watch->faults = faults;
         Restart(watch);
     }
-    double origin = (double)clock.hostNanoseconds - (double)clock.position * 1e9 / 48000.0;
+    watch->rate = format.sampleRate;
+    double origin =
+        (double)clock.hostNanoseconds - (double)clock.position * 1e9 / (double)format.sampleRate;
     double latency = (double)clock.latencyNanoseconds;
     watch->lowest = origin < watch->lowest ? origin : watch->lowest;
     watch->highest = origin > watch->highest ? origin : watch->highest;
@@ -103,10 +110,11 @@ static void Finish(void)
     for (int i = 0; i < 2; ++i)
     {
         const Watch* watch = &s_watches[i];
-        printf("clock: %s, %u stamps, spread %.1f ms, latency %.1f to %.1f ms, %u restarts after "
-               "underruns\n",
-               watch->name, watch->samples, (watch->highest - watch->lowest) / 1e6,
-               watch->lowestLatency / 1e6, watch->highestLatency / 1e6, watch->restarts);
+        printf(
+            "clock: %s at %u Hz, %u stamps, spread %.1f ms, latency %.1f to %.1f ms, %u restarts "
+            "after underruns\n",
+            watch->name, watch->rate, watch->samples, (watch->highest - watch->lowest) / 1e6,
+            watch->lowestLatency / 1e6, watch->highestLatency / 1e6, watch->restarts);
         CHECK(watch->samples >= 100, "the clock was stamped while it ran");
         CHECK(watch->highest - watch->lowest <= 5e6, "a frame's time holds within 5 ms");
         CHECK(maudDestroyStream(s_context, watch->stream) == maud_success, "destroy it");
