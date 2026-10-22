@@ -375,7 +375,6 @@ jobs:
             node test/web/run_page.js build page_loopback.html $isolated loopback || exit 1
             node test/web/run_page.js build page_ended.html $isolated || exit 1
             node test/web/run_page.js build page_default.html $isolated || exit 1
-            node test/web/run_page.js build page_clock.html $isolated || exit 1
             node test/web/run_page.js build page_sink.html $isolated || exit 1
             node test/web/run_page.js build page_display.html $isolated || exit 1
           done

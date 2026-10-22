@@ -7,8 +7,11 @@
 // with no underrun, however the browser batches its pulls (by 40 ms in
 // headless Chrome). An underrun moves when frames are heard, so it starts
 // the window again; a loaded machine gets up to twelve seconds. It runs
-// on Chrome's own fake output: through a PulseAudio server Chrome's
-// figures wander by 10 to 20 ms, before this clock and after it alike.
+// on Chrome's own fake output, in the commit gate: through a PulseAudio
+// server Chrome's figures wander by 10 to 20 ms, before this clock and
+// after it alike, and a CI runner's Chrome jumped by 240 ms with no
+// underrun, so the page is no CI check; the transport test checks the
+// stamped clock exactly everywhere.
 
 #include "../test_harness.h"
 #include "maul-audio/context.h"
