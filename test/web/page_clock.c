@@ -35,6 +35,15 @@ typedef struct Watch
     double lowestLatency;
     double highestLatency;
     uint32_t samples;
+    // The largest move of frame 0's time from one sample to the next, at
+    // which sample, and the latencies either side of it: how a spread
+    // came about, a jump or a slide.
+    double previous;
+    double previousLatency;
+    double step;
+    uint32_t stepAt;
+    double stepFrom;
+    double stepTo;
     uint64_t faults;
     uint32_t restarts;
 } Watch;
@@ -69,6 +78,8 @@ static void Restart(Watch* watch)
     watch->highest = -1e300;
     watch->lowestLatency = 1e300;
     watch->highestLatency = -1e300;
+    watch->step = 0.0;
+    watch->stepAt = 0;
 }
 
 // Samples a stream's clock, at the stream's own rate: the context's, 48 kHz
@@ -101,6 +112,17 @@ static void Sample(Watch* watch)
     watch->highest = origin > watch->highest ? origin : watch->highest;
     watch->lowestLatency = latency < watch->lowestLatency ? latency : watch->lowestLatency;
     watch->highestLatency = latency > watch->highestLatency ? latency : watch->highestLatency;
+    double step = origin - watch->previous;
+    if (watch->samples != 0 &&
+        (step < 0.0 ? -step : step) > (watch->step < 0.0 ? -watch->step : watch->step))
+    {
+        watch->step = step;
+        watch->stepAt = watch->samples;
+        watch->stepFrom = watch->previousLatency;
+        watch->stepTo = latency;
+    }
+    watch->previous = origin;
+    watch->previousLatency = latency;
     watch->samples++;
 }
 
@@ -114,6 +136,12 @@ static void Finish(void)
             "after underruns\n",
             watch->name, watch->rate, watch->samples, (watch->highest - watch->lowest) / 1e6,
             watch->lowestLatency / 1e6, watch->highestLatency / 1e6, watch->restarts);
+        if (watch->highest - watch->lowest > 5e6)
+        {
+            printf("clock: %s, largest step %.1f ms at stamp %u, latency %.1f then %.1f ms\n",
+                   watch->name, watch->step / 1e6, watch->stepAt, watch->stepFrom / 1e6,
+                   watch->stepTo / 1e6);
+        }
         CHECK(watch->samples >= 100, "the clock was stamped while it ran");
         CHECK(watch->highest - watch->lowest <= 5e6, "a frame's time holds within 5 ms");
         CHECK(maudDestroyStream(s_context, watch->stream) == maud_success, "destroy it");
