@@ -204,20 +204,25 @@ EM_JS(int, maudWebOpenNode, (int handle, void* context, int slot, int channels, 
     // heard, on the page's clock. Reports come in a batch after the
     // device pulls a burst of quanta, so the context's current time,
     // which moves by those bursts, would place the frame only as near as
-    // a burst. Before the first timestamp, or without the method: the
-    // frames queued and the context's own latencies, the ring's as read
-    // now, a posted report's less the frames rendered since it.
+    // a burst. Before the first timestamp, without the method, or with a
+    // timestamp older than a quarter second or placing the frame in the
+    // past (a starved device's): the frames queued and the context's own
+    // latencies, the ring's as read now, a posted report's less the frames
+    // rendered since it.
     function latency(frame, ahead, buffered) {
         const stamp = entry.context.getOutputTimestamp ? entry.context.getOutputTimestamp() : null;
-        if (frame === undefined || !stamp || !stamp.contextTime || !stamp.performanceTime) {
+        const now = performance.now() / 1000;
+        const heard = stamp && stamp.contextTime && stamp.performanceTime && frame !== undefined
+                          ? stamp.performanceTime / 1000 + (frame + ahead) / rate - stamp.contextTime
+                          : -1;
+        if (heard < now || now - stamp.performanceTime / 1000 > 0.25) {
             const behind = frame === undefined || record.ring
                                ? 0
                                : Math.max(0, Math.round(entry.context.currentTime * rate) - frame);
             const queued = record.ring ? buffered : Math.max(0, ahead - behind);
             return queued / rate + entry.context.baseLatency + (entry.context.outputLatency || 0);
         }
-        const heard = stamp.performanceTime / 1000 + (frame + ahead) / rate - stamp.contextTime;
-        return Math.max(0, heard - performance.now() / 1000);
+        return heard - now;
     }
     entry.worklet.then(function () {
         if (record.closed) {

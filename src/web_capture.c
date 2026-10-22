@@ -27,7 +27,9 @@
 // clang-format off
 
 // Copies each quantum's frames, interleaved, into the ring (write index,
-// read index, quanta that did not fit) or a posted chunk, and reports.
+// read index, quanta that did not fit) or a posted chunk, and reports
+// with the ring's write index or the chunk, and the context frame after
+// the quantum.
 EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
     const source = [
         "class MaudCapture extends AudioWorkletProcessor {",
@@ -54,14 +56,14 @@ EM_JS(void, maudWebAddCaptureProcessor, (int handle), {
         "      }",
         "      Atomics.store(this.index, 0, (write + count) | 0);",
         "      if (count < frames) { Atomics.add(this.index, 2, 1); }",
-        "      this.port.postMessage(0);",
+        "      this.port.postMessage([Atomics.load(this.index, 0), currentFrame + frames]);",
         "      return true;",
         "    }",
         "    const chunk = new Float32Array(frames * channels);",
         "    for (let i = 0; i < frames; ++i) {",
         "      for (let c = 0; c < channels; ++c) { chunk[i * channels + c] = input[Math.min(c, input.length - 1)][i]; }",
         "    }",
-        "    this.port.postMessage(chunk, [chunk.buffer]);",
+        "    this.port.postMessage([chunk, currentFrame + frames], [chunk.buffer]);",
         "    return true;",
         "  }",
         "}",
@@ -92,19 +94,41 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
     const id = web.nodes.length - 1;
     const base = chunk >> 2;
     let latency = 0;
-    function deliver(frames) {
-        if (frames > 0) {
-            _maudWebCapture(context, slot, frames, latency + frames / entry.context.sampleRate);
+    // How long ago the first of the frames was captured: the track's own
+    // latency before the context took it, at the context frame where the
+    // graph took it. The context's output timestamp says when a context
+    // frame is heard, and the base and output latencies how long before
+    // that the graph processed it; deliveries come in a batch after the
+    // device's burst, so the context's current time would place the frame
+    // only as near as a burst. Before the first timestamp, without the
+    // method, or with a timestamp older than a quarter second or placing
+    // the capture in the future: the frames as if the last were captured
+    // now.
+    function deliver(frames, first) {
+        if (frames <= 0) {
+            return;
         }
+        const rate = entry.context.sampleRate;
+        const stamp = entry.context.getOutputTimestamp ? entry.context.getOutputTimestamp() : null;
+        let ago = latency + frames / rate;
+        const now = performance.now() / 1000;
+        if (first !== undefined && stamp && stamp.contextTime && stamp.performanceTime &&
+            now - stamp.performanceTime / 1000 <= 0.25) {
+            const processed = stamp.performanceTime / 1000 + first / rate - stamp.contextTime -
+                              entry.context.baseLatency - (entry.context.outputLatency || 0);
+            ago = now - processed + latency >= 0 ? now - processed + latency : ago;
+        }
+        _maudWebCapture(context, slot, frames, ago);
     }
     function take(event) {
         if (record.closed) {
             return;
         }
         if (!record.ring) {
-            const frames = Math.min(event.data.length / channels, capacity);
-            HEAPF32.set(event.data.subarray(0, frames * channels), base);
-            deliver(frames);
+            const chunk = event.data[0];
+            const frames = Math.min(chunk.length / channels, capacity);
+            HEAPF32.set(chunk.subarray(0, frames * channels), base);
+            deliver(frames, event.data[1] - chunk.length / channels);
             return;
         }
         const read = Atomics.load(record.index, 1);
@@ -121,7 +145,8 @@ EM_JS(int, maudWebOpenCaptureNode, (int handle, void* context, int slot, int cha
             _maudWebXrun(context, slot, lost - record.lostSeen);
             record.lostSeen = lost;
         }
-        deliver(frames);
+        // The report's write index was at its context frame.
+        deliver(frames, event.data[1] - ((event.data[0] - read) | 0));
     }
     const constraints = {audio: {
         echoCancellation: (voice & 1) !== 0,

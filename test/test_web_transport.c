@@ -77,15 +77,20 @@ EM_JS(void, InstallWeb, (int isolated), {
     };
 });
 
-// Gives the context an output timestamp, or takes it away: the frame
-// rendered last is heard 40 ms from now.
+// Gives the context an output timestamp, or takes it away: with 1, the
+// frame rendered last is heard 40 ms from now; with 2, the timestamp is a
+// second old, as a starved device's.
 EM_JS(void, Stamp, (int on), {
     if (on === 0) {
         delete globalThis.AudioContext.prototype.getOutputTimestamp;
         return;
     }
     globalThis.AudioContext.prototype.getOutputTimestamp = function () {
-        return {contextTime: globalThis.maudSim.frame / 48000, performanceTime: performance.now() + 40};
+        // The stale one agrees with the fresh one but was taken a second
+        // earlier, a second of frames before.
+        const old = on === 1 ? 0 : 1;
+        return {contextTime: globalThis.maudSim.frame / 48000 - old,
+                performanceTime: performance.now() + 40 - old * 1000};
     };
 });
 
@@ -310,6 +315,24 @@ static void RunTransport(bool isolated)
             printf("stamped report %d: latency %lld ns, expected %lld\n", report,
                    (long long)clock.latencyNanoseconds, (long long)expected);
             CHECK(false, "the output timestamp places every report's frames");
+        }
+    }
+    DeliverToWorklet();
+
+    // A timestamp a second old is no measure: the queue and the context's
+    // latencies again, as without one.
+    Stamp(2);
+    Pull(BASE / QUANTUM);
+    for (int report = 0; DeliverOneToMain() == 1; ++report)
+    {
+        int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
+        int64_t expected = frames * 1000000000LL / RATE + 26000000LL;
+        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        if (clock.latencyNanoseconds < expected - 2 || clock.latencyNanoseconds > expected + 2)
+        {
+            printf("stale report %d: latency %lld ns, expected %lld\n", report,
+                   (long long)clock.latencyNanoseconds, (long long)expected);
+            CHECK(false, "a stale timestamp leaves the queued figure");
         }
     }
     Stamp(0);

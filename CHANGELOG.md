@@ -22,6 +22,11 @@ release could change the API, the ABI and every data format.
   frame is heard holds within 3 ms, where it moved by up to 43 ms with
   the browser's render bursts; through a PulseAudio server Chrome's
   figures still wander by 10 to 20 ms.
+- Web: a capture's clock places its frames the same way, at the context
+  frame where the graph took them; the time a frame was captured held
+  within 3 ms where it moved by up to 43 ms with the browser's bursts.
+  A timestamp older than a quarter second, or one that places a frame
+  impossibly, is not used.
 
 ## [1.2.2] - 2026-10-22
 
