@@ -40,7 +40,8 @@ extern "C"
     ///
     /// @param order      1 to MAUD_MAX_AMBISONIC_ORDER.
     /// @param direction  The direction, in the listener's frame.
-    /// @param gainsOut   Receives the order's channel count of gains.
+    /// @param gainsOut   Receives the order's channel count of gains; left as
+    ///                   they were on failure.
     /// @return `maud_success`, or `maud_errorInvalid` for an order out of
     ///         range, a NULL pointer or a direction that is not finite.
     /// @par Thread safety
@@ -267,7 +268,8 @@ extern "C"
     /// plays the sum over c of matrix[s][c] times bed channel c.
     ///
     /// @param decoder    The decoder.
-    /// @param matrixOut  Receives the matrix.
+    /// @param matrixOut  Receives the matrix; left as it was on failure
+    ///                   (the only failure is a NULL pointer).
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
     /// @par Thread safety
     /// Safe from any thread.

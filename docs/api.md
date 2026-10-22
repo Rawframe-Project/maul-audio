@@ -29,7 +29,7 @@ Returns the channels a bed of an order takes.  @param order  1 to MAUD_MAX_AMBIS
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetAmbisonicGains(uint32_t order, maudVector3 direction, float* gainsOut);
 ```
-Computes the gains that encode a direction: one per channel of the order, in ACN order with SN3D normalization.  @param order      1 to MAUD_MAX_AMBISONIC_ORDER. @param direction  The direction, in the listener's frame. @param gainsOut   Receives the order's channel count of gains. @return `maud_success`, or `maud_errorInvalid` for an order out of range, a NULL pointer or a direction that is not finite. @par Thread safety Safe from any thread.
+Computes the gains that encode a direction: one per channel of the order, in ACN order with SN3D normalization.  @param order      1 to MAUD_MAX_AMBISONIC_ORDER. @param direction  The direction, in the listener's frame. @param gainsOut   Receives the order's channel count of gains; left as they were on failure. @return `maud_success`, or `maud_errorInvalid` for an order out of range, a NULL pointer or a direction that is not finite. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudEncodeAmbisonic(uint32_t order, const maudPanSource* from, const maudPanSource* to, const float* in, float* const* bed, uint32_t frames);
@@ -84,7 +84,7 @@ Destroys a speaker decoder. NULL is ignored.  @param decoder  The decoder. @par 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetSpeakerDecoderMatrix(const maudSpeakerDecoder* decoder, float* matrixOut);
 ```
-Copies the decoder's matrix: the layout's channel count of rows, each the order's channel count of weights, row-major. Speaker s plays the sum over c of matrix[s][c] times bed channel c.  @param decoder    The decoder. @param matrixOut  Receives the matrix. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread.
+Copies the decoder's matrix: the layout's channel count of rows, each the order's channel count of weights, row-major. Speaker s plays the sum over c of matrix[s][c] times bed channel c.  @param decoder    The decoder. @param matrixOut  Receives the matrix; left as it was on failure (the only failure is a NULL pointer). @return `maud_success`, or `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudDecodeToSpeakers(const maudSpeakerDecoder* decoder, const float* const* bed, float* const* out, uint32_t frames);
@@ -127,12 +127,12 @@ Conversion between the two buffer layouts of the API: interleaved frames, which 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudInterleave(const float* const* planar, uint32_t channelCount, uint32_t frameCount, float* interleavedOut);
 ```
-Interleaves one array per channel into frames: sample `i` of channel `c` goes to `interleavedOut[i * channelCount + c]`. Samples are copied exactly. The arrays must not overlap.  @param planar          One array of `frameCount` samples per channel. May be NULL when `frameCount` is 0. @param channelCount    The number of channels, at least 1. @param frameCount      The number of samples in each channel. @param interleavedOut  Room for `channelCount * frameCount` samples. May be NULL when `frameCount` is 0. @return `maud_success`, or `maud_errorInvalid` for a channel count of 0, a NULL array where samples are due, or a total that does not fit in memory. @par Thread safety Real-time safe: no allocation, lock or wait.
+Interleaves one array per channel into frames: sample `i` of channel `c` goes to `interleavedOut[i * channelCount + c]`. Samples are copied exactly. The arrays must not overlap.  @param planar          One array of `frameCount` samples per channel. May be NULL when `frameCount` is 0. @param channelCount    The number of channels, at least 1. @param frameCount      The number of samples in each channel. @param interleavedOut  Room for `channelCount * frameCount` samples. May be NULL when `frameCount` is 0. Left as it was on failure. @return `maud_success`, or `maud_errorInvalid` for a channel count of 0, a NULL array where samples are due, or a total that does not fit in memory. @par Thread safety Real-time safe: no allocation, lock or wait.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudDeinterleave(const float* interleaved, uint32_t channelCount, uint32_t frameCount, float* const* planarOut);
 ```
-Splits frames into one array per channel: `interleaved[i * channelCount + c]` goes to sample `i` of channel `c`. Samples are copied exactly. The arrays must not overlap.  @param interleaved   `channelCount * frameCount` samples. May be NULL when `frameCount` is 0. @param channelCount  The number of channels, at least 1. @param frameCount    The number of frames. @param planarOut     One array with room for `frameCount` samples per channel. May be NULL when `frameCount` is 0. @return `maud_success`, or `maud_errorInvalid` for a channel count of 0, a NULL array where samples are due, or a total that does not fit in memory. @par Thread safety Real-time safe: no allocation, lock or wait.
+Splits frames into one array per channel: `interleaved[i * channelCount + c]` goes to sample `i` of channel `c`. Samples are copied exactly. The arrays must not overlap.  @param interleaved   `channelCount * frameCount` samples. May be NULL when `frameCount` is 0. @param channelCount  The number of channels, at least 1. @param frameCount    The number of frames. @param planarOut     One array with room for `frameCount` samples per channel. May be NULL when `frameCount` is 0. Left as they were on failure. @return `maud_success`, or `maud_errorInvalid` for a channel count of 0, a NULL array where samples are due, or a total that does not fit in memory. @par Thread safety Real-time safe: no allocation, lock or wait.
 
 ## `context.h`
 
@@ -214,7 +214,7 @@ Returns the default direct params: gain 1, no distance, a clear path, full trans
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetAirAbsorption(float temperatureCelsius, float humidityPercent, float* absorptionOut);
 ```
-Computes air absorption per band from ISO 9613 part 1 at 101.325 kPa: the standard's attenuation averaged in dB over each band, as an amplitude exponent per metre.  @param temperatureCelsius  -20 to 50. @param humidityPercent     Relative humidity, 10 to 100. @param absorptionOut       Receives three exponents. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or a value out of range. @par Thread safety Safe from any thread.
+Computes air absorption per band from ISO 9613 part 1 at 101.325 kPa: the standard's attenuation averaged in dB over each band, as an amplitude exponent per metre.  @param temperatureCelsius  -20 to 50. @param humidityPercent     Relative humidity, 10 to 100. @param absorptionOut       Receives three exponents; left as they were on failure. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or a value out of range. @par Thread safety Safe from any thread.
 
 ```c
 static inline maudDirectEffectDef maudDefaultDirectEffectDef(void);
@@ -224,7 +224,7 @@ Returns the default direct effect def: 48 kHz, air absorption of ISO 9613 part 1
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDirectivity(const maudDirectivityPattern* pattern, maudVector3 toListener, float* directivityOut);
 ```
-Computes a pattern's directivity towards the listener.  @param pattern         The pattern. @param toListener      The direction from the source to the listener in the source's own frame, whose forward axis is -z; a zero vector counts as straight ahead. @param directivityOut  Receives three gains. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer, a weight outside 0 to 1, a power below 0 or a value that is not finite. @par Thread safety Safe from any thread.
+Computes a pattern's directivity towards the listener.  @param pattern         The pattern. @param toListener      The direction from the source to the listener in the source's own frame, whose forward axis is -z; a zero vector counts as straight ahead. @param directivityOut  Receives three gains; left as they were on failure. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer, a weight outside 0 to 1, a power below 0 or a value that is not finite. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCreateDirectEffect(const maudDirectEffectDef* def, maudDirectEffect** effectOut);
@@ -319,7 +319,7 @@ Object streams: an output stream whose callback places mono objects around the l
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudRenderObjects(maudContext* context, maudStreamId stream, float* bedOut, maudStreamObject* objectsOut, uint32_t objectCount, uint32_t frameCount);
 ```
-Renders the next frames of an offline object stream to the caller, which stands in for the platform's renderer: the bed into bedOut and each object's frames into the buffer its samples point to, with the position, gain and activity the callback last gave it. The block offers every object (objectsAvailable is the stream's objectCount). The stream's clock advances by frameCount.  @param context      The context. @param stream       A started, running object stream of an offline context. @param bedOut       Room for frameCount interleaved frames of the stream's layout. May be NULL when frameCount is 0. @param objectsOut   objectCount records, each samples pointing to room for frameCount frames (or NULL when frameCount is 0); the rest is written. @param objectCount  The stream's objectCount. @param frameCount   The number of frames. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where frames are due, a stream without objects, another object count or a total that does not fit in memory; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` for a stopped or suspended stream or one already rendering. @par Thread safety Real-time safe: no allocation, lock or wait. A stream renders on one thread at a time.
+Renders the next frames of an offline object stream to the caller, which stands in for the platform's renderer: the bed into bedOut and each object's frames into the buffer its samples point to, with the position, gain and activity the callback last gave it. The block offers every object (objectsAvailable is the stream's objectCount). The stream's clock advances by frameCount.  @param context      The context. @param stream       A started, running object stream of an offline context. @param bedOut       Room for frameCount interleaved frames of the stream's layout. May be NULL when frameCount is 0. @param objectsOut   objectCount records, each samples pointing to room for frameCount frames (or NULL when frameCount is 0); the rest is written. The bed, the records and their samples are left as they were on failure, as maudRenderStream's frames. @param objectCount  The stream's objectCount. @param frameCount   The number of frames. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where frames are due, a stream without objects, another object count or a total that does not fit in memory; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` for a stopped or suspended stream or one already rendering. @par Thread safety Real-time safe: no allocation, lock or wait. A stream renders on one thread at a time.
 
 ## `offline.h`
 
@@ -589,7 +589,7 @@ Destroys a speaker panner. NULL is ignored.  @param panner  The panner. @par Thr
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetSpeakerGains(const maudSpeakerPanner* panner, maudVector3 direction, float* gainsOut);
 ```
-Computes a direction's gain for every channel of the layout.  @param panner     The panner. @param direction  The direction, in the listener's frame. @param gainsOut   Receives the layout's channel count of gains. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or a direction that is not finite. @par Thread safety Safe from any thread.
+Computes a direction's gain for every channel of the layout.  @param panner     The panner. @param direction  The direction, in the listener's frame. @param gainsOut   Receives the layout's channel count of gains; zero on failure, left as they were when panner is NULL (their count is the panner's). @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or a direction that is not finite. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudPanToSpeakers(const maudSpeakerPanner* panner, const maudPanSource* from, const maudPanSource* to, const float* in, float* const* out, uint32_t frames);
@@ -653,7 +653,7 @@ Returns the host clock streams are stamped with: CLOCK_MONOTONIC on Linux and ot
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudRenderStream(maudContext* context, maudStreamId stream, float* framesOut, uint32_t frameCount);
 ```
-Renders the next frames of an offline output stream into a caller buffer, calling the stream's callback once per period as needed, on the calling thread. The stream's clock advances by frameCount. A rate change from a move to another device applies from the first block this call produces.  @param context     The context. @param stream      A started, running output stream of an offline context. @param framesOut   Room for frameCount interleaved frames. May be NULL when frameCount is 0. @param frameCount  The number of frames. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where frames are due, an input stream or a total that does not fit in memory; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` for a stopped or suspended stream or one already rendering. @par Thread safety Real-time safe: no allocation, lock or wait. A stream renders on one thread at a time.
+Renders the next frames of an offline output stream into a caller buffer, calling the stream's callback once per period as needed, on the calling thread. The stream's clock advances by frameCount. A rate change from a move to another device applies from the first block this call produces.  @param context     The context. @param stream      A started, running output stream of an offline context. @param framesOut   Room for frameCount interleaved frames. May be NULL when frameCount is 0. Left as it was on failure: a call back in from the stream's own callback fails while the outer call fills these frames. @param frameCount  The number of frames. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where frames are due, an input stream or a total that does not fit in memory; `maud_errorUnsupported` on a context that is not offline; `maud_errorState` for a stopped or suspended stream or one already rendering. @par Thread safety Real-time safe: no allocation, lock or wait. A stream renders on one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudFeedStream(maudContext* context, maudStreamId stream, const float* frames, uint32_t frameCount);

@@ -463,7 +463,9 @@ extern "C"
     /// @param stream      A started, running output stream of an offline
     ///                    context.
     /// @param framesOut   Room for frameCount interleaved frames. May be NULL
-    ///                    when frameCount is 0.
+    ///                    when frameCount is 0. Left as it was on failure:
+    ///                    a call back in from the stream's own callback
+    ///                    fails while the outer call fills these frames.
     /// @param frameCount  The number of frames.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL pointer where frames are due, an input stream or a total

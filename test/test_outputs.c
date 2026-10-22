@@ -10,18 +10,38 @@
 
 #include "test_harness.h"
 
+#include "maul-audio/ambisonics.h"
+#include "maul-audio/buffer.h"
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
+#include "maul-audio/direct.h"
 #include "maul-audio/focus.h"
 #include "maul-audio/hrtf.h"
 #include "maul-audio/notification.h"
 #include "maul-audio/offline.h"
 #include "maul-audio/scene.h"
 #include "maul-audio/spatializer.h"
+#include "maul-audio/speakers.h"
 #include "maul-audio/stream.h"
 #include "maul-audio/voice.h"
 
+#include <math.h>
 #include <string.h>
+
+// Whether every float reads the fill pattern.
+static bool Untouched(const float* values, size_t count)
+{
+    float pattern;
+    memset(&pattern, 0xAB, sizeof(pattern));
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (memcmp(&values[i], &pattern, sizeof(pattern)) != 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
 
 // Whether bytes are all zero.
 static bool Zero(const void* bytes, size_t size)
@@ -214,6 +234,44 @@ static void TestOtherOwners(void)
           "maudCreateSceneInstance clears its instance");
 }
 
+// Samples without an object leave their outputs as they were; an
+// object's array whose length the object defines is cleared when the
+// object is there, left as it was when it is NULL.
+static void TestArrays(void)
+{
+    float gains[64];
+    maudVector3 bad = {NAN, 0.0f, 0.0f};
+    maudVector3 ahead = {0.0f, 0.0f, -1.0f};
+    FILL(gains);
+    CHECK(maudGetAmbisonicGains(99, ahead, gains) != maud_success && Untouched(gains, 64),
+          "maudGetAmbisonicGains leaves its gains");
+    FILL(gains);
+    CHECK(maudGetAirAbsorption(NAN, 50.0f, gains) != maud_success && Untouched(gains, 3),
+          "maudGetAirAbsorption leaves its exponents");
+    FILL(gains);
+    CHECK(maudGetDirectivity(nullptr, ahead, gains) != maud_success && Untouched(gains, 3),
+          "maudGetDirectivity leaves its gains");
+    FILL(gains);
+    CHECK(maudInterleave(nullptr, 2, 4, gains) != maud_success && Untouched(gains, 8),
+          "maudInterleave leaves its samples");
+    FILL(gains);
+    CHECK(maudGetSpeakerGains(nullptr, ahead, gains) != maud_success && Untouched(gains, 64),
+          "maudGetSpeakerGains leaves its gains without a panner");
+    maudSpeakerPannerDef def = maudDefaultSpeakerPannerDef();
+    maudSpeakerPanner* panner = nullptr;
+    if (maudCreateSpeakerPanner(&def, &panner) == maud_success)
+    {
+        FILL(gains);
+        CHECK(maudGetSpeakerGains(panner, bad, gains) != maud_success &&
+                  Zero(gains, 2 * sizeof(float)),
+              "and clears them with one");
+        maudDestroySpeakerPanner(panner);
+    }
+    FILL(gains);
+    CHECK(maudGetSpeakerDecoderMatrix(nullptr, gains) != maud_success && Untouched(gains, 64),
+          "maudGetSpeakerDecoderMatrix leaves its matrix without a decoder");
+}
+
 int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -227,5 +285,6 @@ int main(void)
     }
     TestSpatializerCalls();
     TestOtherOwners();
+    TestArrays();
     return s_failures == 0 ? 0 : 1;
 }

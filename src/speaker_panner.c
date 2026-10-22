@@ -377,6 +377,15 @@ static bool Finite(maudVector3 v)
 maudResult maudGetSpeakerGains(const maudSpeakerPanner* panner, maudVector3 direction,
                                float* gainsOut)
 {
+    // With a panner, its layout's gains read zero on failure; without
+    // one their count is not known, and they are left as they were.
+    if (panner != nullptr && gainsOut != nullptr)
+    {
+        for (uint32_t c = 0; c < panner->channels; ++c)
+        {
+            gainsOut[c] = 0.0f;
+        }
+    }
     if (panner == nullptr || gainsOut == nullptr || !Finite(direction))
     {
         return maud_errorInvalid;

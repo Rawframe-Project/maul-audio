@@ -22,6 +22,10 @@ release could change the API, the ABI and every data format.
   included, and its documentation says what each output holds then: a
   needed length or size where the output reports one, zero otherwise.
   They were left as they were before.
+- maudGetSpeakerGains clears the layout's gains on failure when it has
+  a panner. Every other output's failure state is documented: samples
+  without an object (ambisonic gains, air absorption, directivity,
+  interleaving) and rendered frames leave their outputs as they were.
 
 ### Fixed
 

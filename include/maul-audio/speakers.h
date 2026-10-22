@@ -91,7 +91,9 @@ extern "C"
     ///
     /// @param panner     The panner.
     /// @param direction  The direction, in the listener's frame.
-    /// @param gainsOut   Receives the layout's channel count of gains.
+    /// @param gainsOut   Receives the layout's channel count of gains; zero
+    ///                   on failure, left as they were when panner is NULL
+    ///                   (their count is the panner's).
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
     ///         a direction that is not finite.
     /// @par Thread safety

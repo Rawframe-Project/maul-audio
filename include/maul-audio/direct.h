@@ -83,7 +83,8 @@ extern "C"
     ///
     /// @param temperatureCelsius  -20 to 50.
     /// @param humidityPercent     Relative humidity, 10 to 100.
-    /// @param absorptionOut       Receives three exponents.
+    /// @param absorptionOut       Receives three exponents; left as they
+    ///                            were on failure.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
     ///         a value out of range.
     /// @par Thread safety
@@ -126,7 +127,8 @@ extern "C"
     ///                        listener in the source's own frame, whose
     ///                        forward axis is -z; a zero vector counts as
     ///                        straight ahead.
-    /// @param directivityOut  Receives three gains.
+    /// @param directivityOut  Receives three gains; left as they were on
+    ///                        failure.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer, a
     ///         weight outside 0 to 1, a power below 0 or a value that is
     ///         not finite.
