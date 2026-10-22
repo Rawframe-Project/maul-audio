@@ -10,7 +10,7 @@
 // refill to the target after each pull, the samples in order, short
 // quanta when the main thread is away and the target's growth to the
 // ring's capacity, the drop when the stream stops, and the latency the
-// callback is told.
+// callback is told, with and without the context's output timestamp.
 
 #include "test_harness.h"
 
@@ -74,6 +74,18 @@ EM_JS(void, InstallWeb, (int isolated), {
         this.connect = function () {};
         this.disconnect = function () {};
         sim.nodes.push(this);
+    };
+});
+
+// Gives the context an output timestamp, or takes it away: the frame
+// rendered last is heard 40 ms from now.
+EM_JS(void, Stamp, (int on), {
+    if (on === 0) {
+        delete globalThis.AudioContext.prototype.getOutputTimestamp;
+        return;
+    }
+    globalThis.AudioContext.prototype.getOutputTimestamp = function () {
+        return {contextTime: globalThis.maudSim.frame / 48000, performanceTime: performance.now() + 40};
     };
 });
 
@@ -278,6 +290,29 @@ static void RunTransport(bool isolated)
             CHECK(false, "the latency is right at every report of a batch");
         }
     }
+    DeliverToWorklet();
+
+    // With the context's output timestamp, each report places the frames
+    // it writes at its own context frame plus what was queued ahead of
+    // them then: here, the same queue as above, heard 40 ms after the
+    // frame rendered last rather than the base and output latencies'
+    // 26 ms, whichever report of the batch is answered.
+    Stamp(1);
+    Pull(BASE / QUANTUM);
+    for (int report = 0; DeliverOneToMain() == 1; ++report)
+    {
+        int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
+        int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
+        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        if (clock.latencyNanoseconds < expected - 50000 ||
+            clock.latencyNanoseconds > expected + 50000)
+        {
+            printf("stamped report %d: latency %lld ns, expected %lld\n", report,
+                   (long long)clock.latencyNanoseconds, (long long)expected);
+            CHECK(false, "the output timestamp places every report's frames");
+        }
+    }
+    Stamp(0);
     DeliverToWorklet();
 
     // The main thread away for two pulls: the second plays two quanta of

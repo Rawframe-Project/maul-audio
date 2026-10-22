@@ -15,6 +15,14 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: an output stream's clock places its frames through the
+  AudioContext's output timestamp. On Chrome's own output the time a
+  frame is heard holds within 3 ms, where it moved by up to 43 ms with
+  the browser's render bursts; through a PulseAudio server Chrome's
+  figures still wander by 10 to 20 ms.
+
 ## [1.2.2] - 2026-10-22
 
 A patch release: no change to the source or binary interface. On the
