@@ -10,7 +10,12 @@ on:
 env:
   PREFIX: MAUL_AUDIO
   # A mirror that stalls is retried and timed out rather than waited on.
+  # A download that trickles never trips the inactivity timeout, so the
+  # packages are fetched alone under a time limit, up to three times (apt
+  # resumes what it fetched), then installed from the cache with no limit
+  # (a kill never lands in dpkg).
   APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30
+  APT_FETCH: for try in 1 2 3; do sudo timeout 180 apt-get $APT_OPTIONS install -y -q --download-only --no-install-recommends $PACKAGES && break; [ $try -lt 3 ] || exit 1; done
 
 jobs:
   # The rules no compiler checks: formatting, static analysis and the
@@ -23,8 +28,10 @@ jobs:
       - name: Install tools
         timeout-minutes: 15
         run: |
+          PACKAGES="clang-20 clang-tidy-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev"
           sudo apt-get $APT_OPTIONS update -q
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 clang-tidy-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev
+          eval "$APT_FETCH"
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends $PACKAGES
           pip install clang-format==22.1.5 >/dev/null
       - name: clang-format
         run: |
@@ -89,15 +96,15 @@ jobs:
         # without it libpipewire leaks on its own failed setup. The
         # daemon, its PulseAudio server, WirePlumber and a session bus
         # for it run the PipeWire and PulseAudio tests, which drive the
-        # server with pactl. A mirror that stalls fails the step for a
-        # rerun.
+        # server with pactl. A mirror that stalls past three fetches fails
+        # the step for a rerun.
         if: runner.os == 'Linux'
         timeout-minutes: 15
         run: |
+          PACKAGES="gcc-14 g++-14 clang-20 libclang-rt-20-dev llvm-20 ninja-build libpipewire-0.3-dev pipewire-bin libpulse-dev libasound2-dev pipewire pipewire-pulse wireplumber dbus-daemon pulseaudio-utils"
           sudo apt-get $APT_OPTIONS update -q
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends gcc-14 g++-14 clang-20 libclang-rt-20-dev llvm-20 ninja-build \
-            libpipewire-0.3-dev pipewire-bin libpulse-dev libasound2-dev \
-            pipewire pipewire-pulse wireplumber dbus-daemon pulseaudio-utils
+          eval "$APT_FETCH"
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends $PACKAGES
       - name: Install BlackHole
         # The runners have no audio hardware; the CoreAudio test plays
         # into this virtual device.
@@ -177,8 +184,10 @@ jobs:
       - name: Install compilers
         timeout-minutes: 15
         run: |
+          PACKAGES="clang-20 libclang-rt-20-dev ninja-build"
           sudo apt-get $APT_OPTIONS update -q
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends clang-20 libclang-rt-20-dev ninja-build
+          eval "$APT_FETCH"
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends $PACKAGES
       - name: Build
         run: |
           cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON \
