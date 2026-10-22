@@ -393,6 +393,11 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     endif()
     maul_add_test(stream)
     maul_add_test(loopback)
+    # Outputs on failure across the parts: the device layer's calls, and
+    # the spatial part's where it is built.
+    if(MAUL_AUDIO_SPATIAL)
+        maul_add_test(outputs)
+    endif()
     maul_add_test(objects)
     maul_add_test(device)
     maul_add_test(utf8 WHITEBOX)

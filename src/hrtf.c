@@ -179,6 +179,11 @@ void maudDestroyHrtf(maudHrtf* hrtf)
 
 maudResult maudGetHrtfInfo(const maudHrtf* hrtf, maudHrtfInfo* infoOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (infoOut != nullptr)
+    {
+        memset(infoOut, 0, sizeof(*infoOut));
+    }
     if (hrtf == nullptr || infoOut == nullptr)
     {
         return maud_errorInvalid;

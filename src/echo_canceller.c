@@ -223,6 +223,11 @@ static void Block(maudEchoCanceller* c)
 maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture, const float* render,
                           uint32_t frameCount, maudEchoState* stateOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (stateOut != nullptr)
+    {
+        memset(stateOut, 0, sizeof(*stateOut));
+    }
     if (canceller == nullptr || (frameCount > 0 && (capture == nullptr || render == nullptr)))
     {
         return maud_errorInvalid;

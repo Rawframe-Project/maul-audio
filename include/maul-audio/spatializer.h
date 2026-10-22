@@ -511,7 +511,7 @@ extern "C"
     ///
     /// @param spatializer  The spatializer.
     /// @param source       The source.
-    /// @param resultOut    Receives the result.
+    /// @param resultOut    Receives the result; all zero on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a 0
     ///         or unknown id, or no latched step; `maud_errorStale` when
     ///         the latched step does not hold the source (made after it,
@@ -555,7 +555,7 @@ extern "C"
     /// Reads the reverberation estimate the latched step published.
     ///
     /// @param spatializer  The spatializer.
-    /// @param resultOut    Receives the result.
+    /// @param resultOut    Receives the result; all zero on failure.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
     ///         no latched step.
     /// @par Thread safety
@@ -615,7 +615,7 @@ extern "C"
     ///
     /// @param spatializer  The spatializer.
     /// @param set          The set.
-    /// @param infoOut      Receives the counts.
+    /// @param infoOut      Receives the counts; all zero on failure.
     /// @param first        The first probe to copy.
     /// @param count        The probes to copy.
     /// @param points       Receives them, or NULL.
@@ -696,7 +696,8 @@ extern "C"
     /// @param set          The set.
     /// @param bytes        Receives the file, or NULL to ask its size.
     /// @param capacity     The bytes bytes holds.
-    /// @param sizeOut      Receives the file's size.
+    /// @param sizeOut      Receives the file's size, also when capacity is
+    ///                     short of it; 0 on other failures.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
     ///         or size, or a 0 or unknown id; `maud_errorStale` for a
     ///         destroyed set's id; `maud_errorCapacity` when capacity is

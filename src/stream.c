@@ -19,6 +19,7 @@
 #include "maul-audio/objects.h"
 
 #include <stdckdint.h>
+#include <string.h>
 
 #define STREAM_DEF_COOKIE 0x6D617364u
 #define MIN_RATE          8000u
@@ -203,6 +204,11 @@ static bool SharesClock(const maudContext* context, const maudDuplex* duplex)
 maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
                                maudStreamStatus* statusOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (statusOut != nullptr)
+    {
+        memset(statusOut, 0, sizeof(*statusOut));
+    }
     if (context == nullptr || statusOut == nullptr)
     {
         return maud_errorInvalid;
@@ -239,6 +245,11 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
 maudResult maudGetStreamFormat(const maudContext* context, maudStreamId stream,
                                maudStreamFormat* formatOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (formatOut != nullptr)
+    {
+        memset(formatOut, 0, sizeof(*formatOut));
+    }
     if (context == nullptr || formatOut == nullptr)
     {
         return maud_errorInvalid;
@@ -255,6 +266,11 @@ maudResult maudGetStreamFormat(const maudContext* context, maudStreamId stream,
 maudResult maudGetStreamPosition(const maudContext* context, maudStreamId stream,
                                  uint64_t* framesOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (framesOut != nullptr)
+    {
+        *framesOut = 0;
+    }
     if (context == nullptr || framesOut == nullptr)
     {
         return maud_errorInvalid;
@@ -271,6 +287,11 @@ maudResult maudGetStreamPosition(const maudContext* context, maudStreamId stream
 maudResult maudGetStreamClock(const maudContext* context, maudStreamId stream,
                               maudStreamClock* clockOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (clockOut != nullptr)
+    {
+        memset(clockOut, 0, sizeof(*clockOut));
+    }
     if (context == nullptr || clockOut == nullptr)
     {
         return maud_errorInvalid;

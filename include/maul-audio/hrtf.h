@@ -114,7 +114,7 @@ extern "C"
     /// Reports what an HRTF set holds.
     ///
     /// @param hrtf     The set.
-    /// @param infoOut  Receives the information.
+    /// @param infoOut  Receives the information; all zero on failure.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
     /// @par Thread safety
     /// Safe from any thread; the set is used by one thread at a time.

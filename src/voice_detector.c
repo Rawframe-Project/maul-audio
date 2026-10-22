@@ -9,6 +9,8 @@
 
 #include "maul-audio/voice.h"
 
+#include <string.h>
+
 #define MIN_RATE 8000u
 #define MAX_RATE 384000u
 // The longest hangover a def may ask for.
@@ -74,6 +76,11 @@ void maudDestroyVoiceDetector(maudVoiceDetector* detector)
 maudResult maudDetectVoice(maudVoiceDetector* detector, const float* frames, uint32_t frameCount,
                            maudVoiceState* stateOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (stateOut != nullptr)
+    {
+        memset(stateOut, 0, sizeof(*stateOut));
+    }
     if (detector == nullptr || (frames == nullptr && frameCount != 0))
     {
         return maud_errorInvalid;

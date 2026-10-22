@@ -159,6 +159,11 @@ maudResult maudGetProbeSet(const maudSpatializer* spatializer, maudProbeSetId se
                            maudProbeSetInfo* infoOut, uint32_t first, uint32_t count,
                            maudVector3* points)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (infoOut != nullptr)
+    {
+        memset(infoOut, 0, sizeof(*infoOut));
+    }
     if (spatializer == nullptr || infoOut == nullptr)
     {
         return maud_errorInvalid;
@@ -315,11 +320,15 @@ bool maudBakedReverb(maudSpatializer* s, maudVector3 position)
 maudResult maudSaveProbeSet(const maudSpatializer* spatializer, maudProbeSetId set, void* bytes,
                             size_t capacity, size_t* sizeOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (sizeOut != nullptr)
+    {
+        *sizeOut = 0;
+    }
     if (spatializer == nullptr || sizeOut == nullptr)
     {
         return maud_errorInvalid;
     }
-    *sizeOut = 0;
     const maudSpatializer* s = spatializer;
     const maudProbeGraph* graph = nullptr;
     maudProbeBake* bake = nullptr;

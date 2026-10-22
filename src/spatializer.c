@@ -771,6 +771,11 @@ uint64_t maudLatchResults(maudSpatializer* spatializer)
 maudResult maudGetDirectResult(const maudSpatializer* spatializer, maudSourceId source,
                                maudDirectResult* resultOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (resultOut != nullptr)
+    {
+        memset(resultOut, 0, sizeof(*resultOut));
+    }
     if (spatializer == nullptr || resultOut == nullptr || source.index1 == 0 ||
         source.index1 > spatializer->capacity || source.generation == 0)
     {
@@ -792,6 +797,11 @@ maudResult maudGetDirectResult(const maudSpatializer* spatializer, maudSourceId 
 
 maudResult maudGetReverbResult(const maudSpatializer* spatializer, maudReverbResult* resultOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (resultOut != nullptr)
+    {
+        memset(resultOut, 0, sizeof(*resultOut));
+    }
     if (spatializer == nullptr || resultOut == nullptr)
     {
         return maud_errorInvalid;

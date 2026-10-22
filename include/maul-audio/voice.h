@@ -114,7 +114,8 @@ extern "C"
     /// @param frames      frameCount frames in the def's layout; may be NULL
     ///                    when frameCount is 0.
     /// @param frameCount  How many.
-    /// @param stateOut    Receives the state after them; may be NULL.
+    /// @param stateOut    Receives the state after them, all zero on
+    ///                    failure; may be NULL.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL detector, or
     ///         NULL frames with a frameCount.
     /// @par Thread safety
@@ -237,7 +238,8 @@ extern "C"
     /// @param frames      frameCount frames in the def's layout; may be NULL
     ///                    when frameCount is 0.
     /// @param frameCount  How many.
-    /// @param stateOut    Receives the state after them; may be NULL.
+    /// @param stateOut    Receives the state after them, all zero on
+    ///                    failure; may be NULL.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL gain control,
     ///         or NULL frames with a frameCount.
     /// @par Thread safety
@@ -343,7 +345,8 @@ extern "C"
     /// @param frames      frameCount frames in the def's layout; may be
     ///                    NULL when frameCount is 0.
     /// @param frameCount  How many.
-    /// @param stateOut    Receives the state after them; may be NULL.
+    /// @param stateOut    Receives the state after them, all zero on
+    ///                    failure; may be NULL.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL noise
     ///         suppressor, or NULL frames with a frameCount.
     /// @par Thread safety
@@ -459,7 +462,8 @@ extern "C"
     ///                    with the capture; may be NULL when frameCount is
     ///                    0.
     /// @param frameCount  How many.
-    /// @param stateOut    Receives the state after them; may be NULL.
+    /// @param stateOut    Receives the state after them, all zero on
+    ///                    failure; may be NULL.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL echo
     ///         canceller, or NULL frames with a frameCount.
     /// @par Thread safety

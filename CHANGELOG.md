@@ -15,6 +15,14 @@ release could change the API, the ABI and every data format.
 
 ## [Unreleased]
 
+### Changed
+
+- A query or step on an object (a context, spatializer, HRTF set or
+  voice processor) clears its outputs on any failure, a missing object
+  included, and its documentation says what each output holds then: a
+  needed length or size where the output reports one, zero otherwise.
+  They were left as they were before.
+
 ### Fixed
 
 - Web: through a PulseAudio server, Chrome's output timestamp drifts

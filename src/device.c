@@ -128,6 +128,11 @@ void maudSetDefaultDevice(maudContext* context, maudDeviceRole role, maudDeviceI
 maudResult maudGetDevices(const maudContext* context, maudDirection direction, maudDeviceId* idsOut,
                           uint32_t capacity, uint32_t* countOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (countOut != nullptr)
+    {
+        *countOut = 0;
+    }
     if (context == nullptr || countOut == nullptr || (idsOut == nullptr && capacity != 0) ||
         direction > maud_directionInput)
     {
@@ -153,6 +158,11 @@ maudResult maudGetDevices(const maudContext* context, maudDirection direction, m
 maudResult maudGetDeviceInfo(const maudContext* context, maudDeviceId device,
                              maudDeviceInfo* infoOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (infoOut != nullptr)
+    {
+        memset(infoOut, 0, sizeof(*infoOut));
+    }
     if (context == nullptr || infoOut == nullptr)
     {
         return maud_errorInvalid;
@@ -197,18 +207,33 @@ static maudResult CopyText(const maudContext* context, maudDeviceId device, bool
 maudResult maudGetDeviceName(const maudContext* context, maudDeviceId device, char* bytesOut,
                              size_t capacity, size_t* lengthOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (lengthOut != nullptr)
+    {
+        *lengthOut = 0;
+    }
     return CopyText(context, device, false, bytesOut, capacity, lengthOut);
 }
 
 maudResult maudGetDeviceKey(const maudContext* context, maudDeviceId device, char* bytesOut,
                             size_t capacity, size_t* lengthOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (lengthOut != nullptr)
+    {
+        *lengthOut = 0;
+    }
     return CopyText(context, device, true, bytesOut, capacity, lengthOut);
 }
 
 maudResult maudGetDefaultDevice(const maudContext* context, maudDirection direction,
                                 maudDeviceRole role, maudDeviceId* deviceOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (deviceOut != nullptr)
+    {
+        memset(deviceOut, 0, sizeof(*deviceOut));
+    }
     if (context == nullptr || deviceOut == nullptr || direction > maud_directionInput ||
         role > maud_roleCommunications)
     {

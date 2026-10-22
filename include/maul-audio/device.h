@@ -138,7 +138,7 @@ extern "C"
     ///                    capacity is 0.
     /// @param capacity    The room in idsOut.
     /// @param countOut    Receives the number of devices, which may exceed
-    ///                    capacity.
+    ///                    capacity; 0 on failure.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer
     ///         where one is required or an unknown direction.
     /// @par Thread safety
@@ -151,7 +151,7 @@ extern "C"
     ///
     /// @param context  The context.
     /// @param device   The device.
-    /// @param infoOut  Receives the information.
+    /// @param infoOut  Receives the information; all zero on failure.
     /// @return `maud_success`; `maud_errorStale` for an id that names no
     ///         device; `maud_errorInvalid` for a NULL pointer.
     /// @par Thread safety
@@ -166,7 +166,8 @@ extern "C"
     /// @param device     The device.
     /// @param bytesOut   Receives the name. May be NULL when capacity is 0.
     /// @param capacity   The room in bytesOut.
-    /// @param lengthOut  Receives the name's length in bytes.
+    /// @param lengthOut  Receives the name's length in bytes: the length
+    ///                   needed when it does not fit, 0 on other failures.
     /// @return `maud_success`; `maud_errorCapacity` when the name does not
     ///         fit, with nothing copied and lengthOut set; `maud_errorStale`;
     ///         `maud_errorInvalid` for a NULL pointer where one is required.
@@ -185,7 +186,8 @@ extern "C"
     /// @param device     The device.
     /// @param bytesOut   Receives the key. May be NULL when capacity is 0.
     /// @param capacity   The room in bytesOut.
-    /// @param lengthOut  Receives the key's length in bytes.
+    /// @param lengthOut  Receives the key's length in bytes: the length
+    ///                   needed when it does not fit, 0 on other failures.
     /// @return `maud_success`; `maud_errorCapacity` when the key does not
     ///         fit, with nothing copied and lengthOut set; `maud_errorStale`;
     ///         `maud_errorInvalid` for a NULL pointer where one is required.
@@ -201,7 +203,7 @@ extern "C"
     /// @param direction    Output or input.
     /// @param role         The role.
     /// @param deviceOut    Receives the device; the null id when there is
-    ///                     none.
+    ///                     none and on failure.
     /// @return `maud_success`; `maud_empty` when the direction has no
     ///         device; `maud_errorInvalid` for a NULL pointer or an unknown
     ///         direction or role.

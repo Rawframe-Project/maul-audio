@@ -376,7 +376,7 @@ extern "C"
     ///
     /// @param context    The context.
     /// @param stream     The stream.
-    /// @param formatOut  Receives the format.
+    /// @param formatOut  Receives the format; all zero on failure.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL pointer.
     /// @par Thread safety
@@ -389,7 +389,7 @@ extern "C"
     ///
     /// @param context    The context.
     /// @param stream     The stream.
-    /// @param statusOut  Receives the status.
+    /// @param statusOut  Receives the status; all zero on failure.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL pointer.
     /// @par Thread safety
@@ -402,7 +402,7 @@ extern "C"
     ///
     /// @param context    The context.
     /// @param stream     The stream.
-    /// @param framesOut  Receives the frame count.
+    /// @param framesOut  Receives the frame count; 0 on failure.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL pointer.
     /// @par Thread safety
@@ -435,7 +435,7 @@ extern "C"
     ///
     /// @param context   The context.
     /// @param stream    The stream.
-    /// @param clockOut  Receives the clock.
+    /// @param clockOut  Receives the clock; all zero on failure.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL pointer.
     /// @par Thread safety

@@ -411,6 +411,11 @@ static float Filter(const Biquad* f, BiquadState* z, float in)
 maudResult maudSuppressNoise(maudNoiseSuppressor* suppressor, float* frames, uint32_t frameCount,
                              maudNoiseState* stateOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (stateOut != nullptr)
+    {
+        memset(stateOut, 0, sizeof(*stateOut));
+    }
     if (suppressor == nullptr || (frames == nullptr && frameCount > 0))
     {
         return maud_errorInvalid;

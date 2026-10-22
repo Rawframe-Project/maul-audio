@@ -180,27 +180,27 @@ Devices: the endpoints a context's backend offers, the default for each role, an
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDevices(const maudContext* context, maudDirection direction, maudDeviceId* idsOut, uint32_t capacity, uint32_t* countOut);
 ```
-Lists the devices of one direction, in a stable order.  @param context     The context. @param direction   Output or input devices. @param idsOut      Receives up to capacity ids. May be NULL when capacity is 0. @param capacity    The room in idsOut. @param countOut    Receives the number of devices, which may exceed capacity. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer where one is required or an unknown direction. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Lists the devices of one direction, in a stable order.  @param context     The context. @param direction   Output or input devices. @param idsOut      Receives up to capacity ids. May be NULL when capacity is 0. @param capacity    The room in idsOut. @param countOut    Receives the number of devices, which may exceed capacity; 0 on failure. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer where one is required or an unknown direction. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDeviceInfo(const maudContext* context, maudDeviceId device, maudDeviceInfo* infoOut);
 ```
-Reports what a device is and runs at.  @param context  The context. @param device   The device. @param infoOut  Receives the information. @return `maud_success`; `maud_errorStale` for an id that names no device; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Reports what a device is and runs at.  @param context  The context. @param device   The device. @param infoOut  Receives the information; all zero on failure. @return `maud_success`; `maud_errorStale` for an id that names no device; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDeviceName(const maudContext* context, maudDeviceId device, char* bytesOut, size_t capacity, size_t* lengthOut);
 ```
-Copies a device's display name, UTF-8, without a terminating NUL.  @param context    The context. @param device     The device. @param bytesOut   Receives the name. May be NULL when capacity is 0. @param capacity   The room in bytesOut. @param lengthOut  Receives the name's length in bytes. @return `maud_success`; `maud_errorCapacity` when the name does not fit, with nothing copied and lengthOut set; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where one is required. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Copies a device's display name, UTF-8, without a terminating NUL.  @param context    The context. @param device     The device. @param bytesOut   Receives the name. May be NULL when capacity is 0. @param capacity   The room in bytesOut. @param lengthOut  Receives the name's length in bytes: the length needed when it does not fit, 0 on other failures. @return `maud_success`; `maud_errorCapacity` when the name does not fit, with nothing copied and lengthOut set; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where one is required. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDeviceKey(const maudContext* context, maudDeviceId device, char* bytesOut, size_t capacity, size_t* lengthOut);
 ```
-Copies a device's persistent key, UTF-8, without a terminating NUL: the same for the same device after it is unplugged and plugged again, and across restarts where the platform allows, so a host may store it.  @param context    The context. @param device     The device. @param bytesOut   Receives the key. May be NULL when capacity is 0. @param capacity   The room in bytesOut. @param lengthOut  Receives the key's length in bytes. @return `maud_success`; `maud_errorCapacity` when the key does not fit, with nothing copied and lengthOut set; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where one is required. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Copies a device's persistent key, UTF-8, without a terminating NUL: the same for the same device after it is unplugged and plugged again, and across restarts where the platform allows, so a host may store it.  @param context    The context. @param device     The device. @param bytesOut   Receives the key. May be NULL when capacity is 0. @param capacity   The room in bytesOut. @param lengthOut  Receives the key's length in bytes: the length needed when it does not fit, 0 on other failures. @return `maud_success`; `maud_errorCapacity` when the key does not fit, with nothing copied and lengthOut set; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer where one is required. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDefaultDevice(const maudContext* context, maudDirection direction, maudDeviceRole role, maudDeviceId* deviceOut);
 ```
-Reports the default device of a direction for a role.  @param context      The context. @param direction    Output or input. @param role         The role. @param deviceOut    Receives the device; the null id when there is none. @return `maud_success`; `maud_empty` when the direction has no device; `maud_errorInvalid` for a NULL pointer or an unknown direction or role. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Reports the default device of a direction for a role.  @param context      The context. @param direction    Output or input. @param role         The role. @param deviceOut    Receives the device; the null id when there is none and on failure. @return `maud_success`; `maud_empty` when the direction has no device; `maud_errorInvalid` for a NULL pointer or an unknown direction or role. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ## `direct.h`
 
@@ -258,7 +258,7 @@ Asks the platform for audio focus, or gives it back. Ask right before playing; o
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetContextFocus(const maudContext* context, maudFocus* focusOut);
 ```
-Reads where the context stands with audio focus, as of the last drain of its notifications.  @param context   The context. @param focusOut  Receives the state. @return `maud_success`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Reads where the context stands with audio focus, as of the last drain of its notifications.  @param context   The context. @param focusOut  Receives the state; all zero on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ## `hrtf.h`
 
@@ -282,7 +282,7 @@ Destroys an HRTF set. NULL is ignored.  @param hrtf  The set. @par Thread safety
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetHrtfInfo(const maudHrtf* hrtf, maudHrtfInfo* infoOut);
 ```
-Reports what an HRTF set holds.  @param hrtf     The set. @param infoOut  Receives the information. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the set is used by one thread at a time.
+Reports what an HRTF set holds.  @param hrtf     The set. @param infoOut  Receives the information; all zero on failure. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the set is used by one thread at a time.
 
 ## `layout.h`
 
@@ -310,7 +310,7 @@ The context's notification queue: typed records of what changed in its devices a
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudNextNotification(maudContext* context, maudNotification* notificationOut);
 ```
-Takes the oldest notification from the context's queue. On native backends whose platform reports changes through a loop the library owns, such as PipeWire, it first takes in what the platform reported since the last call, without blocking, and reconnects to a platform service that went away; a host that drains the queue regularly keeps the device table current.  @param context          The context. @param notificationOut  Receives the record. @return `maud_success`; `maud_empty` when the queue is drained; `maud_errorInvalid` for a NULL pointer; `maud_errorState` on a thread rendering one of the context's streams or running its allocator. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Takes the oldest notification from the context's queue. On native backends whose platform reports changes through a loop the library owns, such as PipeWire, it first takes in what the platform reported since the last call, without blocking, and reconnects to a platform service that went away; a host that drains the queue regularly keeps the device table current.  @param context          The context. @param notificationOut  Receives the record; all zero when the queue is empty and on failure. @return `maud_success`; `maud_empty` when the queue is drained; `maud_errorInvalid` for a NULL pointer; `maud_errorState` on a thread rendering one of the context's streams or running its allocator. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ## `objects.h`
 
@@ -510,7 +510,7 @@ Latches the newest published step for the rendering side; until the next latch, 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetDirectResult(const maudSpatializer* spatializer, maudSourceId source, maudDirectResult* resultOut);
 ```
-Reads a source's result from the latched step.  @param spatializer  The spatializer. @param source       The source. @param resultOut    Receives the result. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a 0 or unknown id, or no latched step; `maud_errorStale` when the latched step does not hold the source (made after it, or destroyed before it). @par Thread safety Real-time safe: no allocation, lock or wait. The rendering side is used by one thread at a time.
+Reads a source's result from the latched step.  @param spatializer  The spatializer. @param source       The source. @param resultOut    Receives the result; all zero on failure. @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a 0 or unknown id, or no latched step; `maud_errorStale` when the latched step does not hold the source (made after it, or destroyed before it). @par Thread safety Real-time safe: no allocation, lock or wait. The rendering side is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudRenderReflections(maudSpatializer* spatializer, const maudQuaternion* orientation, const float* send, float* const* bed, uint32_t frames);
@@ -520,7 +520,7 @@ Renders geometric reflections: convolves the host's mono send with the newest re
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetReverbResult(const maudSpatializer* spatializer, maudReverbResult* resultOut);
 ```
-Reads the reverberation estimate the latched step published.  @param spatializer  The spatializer. @param resultOut    Receives the result. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or no latched step. @par Thread safety Real-time safe: no allocation, lock or wait. The rendering side is used by one thread at a time.
+Reads the reverberation estimate the latched step published.  @param spatializer  The spatializer. @param resultOut    Receives the result; all zero on failure. @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or no latched step. @par Thread safety Real-time safe: no allocation, lock or wait. The rendering side is used by one thread at a time.
 
 ```c
 maudProbeSetDef maudDefaultProbeSetDef(void);
@@ -540,7 +540,7 @@ Destroys a probe set.  @param spatializer  The spatializer. @param set          
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetProbeSet(const maudSpatializer* spatializer, maudProbeSetId set, maudProbeSetInfo* infoOut, uint32_t first, uint32_t count, maudVector3* points);
 ```
-Reads what a probe set holds and, if points is not NULL, copies its probes from first on into points, count of them.  @param spatializer  The spatializer. @param set          The set. @param infoOut      Receives the counts. @param first        The first probe to copy. @param count        The probes to copy. @param points       Receives them, or NULL. @return `maud_success`; `maud_errorInvalid` for a NULL spatializer or info, a 0 or unknown id, or probes past the set's; `maud_errorStale` for a destroyed set's id. @par Thread safety Safe from any thread; the simulation side is used by one thread at a time.
+Reads what a probe set holds and, if points is not NULL, copies its probes from first on into points, count of them.  @param spatializer  The spatializer. @param set          The set. @param infoOut      Receives the counts; all zero on failure. @param first        The first probe to copy. @param count        The probes to copy. @param points       Receives them, or NULL. @return `maud_success`; `maud_errorInvalid` for a NULL spatializer or info, a 0 or unknown id, or probes past the set's; `maud_errorStale` for a destroyed set's id. @par Thread safety Safe from any thread; the simulation side is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudSetPathing(maudSpatializer* spatializer, maudProbeSetId set);
@@ -560,7 +560,7 @@ Sets the baked probe set reverberation estimates come from, from the next maudSi
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudSaveProbeSet(const maudSpatializer* spatializer, maudProbeSetId set, void* bytes, size_t capacity, size_t* sizeOut);
 ```
-Saves a probe set as a `.maudbake` file (docs/bake-format.md): its probes, links and bake. A set saves to the same bytes on every platform.  @param spatializer  The spatializer. @param set          The set. @param bytes        Receives the file, or NULL to ask its size. @param capacity     The bytes bytes holds. @param sizeOut      Receives the file's size. @return `maud_success`; `maud_errorInvalid` for a NULL spatializer or size, or a 0 or unknown id; `maud_errorStale` for a destroyed set's id; `maud_errorCapacity` when capacity is short of the size (nothing written) or the size does not fit in size_t. @par Thread safety Safe from any thread; the simulation side is used by one thread at a time.
+Saves a probe set as a `.maudbake` file (docs/bake-format.md): its probes, links and bake. A set saves to the same bytes on every platform.  @param spatializer  The spatializer. @param set          The set. @param bytes        Receives the file, or NULL to ask its size. @param capacity     The bytes bytes holds. @param sizeOut      Receives the file's size, also when capacity is short of it; 0 on other failures. @return `maud_success`; `maud_errorInvalid` for a NULL spatializer or size, or a 0 or unknown id; `maud_errorStale` for a destroyed set's id; `maud_errorCapacity` when capacity is short of the size (nothing written) or the size does not fit in size_t. @par Thread safety Safe from any thread; the simulation side is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudLoadProbeSet(maudSpatializer* spatializer, const void* bytes, size_t size, maudProbeSetId* setOut);
@@ -628,22 +628,22 @@ Stops a stream. Stopping a stopped stream does nothing.  @param context  The con
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetStreamFormat(const maudContext* context, maudStreamId stream, maudStreamFormat* formatOut);
 ```
-Reports what a stream runs at.  @param context    The context. @param stream     The stream. @param formatOut  Receives the format. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread.
+Reports what a stream runs at.  @param context    The context. @param stream     The stream. @param formatOut  Receives the format; all zero on failure. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream, maudStreamStatus* statusOut);
 ```
-Reports whether a stream is started, suspended, and on which device.  @param context    The context. @param stream     The stream. @param statusOut  Receives the status. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the context is used by one thread at a time.
+Reports whether a stream is started, suspended, and on which device.  @param context    The context. @param stream     The stream. @param statusOut  Receives the status; all zero on failure. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread; the context is used by one thread at a time.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetStreamPosition(const maudContext* context, maudStreamId stream, uint64_t* framesOut);
 ```
-Reports how many frames a stream has moved to or from its device.  @param context    The context. @param stream     The stream. @param framesOut  Receives the frame count. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread.
+Reports how many frames a stream has moved to or from its device.  @param context    The context. @param stream     The stream. @param framesOut  Receives the frame count; 0 on failure. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread.
 
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudGetStreamClock(const maudContext* context, maudStreamId stream, maudStreamClock* clockOut);
 ```
-Reports where a stream's frames meet the host clock. The platform stamps it at each callback, so it follows route changes; a frame's time follows from it at the stream's rate.  @param context   The context. @param stream    The stream. @param clockOut  Receives the clock. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread. It never makes the rendering thread wait.
+Reports where a stream's frames meet the host clock. The platform stamps it at each callback, so it follows route changes; a frame's time follows from it at the stream's rate.  @param context   The context. @param stream    The stream. @param clockOut  Receives the clock; all zero on failure. @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a NULL pointer. @par Thread safety Safe from any thread. It never makes the rendering thread wait.
 
 ```c
 int64_t maudGetHostNanoseconds(void);
@@ -682,7 +682,7 @@ Destroys a voice activity detector. NULL is ignored.  @param detector  The detec
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudDetectVoice(maudVoiceDetector* detector, const float* frames, uint32_t frameCount, maudVoiceState* stateOut);
 ```
-Analyzes interleaved frames, in any count: what does not complete a 10 ms frame waits for the next call, so the results do not depend on how the frames are cut.  @param detector    The detector. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL detector, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The detector is used by one thread at a time.
+Analyzes interleaved frames, in any count: what does not complete a 10 ms frame waits for the next call, so the results do not depend on how the frames are cut.  @param detector    The detector. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them, all zero on failure; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL detector, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The detector is used by one thread at a time.
 
 ```c
 static inline maudGainControlDef maudDefaultGainControlDef(void);
@@ -702,7 +702,7 @@ Destroys an automatic gain control. NULL is ignored.  @param gain  The gain cont
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudApplyGainControl(maudGainControl* gain, float* frames, uint32_t frameCount, maudGainState* stateOut);
 ```
-Applies the gain to interleaved frames in place, in any count; the output does not depend on how the frames are cut. The gain follows what the frames before them showed, so it adds no delay.  @param gain        The gain control. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL gain control, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The gain control is used by one thread at a time.
+Applies the gain to interleaved frames in place, in any count; the output does not depend on how the frames are cut. The gain follows what the frames before them showed, so it adds no delay.  @param gain        The gain control. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them, all zero on failure; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL gain control, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The gain control is used by one thread at a time.
 
 ```c
 static inline maudNoiseSuppressorDef maudDefaultNoiseSuppressorDef(void);
@@ -722,7 +722,7 @@ Destroys a noise suppressor. NULL is ignored.  @param suppressor  The noise supp
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudSuppressNoise(maudNoiseSuppressor* suppressor, float* frames, uint32_t frameCount, maudNoiseState* stateOut);
 ```
-Suppresses noise in interleaved frames in place, in any count; the output does not depend on how the frames are cut. It lags the input by 10 ms: the first 10 ms out are silence.  @param suppressor  The noise suppressor. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL noise suppressor, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The noise suppressor is used by one thread at a time.
+Suppresses noise in interleaved frames in place, in any count; the output does not depend on how the frames are cut. It lags the input by 10 ms: the first 10 ms out are silence.  @param suppressor  The noise suppressor. @param frames      frameCount frames in the def's layout; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them, all zero on failure; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL noise suppressor, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The noise suppressor is used by one thread at a time.
 
 ```c
 static inline maudEchoCancellerDef maudDefaultEchoCancellerDef(void);
@@ -742,7 +742,7 @@ Destroys an echo canceller. NULL is ignored.  @param canceller  The echo cancell
 ```c
 MAUD_NODISCARD MAUD_API maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture, const float* render, uint32_t frameCount, maudEchoState* stateOut);
 ```
-Takes the echo of the render out of the capture, in place, in any count of frames; the output does not depend on how the frames are cut. It works in blocks of the smallest power of two of frames lasting 8 ms or more (128 at 16,000, 512 at 48,000) and lags the input by two: the first two blocks out are silence.  @param canceller   The echo canceller. @param capture     frameCount mono frames of the capture; may be NULL when frameCount is 0. @param render      frameCount mono frames of what was played, aligned with the capture; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL echo canceller, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The echo canceller is used by one thread at a time.
+Takes the echo of the render out of the capture, in place, in any count of frames; the output does not depend on how the frames are cut. It works in blocks of the smallest power of two of frames lasting 8 ms or more (128 at 16,000, 512 at 48,000) and lags the input by two: the first two blocks out are silence.  @param canceller   The echo canceller. @param capture     frameCount mono frames of the capture; may be NULL when frameCount is 0. @param render      frameCount mono frames of what was played, aligned with the capture; may be NULL when frameCount is 0. @param frameCount  How many. @param stateOut    Receives the state after them, all zero on failure; may be NULL. @return `maud_success`; `maud_errorInvalid` for a NULL echo canceller, or NULL frames with a frameCount. @par Thread safety Real-time safe: no allocation, lock or wait. The echo canceller is used by one thread at a time.
 
 ---
 

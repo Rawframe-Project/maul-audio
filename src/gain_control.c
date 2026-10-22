@@ -17,6 +17,7 @@
 #include "maul-audio/voice.h"
 
 #include <math.h>
+#include <string.h>
 
 #define MIN_RATE 8000u
 #define MAX_RATE 384000u
@@ -242,6 +243,11 @@ static void ApplyFrames(maudGainControl* gain, float* frames, uint32_t count)
 maudResult maudApplyGainControl(maudGainControl* gain, float* frames, uint32_t frameCount,
                                 maudGainState* stateOut)
 {
+    // Cleared first: a failure leaves zero (conventions section 8).
+    if (stateOut != nullptr)
+    {
+        memset(stateOut, 0, sizeof(*stateOut));
+    }
     if (gain == nullptr || (frames == nullptr && frameCount != 0))
     {
         return maud_errorInvalid;
