@@ -406,7 +406,7 @@ static void TestOutputStream(maudContext* context)
 // A callback late past the device buffer: the stream runs on. PipeWire's
 // ALSA plugin, which the test's default PCM is, absorbs the stall
 // without an xrun (no -EPIPE, no underrun counted), so the recovery
-// path runs only on hardware (docs/device-checklist.md).
+// path runs only on hardware (docs/operations/device-checklist.md).
 static void TestXrun(maudContext* context)
 {
     Blocks blocks = {.stallAt = 30};

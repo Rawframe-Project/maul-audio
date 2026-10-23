@@ -61,7 +61,7 @@ endif()
 option(MAUL_AUDIO_IOS "Build the iOS backend" ${MAUL_AUDIO_IOS_DEFAULT})
 # A backend kept outside the library, as a console's is: a directory
 # whose backend.cmake adds its sources to maul-audio
-# (docs/private-backends.md).
+# (docs/user/private-backends.md).
 set(MAUL_AUDIO_PRIVATE_BACKEND "" CACHE PATH
     "A directory outside the library holding a private backend's backend.cmake")
 # Backends belong to the Device part.
@@ -412,7 +412,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(voice_silence)
     maul_add_test(voice_refusals)
     maul_add_test(device_refusals)
-    # The guide's snippets (docs/guide.md), as written there: both parts'.
+    # The C snippets of docs/user/, as written there: both parts'.
     if(MAUL_AUDIO_SPATIAL)
         maul_add_test(refusals)
         maul_add_test(versions)

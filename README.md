@@ -1,50 +1,17 @@
 # Maul Audio
 
-Audio device I/O and spatial audio for games, tools and voice
-applications. Written in C23 with public headers any C17 or C++17
-program can include, with no dependencies beyond each platform's own
-audio APIs and an MIT license.
+Audio devices and spatial sound in C, for games, tools and voice applications, with no dependencies beyond each platform's own audio API.
 
-It has two parts, each usable without the other:
+[![CI](https://github.com/Rawframe-Project/maul-audio/actions/workflows/ci.yml/badge.svg)](https://github.com/Rawframe-Project/maul-audio/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/Rawframe-Project/maul-audio)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Rawframe-Project/maul-audio)](https://github.com/Rawframe-Project/maul-audio/releases)
 
-- **Device:** playback, capture and duplex streams on every platform,
-  loopback capture of what an output plays (where the platform has it),
-  device enumeration and hotplug, default-device following, typed
-  device loss, format and latency reporting, a stream clock, platform
-  voice processing and the library's own (voice activity, gain
-  control, noise suppression, echo cancellation), and an offline
-  backend for tests and rendering to memory.
-- **Spatial:** HRTF binaural rendering, ambisonics, speaker panning,
-  air absorption, directivity, occlusion and transmission, reverb,
-  reflections and propagation around geometry, and deterministic
-  offline baking.
+A program that makes sound has to find the output, play to it without dropouts, follow the user when they plug in headphones, and survive the sound server restarting. A game also wants its sources placed around the listener, muffled behind walls, and ringing in the room they are in. Maul Audio does both, in two parts a program can use apart:
 
-It owns no mixer, voices, decoders or game concepts: a host mixes,
-and the library moves its blocks to and from the device or renders
-the sources it is given. Nothing on the audio thread allocates, locks
-or waits, and the library starts no thread except a stream's audio
-thread where the platform provides none and, on Windows, one thread
-per context in COM's multithreaded apartment, on which every WASAPI
-call runs, so that the host's threads may be in any apartment.
+- **Device**: playback, capture, duplex and loopback streams on Linux (PipeWire, PulseAudio, ALSA), Windows, macOS, iOS, Android and the web; device lists and hotplug, following the default device, typed device loss, a stream clock for synchronization, the platform's voice processing and the library's own (voice detection, gain control, noise suppression, echo cancellation), and an offline backend for tests and rendering to memory.
+- **Spatial**: binaural rendering through HRTF sets, a third-order ambisonic bed, speaker panning and decoding, air absorption, directivity, occlusion and transmission, a parametric reverb, geometric reflections, paths around corners, and probe sets baked offline to the same bytes on every platform.
 
-## Status
-
-Version 1.2.4. The device layer works on Linux
-(PipeWire, PulseAudio, ALSA), Windows (WASAPI), macOS (Core Audio),
-iOS, Android (AAudio) and the web, with an offline backend for tests,
-and a private backend (a console's) can join at configure time.
-Everything listed above is built and tested in CI; WASAPI's device
-tests, which need an endpoint the Windows runners lack, run under Wine
-before each commit, and `docs/device-checklist.md` lists what is
-checked by hand on real hardware. Within 1.x the source interface only
-grows, every bake an earlier 1.x wrote loads, and the binary interface
-holds within a minor version; [the changelog](CHANGELOG.md) states the
-promise in full.
-
-## Cost
-
-On one core of an AMD Ryzen 9 5900X (Linux, clang 20, Release; the
-figures in `bench/baseline.txt`), per 10 ms of 48 kHz audio:
+It owns no mixer, voices or decoders: the program mixes, and the library moves its frames to and from the device or renders the sources it is given. Nothing on the audio thread allocates, locks or waits.
 
 | Work | Time | One core in real time |
 |---|---|---|
@@ -57,53 +24,45 @@ figures in `bench/baseline.txt`), per 10 ms of 48 kHz audio:
 | Noise suppression, mono (16 kHz, 48 kHz) | 20, 41 us | |
 | Echo cancellation, mono (16 kHz, 48 kHz) | 27, 76 us | |
 
-On the web, each feature linked alone costs a page, gzipped: a
-playback stream about 16 KB of WebAssembly and JavaScript, the
-binaural effect 28 KB, the reverb 30 KB, the voice processors 32 KB;
-the default HRTF set is a separate file of 854 KB, 636 KB gzipped,
-which the host fetches and hands in. The CI's web cell reports these.
+Per 10 ms of 48 kHz audio on one core of an AMD Ryzen 9 5900X (Linux, Clang 20, Release).
 
-## Building
-
-Requirements: CMake 3.25 and GCC 14 or Clang 19 or newer; on Windows,
-`clang-cl` (the Visual Studio component "C++ Clang tools for Windows").
+## Quick start
 
 ```sh
+git clone https://github.com/Rawframe-Project/maul-audio.git
+cd maul-audio
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build
+./build/sample_devices 10
+./build/sample_binaural data/hrtf/sadie2-ku100-48k.maudhrtf circle.wav
 ```
 
-Each part has an option, both on by default: `-DMAUL_AUDIO_DEVICE=OFF`
-builds the Spatial part alone, `-DMAUL_AUDIO_SPATIAL=OFF` the Device
-part alone. Neither part's code uses the other's, so a host links only
-what it uses.
+`sample_devices` lists the devices and plays a tone for ten seconds; `sample_binaural` renders a source circling the listener to a WAV file. Install with `cmake --install build --prefix <prefix>` and use it from CMake:
 
-Two samples show the parts in use: `sample_devices` lists the devices,
-plays a tone on the default output and prints every notification,
-with the default input's capture on request (and always on the web,
-where it builds as a page);
-`sample_binaural` renders a source circling the listener to a WAV file
-with the shipped HRTF set, without a device.
+```cmake
+find_package(maul-audio REQUIRED CONFIG)
+target_link_libraries(app PRIVATE maul-audio::maul-audio)
+```
 
-Device churn a CI runner cannot simulate (a real headset plugged in,
-the audio service restarted on Windows or macOS) is checked by hand
-before a release, following `docs/device-checklist.md`.
+or through pkg-config as `maul-audio`. [Getting started](docs/user/getting-started.md) covers the build options and the model the API follows.
 
-## Guide
+## Platforms
 
-`docs/guide.md` walks through both parts: a context and its devices,
-a stream, notifications, the offline backend and the voice processors;
-then an HRTF set, the binaural effect, the ambisonic bed, direct
-effects, the reverb and the spatializer. Its snippets are built and run
-by `test/test_guide.c`.
+Linux, Windows 10 and later, macOS, iOS, Android 11 and later, and browsers through Emscripten, with GCC 14 or Clang 19 and newer (`clang-cl` on Windows). The public headers are C17 and C++17, so any C or C++ program can include them. CI builds and tests every platform; [Platforms](docs/user/platforms.md) lists what each one needs.
 
-## Design
+## Documentation
 
-The rules every Maul library follows are in `docs/conventions.md` and
-`docs/adr/`; the records particular to this library are listed in
-`docs/adr/maud.md`.
+- [The documentation site](https://rawframe-project.github.io/maul-audio/), with the API reference generated from the headers.
+- [User documentation](docs/README.md): one page per part of the library.
+- [How it works](docs/internals/overview.md) and [how to develop it](docs/operations/development.md).
+- [Changelog](CHANGELOG.md).
+
+Maul Audio belongs to the Maul family of standalone C libraries, which share one set of conventions.
+
+## Contributing
+
+Issues are welcome. Pull requests are accepted for issues a maintainer has approved; see [CONTRIBUTING.md](https://github.com/Rawframe-Project/.github/blob/main/CONTRIBUTING.md). The project is developed with AI coding agents, directed and reviewed by its maintainers; outside contributions follow the [AI policy](https://github.com/Rawframe-Project/.github/blob/main/AI_POLICY.md).
 
 ## License
 
-MIT; see `LICENSE`.
+MIT; see [LICENSE](LICENSE). The default HRTF set in `data/hrtf/` is made from the SADIE II database (University of York) under the Apache License 2.0; `data/hrtf/sadie2-ku100.notice.txt` carries its notice. `tools/sofa_to_maudhrtf.py` and `tools/near_field_table.py` use numpy and h5py (BSD 3-Clause); nothing outside the platform's own libraries is linked into the library.

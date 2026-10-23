@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Sirac Ozmen
 #
 # Converts a SOFA file (SimpleFreeFieldHRIR) into a .maudhrtf file, the
-# format docs/hrtf-format.md specifies. Each measured response's onset is
+# format docs/internals/file-formats.md specifies. Each measured response's onset is
 # found where its low-passed version (below 1.2 to 2 kHz, where the
 # interaural delay is a delay rather than pinna detail) first reaches a
 # tenth of its peak; the response is made minimum-phase and cut to the
@@ -16,7 +16,7 @@
 # The output depends only on the input, this script and numpy's
 # arithmetic: no time stamps, a fixed order everywhere.
 #
-# Needs numpy and h5py (both BSD licensed; tool-only, see THIRD_PARTY.md).
+# Needs numpy and h5py (both BSD licensed; tool-only, see README.md).
 #
 # The file records the distance the set was measured at, from the source
 # positions' radii; a set measured at several distances needs --distance

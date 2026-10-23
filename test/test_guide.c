@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The guide's C snippets (docs/guide.md), each as written there:
+// The C snippets of docs/user/, each as written there:
 // tools/check_guide.py checks that every snippet appears here unchanged,
 // so the guide cannot drift from the API. Each function gives a snippet
 // what it uses and checks what it keeps. The stream snippet plays on the

@@ -34,7 +34,7 @@ extern "C"
         // library renders ahead there, from the browser's event loop, and
         // plays from a queue on the audio thread, a SharedArrayBuffer ring
         // on a cross-origin isolated page and posted chunks elsewhere
-        // (docs/guide.md, "In a browser", gives the latency of each).
+        // (docs/internals/web.md gives the latency of each).
         maud_modeCallback = 0,
         // The host's own thread, through the library; the only mode of the
         // offline backend, and refused where the platform owns the audio

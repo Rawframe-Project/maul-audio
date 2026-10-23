@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sirac Ozmen
 #
-# The documentation contract of docs/conventions.md, section 7. Every
-# function a public header declares with the library's API macro has a
+# The public API documentation contract. Every function a public header
+# declares with the library's API macro has a
 # /// block directly above it with:
 #
 # - a summary sentence as its first line;
@@ -11,22 +11,21 @@
 #   not exist;
 # - @return, unless the function returns void;
 # - a "@par Thread safety" paragraph that opens with one of the
-#   statements of section 10 (THREAD_SAFETY below).
+#   statements below (THREAD_SAFETY), so a caller always learns whether
+#   and how a function may be called from several threads.
 #
-# And every design record of the library's own that a tracked file cites
-# (`P-NNNN`) exists in docs/adr/, each listed in the library's index,
-# docs/adr/P.md.
+# The API reference is generated from these blocks, so a missing one is a
+# hole in the reference.
 #
 # usage: check_docs.py
 
 import os
 import re
-import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The openings a thread safety paragraph may have (section 10).
+# The openings a thread safety paragraph may have.
 THREAD_SAFETY = [
     re.compile(r"Safe from any thread\.(\s|$)"),
     re.compile(r"Safe from any thread; [^.;]+ (is|are) used by one thread at a time[.,;]"),
@@ -132,36 +131,8 @@ def check(rel, number, doc, text, macro, errors):
         paragraph.append(line)
     text = " ".join(paragraph)
     if not any(pattern.match(text) for pattern in THREAD_SAFETY):
-        errors.append(f"{where}: the thread safety paragraph opens with no statement of "
-                      "section 10")
-
-
-def check_records(prefix, errors):
-    """Cited records exist and the index lists every record."""
-    folder = os.path.join(ROOT, "docs", "adr")
-    records = {}
-    for name in os.listdir(folder):
-        match = re.match(r"(" + prefix + r"-\d{4})-.*\.md$", name)
-        if match:
-            records[match.group(1)] = name
-    with open(os.path.join(folder, prefix + ".md"), encoding="utf-8") as f:
-        index = f.read()
-    for record, name in sorted(records.items()):
-        if f"({name})" not in index:
-            errors.append(f"docs/adr/{prefix}.md: {record} is not listed")
-    tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True,
-                             check=True).stdout.decode("utf-8").split("\0")
-    cited = re.compile(r"\b(" + prefix + r"-\d{4})\b")
-    for rel in sorted(path for path in tracked if path):
-        try:
-            with open(os.path.join(ROOT, rel), encoding="utf-8") as f:
-                text = f.read()
-        except (UnicodeDecodeError, FileNotFoundError):
-            continue
-        for record in sorted(set(cited.findall(text))):
-            if record not in records:
-                errors.append(f"{rel}: cites {record}, which docs/adr/ does not have")
-    return len(records)
+        errors.append(f"{where}: the thread safety paragraph opens with none of the "
+                      "statements in tools/check_docs.py")
 
 
 def main():
@@ -178,14 +149,12 @@ def main():
         for number, doc, text in declarations(lines, macro):
             count += 1
             check(rel, number, doc, text, macro, errors)
-    records = check_records(cmake_setting("MAUL_API_PREFIX"), errors)
     for error in errors:
         print(error)
     if errors:
-        print(f"{len(errors)} finding(s) in {count} public functions and {records} records; "
-              "see docs/conventions.md")
+        print(f"{len(errors)} finding(s) in {count} public functions")
         return 1
-    print(f"documentation: all {count} public functions documented, {records} records found")
+    print(f"documentation: all {count} public functions documented")
     return 0
 
 

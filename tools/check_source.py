@@ -2,13 +2,12 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sirac Ozmen
 #
-# The source rules of docs/conventions.md that neither the compiler nor
-# clang-format checks:
+# The source rules that neither the compiler nor clang-format checks:
 #
 # - every C file, Objective-C (.m) included, starts with its SPDX line;
 #   comments are // or ///;
-# - comments carry no development history and no TODO or FIXME;
-# - no file in the repository contains an em dash;
+# - comments carry no development history (history lives in git) and no
+#   TODO or FIXME (open an issue instead);
 # - src/ calls no <math.h> function but those tools/libm-allowed.txt
 #   lists, when the library has that file;
 # - src/ calls no function the family bans (memory goes through the
@@ -23,6 +22,7 @@
 # sources, in DIR/src, which the rules for src/ hold too.
 # Directories listed in tools/external-dirs.txt hold data from outside
 # (the Unicode Character Database, for example) and are not checked.
+# Markdown and the em dash are the organization's documentation check's.
 #
 # usage: check_source.py
 
@@ -33,7 +33,6 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 C_DIRS = ["include", "src", "test", "bench", "samples", "testbed", "tools"]
 SKIP_DIRS = {".git", "build", "_site", "out"}
-TEXT_SUFFIXES = (".c", ".h", ".m", ".md", ".txt", ".py", ".cmake", ".in", ".yml", ".yaml", ".json")
 
 MARKERS = re.compile(
     r"(?<![\w.#/~])\d+[a-df-z]?-\d+[a-z]?(?![\w.-])"  # slice codes like 2b-9 or 6-3
@@ -44,12 +43,7 @@ MARKERS = re.compile(
     r"|\bregistry [A-Z]\d|\b[Pp]hase \d\b|\b[Rr]ound \d+\b"
     r"|\bintegration audit|\baudit [A-Z]\d|\bred[- ]team|\blesson\b|\bledger\b"
 )
-# The private decision ids, which public Markdown must not cite either.
-PRIVATE_IDS = re.compile(
-    r"\([FRUW]\d{1,2}\b|\b[FRUW]\d{1,2}'s\b|\b(?:decisions?|records?|items?) [FRUW]\d{1,2}\b"
-)
 TODO = re.compile(r"\b(TODO|FIXME|XXX)\b")
-EM_DASH = "\u2014"
 
 FAMILY_BANS = {
     "malloc": "memory goes through the object's allocator",
@@ -126,10 +120,10 @@ def library_bans():
 
 
 # The functions of C23's <math.h> (with their f and l forms), for a
-# library that lists in tools/libm-allowed.txt the ones it may call
-# (section 11): any other is refused in its own sources. The
-# classification macros (isnan, signbit and the like) are exact and not
-# listed.
+# library that lists in tools/libm-allowed.txt the ones it may call: any
+# other is refused in its own sources, because its results differ between
+# C libraries. The classification macros (isnan, signbit and the like) are
+# exact and not listed.
 _LIBM_BASES = """
 acos asin atan atan2 cos sin tan acospi asinpi atanpi atan2pi cospi sinpi
 tanpi acosh asinh atanh cosh sinh tanh exp exp10 exp10m1 exp2 exp2m1 expm1
@@ -168,9 +162,9 @@ def libm_allowed():
 
 LIBM_ALLOWED = libm_allowed()
 
-# The family's SIMD header spells the scalar backend's fused multiply-add
-# (section 11's one place for it), so that file alone may call fmaf
-# whatever tools/libm-allowed.txt lists.
+# The family's SIMD header is the one place fused multiply-add is spelled,
+# for its scalar backend, so that file alone may call fmaf whatever
+# tools/libm-allowed.txt lists.
 LIBM_BY_FILE = {os.path.join("src", "simd.h"): {"fmaf"}}
 
 
@@ -266,17 +260,10 @@ def main():
         for path in walk(top, (".c", ".h", ".m")):
             rel = os.path.relpath(path, ROOT)
             check_c_file(path, rel, rel.startswith(library), bans, findings)
-    for path in walk(".", TEXT_SUFFIXES):
-        rel = os.path.relpath(path, ROOT)
-        for number, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
-            if EM_DASH in line:
-                findings.append(f"{rel}:{number}: em dash")
-            if path.endswith(".md") and PRIVATE_IDS.search(line):
-                findings.append(f"{rel}:{number}: private decision id: {line.strip()}")
     for finding in findings:
         print(finding)
     if findings:
-        print(f"{len(findings)} finding(s); see docs/conventions.md")
+        print(f"{len(findings)} finding(s); each line says which rule")
         return 1
     print("source rules: all files pass")
     return 0

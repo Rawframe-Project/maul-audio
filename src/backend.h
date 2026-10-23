@@ -110,7 +110,7 @@ const maudBackend* maudGetAaudioBackend(void);
 const maudBackend* maudGetWebBackend(void);
 
 // The private backend, in builds with MAUL_AUDIO_PRIVATE_BACKEND: written
-// outside the library (docs/private-backends.md) against this header.
+// outside the library (docs/user/private-backends.md) against this header.
 const maudBackend* maudGetPrivateBackend(void);
 
 #endif // MAUL_AUDIO_SRC_BACKEND_H
