@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sirac Ozmen
 #
-# The guide's C snippets are built and run by the tests: every ```c block
-# of docs/guide.md must appear unchanged in one of test/test_guide*.c,
+# The documentation's C snippets are built and run by the tests: every
+# ```c block of docs/user/*.md must appear unchanged in one of
+# test/test_guide*.c,
 # every non-blank line indented by the same number of spaces (blank lines
 # stay blank), so a snippet that no longer builds or runs fails the tests
 # instead of drifting from the API. A block whose fence line comes right
@@ -12,8 +13,8 @@
 #     <!-- guide: not run: REASON -->
 #
 # is not checked, for a fragment no test can build everywhere (another
-# platform's API, say); the reason is printed. A guide without C blocks
-# passes; a library without docs/guide.md has nothing to check.
+# platform's API, say); the reason is printed. Pages without C blocks
+# pass; a library without docs/user/ has nothing to check.
 #
 # usage: check_guide.py
 
@@ -64,32 +65,34 @@ def run_by(body, tests):
 
 
 def main():
-    path = os.path.join(ROOT, "docs", "guide.md")
-    if not os.path.exists(path):
-        print("guide: no docs/guide.md")
+    pages = sorted(glob.glob(os.path.join(ROOT, "docs", "user", "*.md")))
+    if not pages:
+        print("guide: no docs/user/ pages")
         return 0
-    with open(path, encoding="utf-8") as f:
-        guide = f.read()
     tests = []
     for name in sorted(glob.glob(os.path.join(ROOT, "test", "test_guide*.c"))):
         with open(name, encoding="utf-8") as f:
             tests.append("\n" + f.read())
-    blocks = snippets(guide)
+    total = 0
     missing = 0
     exempt = 0
-    for number, line, first, body, reason in blocks:
-        if reason is not None:
-            print(f"docs/guide.md:{line}: C snippet {number} not run: {reason}")
-            exempt += 1
-        elif not run_by(body, tests):
-            print(f"docs/guide.md:{line}: C snippet {number} ({first}) is not in "
-                  "test/test_guide*.c as written")
-            missing += 1
+    for path in pages:
+        rel = os.path.relpath(path, ROOT)
+        with open(path, encoding="utf-8") as f:
+            blocks = snippets(f.read())
+        total += len(blocks)
+        for number, line, first, body, reason in blocks:
+            if reason is not None:
+                print(f"{rel}:{line}: C snippet {number} not run: {reason}")
+                exempt += 1
+            elif not run_by(body, tests):
+                print(f"{rel}:{line}: C snippet {number} ({first}) is not in "
+                      "test/test_guide*.c as written")
+                missing += 1
     if missing:
-        print(f"{missing} of {len(blocks)} guide snippets not run by the tests")
+        print(f"{missing} of {total} documentation snippets not run by the tests")
         return 1
-    print(f"guide: {len(blocks) - exempt} C snippets in test/test_guide*.c, "
-          f"{exempt} not run")
+    print(f"guide: {total - exempt} C snippets in test/test_guide*.c, {exempt} not run")
     return 0
 
 

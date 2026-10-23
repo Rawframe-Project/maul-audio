@@ -4,7 +4,7 @@
 """Checks that no engine concept is named in Maul Audio's public API.
 
 Any C or C++ program must be able to use Maul Audio: a game, a DAW-style
-tool, a voice app (record maud-0001). This reads the public headers'
+tool, a voice app, without carrying an engine's model. This reads the public headers'
 identifiers, comments and strings left out, splits each into words at
 case changes, underscores and digits, and refuses the words that name an
 engine's concepts, the engine's audio side among them: its mixer, buses

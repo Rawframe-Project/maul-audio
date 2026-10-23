@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sirac Ozmen
 #
-# The module graph rule of docs/conventions.md, section 6. Every module
-# in src/ (a .c or .m file and its header, or a header alone) is declared in
-# tools/modules.txt with the modules it may use:
+# The module graph rule, which keeps dependencies between modules one-way
+# and visible in one file. Every module in src/ (a .c or .m file and its
+# header, or a header alone) is declared in tools/modules.txt with the
+# modules it may use:
 #
 #     tables:
 #     properties: tables

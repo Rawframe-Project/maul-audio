@@ -6,7 +6,7 @@
 // seconds (the first argument, 60 by default). With "capture" as the
 // second argument it also captures from the default input and prints,
 // each second, the frames captured and their peak. It is the host the
-// device checklist (docs/device-checklist.md) runs while devices are
+// device checklist (docs/operations/device-checklist.md) runs while devices are
 // plugged in and out, defaults changed and the audio service
 // restarted. On the web it runs ten minutes with the capture, from the
 // first click on the page, which lets the browser start the sound.

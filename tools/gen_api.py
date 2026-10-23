@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-# Generates docs/api.md from the public headers: every function
+# Generates the API reference from the public headers: every function
 # declaration with the documentation comment above it, grouped by
 # header. Plain text extraction with no compiler, so the reference
 # shows exactly what the headers say. The same script serves every Maul
 # library; it reads the library's name and prefix from CMakeLists.txt.
-# A part tools/source-dirs.txt lists (DIR/src and DIR/include, family
-# record 0020) gets a section of its own for each DIR/include/NAME.
+# A part tools/source-dirs.txt lists (DIR/src and DIR/include) gets a
+# section of its own for each DIR/include/NAME.
 #
-# Usage: python3 tools/gen_api.py  (from the repository root)
+# The reference is built into the documentation site by
+# tools/build_docs.py and is not committed.
+#
+# Usage: python3 tools/gen_api.py OUTPUT.md
 
 import os
 import re
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -109,14 +113,10 @@ def collect(lines):
     return entries
 
 
-def main():
-    out = [
-        "# " + TITLE + " API reference",
-        "",
-        "Generated from the public headers by `tools/gen_api.py`. The headers",
-        "are the source of truth; this file mirrors them.",
-        "",
-    ]
+def render():
+    """The API reference as Markdown: a contents list, then each header."""
+    body = []
+    contents = []
     total = 0
     headers = 0
     sections = [(None, HEADER_DIR, LIB, "## ")] + [(name, folder, name, "### ") for name, folder in parts()]
@@ -124,23 +124,36 @@ def main():
         names = header_order(folder, umbrella)
         headers += len(names)
         if part is not None:
-            out += ["## The `" + part + "` part", ""]
+            body += ["## The `" + part + "` part", ""]
         for name in names:
-            lines = open(os.path.join(folder, name)).read().split("\n")
+            lines = open(os.path.join(folder, name), encoding="utf-8").read().split("\n")
             entries = collect(lines)
             if not entries:
                 continue
-            out += [level + "`" + name + "`", "", summary(lines), ""]
+            contents.append("- [`%s`](#%s)" % (name, re.sub(r"[^a-z0-9]+", "", name.lower())))
+            body += [level + "`" + name + "`", "", summary(lines), ""]
             for comment, sig in entries:
-                out += ["```c", sig, "```"]
+                body += ["```c", sig, "```"]
                 if comment:
-                    out.append(" ".join(comment))
-                out.append("")
+                    body.append(" ".join(comment))
+                body.append("")
                 total += 1
-    out += ["---", "", "%d functions across %d headers." % (total, headers), ""]
-    dest = os.path.join(ROOT, "docs", "api.md")
-    open(dest, "w").write("\n".join(out))
-    print("wrote %s (%d functions)" % (dest, total))
+    head = [
+        "# " + TITLE + " API reference",
+        "",
+        "Generated from the public headers, which are the source of truth: %d functions"
+        " across %d headers." % (total, headers),
+        "",
+    ]
+    return "\n".join(head + contents + [""] + body)
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit("usage: gen_api.py OUTPUT.md")
+    with open(sys.argv[1], "w", encoding="utf-8") as f:
+        f.write(render())
+    print("wrote " + sys.argv[1])
 
 
 if __name__ == "__main__":

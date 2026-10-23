@@ -40,7 +40,7 @@ extern "C"
         maud_backendAaudio = 7,
         maud_backendWeb = 8,
         // A backend built from a directory outside the library, as a
-        // console's is (MAUL_AUDIO_PRIVATE_BACKEND; docs/private-backends.md).
+        // console's is (MAUL_AUDIO_PRIVATE_BACKEND; docs/user/private-backends.md).
         // Built, it comes first in the native order; unbuilt, asking for it
         // is unsupported.
         maud_backendPrivate = 9,

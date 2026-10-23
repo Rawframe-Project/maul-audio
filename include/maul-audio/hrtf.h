@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Head-related transfer function sets, loaded from the bytes of a
-// .maudhrtf file (docs/hrtf-format.md) for the binaural renderer. The
+// .maudhrtf file (docs/internals/file-formats.md) for the binaural renderer. The
 // library reads no files: the host hands over the bytes, which the
 // loader treats as hostile.
 

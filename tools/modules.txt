@@ -1,4 +1,4 @@
-# The internal module graph (docs/conventions.md, section 6): each module
+# The internal module graph (docs/internals/maul-conventions.md): each module
 # and the modules it may use. tools/check_modules.py enforces it.
 aaudio_core: context_core device
 aaudio_java: aaudio_core

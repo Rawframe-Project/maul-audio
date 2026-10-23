@@ -688,7 +688,7 @@ extern "C"
     MAUD_NODISCARD MAUD_API maudResult maudUseBakedReverb(maudSpatializer* spatializer,
                                                           maudProbeSetId set);
 
-    /// Saves a probe set as a `.maudbake` file (docs/bake-format.md):
+    /// Saves a probe set as a `.maudbake` file (docs/internals/file-formats.md):
     /// its probes, links and bake. A set saves to the same bytes on every
     /// platform.
     ///
