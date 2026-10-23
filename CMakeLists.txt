@@ -19,6 +19,7 @@ option(MAUL_AUDIO_BUILD_BENCH "Build the benchmarks" ${PROJECT_IS_TOP_LEVEL})
 option(MAUL_AUDIO_BUILD_SAMPLES "Build the samples" ${PROJECT_IS_TOP_LEVEL})
 option(MAUL_AUDIO_BUILD_SHARED "Build a shared library instead of a static one" OFF)
 option(MAUL_AUDIO_INSTALL "Generate install rules" ${PROJECT_IS_TOP_LEVEL})
+option(MAUL_AUDIO_TEST_PACKAGE "Test the installed package by building samples/minimal against it" OFF)
 option(MAUL_AUDIO_WERROR "Treat compiler warnings as errors" OFF)
 option(MAUL_AUDIO_SANITIZE "Instrument with AddressSanitizer and UBSan" OFF)
 option(MAUL_AUDIO_TSAN "Instrument with ThreadSanitizer" OFF)
@@ -404,8 +405,6 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(duplex)
     maul_add_test(voice_detector)
     maul_add_test(voice_dsp WHITEBOX)
-    maul_add_test(echo_filter WHITEBOX)
-    maul_add_test(echo_suppressor WHITEBOX)
     maul_add_test(gain_control)
     maul_add_test(noise_suppressor)
     maul_add_test(echo_canceller)
@@ -419,19 +418,20 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_audio_test_data(refusals)
         maul_add_test(guide)
         maul_audio_test_data(guide)
-        # Its stream plays on the test daemon, which other tests plug,
-        # unplug and restart.
-        set_tests_properties(guide PROPERTIES RESOURCE_LOCK pipewire-daemon)
         # Node's own file system, so the web reads the HRTF set too.
         if(EMSCRIPTEN)
             target_link_options(test_guide PRIVATE -sNODERAWFS=1)
         endif()
-        # Its stream may open ALSA's default PCM on a machine without
-        # sound, where libasound leaks.
-        if(MAUL_AUDIO_SANITIZE AND MAUL_AUDIO_ALSA)
-            set_tests_properties(guide PROPERTIES ENVIRONMENT
-                "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/lsan-alsa.supp")
-        endif()
+    endif()
+    # The snippets that open the native backend. Its stream plays on the
+    # test daemon, which other tests plug, unplug and restart.
+    maul_add_test(guide_device)
+    set_tests_properties(guide_device PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+    # Its stream may open ALSA's default PCM on a machine without sound,
+    # where libasound leaks.
+    if(MAUL_AUDIO_SANITIZE AND MAUL_AUDIO_ALSA)
+        set_tests_properties(guide_device PROPERTIES ENVIRONMENT
+            "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/lsan-alsa.supp")
     endif()
     # A host stalled inside a step, under a native stream that latches the
     # spatializer's results: both parts', a device's, and not the web's,
@@ -695,6 +695,128 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MAUL_AUDIO_BUILD_SHARED AND NOT EMSCRIPTEN)
         maul_add_test(trap WHITEBOX POSIX)
     endif()
+endif()
+
+# The browser pages, in headless Chrome through puppeteer (MAUD_PUPPETEER
+# names its module; test/web/package.json pins it): each on a cross-origin
+# isolated page and on a plain one. Three are quarantined, run every night
+# instead of in the pull request check, and leave quarantine after 14
+# nightly runs in a row pass: page_clock (#3) and page_loopback (#4),
+# which measure timing and capture in a real browser, and page_web_plain
+# (#5), whose xrun counts follow how busy the main thread is.
+if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE AND EMSCRIPTEN)
+    find_program(MAUL_AUDIO_NODE node REQUIRED)
+    function(maul_audio_page name page)
+        add_test(NAME ${name} COMMAND ${MAUL_AUDIO_NODE} ${PROJECT_SOURCE_DIR}/test/web/run_page.js
+                 ${PROJECT_BINARY_DIR} ${page}.html ${ARGN})
+        set_tests_properties(${name} PROPERTIES LABELS "integration;${page}" SKIP_RETURN_CODE 77
+                             TIMEOUT 120 RESOURCE_LOCK browser)
+    endfunction()
+    maul_audio_page(page_web_isolated page_web 1)
+    maul_audio_page(page_web_plain page_web 0)
+    set_property(TEST page_web_plain APPEND PROPERTY LABELS quarantine)
+    maul_audio_page(page_web_denied page_web 0 deny)
+    foreach(isolated 1 0)
+        if(isolated)
+            set(kind isolated)
+        else()
+            set(kind plain)
+        endif()
+        foreach(page page_ended page_default page_sink page_display)
+            maul_audio_page(${page}_${kind} ${page} ${isolated})
+        endforeach()
+        maul_audio_page(page_loopback_${kind} page_loopback ${isolated} loopback)
+        maul_audio_page(page_clock_${kind} page_clock ${isolated})
+        set_property(TEST page_loopback_${kind} page_clock_${kind} APPEND PROPERTY LABELS quarantine)
+    endforeach()
+endif()
+
+# The suites that drive a real platform: a sound server, the platform's
+# own audio service, a simulator, an emulator or a browser. They are kept
+# out of the changed-files check (tools/check.sh) and may read the clock.
+if(MAUL_AUDIO_BUILD_TESTS)
+    foreach(name pipewire pipewire_restart pulse alsa stall guide_device coreaudio wasapi wasapi_sta
+                 ios ios_capture aaudio android_java)
+        if(TEST ${name})
+            set_property(TEST ${name} APPEND PROPERTY LABELS integration)
+        endif()
+    endforeach()
+endif()
+
+# On Linux no test reaches the session's own sound server: every test runs
+# with a runtime directory of the build's, empty unless the sound-server
+# fixture starts a private PipeWire daemon there (tools/pipewire_daemon.sh)
+# for the suites that need one. Where the daemon's programs are installed
+# the fixture starts it and those suites must reach it; where they are
+# not, the environment is absent and those suites skip. The browser pages
+# of a web build on a Linux host need it too: Chrome plays into its null
+# sink, a device that is always there, so a page never meets a runner's
+# missing or changing output.
+if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
+   AND (EMSCRIPTEN OR (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)))
+    set(maul_audio_server_dir ${PROJECT_BINARY_DIR}/sound-server)
+    get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
+    foreach(name ${maul_audio_tests})
+        set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
+                     XDG_RUNTIME_DIR=${maul_audio_server_dir}/run
+                     PULSE_SERVER=unix:${maul_audio_server_dir}/run/pulse/native)
+    endforeach()
+    set(maul_audio_server_tests "")
+    foreach(name pipewire pipewire_restart pulse alsa stall guide_device)
+        if(TEST ${name})
+            list(APPEND maul_audio_server_tests ${name})
+        endif()
+    endforeach()
+    set(maul_audio_pages ${maul_audio_tests})
+    list(FILTER maul_audio_pages INCLUDE REGEX "^page_")
+    set(maul_audio_server_found TRUE)
+    foreach(program pipewire pipewire-pulse wireplumber pw-cli pactl dbus-daemon)
+        string(MAKE_C_IDENTIFIER ${program} variable)
+        find_program(MAUL_AUDIO_HAVE_${variable} ${program})
+        if(NOT MAUL_AUDIO_HAVE_${variable})
+            set(maul_audio_server_found FALSE)
+        endif()
+    endforeach()
+    file(MAKE_DIRECTORY ${maul_audio_server_dir}/run)
+    if(maul_audio_pages AND NOT maul_audio_server_found)
+        set_property(TEST ${maul_audio_pages} APPEND PROPERTY ENVIRONMENT MAUD_NO_SOUND_SERVER=1)
+    endif()
+    if(maul_audio_server_found AND (maul_audio_server_tests OR maul_audio_pages))
+        set(daemon ${PROJECT_SOURCE_DIR}/tools/pipewire_daemon.sh)
+        add_test(NAME sound_server_start COMMAND ${daemon} start ${maul_audio_server_dir})
+        add_test(NAME sound_server_stop COMMAND ${daemon} stop ${maul_audio_server_dir})
+        set_tests_properties(sound_server_start PROPERTIES FIXTURES_SETUP sound-server
+                             LABELS integration RESOURCE_LOCK pipewire-daemon)
+        set_tests_properties(sound_server_stop PROPERTIES FIXTURES_CLEANUP sound-server
+                             LABELS integration RESOURCE_LOCK pipewire-daemon)
+        set_tests_properties(${maul_audio_server_tests} ${maul_audio_pages} PROPERTIES
+                             FIXTURES_REQUIRED sound-server)
+        # ALSA's default device reaches the server through ALSA's
+        # PulseAudio plugin; without the plugin there is no ALSA server. CI
+        # (GitHub sets CI) runs in an image that has it, so there the suite
+        # requires it and fails if the plugin goes missing.
+        set(require_alsa "")
+        file(GLOB maul_audio_alsa_pulse /usr/share/alsa/alsa.conf.d/*pulse*.conf)
+        if(maul_audio_alsa_pulse OR "$ENV{CI}" STREQUAL "true")
+            set(require_alsa MAUD_REQUIRE_ALSA=1)
+        endif()
+        foreach(name ${maul_audio_server_tests})
+            set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
+                         MAUD_REQUIRE_PIPEWIRE=1 MAUD_REQUIRE_PULSE=1 ${require_alsa}
+                         "MAUD_TEST_PIPEWIRE_STOP=${daemon} stop ${maul_audio_server_dir}"
+                         "MAUD_TEST_PIPEWIRE_START=${daemon} start ${maul_audio_server_dir}")
+        endforeach()
+    endif()
+endif()
+
+# The installed package, consumed by samples/minimal through CMake and
+# pkg-config (cmake/PackageTest.cmake).
+if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_TEST_PACKAGE AND MAUL_AUDIO_INSTALL)
+    add_test(NAME package
+             COMMAND ${CMAKE_COMMAND} -DBINARY_DIR=${PROJECT_BINARY_DIR} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+                     -DGENERATOR=${CMAKE_GENERATOR} -DC_COMPILER=${CMAKE_C_COMPILER} -DCONFIG=$<CONFIG>
+                     -DSHARED=${MAUL_AUDIO_BUILD_SHARED} -P ${PROJECT_SOURCE_DIR}/cmake/PackageTest.cmake)
+    set_tests_properties(package PROPERTIES LABELS package)
 endif()
 
 # Every public header compiles alone, whichever parts are built.

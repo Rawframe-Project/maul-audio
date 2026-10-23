@@ -1,0 +1,29 @@
+# Keeps the pinned action commits and the browser tests' lockfile
+# current: one grouped pull request a week for each, titled as a
+# conventional commit. A release is proposed only once
+# it is a week old, so a compromised one has time to be noticed.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+  # puppeteer and its dependencies, which drive the browser tests.
+  - package-ecosystem: npm
+    directory: /test/web
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      browser:
+        patterns: ["*"]
+    commit-message:
+      prefix: test

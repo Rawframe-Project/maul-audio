@@ -1,32 +1,78 @@
 #!/bin/bash
 # Starts or stops a private PipeWire daemon, its PulseAudio server and
-# WirePlumber for the PipeWire and PulseAudio tests, with one null sink
-# and one null source and no other device, all under one directory, on
-# a session bus of their own (WirePlumber exits without one, and a CI
-# runner has none).
-# The tests reach it with XDG_RUNTIME_DIR=<dir>/run, and the restart
-# tests stop and start it with this script (MAUD_TEST_PIPEWIRE_STOP and
+# WirePlumber for the Linux backend tests, with one null sink and one
+# null source and no other device, all under one directory, on a session
+# bus of their own (WirePlumber exits without one, and a CI container
+# has none). CTest runs it as the sound-server fixture; the tests reach
+# the daemon with XDG_RUNTIME_DIR=<dir>/run, and the restart tests stop
+# and start it with this script (MAUD_TEST_PIPEWIRE_STOP and
 # MAUD_TEST_PIPEWIRE_START).
 #
 # usage: pipewire_daemon.sh start|stop <dir>
+#        pipewire_daemon.sh signal <dir> <name> <signal>
+#
+# signal sends a signal (STOP, CONT) to one of the processes it started,
+# as the tests that freeze the daemon do.
+#
+# Each process it starts is recorded in <dir>/<name>.pid with its start
+# time, and only a process whose PID and start time both still match is
+# ever signalled: a record can outlive its process (a cancelled run, a
+# reboot), and by then the PID may be another program's. Every wait is
+# bounded and fails with the reason; the daemons' logs are in <dir>.
 set -euo pipefail
-[ $# -eq 2 ] || { echo "usage: $0 start|stop <dir>" >&2; exit 2; }
+[ $# -eq 2 ] || [ $# -eq 4 ] || { echo "usage: $0 start|stop <dir> | signal <dir> <name> <signal>" >&2; exit 2; }
 action=$1
 dir=$2
+mkdir -p "$dir"
+dir=$(cd "$dir" && pwd)
 export XDG_RUNTIME_DIR=$dir/run
 export XDG_CONFIG_HOME=$dir/config
 export XDG_STATE_HOME=$dir/state
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$dir/run/bus
+unset PULSE_SERVER PIPEWIRE_REMOTE
 
-running() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+# Seconds a step may take before the start fails. A loaded machine took
+# under two for each; the bound leaves room for a much slower one.
+LIMIT=20
 
-start() { # name, seconds to settle
+start_time() { awk '{print $22}' "/proc/$1/stat" 2>/dev/null; }
+
+# Whether the record names a live process of ours: the same PID with the
+# same start time.
+running() {
+    local record=$1 pid started
+    [ -f "$record" ] || return 1
+    read -r pid started < "$record" || return 1
+    [ -n "$pid" ] && [ "$(start_time "$pid")" = "$started" ]
+}
+
+record() { echo "$2 $(start_time "$2")" > "$dir/$1.pid"; }
+
+# Waits until a command succeeds, LIMIT seconds at most.
+wait_for() {
+    local what=$1
+    shift
+    local deadline=$((SECONDS + LIMIT))
+    until "$@" >/dev/null 2>&1; do
+        if [ $SECONDS -ge $deadline ]; then
+            echo "pipewire_daemon: $what not ready after $LIMIT s; logs in $dir" >&2
+            tail -n 20 "$dir"/*.log >&2 2>/dev/null || true
+            exit 1
+        fi
+        sleep 0.1
+    done
+}
+
+launch() { # name
     if ! running "$dir/$1.pid"; then
         "$1" > "$dir/$1.log" 2>&1 &
-        echo $! > "$dir/$1.pid"
-        sleep "$2"
+        record "$1" $!
     fi
 }
+
+has_node() { pw-cli ls Node | grep -q "node.name = \"$1\""; }
+has_sink() { pactl list short sinks | grep -q maud-test-sink; }
+has_default() { [ "$(pactl get-default-sink)" = maud-test-sink ]; }
 
 case $action in
 start)
@@ -38,29 +84,49 @@ start)
     done
     if ! running "$dir/dbus.pid"; then
         rm -f "$dir/run/bus"
-        dbus-daemon --session --fork --address="$DBUS_SESSION_BUS_ADDRESS" --print-pid=1 > "$dir/dbus.pid"
+        pid=$(dbus-daemon --session --fork --address="$DBUS_SESSION_BUS_ADDRESS" --print-pid=1)
+        record dbus "$pid"
     fi
-    start pipewire 1
-    start pipewire-pulse 0
-    start wireplumber 2
-    if ! pw-cli ls Node | grep -q maud-test-sink; then
+    wait_for "the session bus" test -S "$dir/run/bus"
+    launch pipewire
+    wait_for "pipewire" pw-cli info 0
+    launch pipewire-pulse
+    wait_for "pipewire-pulse" pactl info
+    launch wireplumber
+    if ! has_node maud-test-sink; then
         pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-sink node.description="Maud test sink" media.class=Audio/Sink audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
         pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-source node.description="Maud test source ğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğ音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音" media.class=Audio/Source/Virtual audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
-        sleep 1
     fi
+    wait_for "the test sink" has_sink
+    # WirePlumber makes the only sink the default once it has seen it.
+    wait_for "the test sink as the default" has_default
     ;;
 stop)
     for name in wireplumber pipewire-pulse pipewire dbus; do
-        pid_file=$dir/$name.pid
-        if running "$pid_file"; then
-            kill "$(cat "$pid_file")"
-            for _ in $(seq 50); do kill -0 "$(cat "$pid_file")" 2>/dev/null || break; sleep 0.1; done
+        record_file=$dir/$name.pid
+        if running "$record_file"; then
+            read -r pid _ < "$record_file"
+            kill "$pid"
+            deadline=$((SECONDS + LIMIT))
+            while running "$record_file"; do
+                if [ $SECONDS -ge $deadline ]; then
+                    echo "pipewire_daemon: $name (PID $pid) still running after $LIMIT s" >&2
+                    exit 1
+                fi
+                sleep 0.1
+            done
         fi
-        rm -f "$pid_file"
+        rm -f "$record_file"
     done
     ;;
+signal)
+    record_file=$dir/$3.pid
+    running "$record_file" || { echo "pipewire_daemon: $3 is not running" >&2; exit 1; }
+    read -r pid _ < "$record_file"
+    kill "-$4" "$pid"
+    ;;
 *)
-    echo "usage: $0 start|stop <dir>" >&2
+    echo "usage: $0 start|stop <dir> | signal <dir> <name> <signal>" >&2
     exit 2
     ;;
 esac

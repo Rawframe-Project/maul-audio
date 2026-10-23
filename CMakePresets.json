@@ -1,0 +1,234 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/out/${presetName}",
+      "cacheVariables": { "MAUL_AUDIO_WERROR": "ON" }
+    },
+    {
+      "name": "linux",
+      "hidden": true,
+      "inherits": "base",
+      "generator": "Ninja",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "gcc",
+      "hidden": true,
+      "cacheVariables": { "CMAKE_C_COMPILER": "gcc-14", "CMAKE_CXX_COMPILER": "g++-14" }
+    },
+    {
+      "name": "clang",
+      "hidden": true,
+      "cacheVariables": { "CMAKE_C_COMPILER": "clang-20", "CMAKE_CXX_COMPILER": "clang++-20" }
+    },
+    {
+      "name": "linux-gcc-14",
+      "displayName": "GCC 14, Release, both parts and every Linux backend, the package test",
+      "inherits": ["linux", "gcc"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MAUL_AUDIO_TEST_PACKAGE": "ON" }
+    },
+    {
+      "name": "linux-clang-20",
+      "displayName": "Clang 20, Release",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "linux-clang-20-asan",
+      "displayName": "Clang 20, AddressSanitizer and UBSan, assertions on",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_AUDIO_SANITIZE": "ON" }
+    },
+    {
+      "name": "linux-clang-20-tsan",
+      "displayName": "Clang 20, ThreadSanitizer, assertions on",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_AUDIO_TSAN": "ON" }
+    },
+    {
+      "name": "linux-clang-20-msan",
+      "displayName": "Clang 20, MemorySanitizer, assertions on (the sound servers' libraries are not instrumented)",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS": "-fsanitize=memory",
+        "CMAKE_CXX_FLAGS": "-fsanitize=memory",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=memory"
+      }
+    },
+    {
+      "name": "linux-shared",
+      "displayName": "Clang 20, shared library, the package test",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MAUL_AUDIO_BUILD_SHARED": "ON",
+        "MAUL_AUDIO_TEST_PACKAGE": "ON"
+      }
+    },
+    {
+      "name": "linux-device-only",
+      "displayName": "GCC 14, the Device part alone",
+      "inherits": ["linux", "gcc"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MAUL_AUDIO_SPATIAL": "OFF" }
+    },
+    {
+      "name": "linux-spatial-only",
+      "displayName": "GCC 14, the Spatial part alone",
+      "inherits": ["linux", "gcc"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MAUL_AUDIO_DEVICE": "OFF" }
+    },
+    {
+      "name": "linux-private-backend",
+      "displayName": "Clang 20, AddressSanitizer, the Device part with the private backend of test/private_backend",
+      "inherits": ["linux", "clang"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MAUL_AUDIO_SANITIZE": "ON",
+        "MAUL_AUDIO_SPATIAL": "OFF",
+        "MAUL_AUDIO_PRIVATE_BACKEND": "${sourceDir}/test/private_backend"
+      }
+    },
+    {
+      "name": "web-emscripten",
+      "displayName": "Emscripten, the suites under Node and the pages in headless Chrome",
+      "inherits": "linux",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "android-emulator",
+      "displayName": "NDK for x86_64, Android 11, tests in the emulator",
+      "inherits": "linux",
+      "toolchainFile": "${sourceDir}/cmake/android-emulator.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "macos",
+      "hidden": true,
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "macos-clang",
+      "displayName": "Apple Clang, Release, the package test",
+      "inherits": "macos",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MAUL_AUDIO_TEST_PACKAGE": "ON" }
+    },
+    {
+      "name": "macos-clang-asan",
+      "displayName": "Apple Clang, AddressSanitizer and UBSan, assertions on",
+      "inherits": "macos",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_AUDIO_SANITIZE": "ON" }
+    },
+    {
+      "name": "macos-clang-tsan",
+      "displayName": "Apple Clang, ThreadSanitizer, assertions on",
+      "inherits": "macos",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_AUDIO_TSAN": "ON" }
+    },
+    {
+      "name": "ios-simulator",
+      "displayName": "Apple Clang for the iOS simulator, tests in a booted simulator",
+      "inherits": "macos",
+      "toolchainFile": "${sourceDir}/cmake/ios-simulator.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "ios-simulator-asan",
+      "displayName": "Apple Clang for the iOS simulator, AddressSanitizer",
+      "inherits": "macos",
+      "toolchainFile": "${sourceDir}/cmake/ios-simulator.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MAUL_AUDIO_SANITIZE": "ON" }
+    },
+    {
+      "name": "windows-clang-cl",
+      "displayName": "clang-cl through Visual Studio's ClangCL toolset, the package test",
+      "inherits": "base",
+      "toolset": { "value": "ClangCL", "strategy": "set" },
+      "cacheVariables": { "MAUL_AUDIO_TEST_PACKAGE": "ON" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-gcc-14", "configurePreset": "linux-gcc-14" },
+    { "name": "linux-clang-20", "configurePreset": "linux-clang-20" },
+    { "name": "linux-clang-20-asan", "configurePreset": "linux-clang-20-asan" },
+    { "name": "linux-clang-20-tsan", "configurePreset": "linux-clang-20-tsan" },
+    { "name": "linux-clang-20-msan", "configurePreset": "linux-clang-20-msan" },
+    { "name": "linux-shared", "configurePreset": "linux-shared" },
+    { "name": "linux-device-only", "configurePreset": "linux-device-only" },
+    { "name": "linux-spatial-only", "configurePreset": "linux-spatial-only" },
+    { "name": "linux-private-backend", "configurePreset": "linux-private-backend" },
+    { "name": "web-emscripten", "configurePreset": "web-emscripten" },
+    { "name": "android-emulator", "configurePreset": "android-emulator" },
+    { "name": "macos-clang", "configurePreset": "macos-clang" },
+    { "name": "macos-clang-asan", "configurePreset": "macos-clang-asan" },
+    { "name": "macos-clang-tsan", "configurePreset": "macos-clang-tsan" },
+    { "name": "ios-simulator", "configurePreset": "ios-simulator" },
+    { "name": "ios-simulator-asan", "configurePreset": "ios-simulator-asan" },
+    { "name": "windows-clang-cl", "configurePreset": "windows-clang-cl", "configuration": "Release" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "timeout": 300, "jobs": 4 }
+    },
+    {
+      "name": "default",
+      "hidden": true,
+      "inherits": "base",
+      "filter": { "exclude": { "label": "^quarantine$" } }
+    },
+    { "name": "linux-gcc-14", "inherits": "default", "configurePreset": "linux-gcc-14" },
+    { "name": "linux-clang-20", "inherits": "default", "configurePreset": "linux-clang-20" },
+    { "name": "linux-clang-20-asan", "inherits": "default", "configurePreset": "linux-clang-20-asan" },
+    { "name": "linux-clang-20-tsan", "inherits": "default", "configurePreset": "linux-clang-20-tsan" },
+    {
+      "name": "linux-clang-20-msan",
+      "inherits": "base",
+      "configurePreset": "linux-clang-20-msan",
+      "filter": { "exclude": { "label": "^(integration|quarantine)$", "name": "^context$" } }
+    },
+    { "name": "linux-shared", "inherits": "default", "configurePreset": "linux-shared" },
+    { "name": "linux-device-only", "inherits": "default", "configurePreset": "linux-device-only" },
+    { "name": "linux-spatial-only", "inherits": "default", "configurePreset": "linux-spatial-only" },
+    {
+      "name": "linux-private-backend",
+      "inherits": "base",
+      "configurePreset": "linux-private-backend",
+      "filter": { "include": { "name": "^(private_backend|context)$" } }
+    },
+    {
+      "name": "web-emscripten",
+      "inherits": "base",
+      "configurePreset": "web-emscripten",
+      "filter": { "exclude": { "label": "^quarantine$", "name": "^guide_device$" } }
+    },
+    { "name": "android-emulator", "inherits": "default", "configurePreset": "android-emulator" },
+    {
+      "name": "macos",
+      "hidden": true,
+      "inherits": "default",
+      "environment": { "MAUD_REQUIRE_COREAUDIO": "1" }
+    },
+    { "name": "macos-clang", "inherits": "macos", "configurePreset": "macos-clang" },
+    { "name": "macos-clang-asan", "inherits": "macos", "configurePreset": "macos-clang-asan" },
+    { "name": "macos-clang-tsan", "inherits": "macos", "configurePreset": "macos-clang-tsan" },
+    { "name": "ios-simulator", "inherits": "default", "configurePreset": "ios-simulator" },
+    { "name": "ios-simulator-asan", "inherits": "default", "configurePreset": "ios-simulator-asan" },
+    {
+      "name": "windows-clang-cl",
+      "inherits": "base",
+      "configurePreset": "windows-clang-cl",
+      "configuration": "Release",
+      "filter": { "exclude": { "name": "^(wasapi|wasapi_sta|stall|guide_device)$" } }
+    }
+  ]
+}

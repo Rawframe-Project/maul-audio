@@ -718,16 +718,17 @@ static void TestServerEnded(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
-// Sends a signal to the test daemon's PulseAudio server, by the pid file
-// the daemon script keeps beside the directory its stop command names.
+// Sends a signal to the test daemon's PulseAudio server through the
+// daemon script its stop command names, which signals only the process
+// it started.
 static bool SignalPulseServer(const char* signal)
 {
     const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
-    const char* dir = stop != nullptr ? strrchr(stop, ' ') : nullptr;
+    const char* verb = stop != nullptr ? strstr(stop, " stop ") : nullptr;
     char command[512];
-    if (dir == nullptr ||
-        snprintf(command, sizeof(command), "kill -%s \"$(cat %s/pipewire-pulse.pid)\"", signal,
-                 dir + 1) >= (int)sizeof(command))
+    if (verb == nullptr ||
+        snprintf(command, sizeof(command), "%.*s signal %s pipewire-pulse %s", (int)(verb - stop),
+                 stop, verb + 6, signal) >= (int)sizeof(command))
     {
         return false;
     }

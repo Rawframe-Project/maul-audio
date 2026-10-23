@@ -7,10 +7,29 @@
 // page asks for display capture, and its audio is not muted, so that the
 // tab's own sound reaches the capture.
 // Puppeteer comes from MAUD_PUPPETEER, a path to its module.
+// Chrome plays into the device the environment gives it: on Linux, the
+// private sound server's null sink (CTest's sound-server fixture). A
+// device error Chrome reports fails the page with Chrome's message, since
+// a page that lost its device tests nothing.
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const puppeteer = require(process.env.MAUD_PUPPETEER || "puppeteer");
+// Without a browser driver the environment is absent and the page is
+// skipped (77); one named but missing is a broken environment.
+let puppeteer;
+try {
+  puppeteer = require(process.env.MAUD_PUPPETEER || "puppeteer");
+} catch (error) {
+  console.log(`no puppeteer: ${error.message}`);
+  process.exit(process.env.MAUD_PUPPETEER ? 1 : 77);
+}
+
+// On Linux the pages need the private sound server; without its
+// programs there is no device to play into (MAUD_NO_SOUND_SERVER).
+if (process.env.MAUD_NO_SOUND_SERVER) {
+  console.log("no sound server for the browser");
+  process.exit(77);
+}
 
 const [directory, page, isolatedArgument, denyArgument] = process.argv.slice(2);
 const isolated = isolatedArgument === "1";
@@ -67,6 +86,11 @@ server.listen(0, "127.0.0.1", async () => {
         }
         if (text.includes("MAUD_TEST_WAITING_FOR_GESTURE")) {
           await tab.mouse.click(10, 10);
+        }
+        // "[AudioContext] Fallback to the default device ...", "The
+        // AudioContext encountered an error from the audio device ...".
+        if (/^\[AudioContext\]|AudioContext encountered an error/.test(text)) {
+          resolve(`device error: ${text}`);
         }
         const match = text.match(/MAUD_TEST_RESULT (\w+)/);
         if (match) {

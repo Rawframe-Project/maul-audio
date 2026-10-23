@@ -1,0 +1,8 @@
+{
+  "name": "maul-audio-browser-tests",
+  "private": true,
+  "description": "The browser the web backend's pages run in: puppeteer and the Chrome it downloads.",
+  "dependencies": {
+    "puppeteer": "25.14.0"
+  }
+}
