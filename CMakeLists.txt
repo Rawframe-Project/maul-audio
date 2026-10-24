@@ -841,8 +841,11 @@ endif()
 # behind a 0x03 byte (fields of order 1), fuzz_bake.
 if(MAUL_AUDIO_FUZZ AND MAUL_AUDIO_SPATIAL)
     # The library is instrumented too: its coverage guides libFuzzer, and
-    # the sanitizers watch its code, not only the targets'.
-    target_compile_options(maul-audio PRIVATE -fsanitize=fuzzer-no-link,address,undefined)
+    # the sanitizers watch its code, not only the targets'. Undefined
+    # behavior stops the run, as a crash does: by default UBSan only
+    # prints and libFuzzer goes on, leaving no input behind.
+    target_compile_options(maul-audio PRIVATE -fsanitize=fuzzer-no-link,address,undefined
+                           -fno-sanitize-recover=all)
     target_link_options(maul-audio PUBLIC -fsanitize=address,undefined)
     foreach(area hrtf bake)
         add_executable(fuzz_${area} test/fuzz_${area}.c)
@@ -850,7 +853,8 @@ if(MAUL_AUDIO_FUZZ AND MAUL_AUDIO_SPATIAL)
         # The targets reach the library's own functions.
         target_include_directories(fuzz_${area} PRIVATE ${PROJECT_SOURCE_DIR}/src)
         maul_apply_flags(fuzz_${area})
-        target_compile_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined)
+        target_compile_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined
+                               -fno-sanitize-recover=all)
         target_link_options(fuzz_${area} PRIVATE -fsanitize=fuzzer,address,undefined)
     endforeach()
 endif()
