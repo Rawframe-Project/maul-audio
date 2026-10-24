@@ -16,9 +16,9 @@
 // match, and none where every set is taken, keeping nothing; the
 // office's bake is, byte for byte, the shipped one in data/bake
 // (MAUD_WRITE_GOLDEN set rewrites it), and on the web, which has no
-// file system, its hash; a bake kept from when the format was set
-// still loads and gives the estimates it gave then. In two coupled
-// rooms a bake carries the slower slope.
+// file system, its hash; the shipped version 1 bake, before tails,
+// still loads and gives the same estimates. In two coupled rooms a bake
+// carries the slower slope.
 
 // fopen and getenv read and rewrite the shipped bake; the C runtime's
 // warning that they are unsafe is about the Annex K alternatives, which
@@ -463,10 +463,10 @@ static void TestFile(maudAcousticScene* scene)
 // the shipped file.
 #ifndef __EMSCRIPTEN__
 // Loads a kept bake from data/bake into a spatializer like def with
-// materials m, and requires four estimates equal to s's; hashOut
-// receives the estimates' hash.
+// materials m, and requires four estimates equal to s's (with no tail
+// when untailed); hashOut receives the estimates' hash.
 static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, const char* name,
-                 maudSpatializer* s, uint64_t* hashOut)
+                 maudSpatializer* s, bool untailed, uint64_t* hashOut)
 {
     char path[512];
     snprintf(path, sizeof(path), "%s/bake/%s", MAUD_DATA_DIR, name);
@@ -488,8 +488,8 @@ static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, c
     {
         maudReverbResult a = At(s, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
         maudReverbResult b = At(kept, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
-        ok = Same(&a, &b);
-        // The estimate's fields alone, as a later version may add fields.
+        ok = Same(&a, &b) && (!untailed || a.tailTime[1] == 0.0f);
+        // The estimate's fields alone, as a later 1.x may add fields.
         float fields[4 * MAUD_DIRECT_BANDS + 1];
         memcpy(fields, b.reverbTime, sizeof(b.reverbTime));
         memcpy(fields + MAUD_DIRECT_BANDS, b.level, sizeof(b.level));
@@ -558,14 +558,15 @@ static void TestGolden(maudAcousticScene* scene)
     }
     CHECK(read == size && memcmp(golden, bytes, size) == 0, "the shipped bake, byte for byte");
     free(golden);
-    // A bake in the current format kept as it was written, while the
-    // golden file follows the bake's results: it loads and gives the
-    // estimates it gave when written, so a reader change that misreads
-    // the format shows here even when the bake's results move.
+    // The same bake in version 1, before tails: it loads, and gives the
+    // same estimates (the office decays in one slope).
     uint64_t answer = 0;
-    CHECK(Kept(&def, m, "office-frozen.maudbake", s, &answer), "the frozen bake loads");
-    printf("frozen bake: estimates hash %016llx\n", (unsigned long long)answer);
-    CHECK(answer == 0x65d285e6a1014f03u, "the frozen bake: its estimates");
+    CHECK(Kept(&def, m, "office-v1.maudbake", s, true, &answer), "version 1: the same estimates");
+    // The bake 1.0.0 wrote, kept as it was while the golden file follows
+    // the bake: every 1.x loads it and gives the estimates it gave then.
+    CHECK(Kept(&def, m, "office-1.0.0.maudbake", s, false, &answer), "1.0.0's bake loads");
+    printf("1.0.0's bake: estimates hash %016llx\n", (unsigned long long)answer);
+    CHECK(answer == 0x65d285e6a1014f03u, "1.0.0's bake: its estimates");
 #endif
     free(bytes);
     maudDestroySpatializer(s);

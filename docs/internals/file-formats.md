@@ -50,7 +50,7 @@ One probe set: its probes, the links between them, and per probe the reverberati
 | Offset | Type | Field | Valid values |
 |---|---|---|---|
 | 0 | 8 bytes | magic | `MAUDBAKE` |
-| 8 | uint32 | version | 2; another is `maud_errorUnsupported` |
+| 8 | uint32 | version | 2 is written; 1 (without tails) is read |
 | 12 | uint32 | probe count | 0 to the loading spatializer's `maxProbes` |
 | 16 | uint32 | link count | 0 to the loading spatializer's `maxProbePairs` |
 | 20 | float32 | range | 0.1 to 1,000: the longest link in metres |
@@ -68,8 +68,8 @@ From offset 40, with nothing between the sections:
 3. **Neighbours**: twice the link count uint32; probe i's neighbours lie between row i and row i + 1. Each is below the probe count and not i, they rise strictly within a row, none is farther from probe i than the range, and every link is listed from both ends. Link lengths are not stored: they are the distances between the probes.
 4. **Times** (layer 1): per probe, three float32 reverberation times in seconds, low band first, each 0.1 to 20.
 5. **Levels** (layer 1): per probe, three float32 levels in dB, each -96 to 24.
-6. **Tail times** (layer 1): per probe, three float32 times of the slower slope, each 0 (none in that band) or 0.1 to 20.
-7. **Tail levels** (layer 1): per probe, three float32 levels of the slower slope in dB, each -96 to 24.
+6. **Tail times** (layer 1, version 2): per probe, three float32 times of the slower slope, each 0 (none in that band) or 0.1 to 20.
+7. **Tail levels** (layer 1, version 2): per probe, three float32 levels of the slower slope in dB, each -96 to 24.
 8. **Fields** (layer 2): per probe, (field order + 1)^2 channels in ACN order; per channel three bands; per band, field-bins float32 energies in 10 ms bins, each finite, and at least 0 in channel 0.
 
 ### Loading
@@ -79,3 +79,5 @@ A file loads only if its counts fit the spatializer's limits, and a file with fi
 - `maud_errorInvalid`: the bytes are not a well-formed bake.
 - `maud_errorCapacity`: well formed, but its counts do not fit.
 - `maud_errorUnsupported`: another version, or fields that do not match.
+
+A version 1 file loads with no tails and saves again as version 2.

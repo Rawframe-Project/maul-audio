@@ -11,7 +11,7 @@
 // spanning the links, a link listed from one end only, a link longer
 // than the range, a point (an unlinked one's in one axis too), a time,
 // a level, a tail's time and level and a field out of range), another
-// version as unsupported (version 1 included),
+// version as unsupported (version 1, without tails, still reads),
 // counts past the limits as capacity, and fields of another layout as
 // unsupported; a failing allocator is a capacity error with nothing
 // leaked.
@@ -272,6 +272,36 @@ static void TestRoundTrip(const maudProbeGraph* g, const maudProbeBake* b, const
     maudReleaseProbeBake(&s_allocator, &plain);
 }
 
+// Version 1, without tails: the file less its tails' sections reads as
+// the same set with none.
+static void TestVersion1(const maudProbeBake* b, const File* f)
+{
+    size_t tails = Times(f) + 24 * (size_t)f->probes;
+    size_t cut = 24 * (size_t)f->probes;
+    File old = {malloc(f->size), f->size - cut, f->probes, f->links};
+    memcpy(old.bytes, f->bytes, tails);
+    memcpy(old.bytes + tails, f->bytes + tails + cut, f->size - tails - cut);
+    Put(old.bytes + 8, 1);
+    Seal(&old);
+    maudProbeGraph rg;
+    maudProbeBake rb;
+    CHECK(maudReadBakeFile(old.bytes, old.size, &s_limits, &s_allocator, &rg, &rb) == maud_success,
+          "version 1 read");
+    size_t values = (size_t)f->probes * 3;
+    bool none = true;
+    for (size_t i = 0; i < values; ++i)
+    {
+        none = none && rb.tailTimes[i] == 0.0f && rb.tailLevels[i] == -96.0f;
+    }
+    CHECK(memcmp(rb.times, b->times, values * sizeof(float)) == 0 &&
+              memcmp(rb.levels, b->levels, values * sizeof(float)) == 0 &&
+              memcmp(rb.fields, b->fields, values / 3 * FIELD * sizeof(float)) == 0 && none,
+          "version 1: the same set, no tails");
+    maudReleaseProbeGraph(&s_allocator, &rg);
+    maudReleaseProbeBake(&s_allocator, &rb);
+    free(old.bytes);
+}
+
 // A row's entry replaced by a probe in range it is not linked to, the
 // row still rising: listed from one end only.
 static bool OneEnded(File* c, const maudProbeGraph* g)
@@ -350,9 +380,6 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     c = Changed(f);
     Put(c.bytes + 8, 0);
     Expect(&c, maud_errorUnsupported, "version 0");
-    c = Changed(f);
-    Put(c.bytes + 8, 1);
-    Expect(&c, maud_errorUnsupported, "version 1, before tails");
     c = Changed(f);
     c.size -= 1;
     Expect(&c, maud_errorInvalid, "a byte short");
@@ -519,6 +546,7 @@ int main(void)
     printf("file: %u probes, %u links, %zu bytes\n", g.count, g.links, f.size);
     TestRoundTrip(&g, &b, &f);
     TestRefused(&g, &b, &f);
+    TestVersion1(&b, &f);
     TestPairs();
     TestFailingAllocator(&f);
     free(f.bytes);

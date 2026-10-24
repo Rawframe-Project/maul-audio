@@ -49,7 +49,7 @@ A change to one is made in the canonical copy first, through the manager. `AGENT
 | `src/near_field_table.c` | `python3 tools/near_field_table.py src/near_field_table.c` (numpy), with `--reference test/near_field_reference.h` for the test's exact values | Never, unless the near-field model changes. The output depends only on the script and numpy's arithmetic. |
 | `data/hrtf/sadie2-ku100-48k.maudhrtf` | `tools/sofa_to_maudhrtf.py` (numpy, h5py), see below | When the HRTF format or its conversion changes. |
 | `data/golden/*.wav` | `MAUD_WRITE_GOLDEN=1 ctest -R '^golden$'` | When rendering changes on purpose. |
-| `data/bake/office.maudbake` | `MAUD_WRITE_GOLDEN=1 ctest -R '^spatializer_bake$'` | When baking changes on purpose. `data/bake/office-frozen.maudbake` is never rewritten: it pins the format's reading while the golden bake follows the bake's results. |
+| `data/bake/office.maudbake` | `MAUD_WRITE_GOLDEN=1 ctest -R '^spatializer_bake$'` | When baking changes on purpose. |
 | `README.md`'s cost table | `python3 tools/cost_table.py` from `bench/baseline.txt` | When the baseline is recorded again. |
 
 A pull request that rewrites a golden file says which change in results caused it.
@@ -88,7 +88,7 @@ On the web, `bench/size_web.c` links one feature at a time, so the web cell repo
 
 ## Fuzzing
 
-`test/fuzz_hrtf.c` and `test/fuzz_bake.c` fuzz the two loaders with libFuzzer (`-DMAUL_AUDIO_FUZZ=ON`, Clang). A target's first byte chooses what the rest is (CMakeLists.txt says how), so `tools/fuzz_seeds.sh` seeds each target with the minimized corpus in `test/corpus/<target>/`, the shipped HRTF set behind a `0x01` and the shipped bakes behind a `0x03`. CI carries a larger corpus from night to night in its cache. Always pass `-max_total_time`:
+`test/fuzz_hrtf.c` and `test/fuzz_bake.c` fuzz the two loaders with libFuzzer (`-DMAUL_AUDIO_FUZZ=ON`, Clang). A target's first byte chooses what the rest is (CMakeLists.txt says how), so `tools/fuzz_seeds.sh` seeds each target with the minimized corpus in `test/corpus/<target>/`, the shipped HRTF set behind a `0x01` and the shipped bakes behind a `0x03`. CI carries a larger corpus per target from night to night, each in an Actions cache of its own. Always pass `-max_total_time`:
 
 ```sh
 cmake -B out/fuzz -G Ninja -DCMAKE_C_COMPILER=clang-20 -DMAUL_AUDIO_FUZZ=ON -DMAUL_AUDIO_DEVICE=OFF -DMAUL_AUDIO_BUILD_TESTS=OFF
