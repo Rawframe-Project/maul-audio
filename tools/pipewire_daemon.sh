@@ -101,14 +101,19 @@ without_rt() { # program file
          { print }' "/usr/share/$1/$2" > "$dir/config/$1/$2"
 }
 
+# Starts a daemon unless the one recorded still runs; launched says
+# whether it started one.
+launched=false
 launch() { # name
+    launched=false
     if ! running "$dir/$1.pid"; then
         "$1" > "$dir/$1.log" 2>&1 &
         record "$1" $!
+        launched=true
     fi
 }
 
-has_node() { pw-cli ls Node | grep -q "node.name = \"$1\""; }
+count_nodes() { pw-cli ls Node | grep -c "node.name = \"$1\"" || true; }
 has_sink() { pactl list short sinks | grep -q maud-test-sink; }
 has_default() { [ "$(pactl get-default-sink)" = maud-test-sink ]; }
 
@@ -134,6 +139,11 @@ start)
     fi
     wait_for "the session bus" test -S "$dir/run/bus"
     launch pipewire
+    # A start that finds the daemon running reuses it as it is (CTest
+    # runs the fixture's setup again when it repeats tests): the test
+    # nodes live as long as the daemon, and making them again would give
+    # two devices of each name.
+    fresh=$launched
     wait_for "pipewire" --daemon pipewire pw-cli info 0
     # The PulseAudio directory exists before pipewire-pulse starts: it
     # checks for the directory, then makes it, and fails if another
@@ -143,11 +153,15 @@ start)
     launch pipewire-pulse
     wait_for "pipewire-pulse" --daemon pipewire-pulse pactl info
     launch wireplumber
-    if ! has_node maud-test-sink; then
+    if $fresh; then
         pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-sink node.description="Maud test sink" media.class=Audio/Sink audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
         pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-source node.description="Maud test source ğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğ音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音" media.class=Audio/Source/Virtual audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
     fi
     wait_for "the test sink" has_sink
+    for node in maud-test-sink maud-test-source; do
+        count=$(count_nodes "$node")
+        [ "$count" = 1 ] || fail "$count nodes named $node, where there must be one"
+    done
     # WirePlumber makes the only sink the default once it has seen it.
     wait_for "the test sink as the default" has_default
     ;;
