@@ -6,8 +6,9 @@
 // frames reach the device evenly, and comes back to its low only every
 // tens of seconds: the earliest time a stream's
 // frame 0 is heard or was captured, over the last 30 seconds, is the one
-// that holds. A time well past the drift is frames lost before the
-// library, which it counts.
+// that holds. A time well past the drift that lasts is frames lost before
+// the library, which it counts; one that comes back is a delivery placed
+// late, which it does not.
 
 #ifndef MAUL_AUDIO_SRC_WEB_CLOCK_H
 #define MAUL_AUDIO_SRC_WEB_CLOCK_H
@@ -22,11 +23,15 @@
 #define MAUD_WEB_CLOCK_SPAN_SECONDS 5
 
 // The earliest frame-0 time of each of the last spans, by the span of
-// the host clock it was taken in.
+// the host clock it was taken in; and a step under watch: the host time
+// a frame-0 time first came past the bound for lost frames
+// (INT64_MIN for none) and the earliest since.
 typedef struct maudWebClock
 {
     int64_t span[MAUD_WEB_CLOCK_SPANS];
     int64_t earliest[MAUD_WEB_CLOCK_SPANS];
+    int64_t stepSince;
+    int64_t stepEarliest;
 } maudWebClock;
 
 // Forgets every span: the stream started again, ran short or moved.
@@ -41,9 +46,11 @@ int64_t maudWebEarliest(maudWebClock* clock, int64_t origin, int64_t now);
 // timestamp (stamped) goes through the earliest time frame 0 is heard
 // (an output) or was captured (an input) over the last 30 seconds,
 // and the host time is that frame-0 time plus the frame's place; a
-// route epoch other than *clockEpoch starts the filter again. A frame-0
-// time 50 ms later than the earliest is frames the browser lost before
-// the stream: it counts an xrun and starts the filter there.
+// route epoch other than *clockEpoch starts the filter again. Frame-0
+// times all more than 50 ms later than the earliest for a whole span
+// (MAUD_WEB_CLOCK_SPAN_SECONDS) are frames the browser lost before the
+// stream: it counts one xrun and starts the filter at the earliest of
+// them. Until then the clock holds the earliest before them.
 void maudWebStampClock(maudWebClock* clock, int* clockEpoch, maudStreamCore* core, int64_t latency,
                        bool stamped, int epoch, bool output);
 

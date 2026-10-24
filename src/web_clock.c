@@ -11,12 +11,40 @@
 // measured through PulseAudio.
 #define MAUD_WEB_LOSS_NANOSECONDS 50000000LL
 
+// How long a step must last to be a loss: a span. A delivery the browser
+// places late moves one frame-0 time and the next ones back; lost frames
+// move every one after them.
+#define MAUD_WEB_STEP_NANOSECONDS (MAUD_WEB_CLOCK_SPAN_SECONDS * 1000000000LL)
+
 void maudWebResetClock(maudWebClock* clock)
 {
     for (int i = 0; i < MAUD_WEB_CLOCK_SPANS; ++i)
     {
         clock->span[i] = INT64_MIN;
     }
+    clock->stepSince = INT64_MIN;
+}
+
+// Watches frame-0 times past the bound: true once they have all been
+// past it for a step's length, the earliest of them in *earliest.
+static bool Lost(maudWebClock* clock, int64_t origin, int64_t least, int64_t now, int64_t* earliest)
+{
+    if (origin - least <= MAUD_WEB_LOSS_NANOSECONDS)
+    {
+        clock->stepSince = INT64_MIN;
+        return false;
+    }
+    if (clock->stepSince == INT64_MIN)
+    {
+        clock->stepSince = now;
+        clock->stepEarliest = origin;
+    }
+    else if (origin < clock->stepEarliest)
+    {
+        clock->stepEarliest = origin;
+    }
+    *earliest = clock->stepEarliest;
+    return now - clock->stepSince >= MAUD_WEB_STEP_NANOSECONDS;
 }
 
 int64_t maudWebEarliest(maudWebClock* clock, int64_t origin, int64_t now)
@@ -59,12 +87,14 @@ void maudWebStampClock(maudWebClock* clock, int* clockEpoch, maudStreamCore* cor
         int64_t place = (int64_t)((double)position * 1e9 / rate);
         int64_t origin = output ? now + latency - place : now - latency - place;
         int64_t least = maudWebEarliest(clock, origin, now);
-        if (origin - least > MAUD_WEB_LOSS_NANOSECONDS)
+        int64_t earliest = 0;
+        if (Lost(clock, origin, least, now, &earliest))
         {
             // Frame 0 later for good: the browser lost frames before the
             // stream got them (or played silence it never asked for).
             maudCountXrun(core);
             maudWebResetClock(clock);
+            (void)maudWebEarliest(clock, earliest, now);
             least = maudWebEarliest(clock, origin, now);
         }
         int64_t filtered = output ? least + place - now : now - least - place;
