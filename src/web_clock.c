@@ -8,7 +8,7 @@
 
 // How much later than the held earliest a frame-0 time may come before
 // it is frames lost, not the estimate's drift: twice the largest drift
-// measured through PulseAudio (research in the docs).
+// measured through PulseAudio.
 #define MAUD_WEB_LOSS_NANOSECONDS 50000000LL
 
 void maudWebResetClock(maudWebClock* clock)

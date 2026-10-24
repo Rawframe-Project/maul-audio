@@ -3,7 +3,7 @@
 //
 // The three-band equalizer: the filters realize the prototypes' response
 // (an impulse response's DFT against the closed form); the solve meets
-// band targets measured densely within the research's 0.135 dB, where
+// band targets measured densely within 0.135 dB, where
 // gains set directly to the targets miss by more than 1 dB; zero targets
 // pass the signal unchanged; a ramp ends on the new filters and a step in
 // the targets makes no click in a sine; coefficients changing every 16
@@ -85,7 +85,7 @@ static void TestResponse(void)
     CHECK(worst < 0.01, "the filters realize the prototypes");
 }
 
-// A band's mean dB measured densely, as the research judged the solve.
+// A band's mean dB measured densely, the measure the solve is judged by.
 static double DenseMean(double low, double high, double rate)
 {
     double sum = 0.0;

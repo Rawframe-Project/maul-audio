@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Binaural decoders on the shipped SADIE II set. An impulse encoded from
-// every seventh measured direction and decoded comes within the measured
-// MagLS error of the set's own response (magnitudes, 100 Hz to 16 kHz;
-// research measured 3.9, 4.5 and 5.5 dB RMS at orders 3, 2 and 1 over
-// every direction); a source on the left is louder on the left and
+// every seventh measured direction and decoded comes within MagLS's
+// error at its order of the set's own response (magnitudes, 100 Hz to
+// 16 kHz; 3.9, 4.5 and 5.5 dB RMS at orders 3, 2 and 1 over every
+// direction); a source on the left is louder on the left and
 // ahead there at low frequencies; one
 // call or many decode the same samples; decoding never allocates, and
 // the set may go once the decoder exists; bad calls write nothing. The

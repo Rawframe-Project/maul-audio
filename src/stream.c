@@ -204,7 +204,7 @@ static bool SharesClock(const maudContext* context, const maudDuplex* duplex)
 maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
                                maudStreamStatus* statusOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (statusOut != nullptr)
     {
         memset(statusOut, 0, sizeof(*statusOut));
@@ -245,7 +245,7 @@ maudResult maudGetStreamStatus(const maudContext* context, maudStreamId stream,
 maudResult maudGetStreamFormat(const maudContext* context, maudStreamId stream,
                                maudStreamFormat* formatOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (formatOut != nullptr)
     {
         memset(formatOut, 0, sizeof(*formatOut));
@@ -266,7 +266,7 @@ maudResult maudGetStreamFormat(const maudContext* context, maudStreamId stream,
 maudResult maudGetStreamPosition(const maudContext* context, maudStreamId stream,
                                  uint64_t* framesOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (framesOut != nullptr)
     {
         *framesOut = 0;
@@ -287,7 +287,7 @@ maudResult maudGetStreamPosition(const maudContext* context, maudStreamId stream
 maudResult maudGetStreamClock(const maudContext* context, maudStreamId stream,
                               maudStreamClock* clockOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (clockOut != nullptr)
     {
         memset(clockOut, 0, sizeof(*clockOut));

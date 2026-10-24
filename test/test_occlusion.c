@@ -5,7 +5,7 @@
 // a half-wall in the plane z = -5 that blocks where x < 0, and on demand
 // a full wall at z = -9.5. One ray gives 0 or 1; a volumetric source
 // passing the half-wall's edge turns from occluded to clear steadily and
-// within the research's error of the exact share of its sphere; points
+// within the sampling error of the exact share of its sphere; points
 // the source itself cannot see do not count, and one that sees none is
 // occluded; sources side by side count only their own samples; the
 // task hooks, split any way, give the same bytes as a serial step, in

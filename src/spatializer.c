@@ -771,7 +771,7 @@ uint64_t maudLatchResults(maudSpatializer* spatializer)
 maudResult maudGetDirectResult(const maudSpatializer* spatializer, maudSourceId source,
                                maudDirectResult* resultOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (resultOut != nullptr)
     {
         memset(resultOut, 0, sizeof(*resultOut));
@@ -797,7 +797,7 @@ maudResult maudGetDirectResult(const maudSpatializer* spatializer, maudSourceId 
 
 maudResult maudGetReverbResult(const maudSpatializer* spatializer, maudReverbResult* resultOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (resultOut != nullptr)
     {
         memset(resultOut, 0, sizeof(*resultOut));

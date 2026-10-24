@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Golden renders through the offline backend (requirements, section 5):
+// Golden renders through the offline backend, so a change in what a
+// listener hears is caught:
 // a noise source sweeping a helix about the listener through the
 // binaural effect; a third-order bed of a noise source turned a full
 // turn and decoded for both ears; a source walking behind a wall, the

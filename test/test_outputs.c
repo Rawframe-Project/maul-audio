@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Outputs on failure, conventions section 8: a call on an owner object
+// Outputs on failure, so a caller that ignores a status reads zero, never
+// stale data: a call on an owner object
 // clears its outputs on any failure, before it checks the owner (a
 // missing owner's failure clears them too), except an output the failure
 // itself defines, which it writes. Each call here runs with its outputs

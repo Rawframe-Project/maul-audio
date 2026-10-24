@@ -149,7 +149,9 @@ start)
     # checks for the directory, then makes it, and fails if another
     # process made it between the two. pactl, polling below, makes it
     # whenever it looks for a server.
-    mkdir -p -m 700 "$dir/run/pulse"
+    # mkdir -p leaves an existing directory's mode as it was.
+    mkdir -p "$dir/run/pulse"
+    chmod 700 "$dir/run/pulse"
     launch pipewire-pulse
     wait_for "pipewire-pulse" --daemon pipewire-pulse pactl info
     launch wireplumber
