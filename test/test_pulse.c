@@ -7,12 +7,12 @@
 // and removed with pactl, a source added and removed, a stream that
 // follows the default reopened at a new default's rate, a context of
 // one device (refusing scripted devices) and one whose allocator
-// refuses, and the server
-// restarted when MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START
-// name commands. Without a server the test is skipped, unless
+// refuses, and the server restarted where the sound-server fixture runs
+// (test_daemon.h). Without a server the test is skipped, unless
 // MAUD_REQUIRE_PULSE is set.
 
 #include "test_clock.h"
+#include "test_daemon.h"
 #include "test_harness.h"
 #include "test_names.h"
 
@@ -718,20 +718,12 @@ static void TestServerEnded(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
-// Sends a signal to the test daemon's PulseAudio server, by the pid file
-// the daemon script keeps beside the directory its stop command names.
+// Sends a signal to the test daemon's PulseAudio server.
 static bool SignalPulseServer(const char* signal)
 {
-    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
-    const char* dir = stop != nullptr ? strrchr(stop, ' ') : nullptr;
-    char command[512];
-    if (dir == nullptr ||
-        snprintf(command, sizeof(command), "kill -%s \"$(cat %s/pipewire-pulse.pid)\"", signal,
-                 dir + 1) >= (int)sizeof(command))
-    {
-        return false;
-    }
-    return Run(command);
+    char more[64];
+    snprintf(more, sizeof(more), "pipewire-pulse %s", signal);
+    return DriveDaemon("signal", more);
 }
 
 // A rebuild that fails: the server ends a playing stream, then stops
@@ -739,7 +731,7 @@ static bool SignalPulseServer(const char* signal)
 // fails, and resumes, playing, once the server answers again.
 static void TestRebuildFails(maudContext* context)
 {
-    if (getenv("MAUD_TEST_PIPEWIRE_STOP") == nullptr)
+    if (!HaveDaemon())
     {
         return;
     }
@@ -924,9 +916,7 @@ static void TestRebuildPacing(maudContext* context)
 // pinned stream with its device.
 static void TestRestart(maudContext* context)
 {
-    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
-    const char* start = getenv("MAUD_TEST_PIPEWIRE_START");
-    if (stop == nullptr || start == nullptr)
+    if (!HaveDaemon())
     {
         return;
     }
@@ -959,7 +949,7 @@ static void TestRestart(maudContext* context)
               maudStopStream(context, stopped) == maud_success,
           "a third plays and stops");
     Note(context, &seen);
-    CHECK(Run(stop), "the server stops");
+    CHECK(DriveDaemon("stop", ""), "the server stops");
     int64_t away = maudGetHostNanoseconds();
     for (int tries = 0; tries < 300 && !(seen.reason[0] != 0 && seen.reason[1] != 0); ++tries)
     {
@@ -979,7 +969,7 @@ static void TestRestart(maudContext* context)
         Sleep(10);
     }
     CHECK(seen.reason[2] == maud_suspendPlatform, "waits too");
-    CHECK(Run(start), "the server starts again");
+    CHECK(DriveDaemon("start", ""), "the server starts again");
     for (int tries = 0; tries < 500 && !(seen.resumed[0] && seen.resumed[1] && seen.resumed[2] &&
                                          seen.goneRemoved);
          ++tries)
@@ -1028,7 +1018,7 @@ static void TestRestart(maudContext* context)
     // Away for longer than the devices are kept.
     Note(context, &seen);
     seen.resumed[0] = false;
-    CHECK(Run(stop), "the server stops for longer");
+    CHECK(DriveDaemon("stop", ""), "the server stops for longer");
     for (int tries = 0;
          tries < 1300 && !(seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost); ++tries)
     {
@@ -1037,7 +1027,7 @@ static void TestRestart(maudContext* context)
     }
     CHECK(seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost,
           "its devices go, and the pinned stream with its device");
-    CHECK(Run(start), "the server starts again");
+    CHECK(DriveDaemon("start", ""), "the server starts again");
     for (int tries = 0; tries < 500 && !seen.resumed[0]; ++tries)
     {
         Note(context, &seen);
@@ -1055,8 +1045,6 @@ static void TestRestart(maudContext* context)
 // across a server restart, and play again once the host resumes.
 static void TestHostSuspended(maudContext* context)
 {
-    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
-    const char* start = getenv("MAUD_TEST_PIPEWIRE_START");
     Restart seen = {.sink = FindByKey(context, maud_directionOutput, "maud-test-sink")};
     Blocks blocks[2] = {0};
     maudDeviceId none = {0, 0};
@@ -1080,15 +1068,15 @@ static void TestHostSuspended(maudContext* context)
     Sleep(300);
     CHECK(atomic_load(&blocks[0].count) == counts[0] && atomic_load(&blocks[1].count) == counts[1],
           "no callbacks while suspended");
-    if (stop != nullptr && start != nullptr)
+    if (HaveDaemon())
     {
-        CHECK(Run(stop), "the server stops");
+        CHECK(DriveDaemon("stop", ""), "the server stops");
         for (int tries = 0; tries < 30; ++tries)
         {
             Note(context, &seen);
             Sleep(10);
         }
-        CHECK(Run(start), "the server starts again");
+        CHECK(DriveDaemon("start", ""), "the server starts again");
         maudDeviceId sink = {0, 0};
         for (int tries = 0; tries < 500 && !SameDevice(sink, seen.sink); ++tries)
         {

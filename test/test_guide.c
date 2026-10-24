@@ -2,12 +2,12 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The C snippets of docs/user/, each as written there:
-// tools/check_guide.py checks that every snippet appears here unchanged,
-// so the guide cannot drift from the API. Each function gives a snippet
-// what it uses and checks what it keeps. The stream snippet plays on the
-// native backend where one opens with an output, and is only built
-// elsewhere; the offline one runs everywhere. The Spatial snippets run
-// on the shipped HRTF set.
+// tools/check_guide.py checks that every snippet appears here or in
+// test_guide_device.c unchanged, so the documentation cannot drift from
+// the API. Each function gives a snippet what it uses and checks what it
+// keeps. These run without a platform: the Device snippets on the
+// offline backend, the Spatial ones on the shipped HRTF set; the
+// snippets that open the native backend are test_guide_device.c's.
 
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
@@ -36,22 +36,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-
-#if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-static void Pause(int milliseconds)
-{
-    Sleep((DWORD)milliseconds);
-}
-#else
-#include <time.h>
-static void Pause(int milliseconds)
-{
-    struct timespec span = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&span, nullptr);
-}
-#endif
 
 // The host's state the stream snippet plays from: a 440 Hz tone at
 // 48 kHz, and how many samples it has given.
@@ -104,26 +88,6 @@ static maudContext* OfflineContext(void)
     return context;
 }
 
-static void GuideContext(void)
-{
-    // clang-format off
-    maudContextDef def = maudDefaultContextDef();   // the platform's backend
-    maudContext* context = NULL;
-    maudResult made = maudCreateContext(&def, &context);
-    if (made != maud_success)
-    {
-        // maud_errorUnsupported: no backend runs here, such as a Linux
-        // machine without an audio service.
-    }
-    // clang-format on
-    CHECK(made == maud_success || made == maud_errorUnsupported || made == maud_errorPlatform,
-          "the context snippet opens the native backend or says why not");
-    if (made == maud_success)
-    {
-        CHECK(maudDestroyContext(context) == maud_success, "destroy");
-    }
-}
-
 static void GuideDevices(void)
 {
     maudContext* context = OfflineContext();
@@ -148,50 +112,6 @@ static void GuideDevices(void)
     }
     // clang-format on
     CHECK(count == 3, "the devices snippet lists the context's output and the two added");
-    CHECK(maudDestroyContext(context) == maud_success, "destroy");
-}
-
-static void GuidePlay(void)
-{
-    maudContextDef native = maudDefaultContextDef();
-    maudContext* context = nullptr;
-    if (maudCreateContext(&native, &context) != maud_success)
-    {
-        return;
-    }
-    uint32_t outputs = 0;
-    bool any =
-        maudGetDevices(context, maud_directionOutput, nullptr, 0, &outputs) == maud_success &&
-        outputs > 0;
-    Synth synth = {0};
-    // clang-format off
-    maudStreamDef def = maudDefaultStreamDef();   // output, stereo, native rate, the default
-    def.callback = Play;
-    def.user = &synth;
-    maudStreamId stream = {0, 0};
-    maudResult result = maudCreateStream(context, &def, &stream);
-    if (result == maud_success)
-    {
-        result = maudStartStream(context, stream);
-    }
-    maudStreamFormat format;
-    if (result == maud_success && maudGetStreamFormat(context, stream, &format) == maud_success)
-    {
-        // format.sampleRate and format.periodFrames: what the callback sees.
-    }
-    // clang-format on
-    if (any && result == maud_success)
-    {
-        for (int tries = 0; tries < 200 && atomic_load(&synth.samples) == 0; ++tries)
-        {
-            maudNotification ignored;
-            while (maudNextNotification(context, &ignored) == maud_success)
-            {
-            }
-            Pause(10);
-        }
-        CHECK(atomic_load(&synth.samples) > 0, "the stream snippet plays");
-    }
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -540,9 +460,7 @@ static void GuideReverb(void)
 
 int main(void)
 {
-    GuideContext();
     GuideDevices();
-    GuidePlay();
     GuideNotifications();
     GuideOffline();
     GuideNoise();

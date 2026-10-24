@@ -8,6 +8,7 @@
 // test is skipped, unless MAUD_REQUIRE_PIPEWIRE is set.
 
 #include "test_clock.h"
+#include "test_daemon.h"
 #include "test_harness.h"
 #include "test_names.h"
 
@@ -252,10 +253,51 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, const char*
     return false;
 }
 
+// Set once a default the daemon names has not reached the context in a
+// full wait: every later wait for a default fails at once, since the
+// first one printed why and waiting again tells nothing more.
+static bool s_defaultsLost;
+
+// Prints what the context and the daemon say the output devices and the
+// defaults are, when a default never arrives.
+static void PrintDefaults(const maudContext* context)
+{
+    maudDeviceId ids[32];
+    uint32_t count = 0;
+    maudDeviceId general = {0, 0};
+    (void)maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general);
+    if (maudGetDevices(context, maud_directionOutput, ids, 32, &count) == maud_success)
+    {
+        for (uint32_t i = 0; i < count && i < 32; ++i)
+        {
+            char key[64];
+            size_t length = 0;
+            if (maudGetDeviceKey(context, ids[i], key, sizeof(key), &length) != maud_success)
+            {
+                length = 0;
+            }
+            printf("the context's output %u: %.*s%s\n", ids[i].index1, (int)length, key,
+                   ids[i].index1 == general.index1 ? " (its default)" : "");
+        }
+    }
+    fflush(stdout);
+    int status =
+        system("echo \"the daemon's test nodes:\"; pw-cli ls Node | grep 'node.name = .maud';"
+               " echo \"the daemon's default metadata:\"; pw-metadata -n default 0");
+    if (status != 0)
+    {
+        printf("the daemon's view could not be read (status %d)\n", status);
+    }
+}
+
 // Drains notifications for up to tries polls of 10 ms until device is
 // the default output for both roles.
 static bool WaitForDefaultWithin(maudContext* context, maudDeviceId device, int tries)
 {
+    if (s_defaultsLost)
+    {
+        return false;
+    }
     for (int poll = 0; poll < tries; ++poll)
     {
         maudNotification ignored;
@@ -280,7 +322,14 @@ static bool WaitForDefaultWithin(maudContext* context, maudDeviceId device, int 
 
 static bool WaitForDefault(maudContext* context, maudDeviceId device)
 {
-    return WaitForDefaultWithin(context, device, NOTICE_TRIES);
+    if (s_defaultsLost || WaitForDefaultWithin(context, device, NOTICE_TRIES))
+    {
+        return !s_defaultsLost;
+    }
+    printf("the default never reached the context in %d s\n", NOTICE_TRIES / 100);
+    PrintDefaults(context);
+    s_defaultsLost = true;
+    return false;
 }
 
 static bool FindByKey(const maudContext* context, maudDirection direction, const char* key,
@@ -647,19 +696,12 @@ static void TestGraphEnded(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
-// Sends a signal to the test daemon's PipeWire, by the pid file the
-// daemon script keeps beside the directory its stop command names.
+// Sends a signal to the test daemon's PipeWire.
 static bool SignalDaemon(const char* signal)
 {
-    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
-    const char* dir = stop != nullptr ? strrchr(stop, ' ') : nullptr;
-    char command[512];
-    if (dir == nullptr || snprintf(command, sizeof(command), "kill -%s \"$(cat %s/pipewire.pid)\"",
-                                   signal, dir + 1) >= (int)sizeof(command))
-    {
-        return false;
-    }
-    return system(command) == 0;
+    char more[64];
+    snprintf(more, sizeof(more), "pipewire %s", signal);
+    return DriveDaemon("signal", more);
 }
 
 // A rebuild that fails: the graph ends a playing stream, then stops
@@ -667,7 +709,7 @@ static bool SignalDaemon(const char* signal)
 // is past the deadline, and resumes, playing, once the graph answers.
 static void TestRebuildFails(maudContext* context)
 {
-    if (getenv("MAUD_TEST_PIPEWIRE_STOP") == nullptr)
+    if (!HaveDaemon())
     {
         return;
     }
