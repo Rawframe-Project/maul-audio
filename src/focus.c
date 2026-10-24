@@ -44,7 +44,7 @@ maudResult maudRequestFocus(maudContext* context, maudFocusRequest request, maud
 
 maudResult maudGetContextFocus(const maudContext* context, maudFocus* focusOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (focusOut != nullptr)
     {
         memset(focusOut, 0, sizeof(*focusOut));

@@ -2,10 +2,11 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Speaker decoders: over sources covering the sphere, the energy vector
-// of an encoded and decoded source points near it and is as long as the
-// research measured (7.1.4 above -12 degrees: 7.7, 6.4 and 6.2 degrees
-// mean error at orders 3, 2 and 1; 5.1 on the horizontal: 7.1 degrees at
-// order 1); energy averages 1 and varies within the measured 3.2 dB; the
+// of an encoded and decoded source points near it and is long, within
+// the errors this decoder design reaches (7.1.4 above -12 degrees: 7.7,
+// 6.4 and 6.2 degrees mean error at orders 3, 2 and 1; 5.1 on the
+// horizontal: 7.1 degrees at order 1); energy averages 1 and varies
+// within 3.2 dB; the
 // LFE stays silent; a mirrored source gets mirrored speakers; decoding
 // is the matrix, written over the output; bad calls write nothing.
 

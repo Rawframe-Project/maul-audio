@@ -159,7 +159,7 @@ maudResult maudGetProbeSet(const maudSpatializer* spatializer, maudProbeSetId se
                            maudProbeSetInfo* infoOut, uint32_t first, uint32_t count,
                            maudVector3* points)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (infoOut != nullptr)
     {
         memset(infoOut, 0, sizeof(*infoOut));
@@ -320,7 +320,7 @@ bool maudBakedReverb(maudSpatializer* s, maudVector3 position)
 maudResult maudSaveProbeSet(const maudSpatializer* spatializer, maudProbeSetId set, void* bytes,
                             size_t capacity, size_t* sizeOut)
 {
-    // Cleared first: a failure leaves zero (conventions section 8).
+    // Cleared first, so a failure leaves zero.
     if (sizeOut != nullptr)
     {
         *sizeOut = 0;

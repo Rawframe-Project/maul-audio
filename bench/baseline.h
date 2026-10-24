@@ -6,7 +6,7 @@
 // and its budget, what a host's frame or block allows the part, which
 // today's figure is checked against.
 // A record, never a gate: wall time on another machine, or a loaded
-// one, is not comparable (requirements, section 5; conventions, 14).
+// one, is not comparable.
 
 #ifndef MAUL_AUDIO_BENCH_BASELINE_H
 #define MAUL_AUDIO_BENCH_BASELINE_H

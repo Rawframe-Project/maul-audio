@@ -4,7 +4,7 @@
 // The web streams' clock filter. Through a PulseAudio server a browser's
 // output timestamp drifts late for seconds and then snaps back, while the
 // frames reach the device evenly, and comes back to its low only every
-// tens of seconds (research in the docs): the earliest time a stream's
+// tens of seconds: the earliest time a stream's
 // frame 0 is heard or was captured, over the last 30 seconds, is the one
 // that holds. A time well past the drift is frames lost before the
 // library, which it counts.

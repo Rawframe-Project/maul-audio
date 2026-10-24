@@ -311,7 +311,8 @@ static void TestAir(void)
     printf("band means: %.2f, %.2f, %.2f dB/km\n", (double)air[0] * 20.0 / log(10.0) * 1000.0,
            middle, high);
     CHECK(middle > 4.66 && middle < 105.0 && high > 105.0, "between the standard's values");
-    CHECK(fabs(middle - 25.7) < 0.5 && fabs(high - 266.8) < 3.0, "as research measured");
+    CHECK(fabs(middle - 25.7) < 0.5 && fabs(high - 266.8) < 3.0,
+          "the means of the standard's curve over the bands");
     float dry[3];
     CHECK(maudGetAirAbsorption(20.0f, 10.0f, dry) == maud_success && dry[2] != air[2],
           "humidity matters");
