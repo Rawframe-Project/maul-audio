@@ -5,7 +5,7 @@ Maul Audio has two parts that build and work apart. The Device part moves interl
 ## Requirements
 
 - CMake 3.25, and GCC 14 or Clang 19 or newer. On Windows, `clang-cl` (Visual Studio's "C++ Clang tools for Windows" component). The library is C23; its public headers are C17 and C++17, so any C or C++ program can include them.
-- On Linux, the development headers of PipeWire (`libpipewire-0.3`), PulseAudio (`libpulse`) and ALSA (`alsa`). Only the headers are needed to build: the library opens each one at run time, so a program runs where any of them is missing.
+- On Linux, pkg-config and the development headers of PipeWire (`libpipewire-0.3`), PulseAudio (`libpulse`) and ALSA (`alsa`); on Ubuntu and Debian, `libpipewire-0.3-dev`, `libpulse-dev` and `libasound2-dev`. Only the headers are needed to build: the library opens each one at run time, so a program runs where any of them is missing.
 - Nothing else. The library takes no dependency beyond the platform's own audio APIs.
 
 ## Building
