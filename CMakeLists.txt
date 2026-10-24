@@ -135,6 +135,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/crc32.c
     src/direct_effect.c
     src/direct_step.c
+    src/float_env.c
     src/hrtf.c
     src/hrtf_file.c
     src/hrtf_lookup.c
@@ -331,6 +332,12 @@ if(MAUL_AUDIO_BUILD_TESTS)
         # The two sides on two threads; Emscripten builds have none.
         if(NOT EMSCRIPTEN)
             maul_add_test(spatializer_threads POSIX)
+        endif()
+        # The host's float modes, the tasks on threads where there are any.
+        if(EMSCRIPTEN)
+            maul_add_test(float_env)
+        else()
+            maul_add_test(float_env THREADS)
         endif()
         maul_add_test(speaker_decoder)
         maul_add_test(speaker_panner)

@@ -9,6 +9,15 @@
 // or waiting; a step is published whole, never torn. The host passes the
 // results to the direct effect and to the binaural effect or a panner.
 //
+// The simulation side's calls that compute or check floats (creating a
+// spatializer or a source, setting poses and materials, steps, probe
+// sets and bakes, loading a bake) and every task they hand the task
+// hooks run in round to nearest with subnormals kept, and leave
+// the thread's floating-point mode as they found it: a host's
+// flush-to-zero, denormals-are-zero or rounding mode changes no result.
+// The ray queries are called in the library's mode too, not the
+// thread's. The rendering side never changes the mode.
+//
 // Positions are in metres in the host's world, right-handed with +y up;
 // an orientation turns the frame of the listener or a source (+x right,
 // +y up, -z ahead) into the world's.
@@ -115,7 +124,8 @@ extern "C"
     // The task hooks: enqueueTask has the host run task over [0,
     // itemCount) in ranges of at least minRange items, each exactly once,
     // on any threads in any order, and returns a handle that finishTask
-    // waits on. Results do not depend on the split.
+    // waits on. Results do not depend on the split, nor on the threads'
+    // floating-point modes.
     typedef void maudTaskFn(uint32_t start, uint32_t end, void* taskContext);
     typedef void* maudEnqueueTaskFn(maudTaskFn* task, uint32_t itemCount, uint32_t minRange,
                                     void* taskContext, void* userContext);
@@ -475,8 +485,9 @@ extern "C"
     /// the scene: rays from the listener in batches of 64, each hit lit
     /// back toward it through the any-hit query, energy per band in 10 ms
     /// bins, a fit of the decay from -5 to -25 dB. The batches go through
-    /// the task hooks if set; the times do not depend on how the tasks
-    /// split them. Without a closest-hit query there is nothing to
+    /// the task hooks if set. The estimate is the same bits on every
+    /// platform, however the tasks split the batches and whatever the
+    /// threads' floating-point modes. Without a closest-hit query there is nothing to
     /// reflect and the times are 0.1 s. The next direct step publishes
     /// the times with its results. If the def asks for reflections, the
     /// same rays' energy, on spherical harmonics of its arrival
@@ -649,7 +660,8 @@ extern "C"
     /// maudSimulateReverb makes one there, with the energy field when the
     /// spatializer renders reflections; it replaces an earlier bake. The
     /// rays go through the task hooks, and the bake's values are the same
-    /// bits on every platform and however the tasks run. Its memory: 24
+    /// bits on every platform, however the tasks run and whatever the
+    /// threads' floating-point modes. Its memory: 24
     /// bytes a probe, and with reflections 12 times the bed's channels
     /// times the response's 10 ms bins in bytes more.
     ///

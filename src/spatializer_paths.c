@@ -6,6 +6,7 @@
 // direct step hands its occluded sources to the pathing.
 
 #include "bake_file.h"
+#include "float_env.h"
 #include "spatializer_state.h"
 
 #include <string.h>
@@ -66,8 +67,8 @@ maudProbeSetDef maudDefaultProbeSetDef(void)
     };
 }
 
-maudResult maudCreateProbeSet(maudSpatializer* spatializer, const maudProbeSetDef* def,
-                              maudProbeSetId* setOut)
+static MAUD_NOINLINE maudResult CreateProbeSet(maudSpatializer* spatializer,
+                                               const maudProbeSetDef* def, maudProbeSetId* setOut)
 {
     if (setOut != nullptr)
     {
@@ -95,6 +96,16 @@ maudResult maudCreateProbeSet(maudSpatializer* spatializer, const maudProbeSetDe
     maudSpatializerRunHost(s, true);
     maudResult result = maudAddProbeSet(s->probeSets, &queries, def, setOut);
     maudSpatializerRunHost(s, false);
+    return result;
+}
+
+maudResult maudCreateProbeSet(maudSpatializer* spatializer, const maudProbeSetDef* def,
+                              maudProbeSetId* setOut)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = CreateProbeSet(spatializer, def, setOut);
+    maudFloatEnvLeave(&env);
     return result;
 }
 
@@ -230,7 +241,7 @@ static bool Bake(maudSpatializer* s, const maudProbeGraph* graph, maudProbeBake*
     return true;
 }
 
-maudResult maudBakeProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
+static MAUD_NOINLINE maudResult BakeProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
 {
     if (spatializer == nullptr)
     {
@@ -260,6 +271,15 @@ maudResult maudBakeProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
     bool baked = Bake(s, graph, bake);
     maudSpatializerRunHost(s, false);
     return baked ? maud_success : maud_errorCapacity;
+}
+
+maudResult maudBakeProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = BakeProbeSet(spatializer, set);
+    maudFloatEnvLeave(&env);
+    return result;
 }
 
 maudResult maudUseBakedReverb(maudSpatializer* spatializer, maudProbeSetId set)
@@ -355,8 +375,8 @@ maudResult maudSaveProbeSet(const maudSpatializer* spatializer, maudProbeSetId s
     return maud_success;
 }
 
-maudResult maudLoadProbeSet(maudSpatializer* spatializer, const void* bytes, size_t size,
-                            maudProbeSetId* setOut)
+static MAUD_NOINLINE maudResult LoadProbeSet(maudSpatializer* spatializer, const void* bytes,
+                                             size_t size, maudProbeSetId* setOut)
 {
     if (setOut != nullptr)
     {
@@ -397,5 +417,17 @@ maudResult maudLoadProbeSet(maudSpatializer* spatializer, const void* bytes, siz
         }
     }
     maudSpatializerRunHost(s, false);
+    return result;
+}
+
+// The links' lengths are checked against the range, which a rounding
+// mode would move.
+maudResult maudLoadProbeSet(maudSpatializer* spatializer, const void* bytes, size_t size,
+                            maudProbeSetId* setOut)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = LoadProbeSet(spatializer, bytes, size, setOut);
+    maudFloatEnvLeave(&env);
     return result;
 }

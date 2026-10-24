@@ -8,6 +8,7 @@
 
 #include "allocator.h"
 #include "direct_step.h"
+#include "float_env.h"
 
 #include <math.h>
 
@@ -206,7 +207,7 @@ static void Feed(const maudPathing* p, const maudPathJob* job, const maudVector3
     r->pathed = true;
 }
 
-static void RefineJobs(uint32_t start, uint32_t end, void* context)
+static MAUD_NOINLINE void RefineJobs(uint32_t start, uint32_t end, void* context)
 {
     const maudPathing* p = context;
     for (uint32_t j = start; j < end; ++j)
@@ -219,6 +220,12 @@ static void RefineJobs(uint32_t start, uint32_t end, void* context)
             Feed(p, &p->jobs[j], v, n);
         }
     }
+}
+
+// RefineJobs as the host's task hooks run it, on any thread in any mode.
+static void RefineTask(uint32_t start, uint32_t end, void* context)
+{
+    maudFloatEnvTask(RefineJobs, start, end, context);
 }
 
 void maudRunPathing(maudPathing* pathing, const maudProbeGraph* graph,
@@ -241,7 +248,7 @@ void maudRunPathing(maudPathing* pathing, const maudProbeGraph* graph,
     }
     if (queries->enqueueTask != nullptr)
     {
-        void* task = queries->enqueueTask(RefineJobs, p->jobCount, 1, p, queries->userTaskContext);
+        void* task = queries->enqueueTask(RefineTask, p->jobCount, 1, p, queries->userTaskContext);
         queries->finishTask(task, queries->userTaskContext);
     }
     else
