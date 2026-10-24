@@ -34,21 +34,21 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@c836a14bfdf2ed83329d08e6bd6d7667fac3e8d2 # v0.0.10
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
     permissions:
       pull-requests: read
 
   # The organization's documentation check. data/hrtf/apache-2.0 holds the
   # HRTF set's license exactly as published.
   docs:
-    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@c836a14bfdf2ed83329d08e6bd6d7667fac3e8d2 # v0.0.10
+    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
     permissions:
       contents: read
     with:
       exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@c836a14bfdf2ed83329d08e6bd6d7667fac3e8d2 # v0.0.10
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
     permissions:
       contents: read
 
@@ -120,7 +120,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c836a14bfdf2ed83329d08e6bd6d7667fac3e8d2 # v0.0.10
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
     permissions:
       contents: read
     with:
@@ -142,7 +142,7 @@ jobs:
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c836a14bfdf2ed83329d08e6bd6d7667fac3e8d2 # v0.0.10
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
     permissions:
       contents: read
     with:
@@ -258,8 +258,9 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/rawframe-project/ci-cpp:2026.10.6@sha256:50c383f608f992c272196139d749f15978e35143a2876362b1e0aef6993480bd
-      # Chrome keeps its shared memory in /dev/shm, 64 MB in a container.
-      options: --shm-size=2g
+      # Chrome keeps its shared memory in /dev/shm, 64 MB in a container;
+      # an init reaps the daemons the sound-server fixture stops.
+      options: --init --shm-size=2g
     timeout-minutes: 20
     permissions:
       contents: read

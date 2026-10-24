@@ -49,8 +49,8 @@ start_time() {
 }
 
 # Whether the record names a live process of ours: the same PID with the
-# same start time, not a zombie. In a container whose first process never
-# reaps (a CI job's), a daemon that exited stays a zombie.
+# same start time, not a zombie. In a container without an init (docker
+# run without --init), a daemon that exited stays a zombie.
 running() {
     local record=$1 pid started fields
     [ -f "$record" ] || return 1
