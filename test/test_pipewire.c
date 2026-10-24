@@ -903,36 +903,51 @@ static void TestDuplexStream(maudContext* context)
     uint32_t drivers = 0;
     DriversOfOurNodes(&nodes, &drivers);
     CHECK(nodes == 2 && drivers == 1, "both halves follow one driver");
-    // The fewest slips of 2 s windows in which no node of the graph
-    // counted an xrun, up to 30 windows. A loaded machine stalls the graph,
-    // which then slips the halves and counts the stall: those windows
-    // measure the machine. Slips in a window without one are the
-    // library's. With no clean window the check fails as starved.
+    // The median slips of the first three 2 s windows in which no node of
+    // the graph counted an xrun, the stream none and the test's thread woke
+    // on time, out of 30 at most. A loaded machine stalls the graph, which
+    // then slips the halves and counts the stall: those windows measure the
+    // machine. Slips in a clean window are the library's, which the
+    // referee does not see, so a fixed count of clean windows is judged,
+    // as many as for a rate; fewer fail as starved.
     GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 2000};
     (void)GraphWindow(&watch);
-    uint64_t fewest = UINT64_MAX;
+    uint64_t slips[RATE_CLEAN_WINDOWS] = {0};
+    int clean = 0;
     int windows = 0;
-    int spoiled = 0;
-    while (windows < 30 && fewest > 512)
+    while (windows < RATE_MAX_WINDOWS && clean < RATE_CLEAN_WINDOWS)
     {
         uint64_t before = status.slippedFrames;
-        bool clean = GraphWindow(&watch);
+        bool kept = GraphWindow(&watch);
         CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
         windows += 1;
-        uint64_t slipped = status.slippedFrames - before;
-        spoiled += clean ? 0 : 1;
-        fewest = clean && slipped < fewest ? slipped : fewest;
+        if (kept)
+        {
+            slips[clean++] = status.slippedFrames - before;
+        }
     }
-    if (fewest == UINT64_MAX)
+    for (int i = 1; i < clean; ++i)
     {
-        fprintf(stderr, "starved: %d of %d windows had xruns or a late wakeup\n", spoiled, windows);
+        for (int j = i; j > 0 && slips[j] < slips[j - 1]; --j)
+        {
+            uint64_t swap = slips[j];
+            slips[j] = slips[j - 1];
+            slips[j - 1] = swap;
+        }
     }
-    else if (fewest > 512)
+    uint64_t median = slips[RATE_CLEAN_WINDOWS / 2];
+    if (clean < RATE_CLEAN_WINDOWS)
     {
-        fprintf(stderr, "slipped at least %llu frames in each clean 2 s\n",
-                (unsigned long long)fewest);
+        fprintf(stderr, "starved: %d of %d windows had xruns or a late wakeup\n", windows - clean,
+                windows);
     }
-    CHECK(fewest <= 512, "and little slips on one graph");
+    else if (median > 512)
+    {
+        fprintf(stderr, "slipped %llu, %llu and %llu frames in three clean 2 s windows\n",
+                (unsigned long long)slips[0], (unsigned long long)slips[1],
+                (unsigned long long)slips[2]);
+    }
+    CHECK(clean == RATE_CLEAN_WINDOWS && median <= 512, "and little slips on one graph");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy duplex");
     // A stall in the duplex callback skips both halves' cycles: the
     // output's underruns and the input's overruns.
