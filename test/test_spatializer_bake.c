@@ -422,6 +422,13 @@ static void TestFile(maudAcousticScene* scene)
     CHECK(maudLoadProbeSet(plain, bytes, size, &refused) == maud_errorUnsupported &&
               refused.index1 == 0,
           "fields where there are no reflections");
+    // A file is untrusted data: refusing it counts no misuse.
+    uint64_t misuse = maudGetSpatializerMisuse(loaded);
+    bytes[8] = 1;
+    CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorUnsupported &&
+              refused.index1 == 0 && maudGetSpatializerMisuse(loaded) == misuse,
+          "version 1 refused, no misuse counted");
+    bytes[8] = 2;
     bytes[size - 1] ^= 1;
     CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorInvalid, "a bad checksum");
     bytes[size - 1] ^= 1;
