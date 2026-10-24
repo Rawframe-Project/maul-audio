@@ -85,4 +85,102 @@ static inline bool StreamClockIsSound(const maudContext* context, maudStreamId s
     return false;
 }
 
+// One window of a rate measure: waits about a second and says whether
+// the platform reported no stall in it, so that the window shows the
+// stream's rate rather than the machine's.
+typedef bool RateWindowFn(void* user);
+
+// A rate measured by the stream clock: the median of the clean windows'
+// rates once RATE_CLEAN_WINDOWS came up, out of how many windows, and how
+// many a reported stall spoiled.
+#define RATE_CLEAN_WINDOWS 3
+#define RATE_MAX_WINDOWS   30
+typedef struct ClockRate
+{
+    double rate;
+    int clean;
+    int stalled;
+    int windows;
+} ClockRate;
+
+// The rate a running stream plays at by its own clock: the frames
+// between two clock reads over the time between the host times the clock
+// gave them, in windows `window` waits out; the median of the first
+// RATE_CLEAN_WINDOWS clean ones, out of RATE_MAX_WINDOWS at most. Each
+// host time is the platform's own report at a callback (when it read the
+// host clock, plus or less the delay it reported then), so a callback a
+// loaded machine holds back reads a later time and a shorter delay
+// together and the measure does not move with it, where frames counted
+// against the wall clock fall short in a stall or run over with its
+// backlog. A stall the platform reports (a graph that skipped cycles
+// really plays fewer frames) spoils the window: it measures the machine.
+// The window before the first only starts the referee's count.
+static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId stream,
+                                        RateWindowFn* window, void* user)
+{
+    ClockRate measured = {0.0, 0, 0, 0};
+    double rates[RATE_CLEAN_WINDOWS] = {0};
+    maudStreamClock first = {0};
+    (void)window(user);
+    if (maudGetStreamClock(context, stream, &first) != maud_success)
+    {
+        return measured;
+    }
+    while (measured.windows < RATE_MAX_WINDOWS && measured.clean < RATE_CLEAN_WINDOWS)
+    {
+        bool clean = window(user);
+        maudStreamClock second = {0};
+        if (maudGetStreamClock(context, stream, &second) != maud_success)
+        {
+            return measured;
+        }
+        measured.windows += 1;
+        measured.stalled += clean ? 0 : 1;
+        double span = (double)(second.hostNanoseconds - first.hostNanoseconds);
+        if (clean && first.hostNanoseconds != 0 && span > 0.0)
+        {
+            rates[measured.clean++] = (double)(second.position - first.position) * 1e9 / span;
+        }
+        first = second;
+    }
+    for (int i = 1; i < measured.clean; ++i)
+    {
+        for (int j = i; j > 0 && rates[j] < rates[j - 1]; --j)
+        {
+            double swap = rates[j];
+            rates[j] = rates[j - 1];
+            rates[j - 1] = swap;
+        }
+    }
+    measured.rate = measured.clean == RATE_CLEAN_WINDOWS ? rates[RATE_CLEAN_WINDOWS / 2] : 0.0;
+    return measured;
+}
+
+// Whether a rate is the expected one within 2 %, either way: the
+// ranges of 44.1 and 48 kHz do not meet. Prints the rate when not.
+static inline bool RateIsNear(double rate, double expected)
+{
+    bool within = rate > expected * 0.98 && rate < expected * 1.02;
+    if (!within)
+    {
+        fprintf(stderr, "measured %.0f frames/s by the stream clock, expected %.0f\n", rate,
+                expected);
+    }
+    return within;
+}
+
+// Whether a measure shows the expected rate. Without enough clean
+// windows it fails as starved, with the count, so that a machine short of
+// CPU reads as such and never as a wrong rate.
+static inline bool RateHolds(ClockRate measured, double expected)
+{
+    if (measured.clean < RATE_CLEAN_WINDOWS)
+    {
+        fprintf(stderr, "starved: %d of %d windows had xruns or a late wakeup\n", measured.stalled,
+                measured.windows);
+        return false;
+    }
+    return RateIsNear(measured.rate, expected);
+}
+
 #endif // MAUL_AUDIO_TEST_TEST_CLOCK_H

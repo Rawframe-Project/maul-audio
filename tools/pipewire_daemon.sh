@@ -7,11 +7,13 @@
 # the daemon with XDG_RUNTIME_DIR=<dir>/run, and the restart tests stop
 # and start it with this script (test/test_daemon.h).
 #
-# usage: pipewire_daemon.sh start|stop <dir>
+# usage: pipewire_daemon.sh start|stop|xruns <dir>
 #        pipewire_daemon.sh signal <dir> <name> <signal>
 #
 # signal sends a signal (STOP, CONT) to one of the processes it started,
-# as the tests that freeze the daemon do.
+# as the tests that freeze the daemon do. xruns prints the xruns every
+# node of the graph has counted, summed, which takes about a second: the
+# tests' timing checks judge only windows in which it did not move.
 #
 # Each process it starts is recorded in <dir>/<name>.pid with its start
 # time, and only a process whose PID and start time both still match is
@@ -19,7 +21,7 @@
 # reboot), and by then the PID may be another program's. Every wait is
 # bounded and fails with the reason; the daemons' logs are in <dir>.
 set -euo pipefail
-[ $# -eq 2 ] || [ $# -eq 4 ] || { echo "usage: $0 start|stop <dir> | signal <dir> <name> <signal>" >&2; exit 2; }
+[ $# -eq 2 ] || [ $# -eq 4 ] || { echo "usage: $0 start|stop|xruns <dir> | signal <dir> <name> <signal>" >&2; exit 2; }
 action=$1
 dir=$2
 mkdir -p "$dir"
@@ -191,8 +193,17 @@ signal)
     read -r pid _ < "$record_file"
     kill "-$4" "$pid"
     ;;
+xruns)
+    # pw-top's second sample, a second after its first (which holds no
+    # counts yet): each iteration starts with its header, and ERR, the
+    # node's xrun count, is the ninth field whatever the format shows.
+    pw-top --batch-mode --iterations 2 | awk '
+        $1 == "S" && $2 == "ID" { block += 1; sum = 0; next }
+        block == 2 && $2 ~ /^[0-9]+$/ { sum += $9 }
+        END { if (block < 2) exit 1; print sum }'
+    ;;
 *)
-    echo "usage: $0 start|stop <dir> | signal <dir> <name> <signal>" >&2
+    echo "usage: $0 start|stop|xruns <dir> | signal <dir> <name> <signal>" >&2
     exit 2
     ;;
 esac
