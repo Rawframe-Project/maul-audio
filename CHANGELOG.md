@@ -48,3 +48,8 @@ restarted at 0.0.1, and the earlier tags and releases were removed.
   files.
 - Build options to leave out either part, a shared library option, a
   CMake package and a pkg-config module.
+
+### Removed
+
+- Reading version-1 bakes, which carry no reverb tails: such a file is
+  refused with `maud_errorUnsupported`. Bake the scene again and save it.
