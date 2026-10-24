@@ -5,6 +5,27 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.0.3](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.3) (2026-10-24)
+
+### Changed
+
+- The host's allocator and its task hooks' enqueue and finish
+  functions now run in the host's own floating-point setting, as the
+  rest of the family does; before, they ran in the library's. Bakes,
+  paths and estimates are unchanged, and the ray queries still compute
+  in the library's setting, whether a task body or the calling thread
+  runs them.
+  ([#17](https://github.com/Rawframe-Project/maul-audio/pull/17))
+
+### Fixed
+
+- A web stream on a busy page no longer reports overruns or underruns
+  that did not happen, and its clock no longer resets for them. A
+  delivery placed late once is not a loss; a real loss is counted once,
+  up to five seconds later, and until then the stream's clock runs
+  behind by the lost frames.
+  ([#18](https://github.com/Rawframe-Project/maul-audio/pull/18))
+
 ## [0.0.2](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.2) (2026-10-24)
 
 ### Fixed
