@@ -62,19 +62,43 @@ running() {
 
 record() { echo "$2 $(start_time "$2")" > "$dir/$1.pid"; }
 
-# Waits until a command succeeds, LIMIT seconds at most.
+# Fails the start with the reason and the daemons' logs.
+fail() {
+    echo "pipewire_daemon: $1; logs in $dir" >&2
+    tail -n 20 "$dir"/*.log >&2 2>/dev/null || true
+    exit 1
+}
+
+# Waits until a command succeeds, LIMIT seconds at most. With a daemon's
+# name first, fails at once if that daemon has exited: a daemon that
+# refused to start never answers, and waiting longer tells nothing more.
 wait_for() {
-    local what=$1
+    local what=$1 daemon=
     shift
+    if [ "$1" = --daemon ]; then
+        daemon=$2
+        shift 2
+    fi
     local deadline=$((SECONDS + LIMIT))
     until "$@" >/dev/null 2>&1; do
+        if [ -n "$daemon" ] && ! running "$dir/$daemon.pid"; then
+            fail "$daemon exited before $what was ready"
+        fi
         if [ $SECONDS -ge $deadline ]; then
-            echo "pipewire_daemon: $what not ready after $LIMIT s; logs in $dir" >&2
-            tail -n 20 "$dir"/*.log >&2 2>/dev/null || true
-            exit 1
+            fail "$what not ready after $LIMIT s"
         fi
         sleep 0.1
     done
+}
+
+# The system's configuration of a daemon without the rt module: in a
+# container there is neither realtime scheduling nor a system bus for
+# RTKit, and the module only logs that.
+without_rt() { # program file
+    [ -f "/usr/share/$1/$2" ] || return 0
+    awk '/name = libpipewire-module-rt/ { skip = 1; depth = 0 }
+         skip { depth += gsub(/\{/, "{") - gsub(/\}/, "}"); if (depth <= 0) skip = 0; next }
+         { print }' "/usr/share/$1/$2" > "$dir/config/$1/$2"
 }
 
 launch() { # name
@@ -90,8 +114,15 @@ has_default() { [ "$(pactl get-default-sink)" = maud-test-sink ]; }
 
 case $action in
 start)
-    mkdir -p "$dir/run" "$dir/state" "$dir/config/wireplumber/main.lua.d"
+    mkdir -p "$dir/run" "$dir/state" "$dir/config/wireplumber/main.lua.d" \
+        "$dir/config/pipewire/pipewire.conf.d"
     chmod 700 "$dir/run"
+    without_rt pipewire pipewire.conf
+    without_rt pipewire pipewire-pulse.conf
+    without_rt wireplumber wireplumber.conf
+    # No JACK server to watch for on a private bus.
+    echo 'context.properties = { module.jackdbus-detect = false }' \
+        > "$dir/config/pipewire/pipewire.conf.d/90-maud-no-jackdbus.conf"
     # Only the test devices: no sound card, camera or video monitors.
     for m in alsa libcamera v4l2; do
         echo "${m}_monitor.enabled = false" > "$dir/config/wireplumber/main.lua.d/85-maud-no-$m.lua"
@@ -103,9 +134,14 @@ start)
     fi
     wait_for "the session bus" test -S "$dir/run/bus"
     launch pipewire
-    wait_for "pipewire" pw-cli info 0
+    wait_for "pipewire" --daemon pipewire pw-cli info 0
+    # The PulseAudio directory exists before pipewire-pulse starts: it
+    # checks for the directory, then makes it, and fails if another
+    # process made it between the two. pactl, polling below, makes it
+    # whenever it looks for a server.
+    mkdir -p -m 700 "$dir/run/pulse"
     launch pipewire-pulse
-    wait_for "pipewire-pulse" pactl info
+    wait_for "pipewire-pulse" --daemon pipewire-pulse pactl info
     launch wireplumber
     if ! has_node maud-test-sink; then
         pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-sink node.description="Maud test sink" media.class=Audio/Sink audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null

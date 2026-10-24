@@ -745,10 +745,11 @@ if(MAUL_AUDIO_BUILD_TESTS)
     endforeach()
 endif()
 
-# On Linux no test reaches the session's own sound server: every test runs
-# with a runtime directory of the build's, empty unless the sound-server
-# fixture starts a private PipeWire daemon there (tools/pipewire_daemon.sh)
-# for the suites that need one. Where the daemon's programs are installed
+# On Linux no test reaches the session's own sound server. The suites that
+# need a server run with the runtime directory where the sound-server
+# fixture starts a private PipeWire daemon (tools/pipewire_daemon.sh);
+# every other test runs with an empty one of its own, so no client touches
+# the daemon's directory while it starts. Where the daemon's programs are installed
 # the fixture starts it and those suites must reach it; where they are
 # not, the environment is absent and those suites skip. The browser pages
 # of a web build on a Linux host need it too: Chrome plays into its null
@@ -758,11 +759,6 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
    AND (EMSCRIPTEN OR (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)))
     set(maul_audio_server_dir ${PROJECT_BINARY_DIR}/sound-server)
     get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
-    foreach(name ${maul_audio_tests})
-        set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
-                     XDG_RUNTIME_DIR=${maul_audio_server_dir}/run
-                     PULSE_SERVER=unix:${maul_audio_server_dir}/run/pulse/native)
-    endforeach()
     set(maul_audio_server_tests "")
     foreach(name pipewire pipewire_restart pulse alsa stall guide_device)
         if(TEST ${name})
@@ -771,6 +767,15 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
     endforeach()
     set(maul_audio_pages ${maul_audio_tests})
     list(FILTER maul_audio_pages INCLUDE REGEX "^page_")
+    foreach(name ${maul_audio_tests})
+        if(name IN_LIST maul_audio_server_tests OR name IN_LIST maul_audio_pages)
+            set(runtime ${maul_audio_server_dir}/run)
+        else()
+            set(runtime ${maul_audio_server_dir}/none)
+        endif()
+        set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT XDG_RUNTIME_DIR=${runtime}
+                     PULSE_SERVER=unix:${runtime}/pulse/native)
+    endforeach()
     set(maul_audio_server_found TRUE)
     foreach(program pipewire pipewire-pulse wireplumber pw-cli pactl dbus-daemon)
         string(MAKE_C_IDENTIFIER ${program} variable)
@@ -779,7 +784,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
             set(maul_audio_server_found FALSE)
         endif()
     endforeach()
-    file(MAKE_DIRECTORY ${maul_audio_server_dir}/run)
+    file(MAKE_DIRECTORY ${maul_audio_server_dir}/run ${maul_audio_server_dir}/none)
     if(maul_audio_pages AND NOT maul_audio_server_found)
         set_property(TEST ${maul_audio_pages} APPEND PROPERTY ENVIRONMENT MAUD_NO_SOUND_SERVER=1)
     endif()
