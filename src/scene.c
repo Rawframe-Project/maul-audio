@@ -11,6 +11,7 @@
 
 #include "allocator.h"
 #include "bvh.h"
+#include "float_env.h"
 #include "scene_state.h"
 
 #include <math.h>
@@ -184,7 +185,8 @@ static bool Build(maudAcousticScene* scene, const maudAcousticSceneDef* def)
     return maudAllocateInstances(scene, def->instanceCapacity);
 }
 
-maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcousticScene** sceneOut)
+static MAUD_NOINLINE maudResult CreateAcousticScene(const maudAcousticSceneDef* def,
+                                                    maudAcousticScene** sceneOut)
 {
     if (sceneOut != nullptr)
     {
@@ -221,6 +223,15 @@ maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcoustic
     return maud_success;
 }
 
+maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcousticScene** sceneOut)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = CreateAcousticScene(def, sceneOut);
+    maudFloatEnvLeave(&env);
+    return result;
+}
+
 void maudDestroyAcousticScene(maudAcousticScene* scene)
 {
     if (scene != nullptr)
@@ -244,7 +255,8 @@ static void Unpack(const maudRay* ray, float* origin, float* direction)
     direction[2] = ray->direction.z;
 }
 
-void maudSceneAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* scene)
+static MAUD_NOINLINE void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded,
+                                 void* scene)
 {
     const maudAcousticScene* s = scene;
     for (uint32_t i = 0; i < count; ++i)
@@ -259,6 +271,16 @@ void maudSceneAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, voi
                                                            origin, direction, tMin, tMax)) ||
             maudInstancesAnyHit(s, origin, direction, tMin, tMax);
     }
+}
+
+// The queries enter too: a host may call them from its own threads, and
+// inside the spatializer's tasks entering costs two reads of the register.
+void maudSceneAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* scene)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    AnyHit(rays, count, occluded, scene);
+    maudFloatEnvLeave(&env);
 }
 
 maudVector3 maudTriangleNormal(const maudTriangle* t)
@@ -279,7 +301,8 @@ maudVector3 maudTriangleNormal(const maudTriangle* t)
     return (maudVector3){(float)(n[0] / length), (float)(n[1] / length), (float)(n[2] / length)};
 }
 
-void maudSceneClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* scene)
+static MAUD_NOINLINE void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits,
+                                     void* scene)
 {
     const maudAcousticScene* s = scene;
     for (uint32_t i = 0; i < count; ++i)
@@ -305,4 +328,12 @@ void maudSceneClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, 
         }
         maudInstancesClosestHit(s, origin, direction, rays[i].minDistance, found, &best, &hits[i]);
     }
+}
+
+void maudSceneClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* scene)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    ClosestHit(rays, count, hits, scene);
+    maudFloatEnvLeave(&env);
 }

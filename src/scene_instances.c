@@ -12,6 +12,7 @@
 // are the world's.
 
 #include "allocator.h"
+#include "float_env.h"
 #include "scene_state.h"
 
 #include <math.h>
@@ -222,7 +223,7 @@ static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const mau
     return box;
 }
 
-maudResult maudCommitAcousticScene(maudAcousticScene* scene)
+static MAUD_NOINLINE maudResult CommitAcousticScene(maudAcousticScene* scene)
 {
     if (scene == nullptr)
     {
@@ -246,6 +247,15 @@ maudResult maudCommitAcousticScene(maudAcousticScene* scene)
         maudBuildBvh(scene->boxes, n, scene->top);
     }
     return maud_success;
+}
+
+maudResult maudCommitAcousticScene(maudAcousticScene* scene)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = CommitAcousticScene(scene);
+    maudFloatEnvLeave(&env);
+    return result;
 }
 
 // A ray in an instance's frame.

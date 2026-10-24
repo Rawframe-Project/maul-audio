@@ -30,7 +30,7 @@ A program without a ray tracer, or one that needs results that match on every pl
 
 Each triangle names a material in the spatializer's table (`maudSetMaterials`): what it absorbs and lets through per band, and how much it scatters.
 
-With the task hooks (`enqueueTask` and `finishTask`) set, a step spreads its rays over the program's task system. Results never depend on how the tasks split the work: rays go out in a fixed order in batches of 64, and every sum is taken in the same order.
+With the task hooks (`enqueueTask` and `finishTask`) set, a step spreads its rays over the program's task system. Results never depend on how the tasks split the work: rays go out in a fixed order in batches of 64, and every sum is taken in the same order. Nor do they depend on the floating-point mode of the threads that run them: each task, like each simulation call, computes in round to nearest with subnormals kept and leaves the thread's mode as it found it. An engine that runs its threads with flush-to-zero or another rounding mode gets the same results; its ray queries are called in that mode too.
 
 ## Sources and the direct step
 
@@ -52,7 +52,7 @@ Estimates cost rays: about 1,000 for a diffuse room, about 8,000 for a smooth ro
 A probe set is a graph of points in the walkable space, two probes linked when one ray connects them within the set's range. The program gives the points, or the spatializer generates them on a grid over a box, at a height above every floor it finds.
 
 - **Paths.** `maudSetPathing` names the set occluded sources search for paths over. The search attaches each end to the nearest probes it sees, then refines the path with rays until its corners lie on the edges of the obstacles, and turns each corner into diffraction per band.
-- **Baking.** `maudBakeProbeSet` runs a reverberation estimate at every probe, with the energy field when the spatializer renders reflections. `maudUseBakedReverb` then makes estimates blend the four nearest baked probes the listener sees, so a running program traces nothing for its reverb. A bake gives the same bits on every platform and whatever the task hooks do.
+- **Baking.** `maudBakeProbeSet` runs a reverberation estimate at every probe, with the energy field when the spatializer renders reflections. `maudUseBakedReverb` then makes estimates blend the four nearest baked probes the listener sees, so a running program traces nothing for its reverb. A bake gives the same bits on every platform, whatever the task hooks do and whatever the threads' floating-point modes.
 - **Files.** `maudSaveProbeSet` writes a set to `.maudbake` bytes, the same on every platform, for a program to ship with its level; `maudLoadProbeSet` reads them back, treating them as hostile. A file with a bake loads only into a spatializer whose reflections match it. A file of another format version, such as a version-1 bake from before bakes carried reverb tails, is refused with `maud_errorUnsupported`: bake the scene again and save it. See [File formats](../internals/file-formats.md).
 
 ## Limits

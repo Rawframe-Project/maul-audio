@@ -11,6 +11,7 @@
 #include "probe_graph.h"
 
 #include "allocator.h"
+#include "float_env.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -107,6 +108,20 @@ bool maudProbeSetDefValid(const maudProbeSetDef* def)
            def->boxMin.z <= def->boxMax.z;
 }
 
+// A task body and its context, as the host's task hooks run them: in the
+// simulation's float environment, on any thread in any mode.
+typedef struct Task
+{
+    maudTaskFn* body;
+    void* context;
+} Task;
+
+static void InFloatEnv(uint32_t start, uint32_t end, void* context)
+{
+    const Task* t = context;
+    maudFloatEnvTask(t->body, start, end, t->context);
+}
+
 static void Run(const maudProbeQueries* q, maudTaskFn* task, uint32_t items, void* context)
 {
     if (items == 0)
@@ -115,7 +130,8 @@ static void Run(const maudProbeQueries* q, maudTaskFn* task, uint32_t items, voi
     }
     if (q->enqueueTask != nullptr)
     {
-        void* handle = q->enqueueTask(task, items, 1, context, q->userTaskContext);
+        Task wrapped = {task, context};
+        void* handle = q->enqueueTask(InFloatEnv, items, 1, &wrapped, q->userTaskContext);
         q->finishTask(handle, q->userTaskContext);
     }
     else
@@ -199,7 +215,7 @@ static void WalkColumns(const Columns* c, uint32_t first, uint32_t n)
     }
 }
 
-static void ColumnBatches(uint32_t start, uint32_t end, void* context)
+static MAUD_NOINLINE void ColumnBatches(uint32_t start, uint32_t end, void* context)
 {
     const Columns* c = context;
     for (uint32_t b = start; b < end; ++b)
@@ -322,7 +338,7 @@ static uint64_t Sweep(const Key* keys, const maudVector3* points, uint32_t count
     return total;
 }
 
-static void LinkBatches(uint32_t start, uint32_t end, void* context)
+static MAUD_NOINLINE void LinkBatches(uint32_t start, uint32_t end, void* context)
 {
     const Links* l = context;
     maudRay rays[MAUD_PROBE_BATCH];

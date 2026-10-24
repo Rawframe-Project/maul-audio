@@ -16,6 +16,7 @@
 #include "air_absorption.h"
 #include "allocator.h"
 #include "direct_step.h"
+#include "float_env.h"
 #include "occlusion.h"
 #include "pathing.h"
 #include "probe_sets.h"
@@ -204,7 +205,8 @@ static bool Allocate(maudSpatializer* s, const maudSpatializerDef* def)
     return all;
 }
 
-maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer** spatializerOut)
+static MAUD_NOINLINE maudResult CreateSpatializer(const maudSpatializerDef* def,
+                                                  maudSpatializer** spatializerOut)
 {
     if (spatializerOut != nullptr)
     {
@@ -279,6 +281,17 @@ maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer*
     atomic_init(&s->host, false);
     *spatializerOut = s;
     return maud_success;
+}
+
+// The occlusion's sample points and the reflections' tables are made
+// here, so creation is a computing entry too.
+maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer** spatializerOut)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = CreateSpatializer(def, spatializerOut);
+    maudFloatEnvLeave(&env);
+    return result;
 }
 
 void maudDestroySpatializer(maudSpatializer* spatializer)
@@ -421,7 +434,7 @@ maudResult maudSetSourcePose(maudSpatializer* spatializer, maudSourceId source,
 }
 
 // Queries batches [start, end) of the round's rays.
-static void QueryBatches(uint32_t start, uint32_t end, void* context)
+static MAUD_NOINLINE void QueryBatches(uint32_t start, uint32_t end, void* context)
 {
     maudSpatializer* s = context;
     for (uint32_t b = start; b < end; ++b)
@@ -439,6 +452,13 @@ static void QueryBatches(uint32_t start, uint32_t end, void* context)
     }
 }
 
+// QueryBatches as the host's task hooks run it, on any thread in any
+// mode.
+static void QueryTask(uint32_t start, uint32_t end, void* context)
+{
+    maudFloatEnvTask(QueryBatches, start, end, context);
+}
+
 static void Query(maudSpatializer* s)
 {
     uint32_t batches = (s->roundRays + BATCH - 1) / BATCH;
@@ -448,7 +468,7 @@ static void Query(maudSpatializer* s)
     }
     if (s->enqueueTask != nullptr)
     {
-        void* task = s->enqueueTask(QueryBatches, batches, 1, s, s->userTaskContext);
+        void* task = s->enqueueTask(QueryTask, batches, 1, s, s->userTaskContext);
         s->finishTask(task, s->userTaskContext);
     }
     else
@@ -613,7 +633,8 @@ maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMate
     return maud_success;
 }
 
-maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* listener)
+static MAUD_NOINLINE maudResult SimulateDirect(maudSpatializer* spatializer,
+                                               const maudPose* listener)
 {
     if (spatializer == nullptr)
     {
@@ -655,14 +676,29 @@ maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* list
     return maud_success;
 }
 
+maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* listener)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = SimulateDirect(spatializer, listener);
+    maudFloatEnvLeave(&env);
+    return result;
+}
+
 // Traces batches [start, end) of a reverberation estimate.
-static void TraceBatches(uint32_t start, uint32_t end, void* context)
+static MAUD_NOINLINE void TraceBatches(uint32_t start, uint32_t end, void* context)
 {
     maudSpatializer* s = context;
     for (uint32_t b = start; b < end; ++b)
     {
         maudTraceReverbBatch(&s->trace, b, &s->histograms[b]);
     }
+}
+
+// TraceBatches as the host's task hooks run it.
+static void TraceTask(uint32_t start, uint32_t end, void* context)
+{
+    maudFloatEnvTask(TraceBatches, start, end, context);
 }
 
 // The any-hit query for a host without one: every path clear.
@@ -700,7 +736,8 @@ static void EstimateReverb(maudSpatializer* s, const maudPose* listener)
     }
 }
 
-maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* listener)
+static MAUD_NOINLINE maudResult SimulateReverb(maudSpatializer* spatializer,
+                                               const maudPose* listener)
 {
     if (spatializer == nullptr)
     {
@@ -724,6 +761,15 @@ maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* list
     return maud_success;
 }
 
+maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* listener)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = SimulateReverb(spatializer, listener);
+    maudFloatEnvLeave(&env);
+    return result;
+}
+
 uint32_t maudTraceFrom(maudSpatializer* s, maudVector3 position, maudReverbResult* result)
 {
     s->trace.closestHit = s->closestHit;
@@ -735,7 +781,7 @@ uint32_t maudTraceFrom(maudSpatializer* s, maudVector3 position, maudReverbResul
     uint32_t batches = maudReverbBatches(s->trace.rays);
     if (s->enqueueTask != nullptr)
     {
-        void* task = s->enqueueTask(TraceBatches, batches, 1, s, s->userTaskContext);
+        void* task = s->enqueueTask(TraceTask, batches, 1, s, s->userTaskContext);
         s->finishTask(task, s->userTaskContext);
     }
     else

@@ -24,7 +24,7 @@ Destroying a stream detaches its platform side first; the backend's `detachStrea
 
 ## Keeping denormals away
 
-A decaying filter state or delay line reaches the subnormal range within seconds of silence, where each multiply is many times slower; an effect that idles in silence would suddenly cost its whole budget. [flush.h](../../src/flush.h) sets such states to zero once a block where that is safe, and on every sample only where a block could carry a state across the floor and back. The library does not change the thread's floating-point mode: that is the host's thread.
+A decaying filter state or delay line reaches the subnormal range within seconds of silence, where each multiply is many times slower; an effect that idles in silence would suddenly cost its whole budget. [flush.h](../../src/flush.h) sets such states to zero once a block where that is safe, and on every sample only where a block could carry a state across the floor and back. The realtime side never changes the thread's floating-point mode: the audio thread is the host's, and nothing it renders is promised the same bits across environments. The simulation side does: its computing calls and the tasks they hand the host's hooks set round to nearest with subnormals kept and restore the thread's mode before they return ([float_env.h](../../src/float_env.h)), since bakes, estimates and paths are promised the same bits whatever the host's flush-to-zero or rounding mode.
 
 ## Host code that calls back in
 
