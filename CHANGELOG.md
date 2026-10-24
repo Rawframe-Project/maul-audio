@@ -5,6 +5,22 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.0.1](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.1...v0.0.1) (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **bake:** a version-1 .maudbake file (one without reverb tails) no longer loads: maudLoadProbeSet returns maud_errorUnsupported. Bake the scene again with this release and save it.
+
+### Fixed
+
+* **bake:** refuse version-1 bakes ([#7](https://github.com/Rawframe-Project/maul-audio/issues/7)) ([afd5f16](https://github.com/Rawframe-Project/maul-audio/commit/afd5f1679b47e42bff05670cdaf13e65b40ef1d5))
+
+
+### CI
+
+* release with release-please ([#9](https://github.com/Rawframe-Project/maul-audio/issues/9)) ([64e1543](https://github.com/Rawframe-Project/maul-audio/commit/64e1543b3eb3f0413d02cc2a39f2254ea0017f68))
+
 ## 0.0.1
 
 The first release on the organization's standard. Version numbers
