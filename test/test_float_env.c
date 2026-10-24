@@ -10,7 +10,10 @@
 // and denormals-are-zero, with rounding toward zero, and with both, as
 // in the default mode; and the same again when the task hooks run the
 // tasks on threads each in another of those modes. Every call and every
-// task leaves the thread's mode as it found it.
+// task leaves the thread's mode as it found it. Subnormal arguments (a
+// pose's and an instance's orientation, a material's absorption, a
+// volumetric source's radius) are accepted or refused in every mode as
+// in the default one.
 
 #include "test_float_host.h"
 #include "test_harness.h"
@@ -319,6 +322,54 @@ static uint64_t Simulate(bool spread)
     return hash;
 }
 
+// What each check of a subnormal argument answers, a bit a call:
+// accepted is 1.
+static uint32_t Accepted(void)
+{
+    TestFloatSetting before = TestFloatGet();
+    uint32_t bits = 0;
+    maudSpatializerDef def = maudDefaultSpatializerDef();
+    maudSpatializer* s = nullptr;
+    CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
+    maudSourceDef sd = maudDefaultSourceDef();
+    maudSourceId source = {0, 0};
+    CHECK(maudCreateSource(s, &sd, &source) == maud_success, "a source");
+    // An orientation of one subnormal: not zero, so a turn.
+    maudPose pose = {{0.0f, 0.0f, 0.0f}, {1e-39f, 0.0f, 0.0f, 0.0f}};
+    bits |= maudSetSourcePose(s, source, &pose) == maud_success ? 1u : 0u;
+    // An absorption below 0 by a subnormal: refused.
+    maudAcousticMaterial m = {{-1e-39f, 0.5f, 0.5f}, 0.5f, {0.0f, 0.0f, 0.0f}};
+    bits |= maudSetMaterials(s, &m, 1) == maud_success ? 2u : 0u;
+    // A volumetric source of a subnormal radius: above 0, so accepted.
+    sd.occlusion = maud_occlusionVolumetric;
+    sd.occlusionRadius = 1e-39f;
+    sd.occlusionSamples = 1;
+    bits |= maudCreateSource(s, &sd, &source) == maud_success ? 4u : 0u;
+    maudDestroySpatializer(s);
+
+    // An instance turned by a quaternion whose squared length, 1e-40, is
+    // subnormal: above 0, so accepted, made and moved.
+    static const uint32_t faces[3] = {0, 1, 2};
+    static const uint32_t materials[1] = {0};
+    maudVector3 v[3] = {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
+    maudMesh mesh = {v, 3, faces, materials, 1};
+    maudAcousticSceneDef sceneDef = maudDefaultAcousticSceneDef();
+    sceneDef.instanceMeshes = &mesh;
+    sceneDef.instanceMeshCount = 1;
+    sceneDef.instanceCapacity = 2;
+    maudAcousticScene* scene = nullptr;
+    CHECK(maudCreateAcousticScene(&sceneDef, &scene) == maud_success, "an instancing scene");
+    maudInstanceTransform plain = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
+    maudInstanceTransform tiny = {{0.0f, 0.0f, 0.0f}, {1e-20f, 0.0f, 0.0f, 0.0f}, 1.0f};
+    maudSceneInstanceId instance = {0, 0};
+    bits |= maudCreateSceneInstance(scene, 0, &tiny, &instance) == maud_success ? 8u : 0u;
+    CHECK(maudCreateSceneInstance(scene, 0, &plain, &instance) == maud_success, "an instance");
+    bits |= maudMoveSceneInstance(scene, instance, &tiny) == maud_success ? 16u : 0u;
+    maudDestroyAcousticScene(scene);
+    Left(before);
+    return bits;
+}
+
 int main(void)
 {
     s_default = TestFloatGet();
@@ -326,6 +377,8 @@ int main(void)
     uint64_t expected = Simulate(false);
     printf("default: %016llx\n", (unsigned long long)expected);
     CHECK(Simulate(true) == expected, "the default mode, tasks on the workers");
+    uint32_t accepted = Accepted();
+    CHECK(accepted == (1u | 4u | 8u | 16u), "subnormal arguments as their values say");
     static const char* const names[3] = {"flush", "toward zero", "both"};
     for (int k = 0; k < 3; ++k)
     {
@@ -333,11 +386,13 @@ int main(void)
         TestFloatSet(mode);
         uint64_t alone = Simulate(false);
         uint64_t spread = Simulate(true);
+        uint32_t answers = Accepted();
         TestFloatSet(s_default);
         printf("%s: %016llx, spread %016llx\n", names[k], (unsigned long long)alone,
                (unsigned long long)spread);
         CHECK(alone == expected, "the same bits in the host's mode");
         CHECK(spread == expected, "the same bits, tasks on workers in other modes");
+        CHECK(answers == accepted, "subnormal arguments accepted or refused as by default");
     }
     CHECK(s_changed == 0, "every call and task left the mode as it found it");
     return s_failures == 0 ? 0 : 1;

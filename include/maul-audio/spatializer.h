@@ -9,13 +9,14 @@
 // or waiting; a step is published whole, never torn. The host passes the
 // results to the direct effect and to the binaural effect or a panner.
 //
-// The simulation side's calls that compute (creating a spatializer, its
-// steps, probe sets and bakes, loading a bake) and every task they hand
-// the task hooks run in round to nearest with subnormals kept, and leave
+// The simulation side's calls that compute or check floats (creating a
+// spatializer or a source, setting poses and materials, steps, probe
+// sets and bakes, loading a bake) and every task they hand the task
+// hooks run in round to nearest with subnormals kept, and leave
 // the thread's floating-point mode as they found it: a host's
 // flush-to-zero, denormals-are-zero or rounding mode changes no result.
-// The ray queries are called in that mode too. The rendering side never
-// changes the mode.
+// The ray queries are called in the library's mode too, not the
+// thread's. The rendering side never changes the mode.
 //
 // Positions are in metres in the host's world, right-handed with +y up;
 // an orientation turns the frame of the listener or a source (+x right,

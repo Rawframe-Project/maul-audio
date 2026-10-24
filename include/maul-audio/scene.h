@@ -8,9 +8,9 @@
 // effect at a commit. Between commits any number of threads query it at
 // once; changes and commits must not overlap queries. Its query functions have the
 // spatializer's hook signatures, the scene as their context. Creating,
-// committing and querying a scene compute in round to nearest with
-// subnormals kept, whatever the calling thread's floating-point mode,
-// and leave that mode as they found it.
+// committing and querying a scene, and making and moving instances,
+// compute in round to nearest with subnormals kept, whatever the calling
+// thread's floating-point mode, and leave that mode as they found it.
 
 #ifndef MAUL_AUDIO_SCENE_H
 #define MAUL_AUDIO_SCENE_H

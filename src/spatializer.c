@@ -336,8 +336,8 @@ static bool PatternValid(const maudDirectivityPattern* pattern)
     return maudGetDirectivity(pattern, (maudVector3){0.0f, 0.0f, -1.0f}, out) == maud_success;
 }
 
-maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* def,
-                            maudSourceId* sourceOut)
+static MAUD_NOINLINE maudResult CreateSource(maudSpatializer* spatializer, const maudSourceDef* def,
+                                             maudSourceId* sourceOut)
 {
     if (sourceOut != nullptr)
     {
@@ -375,6 +375,18 @@ maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* d
     slot->pathing = def->pathing;
     *sourceOut = (maudSourceId){index + 1, slot->generation};
     return maud_success;
+}
+
+// Checking a def compares floats, which denormals-are-zero would read
+// otherwise: the host's mode must not decide what is accepted.
+maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* def,
+                            maudSourceId* sourceOut)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = CreateSource(spatializer, def, sourceOut);
+    maudFloatEnvLeave(&env);
+    return result;
 }
 
 // The live slot an id names for a call that changes it, or the reason
@@ -416,8 +428,8 @@ maudResult maudDestroySource(maudSpatializer* spatializer, maudSourceId source)
     return maud_success;
 }
 
-maudResult maudSetSourcePose(maudSpatializer* spatializer, maudSourceId source,
-                             const maudPose* pose)
+static MAUD_NOINLINE maudResult SetSourcePose(maudSpatializer* spatializer, maudSourceId source,
+                                              const maudPose* pose)
 {
     Slot* slot = nullptr;
     maudResult result = Find(spatializer, source, &slot);
@@ -431,6 +443,16 @@ maudResult maudSetSourcePose(maudSpatializer* spatializer, maudSourceId source,
     }
     slot->pose = *pose;
     return maud_success;
+}
+
+maudResult maudSetSourcePose(maudSpatializer* spatializer, maudSourceId source,
+                             const maudPose* pose)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = SetSourcePose(spatializer, source, pose);
+    maudFloatEnvLeave(&env);
+    return result;
 }
 
 // Queries batches [start, end) of the round's rays.
@@ -599,8 +621,8 @@ static bool MaterialValid(const maudAcousticMaterial* m)
     return valid;
 }
 
-maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMaterial* materials,
-                            uint32_t count)
+static MAUD_NOINLINE maudResult SetMaterials(maudSpatializer* spatializer,
+                                             const maudAcousticMaterial* materials, uint32_t count)
 {
     if (spatializer == nullptr)
     {
@@ -631,6 +653,16 @@ maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMate
     }
     spatializer->materialCount = count;
     return maud_success;
+}
+
+maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMaterial* materials,
+                            uint32_t count)
+{
+    maudFloatEnv env;
+    maudFloatEnvEnter(&env);
+    maudResult result = SetMaterials(spatializer, materials, count);
+    maudFloatEnvLeave(&env);
+    return result;
 }
 
 static MAUD_NOINLINE maudResult SimulateDirect(maudSpatializer* spatializer,
