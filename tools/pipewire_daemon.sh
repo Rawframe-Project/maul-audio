@@ -5,8 +5,7 @@
 # bus of their own (WirePlumber exits without one, and a CI container
 # has none). CTest runs it as the sound-server fixture; the tests reach
 # the daemon with XDG_RUNTIME_DIR=<dir>/run, and the restart tests stop
-# and start it with this script (MAUD_TEST_PIPEWIRE_STOP and
-# MAUD_TEST_PIPEWIRE_START).
+# and start it with this script (test/test_daemon.h).
 #
 # usage: pipewire_daemon.sh start|stop <dir>
 #        pipewire_daemon.sh signal <dir> <name> <signal>
@@ -35,15 +34,30 @@ unset PULSE_SERVER PIPEWIRE_REMOTE
 # under two for each; the bound leaves room for a much slower one.
 LIMIT=20
 
-start_time() { awk '{print $22}' "/proc/$1/stat" 2>/dev/null; }
+# A process's /proc stat fields from the third on (its state first, its
+# start time twentieth): the command name before them may hold spaces.
+stat_fields() {
+    local stat
+    stat=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    echo "${stat##*) }"
+}
+
+start_time() {
+    local fields
+    fields=($(stat_fields "$1")) || return 0
+    echo "${fields[19]}"
+}
 
 # Whether the record names a live process of ours: the same PID with the
-# same start time.
+# same start time, not a zombie. In a container whose first process never
+# reaps (a CI job's), a daemon that exited stays a zombie.
 running() {
-    local record=$1 pid started
+    local record=$1 pid started fields
     [ -f "$record" ] || return 1
     read -r pid started < "$record" || return 1
-    [ -n "$pid" ] && [ "$(start_time "$pid")" = "$started" ]
+    [ -n "$pid" ] || return 1
+    fields=($(stat_fields "$pid")) || return 1
+    [ "${fields[19]}" = "$started" ] && [ "${fields[0]}" != Z ] && [ "${fields[0]}" != X ]
 }
 
 record() { echo "$2 $(start_time "$2")" > "$dir/$1.pid"; }

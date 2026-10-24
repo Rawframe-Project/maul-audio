@@ -8,6 +8,7 @@
 // test is skipped, unless MAUD_REQUIRE_PIPEWIRE is set.
 
 #include "test_clock.h"
+#include "test_daemon.h"
 #include "test_harness.h"
 #include "test_names.h"
 
@@ -647,21 +648,12 @@ static void TestGraphEnded(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
-// Sends a signal to the test daemon's PipeWire through the daemon
-// script its stop command names, which signals only the process it
-// started.
+// Sends a signal to the test daemon's PipeWire.
 static bool SignalDaemon(const char* signal)
 {
-    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
-    const char* verb = stop != nullptr ? strstr(stop, " stop ") : nullptr;
-    char command[512];
-    if (verb == nullptr ||
-        snprintf(command, sizeof(command), "%.*s signal %s pipewire %s", (int)(verb - stop), stop,
-                 verb + 6, signal) >= (int)sizeof(command))
-    {
-        return false;
-    }
-    return system(command) == 0;
+    char more[64];
+    snprintf(more, sizeof(more), "pipewire %s", signal);
+    return DriveDaemon("signal", more);
 }
 
 // A rebuild that fails: the graph ends a playing stream, then stops
@@ -669,7 +661,7 @@ static bool SignalDaemon(const char* signal)
 // is past the deadline, and resumes, playing, once the graph answers.
 static void TestRebuildFails(maudContext* context)
 {
-    if (getenv("MAUD_TEST_PIPEWIRE_STOP") == nullptr)
+    if (!HaveDaemon())
     {
         return;
     }

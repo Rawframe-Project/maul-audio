@@ -709,8 +709,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE AND EMSCRIPTEN)
     function(maul_audio_page name page)
         add_test(NAME ${name} COMMAND ${MAUL_AUDIO_NODE} ${PROJECT_SOURCE_DIR}/test/web/run_page.js
                  ${PROJECT_BINARY_DIR} ${page}.html ${ARGN})
+        # A page measures timing and xruns in a real browser, so it runs
+        # alone, never beside the other suites.
         set_tests_properties(${name} PROPERTIES LABELS "integration;${page}" SKIP_RETURN_CODE 77
-                             TIMEOUT 120 RESOURCE_LOCK browser)
+                             TIMEOUT 120 RUN_SERIAL TRUE)
     endfunction()
     maul_audio_page(page_web_isolated page_web 1)
     maul_audio_page(page_web_plain page_web 0)
@@ -800,11 +802,14 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
         if(maul_audio_alsa_pulse OR "$ENV{CI}" STREQUAL "true")
             set(require_alsa MAUD_REQUIRE_ALSA=1)
         endif()
+        # The suites that stop, start or signal the daemon run its script,
+        # compiled in (test/test_daemon.h), never a command from the
+        # environment.
         foreach(name ${maul_audio_server_tests})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
-                         MAUD_REQUIRE_PIPEWIRE=1 MAUD_REQUIRE_PULSE=1 ${require_alsa}
-                         "MAUD_TEST_PIPEWIRE_STOP=${daemon} stop ${maul_audio_server_dir}"
-                         "MAUD_TEST_PIPEWIRE_START=${daemon} start ${maul_audio_server_dir}")
+                         MAUD_REQUIRE_PIPEWIRE=1 MAUD_REQUIRE_PULSE=1 ${require_alsa})
+            target_compile_definitions(test_${name} PRIVATE MAUD_TEST_DAEMON="${daemon}"
+                                       MAUD_TEST_SERVER_DIR="${maul_audio_server_dir}")
         endforeach()
     endif()
 endif()
