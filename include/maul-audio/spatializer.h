@@ -16,7 +16,8 @@
 // the thread's floating-point mode as they found it: a host's
 // flush-to-zero, denormals-are-zero or rounding mode changes no result.
 // The ray queries are called in the library's mode too, not the
-// thread's. The rendering side never changes the mode.
+// thread's; the allocator and the task hooks' enqueueTask and finishTask
+// run in the thread's own. The rendering side never changes the mode.
 //
 // Positions are in metres in the host's world, right-handed with +y up;
 // an orientation turns the frame of the listener or a source (+x right,

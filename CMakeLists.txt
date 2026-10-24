@@ -94,6 +94,7 @@ set(MAUL_AUDIO_BASE_SOURCES
     src/base.c
     src/buffer.c
     src/fft.c
+    src/fpenv.c
     src/layout.c
     src/real_fft.c)
 set(MAUL_AUDIO_DEVICE_SOURCES
@@ -135,7 +136,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/crc32.c
     src/direct_effect.c
     src/direct_step.c
-    src/float_env.c
+    src/host_tasks.c
     src/hrtf.c
     src/hrtf_file.c
     src/hrtf_lookup.c
@@ -314,6 +315,8 @@ if(MAUL_AUDIO_BUILD_TESTS)
     endif()
     maul_add_test(base)
     maul_add_test(allocator WHITEBOX)
+    maul_add_test(fpenv WHITEBOX)
+    maul_add_exports_test()
     maul_add_test(buffer)
     maul_add_test(layout WHITEBOX)
     if(MAUL_AUDIO_SPATIAL)

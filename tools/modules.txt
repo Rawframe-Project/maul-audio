@@ -3,8 +3,8 @@
 aaudio_core: context_core device
 aaudio_java: aaudio_core
 aaudio_stream: aaudio_core aaudio_java clock context context_core device follow period retry thread voice xrun
-air_absorption: float_env portable_math
-allocator:
+air_absorption: fpenv portable_math
+allocator: fpenv
 alsa_api:
 alsa_chmap:
 alsa_core: alsa_api alsa_chmap alsa_scan context_core worker
@@ -49,11 +49,12 @@ echo_canceller: allocator echo_filter echo_suppressor flush real_fft
 echo_filter: allocator flush real_fft
 echo_suppressor: allocator flush real_fft voice_dsp
 fft:
-float_env:
 flush:
 focus: backend context context_core notify
 follow: backend context context_core notify retry
 form:
+fpenv:
+host_tasks: fpenv
 hrtf: allocator hrtf_core hrtf_file hrtf_resample
 hrtf_core:
 hrtf_file: crc32
@@ -79,7 +80,7 @@ partitioned: real_fft
 period:
 path_refine:
 path_search: allocator probe_graph
-pathing: allocator direct_step float_env path_refine path_search probe_graph
+pathing: allocator direct_step fpenv host_tasks path_refine path_search probe_graph
 pipewire_api:
 pipewire_card: context context_core device form pipewire_core
 pipewire_core: context_core pipewire_api
@@ -87,7 +88,7 @@ pipewire_parse:
 pipewire_stream: clock context context_core follow period pipewire_core pipewire_parse retry thread xrun
 portable_math:
 probe_bake: allocator path_search portable_math probe_graph
-probe_graph: allocator float_env
+probe_graph: allocator fpenv host_tasks
 probe_sets: allocator probe_bake probe_graph
 pulse_api:
 pulse_core: context_core pulse_api worker
@@ -99,11 +100,11 @@ reflections: allocator ambisonics reflection_response reverb_estimate staged
 retry: context_core
 reverb: allocator band_eq flush octave_eq
 reverb_estimate: portable_math spherical_harmonics
-scene: allocator bvh float_env scene_state
-scene_instances: allocator bvh float_env scene_state
+scene: allocator bvh fpenv scene_state
+scene_instances: allocator bvh fpenv scene_state
 scene_state: bvh
-spatializer: air_absorption allocator direct_step float_env occlusion pathing probe_sets reflections reverb_estimate spatializer_state transmission
-spatializer_paths: bake_file float_env pathing probe_bake probe_graph probe_sets reflections reverb_estimate spatializer_state
+spatializer: air_absorption allocator direct_step fpenv host_tasks occlusion pathing probe_sets reflections reverb_estimate spatializer_state transmission
+spatializer_paths: bake_file fpenv pathing probe_bake probe_graph probe_sets reflections reverb_estimate spatializer_state
 spatializer_state: pathing probe_sets reflections reverb_estimate
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator ramp spherical_harmonics

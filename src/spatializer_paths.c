@@ -6,7 +6,7 @@
 // direct step hands its occluded sources to the pathing.
 
 #include "bake_file.h"
-#include "float_env.h"
+#include "fpenv.h"
 #include "spatializer_state.h"
 
 #include <string.h>
@@ -102,10 +102,9 @@ static MAUD_NOINLINE maudResult CreateProbeSet(maudSpatializer* spatializer,
 maudResult maudCreateProbeSet(maudSpatializer* spatializer, const maudProbeSetDef* def,
                               maudProbeSetId* setOut)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = CreateProbeSet(spatializer, def, setOut);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -275,10 +274,9 @@ static MAUD_NOINLINE maudResult BakeProbeSet(maudSpatializer* spatializer, maudP
 
 maudResult maudBakeProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = BakeProbeSet(spatializer, set);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -425,9 +423,8 @@ static MAUD_NOINLINE maudResult LoadProbeSet(maudSpatializer* spatializer, const
 maudResult maudLoadProbeSet(maudSpatializer* spatializer, const void* bytes, size_t size,
                             maudProbeSetId* setOut)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = LoadProbeSet(spatializer, bytes, size, setOut);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
