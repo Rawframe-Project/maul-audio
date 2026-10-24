@@ -5,13 +5,26 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
-## [0.0.3](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.2...v0.0.3) (2026-10-24)
+## [0.0.3](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.3) (2026-10-24)
 
+### Changed
+
+- The host's allocator and its task hooks' enqueue and finish
+  functions now run in the host's own floating-point setting, as the
+  rest of the family does; before, they ran in the library's. Bakes,
+  paths and estimates are unchanged, and the ray queries still compute
+  in the library's setting, whether a task body or the calling thread
+  runs them.
+  ([#17](https://github.com/Rawframe-Project/maul-audio/pull/17))
 
 ### Fixed
 
-* **spatializer:** take the family float environment module ([#17](https://github.com/Rawframe-Project/maul-audio/issues/17)) ([b6c44dd](https://github.com/Rawframe-Project/maul-audio/commit/b6c44dd4042e21370515c28c7267200f6717a0d7)), closes [#15](https://github.com/Rawframe-Project/maul-audio/issues/15)
-* **web:** count lost frames only when frame 0 stays later ([#18](https://github.com/Rawframe-Project/maul-audio/issues/18)) ([3ccf9e6](https://github.com/Rawframe-Project/maul-audio/commit/3ccf9e69de064169cbe5c4ca3a9fb8c456b7c651))
+- A web stream on a busy page no longer reports overruns or underruns
+  that did not happen, and its clock no longer resets for them. A
+  delivery placed late once is not a loss; a real loss is counted once,
+  up to five seconds later, and until then the stream's clock runs
+  behind by the lost frames.
+  ([#18](https://github.com/Rawframe-Project/maul-audio/pull/18))
 
 ## [0.0.2](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.2) (2026-10-24)
 
