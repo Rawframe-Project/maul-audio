@@ -12,7 +12,7 @@
 // are the world's.
 
 #include "allocator.h"
-#include "float_env.h"
+#include "fpenv.h"
 #include "scene_state.h"
 
 #include <math.h>
@@ -126,10 +126,9 @@ maudResult maudCreateSceneInstance(maudAcousticScene* scene, uint32_t mesh,
                                    const maudInstanceTransform* transform,
                                    maudSceneInstanceId* instanceOut)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = CreateSceneInstance(scene, mesh, transform, instanceOut);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -173,10 +172,9 @@ static MAUD_NOINLINE maudResult MoveSceneInstance(maudAcousticScene* scene,
 maudResult maudMoveSceneInstance(maudAcousticScene* scene, maudSceneInstanceId instance,
                                  const maudInstanceTransform* transform)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = MoveSceneInstance(scene, instance, transform);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -275,10 +273,9 @@ static MAUD_NOINLINE maudResult CommitAcousticScene(maudAcousticScene* scene)
 
 maudResult maudCommitAcousticScene(maudAcousticScene* scene)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = CommitAcousticScene(scene);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 

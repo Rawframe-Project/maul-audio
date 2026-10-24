@@ -8,7 +8,7 @@
 
 #include "air_absorption.h"
 
-#include "float_env.h"
+#include "fpenv.h"
 #include "portable_math.h"
 
 #include "maul-audio/direct.h"
@@ -69,9 +69,8 @@ static MAUD_NOINLINE maudResult GetAirAbsorption(float temperatureCelsius, float
 maudResult maudGetAirAbsorption(float temperatureCelsius, float humidityPercent,
                                 float* absorptionOut)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = GetAirAbsorption(temperatureCelsius, humidityPercent, absorptionOut);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }

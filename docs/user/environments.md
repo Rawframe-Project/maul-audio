@@ -30,7 +30,7 @@ A program without a ray tracer, or one that needs results that match on every pl
 
 Each triangle names a material in the spatializer's table (`maudSetMaterials`): what it absorbs and lets through per band, and how much it scatters.
 
-With the task hooks (`enqueueTask` and `finishTask`) set, a step spreads its rays over the program's task system. Results never depend on how the tasks split the work: rays go out in a fixed order in batches of 64, and every sum is taken in the same order. Nor do they depend on the floating-point mode of the threads that run them: each task, like each simulation call, computes in round to nearest with subnormals kept and leaves the thread's mode as it found it. An engine that runs its threads with flush-to-zero or another rounding mode gets the same results. Its ray queries run in the library's mode as well, not in the thread's own, so its tracer gives the same hits on every thread.
+With the task hooks (`enqueueTask` and `finishTask`) set, a step spreads its rays over the program's task system. Results never depend on how the tasks split the work: rays go out in a fixed order in batches of 64, and every sum is taken in the same order. Nor do they depend on the floating-point mode of the threads that run them: each task, like each simulation call, computes in round to nearest with subnormals kept and leaves the thread's mode as it found it. An engine that runs its threads with flush-to-zero or another rounding mode gets the same results. Its ray queries run in the library's mode as well, not in the thread's own, so its tracer gives the same hits on every thread. Its allocator and its `enqueueTask` and `finishTask` run in the thread's own mode.
 
 ## Sources and the direct step
 

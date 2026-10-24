@@ -11,7 +11,7 @@
 
 #include "allocator.h"
 #include "bvh.h"
-#include "float_env.h"
+#include "fpenv.h"
 #include "scene_state.h"
 
 #include <math.h>
@@ -225,10 +225,9 @@ static MAUD_NOINLINE maudResult CreateAcousticScene(const maudAcousticSceneDef* 
 
 maudResult maudCreateAcousticScene(const maudAcousticSceneDef* def, maudAcousticScene** sceneOut)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = CreateAcousticScene(def, sceneOut);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -277,10 +276,9 @@ static MAUD_NOINLINE void AnyHit(const maudRay* rays, uint32_t count, uint8_t* o
 // inside the spatializer's tasks entering costs two reads of the register.
 void maudSceneAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* scene)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     AnyHit(rays, count, occluded, scene);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
 }
 
 maudVector3 maudTriangleNormal(const maudTriangle* t)
@@ -332,8 +330,7 @@ static MAUD_NOINLINE void ClosestHit(const maudRay* rays, uint32_t count, maudRa
 
 void maudSceneClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* scene)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     ClosestHit(rays, count, hits, scene);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
 }

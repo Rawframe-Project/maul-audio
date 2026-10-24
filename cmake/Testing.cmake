@@ -34,6 +34,22 @@ function(maul_add_test name)
     endif()
 endfunction()
 
+# maul_add_exports_test()
+#
+# In a Linux shared build, registers the exports test: the library
+# exports the public functions and nothing else (tools/check_exports.py),
+# so internal functions and tables stay hidden. A shared build without
+# Python fails to configure rather than pass without the check.
+function(maul_add_exports_test)
+    if(${MAUL_PREFIX}_BUILD_SHARED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME exports COMMAND Python3::Interpreter
+                                      ${PROJECT_SOURCE_DIR}/tools/check_exports.py
+                                      --nm ${CMAKE_NM} $<TARGET_FILE:${MAUL_LIBRARY}>)
+        set_tests_properties(exports PROPERTIES LABELS exports)
+    endif()
+endfunction()
+
 # maul_add_header_tests([ROOT <dir>] [NAME <library>])
 #
 # Compiles every public header on its own as C17, C23 and C++17, with

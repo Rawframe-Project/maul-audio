@@ -16,7 +16,8 @@
 #include "air_absorption.h"
 #include "allocator.h"
 #include "direct_step.h"
-#include "float_env.h"
+#include "fpenv.h"
+#include "host_tasks.h"
 #include "occlusion.h"
 #include "pathing.h"
 #include "probe_sets.h"
@@ -287,10 +288,9 @@ static MAUD_NOINLINE maudResult CreateSpatializer(const maudSpatializerDef* def,
 // here, so creation is a computing entry too.
 maudResult maudCreateSpatializer(const maudSpatializerDef* def, maudSpatializer** spatializerOut)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = CreateSpatializer(def, spatializerOut);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -382,10 +382,9 @@ static MAUD_NOINLINE maudResult CreateSource(maudSpatializer* spatializer, const
 maudResult maudCreateSource(maudSpatializer* spatializer, const maudSourceDef* def,
                             maudSourceId* sourceOut)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = CreateSource(spatializer, def, sourceOut);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -448,10 +447,9 @@ static MAUD_NOINLINE maudResult SetSourcePose(maudSpatializer* spatializer, maud
 maudResult maudSetSourcePose(maudSpatializer* spatializer, maudSourceId source,
                              const maudPose* pose)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = SetSourcePose(spatializer, source, pose);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -474,29 +472,11 @@ static MAUD_NOINLINE void QueryBatches(uint32_t start, uint32_t end, void* conte
     }
 }
 
-// QueryBatches as the host's task hooks run it, on any thread in any
-// mode.
-static void QueryTask(uint32_t start, uint32_t end, void* context)
-{
-    maudFloatEnvTask(QueryBatches, start, end, context);
-}
-
 static void Query(maudSpatializer* s)
 {
     uint32_t batches = (s->roundRays + BATCH - 1) / BATCH;
-    if (batches == 0)
-    {
-        return;
-    }
-    if (s->enqueueTask != nullptr)
-    {
-        void* task = s->enqueueTask(QueryTask, batches, 1, s, s->userTaskContext);
-        s->finishTask(task, s->userTaskContext);
-    }
-    else
-    {
-        QueryBatches(0, batches, s);
-    }
+    maudHostTasks hooks = {s->enqueueTask, s->finishTask, s->userTaskContext};
+    maudRunHostTasks(&hooks, QueryBatches, batches, s);
 }
 
 static uint32_t RaysOf(const maudSpatializer* s, const Slot* slot)
@@ -658,10 +638,9 @@ static MAUD_NOINLINE maudResult SetMaterials(maudSpatializer* spatializer,
 maudResult maudSetMaterials(maudSpatializer* spatializer, const maudAcousticMaterial* materials,
                             uint32_t count)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = SetMaterials(spatializer, materials, count);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -710,10 +689,9 @@ static MAUD_NOINLINE maudResult SimulateDirect(maudSpatializer* spatializer,
 
 maudResult maudSimulateDirect(maudSpatializer* spatializer, const maudPose* listener)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = SimulateDirect(spatializer, listener);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -725,12 +703,6 @@ static MAUD_NOINLINE void TraceBatches(uint32_t start, uint32_t end, void* conte
     {
         maudTraceReverbBatch(&s->trace, b, &s->histograms[b]);
     }
-}
-
-// TraceBatches as the host's task hooks run it.
-static void TraceTask(uint32_t start, uint32_t end, void* context)
-{
-    maudFloatEnvTask(TraceBatches, start, end, context);
 }
 
 // The any-hit query for a host without one: every path clear.
@@ -795,10 +767,9 @@ static MAUD_NOINLINE maudResult SimulateReverb(maudSpatializer* spatializer,
 
 maudResult maudSimulateReverb(maudSpatializer* spatializer, const maudPose* listener)
 {
-    maudFloatEnv env;
-    maudFloatEnvEnter(&env);
+    uint64_t token = maudFloatEnvEnter();
     maudResult result = SimulateReverb(spatializer, listener);
-    maudFloatEnvLeave(&env);
+    maudFloatEnvLeave(token);
     return result;
 }
 
@@ -811,15 +782,8 @@ uint32_t maudTraceFrom(maudSpatializer* s, maudVector3 position, maudReverbResul
     s->trace.materialCount = s->materialCount;
     s->trace.listener = position;
     uint32_t batches = maudReverbBatches(s->trace.rays);
-    if (s->enqueueTask != nullptr)
-    {
-        void* task = s->enqueueTask(TraceTask, batches, 1, s, s->userTaskContext);
-        s->finishTask(task, s->userTaskContext);
-    }
-    else
-    {
-        TraceBatches(0, batches, s);
-    }
+    maudHostTasks hooks = {s->enqueueTask, s->finishTask, s->userTaskContext};
+    maudRunHostTasks(&hooks, TraceBatches, batches, s);
     maudReverbFit fit;
     maudFitReverb(s->histograms, batches, &fit);
     memcpy(result->reverbTime, fit.times, sizeof(fit.times));

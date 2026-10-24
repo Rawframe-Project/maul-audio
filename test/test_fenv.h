@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// A host's floating-point setting for the tests, set and read without the
-// library's own code: the rounding mode through <fenv.h>, and the control
+// A host's floating-point setting for the tests (a family file), set and
+// read without the library's own code: the rounding mode through <fenv.h>, and the control
 // register's own rounding and flush-to-zero bits (MXCSR's rounding,
 // flush-to-zero and denormals-are-zero on x86, FPCR's RMode and FZ on
 // AArch64), read from the register itself: on x86 <fenv.h> may report the
 // x87 control word alone, and the library's arithmetic follows MXCSR. A
 // test plays a host that runs its threads with flush-to-zero and rounding
-// toward zero, and checks every call leaves the setting as it found it.
+// toward zero, and checks every call leaves the setting as it found it;
+// TestFloatHostileAt walks every rounding mode, each with and without the
+// flush bits, for a test that runs a call under each.
 // The MSVC paths are built by the clang-cl cell on x64; no CI cell builds
 // MSVC for ARM64, so its _ReadStatusReg path is untried.
 
-#ifndef MAUL_AUDIO_TEST_FLOAT_HOST_H
-#define MAUL_AUDIO_TEST_FLOAT_HOST_H
+#ifndef MAUL_AUDIO_TEST_FENV_H
+#define MAUL_AUDIO_TEST_FENV_H
 
 #include <fenv.h>
 #include <stdbool.h>
@@ -128,4 +130,49 @@ static inline TestFloatSetting TestFloatHostile(void)
     return setting;
 }
 
-#endif // MAUL_AUDIO_TEST_FLOAT_HOST_H
+// The rounding modes <fenv.h> names here, nearest first.
+static inline int TestFloatRoundings(int* modes)
+{
+    int count = 0;
+    modes[count++] = FE_TONEAREST;
+#ifdef FE_DOWNWARD
+    modes[count++] = FE_DOWNWARD;
+#endif
+#ifdef FE_UPWARD
+    modes[count++] = FE_UPWARD;
+#endif
+#ifdef FE_TOWARDZERO
+    modes[count++] = FE_TOWARDZERO;
+#endif
+    return count;
+}
+
+// How many hosts TestFloatHostileAt plays: every rounding mode, each with
+// the flush bits off and on where the platform has them.
+static inline int TestFloatHostileCount(void)
+{
+    int modes[4];
+    return TestFloatRoundings(modes) * (TEST_HAS_FLUSH ? 2 : 1);
+}
+
+// The index-th host: a rounding mode as <fenv.h> sets it, in <fenv.h>
+// and in the register (read back after setting it, so no encoding of the
+// register's field is assumed), and the flush bits for odd indices. The
+// thread's setting is left as it was.
+static inline TestFloatSetting TestFloatHostileAt(int index)
+{
+    int modes[4];
+    int count = TestFloatRoundings(modes);
+    TestFloatSetting saved = TestFloatGet();
+    int flushes = TEST_HAS_FLUSH ? 2 : 1;
+    (void)fesetround(modes[(index / flushes) % count]);
+    TestFloatSetting setting = TestFloatGet();
+    TestFloatSet(saved);
+#if TEST_HAS_FLUSH
+    setting.control =
+        (setting.control & TEST_ROUNDING_BITS) | ((index % flushes) == 1 ? TEST_FLUSH_BITS : 0u);
+#endif
+    return setting;
+}
+
+#endif // MAUL_AUDIO_TEST_FENV_H

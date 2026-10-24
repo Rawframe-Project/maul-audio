@@ -10,12 +10,13 @@
 // and denormals-are-zero, with rounding toward zero, and with both, as
 // in the default mode; and the same again when the task hooks run the
 // tasks on threads each in another of those modes. Every call and every
-// task leaves the thread's mode as it found it. Subnormal arguments (a
+// task leaves the thread's mode as it found it, and the spatializer's
+// and the scene's allocator and the task hooks run in the host's mode. Subnormal arguments (a
 // pose's and an instance's orientation, a material's absorption, a
 // volumetric source's radius) are accepted or refused in every mode as
 // in the default one.
 
-#include "test_float_host.h"
+#include "test_fenv.h"
 #include "test_harness.h"
 
 #include "maul-audio/scene.h"
@@ -61,6 +62,35 @@ static TestFloatSetting Mode(bool flush, bool towardZero)
 
 // Calls or tasks that left the thread's mode changed.
 static int s_changed;
+
+// The host's mode for a run, the host calls the library made, and those
+// that ran in another mode.
+static TestFloatSetting s_host;
+static int s_hostCalls;
+static int s_hostWrong;
+
+static void Seen(void)
+{
+    s_hostCalls += 1;
+    s_hostWrong += TestFloatSame(TestFloatGet(), s_host) ? 0 : 1;
+}
+
+static void* HostAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    Seen();
+    return malloc(size);
+}
+
+static void HostFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    Seen();
+    free(memory);
+}
 
 static void Left(TestFloatSetting before)
 {
@@ -109,6 +139,7 @@ static void* Spread(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, voi
                     void* userContext)
 {
     (void)minRange;
+    Seen();
     Work work[WORKERS];
     for (uint32_t t = 0; t < WORKERS; ++t)
     {
@@ -144,6 +175,7 @@ static void Finish(void* userTask, void* userContext)
 {
     (void)userTask;
     (void)userContext;
+    Seen();
 }
 
 // A room 8 x 3 x 6 m from z = -3, a wall across it from z = -3 to 1 at
@@ -176,6 +208,7 @@ static maudAcousticScene* Room(void)
     maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
+    def.allocator = (maudAllocator){HostAlloc, HostFree, nullptr};
     maudAcousticScene* scene = nullptr;
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a room");
     Left(before);
@@ -253,6 +286,7 @@ static uint64_t Step(maudSpatializer* s, const maudSourceId* sources, maudPose l
 // calling thread's mode, the tasks spread over the workers or not.
 static uint64_t Simulate(bool spread)
 {
+    s_host = TestFloatGet();
     maudAcousticScene* scene = Room();
     maudRayHit hits[16];
     uint8_t occluded[16];
@@ -274,6 +308,7 @@ static uint64_t Simulate(bool spread)
     def.maxPaths = 1;
     def.enqueueTask = spread ? Spread : nullptr;
     def.finishTask = spread ? Finish : nullptr;
+    def.allocator = (maudAllocator){HostAlloc, HostFree, nullptr};
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     CHECK(maudSetMaterials(s, s_materials, 7) == maud_success, "materials");
@@ -395,5 +430,7 @@ int main(void)
         CHECK(answers == accepted, "subnormal arguments accepted or refused as by default");
     }
     CHECK(s_changed == 0, "every call and task left the mode as it found it");
+    CHECK(s_hostCalls > 0 && s_hostWrong == 0,
+          "the allocators and the task hooks ran in the host's mode");
     return s_failures == 0 ? 0 : 1;
 }

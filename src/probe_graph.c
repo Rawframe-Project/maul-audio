@@ -11,7 +11,8 @@
 #include "probe_graph.h"
 
 #include "allocator.h"
-#include "float_env.h"
+#include "fpenv.h"
+#include "host_tasks.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -108,36 +109,10 @@ bool maudProbeSetDefValid(const maudProbeSetDef* def)
            def->boxMin.z <= def->boxMax.z;
 }
 
-// A task body and its context, as the host's task hooks run them: in the
-// simulation's float environment, on any thread in any mode.
-typedef struct Task
-{
-    maudTaskFn* body;
-    void* context;
-} Task;
-
-static void InFloatEnv(uint32_t start, uint32_t end, void* context)
-{
-    const Task* t = context;
-    maudFloatEnvTask(t->body, start, end, t->context);
-}
-
 static void Run(const maudProbeQueries* q, maudTaskFn* task, uint32_t items, void* context)
 {
-    if (items == 0)
-    {
-        return;
-    }
-    if (q->enqueueTask != nullptr)
-    {
-        Task wrapped = {task, context};
-        void* handle = q->enqueueTask(InFloatEnv, items, 1, &wrapped, q->userTaskContext);
-        q->finishTask(handle, q->userTaskContext);
-    }
-    else
-    {
-        task(0, items, context);
-    }
+    maudHostTasks hooks = {q->enqueueTask, q->finishTask, q->userTaskContext};
+    maudRunHostTasks(&hooks, task, items, context);
 }
 
 static maudVector3 ColumnTop(const Columns* c, uint32_t column)
