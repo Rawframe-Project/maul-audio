@@ -5,6 +5,21 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.0.2](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.2) (2026-10-24)
+
+### Fixed
+
+- Bakes, probe sets, paths, reverberation estimates and scene ray
+  queries now give the same bits whatever floating-point mode the
+  host's threads run in. The simulation calls and the task bodies they
+  hand to the host switch to round to nearest with subnormals kept and
+  every exception masked, and restore the thread's mode on return.
+  Before, a host running flush-to-zero, denormals-are-zero or another
+  rounding mode got different bakes, and threads in different modes
+  gave different bits for different task splits. The rendering side
+  never touches the mode. Results in the default mode do not change.
+  ([#14](https://github.com/Rawframe-Project/maul-audio/pull/14))
+
 ## [0.0.1](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.1) (2026-10-24)
 
 The first release on the organization's standard. Version numbers
