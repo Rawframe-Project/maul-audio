@@ -26,3 +26,4 @@
 - [Checks](operations/checks.md): the local tiers, the CI jobs and their budgets.
 - [Test environments](operations/test-environments.md): the sound servers, Wine, simulators, emulators and browsers the tests run against.
 - [Device checklist](operations/device-checklist.md): what is checked by hand on real hardware before a release.
+- [Release](operations/release.md): how release-please makes a release, and what to check before merging it.

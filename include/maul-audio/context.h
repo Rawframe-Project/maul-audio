@@ -136,7 +136,7 @@ extern "C"
     /// @param def         The def, from maudDefaultContextDef.
     /// @param contextOut  Receives the context; set to NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL
     ///         argument, a def without its cookie, an allocator with one function, a limit
     ///         of 0 or an offline rate out of range; `maud_errorUnsupported`

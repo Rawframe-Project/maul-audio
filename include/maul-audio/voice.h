@@ -90,7 +90,7 @@ extern "C"
     /// @param def          The def, from maudDefaultVoiceDetectorDef.
     /// @param detectorOut  Receives the detector; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer or a
     ///         def out of range; `maud_errorCapacity` when the allocator
     ///         fails.
@@ -213,7 +213,7 @@ extern "C"
     /// @param def      The def, from maudDefaultGainControlDef.
     /// @param gainOut  Receives the gain control; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer or a
     ///         def out of range; `maud_errorCapacity` when the allocator
     ///         fails.
@@ -320,7 +320,7 @@ extern "C"
     /// @param def            The def, from maudDefaultNoiseSuppressorDef.
     /// @param suppressorOut  Receives the noise suppressor; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer or a
     ///         def out of range; `maud_errorCapacity` when the allocator
     ///         fails.
@@ -432,7 +432,7 @@ extern "C"
     /// @param def            The def, from maudDefaultEchoCancellerDef.
     /// @param cancellerOut   Receives the echo canceller; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer or a
     ///         def out of range; `maud_errorCapacity` when the allocator
     ///         fails.

@@ -37,10 +37,10 @@ On Linux the `sound-server` fixture starts a private PipeWire daemon for the sui
 | `android-emulator` | The AAudio suites and the Java half in the Android 11 emulator. |
 | `ios-simulator` | The iOS build with its tests; on `main` and at night the tests run in a booted simulator. |
 
-Every cell that runs CTest fails when a test is skipped or not run, and uploads its logs when it fails. A step that feeds a file list to a tool fails on an empty list.
+Every cell that runs CTest fails when a test is skipped or not run, and uploads its logs when it fails, with the sound-server daemons' logs. A step that feeds a file list to a tool fails on an empty list.
 
 ## Main and the night
 
 On `main`, fuzzing runs 90 seconds per target and each target's corpus, minimized with libFuzzer's merge, is saved in an Actions cache of its own for the next run; the iOS suites run in the simulator. At night (and by hand) the extended run adds the `extended` cells (`linux-clang-20-msan` without the integration suites and `context`, which load the system's sound libraries that MemorySanitizer cannot see into, and with 20 minutes a suite, since the bake suite takes several under it; `linux-gcc-14` on arm64; `macos-clang-asan`; `macos-clang-tsan`), `ios-simulator-asan`, the quarantined pages, and ten minutes of fuzzing per target. The extended run may take up to two hours and is not a required check. A failure on `main` or at night is reported to the manager and fixed before other work.
 
-`.github/workflows/codeql.yml` builds both parts with GCC 14 in the CI image for CodeQL on every pull request and on `main`; `pages.yml` publishes the documentation site from `main`; `scorecard.yml` grades the repository's security practices (OpenSSF Scorecard) on `main` and every week. Each scheduled run has the repository's own slot from the organization's schedule (`.github` `docs/ci-schedule.md`), so the organization's runs do not start together.
+`.github/workflows/codeql.yml` builds both parts with GCC 14 in the CI image for CodeQL on every pull request and on `main`; `pages.yml` publishes the documentation site from `main`; `release.yml` makes the releases ([Release](release.md)); `scorecard.yml` grades the repository's security practices (OpenSSF Scorecard) on `main` and every week. Each scheduled run has the repository's own slot from the organization's schedule (`.github` `docs/ci-schedule.md`), so the organization's runs do not start together.

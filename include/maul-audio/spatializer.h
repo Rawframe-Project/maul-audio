@@ -348,7 +348,7 @@ extern "C"
     /// @param def             The def, from maudDefaultSpatializerDef.
     /// @param spatializerOut  Receives the spatializer; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, a capacity or ray count out of
     ///         range, an air absorption below 0 or not finite, a
