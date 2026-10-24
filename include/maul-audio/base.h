@@ -25,7 +25,7 @@ extern "C"
 #define MAUD_VERSION_MINOR 0
 // x-release-please-end
 // x-release-please-start-patch
-#define MAUD_VERSION_PATCH 1
+#define MAUD_VERSION_PATCH 2
 // x-release-please-end
 
 // The binary interface a program is built for. Each root def (one whose

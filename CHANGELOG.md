@@ -5,6 +5,13 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.0.2](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.1...v0.0.2) (2026-10-24)
+
+
+### Fixed
+
+* **spatializer:** compute bakes and paths in one float environment ([#14](https://github.com/Rawframe-Project/maul-audio/issues/14)) ([75fa6ad](https://github.com/Rawframe-Project/maul-audio/commit/75fa6ad1daa2650803ab1f7d3af5ca2ca437fc04)), closes [#13](https://github.com/Rawframe-Project/maul-audio/issues/13)
+
 ## [0.0.1](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.1) (2026-10-24)
 
 The first release on the organization's standard. Version numbers
