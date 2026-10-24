@@ -53,7 +53,7 @@ A probe set is a graph of points in the walkable space, two probes linked when o
 
 - **Paths.** `maudSetPathing` names the set occluded sources search for paths over. The search attaches each end to the nearest probes it sees, then refines the path with rays until its corners lie on the edges of the obstacles, and turns each corner into diffraction per band.
 - **Baking.** `maudBakeProbeSet` runs a reverberation estimate at every probe, with the energy field when the spatializer renders reflections. `maudUseBakedReverb` then makes estimates blend the four nearest baked probes the listener sees, so a running program traces nothing for its reverb. A bake gives the same bits on every platform and whatever the task hooks do.
-- **Files.** `maudSaveProbeSet` writes a set to `.maudbake` bytes, the same on every platform, for a program to ship with its level; `maudLoadProbeSet` reads them back, treating them as hostile. A file with a bake loads only into a spatializer whose reflections match it. See [File formats](../internals/file-formats.md).
+- **Files.** `maudSaveProbeSet` writes a set to `.maudbake` bytes, the same on every platform, for a program to ship with its level; `maudLoadProbeSet` reads them back, treating them as hostile. A file with a bake loads only into a spatializer whose reflections match it. A file of another format version, such as a version-1 bake from before bakes carried reverb tails, is refused with `maud_errorUnsupported`: bake the scene again and save it. See [File formats](../internals/file-formats.md).
 
 ## Limits
 

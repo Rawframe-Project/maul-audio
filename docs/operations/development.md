@@ -49,7 +49,7 @@ A change to one is made in the canonical copy first, through the manager. `AGENT
 | `src/near_field_table.c` | `python3 tools/near_field_table.py src/near_field_table.c` (numpy), with `--reference test/near_field_reference.h` for the test's exact values | Never, unless the near-field model changes. The output depends only on the script and numpy's arithmetic. |
 | `data/hrtf/sadie2-ku100-48k.maudhrtf` | `tools/sofa_to_maudhrtf.py` (numpy, h5py), see below | When the HRTF format or its conversion changes. |
 | `data/golden/*.wav` | `MAUD_WRITE_GOLDEN=1 ctest -R '^golden$'` | When rendering changes on purpose. |
-| `data/bake/office.maudbake` | `MAUD_WRITE_GOLDEN=1 ctest -R '^spatializer_bake$'` | When baking changes on purpose. |
+| `data/bake/office.maudbake` | `MAUD_WRITE_GOLDEN=1 ctest -R '^spatializer_bake$'` | When baking changes on purpose. `data/bake/office-frozen.maudbake` is never rewritten: it pins the format's reading while the golden bake follows the bake's results. |
 | `README.md`'s cost table | `python3 tools/cost_table.py` from `bench/baseline.txt` | When the baseline is recorded again. |
 
 A pull request that rewrites a golden file says which change in results caused it.
