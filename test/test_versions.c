@@ -3,7 +3,8 @@
 //
 // Every root def carries the version of the headers it was built from:
 // its default stamps MAUD_ABI_VERSION, and the object's creation
-// refuses a def of another minor or major with maud_errorVersion before
+// refuses a def of another interface (another release before 1.0,
+// another major, a zeroed version) with maud_errorVersion before
 // it reads anything else of it (here the HRTF set those that need one
 // are never given), leaving nothing made; a def without its cookie is
 // maud_errorInvalid whatever its version says.
@@ -98,7 +99,8 @@ static maudResult EchoCanceller(const maudEchoCancellerDef* def, void* out)
     return maudCreateEchoCanceller(def, out);
 }
 
-// Each def's three refusals: another minor, another major, no cookie.
+// Each def's refusals: another release, another major, a zeroed
+// version, no cookie.
 #define ALL(Type, def, create)                                                                     \
     do                                                                                             \
     {                                                                                              \
@@ -106,6 +108,7 @@ static maudResult EchoCanceller(const maudEchoCancellerDef* def, void* out)
         ok = ok && d.version == MAUD_ABI_VERSION;                                                  \
         REFUSES(Type, d, create, 1u, true, maud_errorVersion);                                     \
         REFUSES(Type, d, create, 1u << 16, true, maud_errorVersion);                               \
+        REFUSES(Type, d, create, 0u - d.version, true, maud_errorVersion);                         \
         REFUSES(Type, d, create, 1u, false, maud_errorInvalid);                                    \
         if (!ok)                                                                                   \
         {                                                                                          \
@@ -117,6 +120,13 @@ static maudResult EchoCanceller(const maudEchoCancellerDef* def, void* out)
 
 int main(void)
 {
+    // The stamp: the top bit always, the major, and before 1.0, when any
+    // release may break the interface, the minor and the patch too.
+    CHECK((MAUD_ABI_VERSION & 0x80000000u) != 0 &&
+              (MAUD_ABI_VERSION >> 16 & 0x7FFFu) == MAUD_VERSION_MAJOR &&
+              (MAUD_VERSION_MAJOR != 0 ||
+               (MAUD_ABI_VERSION & 0xFFFFu) == (MAUD_VERSION_MINOR << 8 | MAUD_VERSION_PATCH)),
+          "the stamp names the release's interface");
     bool ok = true;
     bool all = true;
     ALL(maudHrtfDef, maudDefaultHrtfDef(), Hrtf);

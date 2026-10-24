@@ -150,7 +150,7 @@ extern "C"
     ///                    with a set.
     /// @param decoderOut  Receives the decoder; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, without a set or out of range, or a
     ///         set whose directions cannot carry the order;
@@ -246,7 +246,7 @@ extern "C"
     /// @param def         The def, from maudDefaultSpeakerDecoderDef.
     /// @param decoderOut  Receives the decoder; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, an order out of range or a layout
     ///         the library does not have; `maud_errorCapacity` when the

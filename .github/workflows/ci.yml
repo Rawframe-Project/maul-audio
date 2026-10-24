@@ -34,21 +34,21 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@40dc8f20f0da3bb2c9d358aa23ec19d0d6ee309b # v0.0.13
     permissions:
       pull-requests: read
 
   # The organization's documentation check. data/hrtf/apache-2.0 holds the
   # HRTF set's license exactly as published.
   docs:
-    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@40dc8f20f0da3bb2c9d358aa23ec19d0d6ee309b # v0.0.13
     permissions:
       contents: read
     with:
       exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@40dc8f20f0da3bb2c9d358aa23ec19d0d6ee309b # v0.0.13
     permissions:
       contents: read
 
@@ -120,7 +120,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@40dc8f20f0da3bb2c9d358aa23ec19d0d6ee309b # v0.0.13
     permissions:
       contents: read
     with:
@@ -128,6 +128,8 @@ jobs:
       runner: ${{ matrix.runner || 'ubuntu-24.04' }}
       repeat: ${{ matrix.repeat || 1 }}
       setup: ${{ matrix.setup || '' }}
+      # The sound-server fixture's daemon logs, when a cell fails.
+      logs: out/${{ matrix.preset }}/sound-server/*.log
 
   # The extended run's desktop cells, at night and by hand: MemorySanitizer
   # (the sound servers' libraries are not instrumented, so the integration
@@ -142,13 +144,15 @@ jobs:
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@40dc8f20f0da3bb2c9d358aa23ec19d0d6ee309b # v0.0.13
     permissions:
       contents: read
     with:
       preset: ${{ matrix.preset }}
       runner: ${{ matrix.runner || 'ubuntu-24.04' }}
       setup: ${{ matrix.setup || '' }}
+      # The sound-server fixture's daemon logs, when a cell fails.
+      logs: out/${{ matrix.preset }}/sound-server/*.log
       timeout: 60
 
   # The public headers alone under MSVC's cl, as C17 and C++17 with /W4 /WX:
@@ -298,7 +302,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: logs-web-emscripten
-          path: out/web-emscripten/Testing/Temporary/
+          path: |
+            out/web-emscripten/Testing/Temporary/
+            out/web-emscripten/sound-server/*.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Size

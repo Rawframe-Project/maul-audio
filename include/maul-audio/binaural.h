@@ -93,7 +93,7 @@ extern "C"
     /// @param def      The def, from maudDefaultBinauralDef, with a set.
     /// @param effectOut  Receives the effect; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer or a
     ///         def without its cookie, without a set or out of range;
     ///         `maud_errorCapacity` when the allocator fails.

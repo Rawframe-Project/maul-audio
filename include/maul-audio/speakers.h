@@ -71,7 +71,7 @@ extern "C"
     /// @param def         The def, from maudDefaultSpeakerPannerDef.
     /// @param pannerOut   Receives the panner; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie or a layout the library does not
     ///         have; `maud_errorCapacity` when the allocator fails.

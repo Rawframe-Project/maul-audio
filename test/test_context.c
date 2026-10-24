@@ -60,8 +60,7 @@ static void TestDefaults(void)
     CHECK(def.offlineSampleRate == 48000, "48 kHz offline");
     CHECK(def.allocator.alloc == nullptr && def.allocator.free == nullptr, "C allocator");
     CHECK(def.cookie == MAUD_CONTEXT_DEF_COOKIE, "the cookie");
-    CHECK(def.version == ((uint32_t)MAUD_VERSION_MAJOR << 16 | MAUD_VERSION_MINOR),
-          "the headers' major and minor");
+    CHECK(def.version == MAUD_ABI_VERSION, "the headers' binary interface");
 }
 
 static void TestOfflineContextLifetime(void)
@@ -170,7 +169,7 @@ static void TestInvalidDefsAreRefused(void)
     (void)context;
 }
 
-// A def of another major or minor is refused before anything else of it
+// A def of another interface is refused before anything else of it
 // is read; one without the cookie is not a def at all.
 static void TestOtherVersionIsRefused(void)
 {

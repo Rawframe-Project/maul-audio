@@ -97,7 +97,7 @@ extern "C"
     /// @param def        The def, from maudDefaultReverbDef.
     /// @param reverbOut  Receives the reverb; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, a rate or longest delay out of
     ///         range;

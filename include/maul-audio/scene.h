@@ -110,7 +110,7 @@ extern "C"
     /// @param def       The def, from maudDefaultAcousticSceneDef.
     /// @param sceneOut  Receives the scene; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another major or minor version than the library's, checked
+    ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, a mesh with a NULL array it needs, a
     ///         vertex index past its vertices or a vertex that is not
