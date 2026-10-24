@@ -281,8 +281,13 @@ static void PrintDefaults(const maudContext* context)
         }
     }
     fflush(stdout);
-    (void)system("echo \"the daemon's test nodes:\"; pw-cli ls Node | grep 'node.name = .maud';"
-                 " echo \"the daemon's default metadata:\"; pw-metadata -n default 0");
+    int status =
+        system("echo \"the daemon's test nodes:\"; pw-cli ls Node | grep 'node.name = .maud';"
+               " echo \"the daemon's default metadata:\"; pw-metadata -n default 0");
+    if (status != 0)
+    {
+        printf("the daemon's view could not be read (status %d)\n", status);
+    }
 }
 
 // Drains notifications for up to tries polls of 10 ms until device is
