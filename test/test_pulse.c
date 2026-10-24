@@ -248,56 +248,13 @@ static int ThreadsAfterJoin(void)
     return count;
 }
 
-// Frames the stream moves per second of wall time over one window.
-static double MeasureWindow(maudContext* context, maudStreamId stream, int milliseconds)
+// The stream's rate by its own clock (test_clock.h), in windows of a
+// second judged by the graph's and the stream's xruns and the machine's
+// promptness (test_daemon.h), the context drained meanwhile.
+static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
 {
-    struct timespec start;
-    struct timespec end;
-    uint64_t first = 0;
-    uint64_t last = 0;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-    for (int i = 0; i < milliseconds / 10; ++i)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
-    CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    double seconds =
-        (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) * 1e-9;
-    return (double)(last - first) / seconds;
-}
-
-// The stream's rate: the best of five windows of a second. A
-// loaded machine can stall the platform's clock, which only lowers a
-// window's count, so the best window is the one that shows the rate.
-static double MeasureRate(maudContext* context, maudStreamId stream)
-{
-    double best = 0.0;
-    for (int window = 0; window < 5; ++window)
-    {
-        double rate = MeasureWindow(context, stream, 1000);
-        best = rate > best ? rate : best;
-    }
-    return best;
-}
-
-// Whether a measured rate is the expected one: at most 2% above it,
-// and up to 6% below, since a stalled clock only lowers a count. The
-// ranges of 44.1 and 48 kHz do not meet. The measurement is printed
-// when it is not.
-static bool Near(double rate, double expected)
-{
-    bool within = rate > expected * 0.94 && rate < expected * 1.02;
-    if (!within)
-    {
-        fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
-    }
-    return within;
+    GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 1000};
+    return StreamClockRate(context, stream, GraphWindow, &watch);
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
@@ -504,7 +461,7 @@ static void TestOutputStream(maudContext* context)
           "stereo's positions");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(Near(MeasureRate(context, stream), 48000.0), "at the sink's rate");
+    CHECK(RateHolds(MeasureRate(context, stream), 48000.0), "at the sink's rate");
     CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");

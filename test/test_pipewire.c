@@ -569,28 +569,13 @@ static bool WaitForLinkIntoPlugged(maudContext* context, Helper* helper)
     return false;
 }
 
-// The context MeasureRate drains while it waits: streams move, and the
-// PipeWire main loop runs, inside the library's calls on this thread.
-static maudContext* s_draining;
-
-static void SleepDraining(int milliseconds)
+// The stream's rate by its own clock (test_clock.h), in windows of a
+// second judged by the graph's and the stream's xruns and the machine's
+// promptness (test_daemon.h), the context drained meanwhile.
+static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
 {
-    for (int i = 0; i < milliseconds / 10; ++i)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(s_draining, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
-}
-
-// The stream's rate by its own clock (test_clock.h), the context drained
-// meanwhile.
-static double MeasureRate(maudContext* context, maudStreamId stream)
-{
-    s_draining = context;
-    return StreamClockRate(context, stream, 1000, SleepDraining);
+    GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 1000};
+    return StreamClockRate(context, stream, GraphWindow, &watch);
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
@@ -733,7 +718,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(atomic_load(&blocks.lastRate) == 48000, "blocks carry the rate");
     CHECK(atomic_load(&blocks.controlResult) == maud_errorState, "control refused there");
     CHECK(maudGetContextMisuse(context) >= 1, "and counted");
-    CHECK(RateIsNear(MeasureRate(context, stream), 48000.0),
+    CHECK(RateHolds(MeasureRate(context, stream), 48000.0),
           "the clock advances at the stream's rate");
     CHECK(StreamClockIsSound(context, stream, true, false, Sleep),
           "its clock maps frames to host time");
@@ -910,7 +895,7 @@ static void TestDuplexStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 40), "duplex callbacks");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "every duplex block is one period");
-    CHECK(RateIsNear(MeasureRate(context, stream), 48000.0), "at the graph's rate");
+    CHECK(RateHolds(MeasureRate(context, stream), 48000.0), "at the graph's rate");
     maudStreamStatus status = {0};
     CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
     CHECK(status.drift == maud_driftNone, "no drift on one graph");
@@ -918,39 +903,36 @@ static void TestDuplexStream(maudContext* context)
     uint32_t drivers = 0;
     DriversOfOurNodes(&nodes, &drivers);
     CHECK(nodes == 2 && drivers == 1, "both halves follow one driver");
-    // The fewest slips of up to ten windows of 2 s in which the graph
-    // reported no xrun. A loaded machine stalls the graph, which then
-    // slips the halves and reports the stall as an xrun: those windows
+    // The fewest slips of 2 s windows in which no node of the graph
+    // counted an xrun, up to 30 windows. A loaded machine stalls the graph,
+    // which then slips the halves and counts the stall: those windows
     // measure the machine. Slips in a window without one are the
-    // library's. With every window stalled there is nothing to judge, and
-    // the test says so rather than fail for the machine.
+    // library's. With no clean window the check fails as starved.
+    GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 2000};
+    (void)GraphWindow(&watch);
     uint64_t fewest = UINT64_MAX;
+    int windows = 0;
     int spoiled = 0;
-    for (int window = 0; window < 10 && fewest > 512; ++window)
+    while (windows < 30 && fewest > 512)
     {
         uint64_t before = status.slippedFrames;
-        uint64_t xruns = status.underruns + status.overruns;
-        Sleep(2000);
+        bool clean = GraphWindow(&watch);
         CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        windows += 1;
         uint64_t slipped = status.slippedFrames - before;
-        if (status.underruns + status.overruns != xruns)
-        {
-            spoiled += 1;
-            continue;
-        }
-        fewest = slipped < fewest ? slipped : fewest;
+        spoiled += clean ? 0 : 1;
+        fewest = clean && slipped < fewest ? slipped : fewest;
     }
     if (fewest == UINT64_MAX)
     {
-        fprintf(stderr, "the graph reported an xrun in each of %d windows: no slips to judge\n",
-                spoiled);
+        fprintf(stderr, "starved: %d of %d windows had xruns or a late wakeup\n", spoiled, windows);
     }
     else if (fewest > 512)
     {
-        fprintf(stderr, "slipped at least %llu frames in each 2 s without an xrun\n",
+        fprintf(stderr, "slipped at least %llu frames in each clean 2 s\n",
                 (unsigned long long)fewest);
     }
-    CHECK(fewest == UINT64_MAX || fewest <= 512, "and little slips on one graph");
+    CHECK(fewest <= 512, "and little slips on one graph");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy duplex");
     // A stall in the duplex callback skips both halves' cycles: the
     // output's underruns and the input's overruns.
@@ -998,7 +980,7 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
     maudNotification record;
     CHECK(WaitForStream(context, maud_notifyStreamMoved, follower, &record), "the follower moves");
-    CHECK(RateIsNear(MeasureRate(context, follower), 48000.0), "at the graph's rate still");
+    CHECK(RateHolds(MeasureRate(context, follower), 48000.0), "at the graph's rate still");
     ForceGraphRate(helper, "44100");
     CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record),
           "the graph's new rate");
@@ -1006,7 +988,7 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
     uint32_t before = atomic_load(&following.count);
     CHECK(WaitForBlocks(context, &following, before + 20), "the follower runs on");
     CHECK(atomic_load(&following.lastRate) == 44100, "its blocks carry the new rate");
-    CHECK(RateIsNear(MeasureRate(context, follower), 44100.0), "and it runs at it");
+    CHECK(RateHolds(MeasureRate(context, follower), 44100.0), "and it runs at it");
     ForceGraphRate(helper, "0");
     CHECK(WaitForStream(context, maud_notifyStreamFormatChanged, follower, &record), "and back");
     CHECK(record.sampleRate == 48000, "48 kHz");

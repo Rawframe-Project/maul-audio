@@ -9,6 +9,7 @@
 // block of a context's creation, and of a stream's, is a capacity error.
 
 #include "test_clock.h"
+#include "test_daemon.h"
 #include "test_harness.h"
 #include "test_names.h"
 
@@ -159,6 +160,15 @@ static int ThreadsAfterJoin(void)
         count = ThreadCount();
     }
     return count;
+}
+
+// The stream's rate by its own clock (test_clock.h), in windows of a
+// second judged by the graph's and the stream's xruns and the machine's
+// promptness (test_daemon.h), the context drained meanwhile.
+static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
+{
+    GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 1000};
+    return StreamClockRate(context, stream, GraphWindow, &watch);
 }
 
 static bool KeyIs(const maudContext* context, maudDeviceId device, const char* key)
@@ -325,7 +335,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(ThreadCount() == 1, "one thread while it runs");
     CHECK(WaitForBlocks(&blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0), "at its rate");
+    CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
     CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
@@ -350,8 +360,7 @@ static void TestOutputStream(maudContext* context)
     stream = OpenDefault(context, maud_directionOutput, &required, &def);
     CHECK(maudStartStream(context, stream) == maud_success, "start at 44.1 kHz");
     CHECK(WaitForBlocks(&required, 10), "it runs");
-    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0),
-          "at the rate required");
+    CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at the rate required");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     def = maudDefaultStreamDef();
     def.mode = maud_modePull;
@@ -371,7 +380,7 @@ static void TestXrun(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(&blocks, 31), "past the stall");
     CHECK(WaitForBlocks(&blocks, 80), "it runs on");
-    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0), "at its rate");
+    CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
@@ -416,7 +425,7 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(&blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0), "at its rate");
+    CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
     CHECK(StreamClockIsSound(context, stream, false, true, Sleep),
           "its clock maps frames to host time");
     maudStreamStatus status = {0};
