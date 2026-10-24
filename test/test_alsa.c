@@ -161,51 +161,6 @@ static int ThreadsAfterJoin(void)
     return count;
 }
 
-// Frames the stream moves per second of wall time over one window.
-static double MeasureWindow(const maudContext* context, maudStreamId stream, int milliseconds)
-{
-    struct timespec start;
-    struct timespec end;
-    uint64_t first = 0;
-    uint64_t last = 0;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-    Sleep(milliseconds);
-    CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    double seconds =
-        (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) * 1e-9;
-    return (double)(last - first) / seconds;
-}
-
-// The stream's rate: the best of five windows of a second. A
-// loaded machine can stall the platform's clock, which only lowers a
-// window's count, so the best window is the one that shows the rate.
-static double MeasureRate(const maudContext* context, maudStreamId stream)
-{
-    double best = 0.0;
-    for (int window = 0; window < 5; ++window)
-    {
-        double rate = MeasureWindow(context, stream, 1000);
-        best = rate > best ? rate : best;
-    }
-    return best;
-}
-
-// Whether a measured rate is the expected one: at most 2% above it,
-// and up to 6% below, since a stalled clock only lowers a count. The
-// ranges of 44.1 and 48 kHz do not meet. The measurement is printed
-// when it is not.
-static bool Near(double rate, double expected)
-{
-    bool within = rate > expected * 0.94 && rate < expected * 1.02;
-    if (!within)
-    {
-        fprintf(stderr, "measured %.0f frames/s, expected %.0f\n", rate, expected);
-    }
-    return within;
-}
-
 static bool KeyIs(const maudContext* context, maudDeviceId device, const char* key)
 {
     char bytes[128];
@@ -370,7 +325,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(ThreadCount() == 1, "one thread while it runs");
     CHECK(WaitForBlocks(&blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(Near(MeasureRate(context, stream), 44100.0), "at its rate");
+    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0), "at its rate");
     CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
@@ -395,7 +350,8 @@ static void TestOutputStream(maudContext* context)
     stream = OpenDefault(context, maud_directionOutput, &required, &def);
     CHECK(maudStartStream(context, stream) == maud_success, "start at 44.1 kHz");
     CHECK(WaitForBlocks(&required, 10), "it runs");
-    CHECK(Near(MeasureRate(context, stream), 44100.0), "at the rate required");
+    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0),
+          "at the rate required");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     def = maudDefaultStreamDef();
     def.mode = maud_modePull;
@@ -415,7 +371,7 @@ static void TestXrun(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(&blocks, 31), "past the stall");
     CHECK(WaitForBlocks(&blocks, 80), "it runs on");
-    CHECK(Near(MeasureRate(context, stream), 44100.0), "at its rate");
+    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0), "at its rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
@@ -460,7 +416,7 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(&blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(Near(MeasureRate(context, stream), 44100.0), "at its rate");
+    CHECK(RateIsNear(StreamClockRate(context, stream, 1000, Sleep), 44100.0), "at its rate");
     CHECK(StreamClockIsSound(context, stream, false, true, Sleep),
           "its clock maps frames to host time");
     maudStreamStatus status = {0};

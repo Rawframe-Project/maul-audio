@@ -85,4 +85,62 @@ static inline bool StreamClockIsSound(const maudContext* context, maudStreamId s
     return false;
 }
 
+// The rate a running stream plays at by its own clock: the frames
+// between two clock reads over the time between the host times the
+// clock gave them, windows of `milliseconds` apart through the test's
+// own sleep; the median of five windows. Each host time is the
+// platform's own report at a callback (when it read the host clock,
+// plus or less the delay it reported then), so a callback a loaded
+// machine holds back reads a later time and a shorter delay together
+// and the measure does not move with it, where frames counted against
+// the wall clock fall short in a stall or run over with its backlog. A
+// window a stall still spoils is outvoted. 0 without two stamps.
+static inline double StreamClockRate(const maudContext* context, maudStreamId stream,
+                                     int milliseconds, void (*sleep)(int milliseconds))
+{
+    double rates[5] = {0};
+    maudStreamClock first = {0};
+    if (maudGetStreamClock(context, stream, &first) != maud_success)
+    {
+        return 0.0;
+    }
+    for (int window = 0; window < 5; ++window)
+    {
+        sleep(milliseconds);
+        maudStreamClock second = {0};
+        if (maudGetStreamClock(context, stream, &second) != maud_success)
+        {
+            return 0.0;
+        }
+        double span = (double)(second.hostNanoseconds - first.hostNanoseconds);
+        rates[window] = first.hostNanoseconds != 0 && span > 0.0
+                            ? (double)(second.position - first.position) * 1e9 / span
+                            : 0.0;
+        first = second;
+    }
+    for (int i = 1; i < 5; ++i)
+    {
+        for (int j = i; j > 0 && rates[j] < rates[j - 1]; --j)
+        {
+            double swap = rates[j];
+            rates[j] = rates[j - 1];
+            rates[j - 1] = swap;
+        }
+    }
+    return rates[2];
+}
+
+// Whether a rate is the expected one within 2 %, either way: the
+// ranges of 44.1 and 48 kHz do not meet. Prints the rate when not.
+static inline bool RateIsNear(double rate, double expected)
+{
+    bool within = rate > expected * 0.98 && rate < expected * 1.02;
+    if (!within)
+    {
+        fprintf(stderr, "measured %.0f frames/s by the stream clock, expected %.0f\n", rate,
+                expected);
+    }
+    return within;
+}
+
 #endif // MAUL_AUDIO_TEST_TEST_CLOCK_H
