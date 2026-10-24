@@ -5,6 +5,14 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.0.3](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.2...v0.0.3) (2026-10-24)
+
+
+### Fixed
+
+* **spatializer:** take the family float environment module ([#17](https://github.com/Rawframe-Project/maul-audio/issues/17)) ([b6c44dd](https://github.com/Rawframe-Project/maul-audio/commit/b6c44dd4042e21370515c28c7267200f6717a0d7)), closes [#15](https://github.com/Rawframe-Project/maul-audio/issues/15)
+* **web:** count lost frames only when frame 0 stays later ([#18](https://github.com/Rawframe-Project/maul-audio/issues/18)) ([3ccf9e6](https://github.com/Rawframe-Project/maul-audio/commit/3ccf9e69de064169cbe5c4ca3a9fb8c456b7c651))
+
 ## [0.0.2](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.2) (2026-10-24)
 
 ### Fixed
