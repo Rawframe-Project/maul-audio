@@ -41,10 +41,10 @@ cmake --build build
 
 `sample_devices` lists the devices and plays a tone for ten seconds; `sample_binaural` renders a source circling the listener to a WAV file.
 
-Ubuntu 24.04's default compiler is GCC 13, which the build refuses ("GCC 14 or newer is required"). Install GCC 14 and configure again in a fresh build directory, since `build/` keeps the compiler it first found; then go on from `cmake --build build`:
+On Linux the build also needs pkg-config and the development headers of PipeWire, ALSA and PulseAudio. Ubuntu 24.04 has none of them by default, and its default compiler is GCC 13, which the build refuses ("GCC 14 or newer is required"). Install GCC 14 and the headers, and configure again in a fresh build directory, since `build/` keeps the compiler it first found; then go on from `cmake --build build`:
 
 ```sh
-sudo apt install gcc-14
+sudo apt install gcc-14 pkg-config libpipewire-0.3-dev libasound2-dev libpulse-dev
 rm -rf build && CC=gcc-14 cmake -B build -DCMAKE_BUILD_TYPE=Release
 ```
 
