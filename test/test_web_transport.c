@@ -598,9 +598,24 @@ static void RunFilterResets(bool isolated)
     }
 }
 
-// Frames the browser played without the stream move frame 0 later for
-// good: 30 ms is within the estimate's drift and stays held, uncounted;
-// 70 ms is an underrun, counted once, and the clock follows it.
+// The step the filter watches for lost frames, read at a cycle: the
+// heard time of frame 0 against before, and the underruns counted since.
+static void Watch(maudContext* context, maudStreamId stream, double* heard, uint64_t* underruns)
+{
+    maudStreamClock clock = {0};
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+              maudGetStreamStatus(context, stream, &status) == maud_success,
+          "the clock and status");
+    *heard = Heard(&clock);
+    *underruns = status.underruns;
+}
+
+// Frame 0 heard later: 30 ms is within the estimate's drift and stays
+// held, uncounted. 70 ms for one cycle and then back is a report the
+// browser placed late: held, uncounted. 70 ms for good is frames the
+// browser played without the stream: still held and uncounted 2.5 s on,
+// then one underrun once it has lasted 5 s, and the clock follows it.
 static void RunLoss(bool isolated)
 {
     InstallWeb(isolated ? 1 : 0);
@@ -620,33 +635,47 @@ static void RunLoss(bool isolated)
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     Cycle();
     NewRoute();
-    Stamp(4);
+    Stamp(1);
     Cycle();
-    maudStreamClock clock = {0};
-    maudStreamStatus status = {0};
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success,
-          "the clock and status");
-    double before = Heard(&clock);
-    uint64_t underruns = status.underruns;
+    double before = 0.0;
+    uint64_t underruns = 0;
+    Watch(context, stream, &before, &underruns);
+    double heard = 0.0;
+    uint64_t counted = 0;
     Jump(30.0);
     Cycle();
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success,
-          "the clock and status");
-    CHECK(Heard(&clock) <= before + 1000.0 && status.underruns == underruns,
+    Watch(context, stream, &heard, &counted);
+    CHECK(heard <= before + 1000.0 && counted == underruns,
           "30 ms later is drift: held, nothing counted");
     Jump(70.0);
     Cycle();
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success,
-          "the clock and status");
-    if (Heard(&clock) < before + 60e6 || status.underruns != underruns + 1)
+    Jump(0.0);
+    for (int i = 0; i < 400; ++i)
     {
-        printf("70 ms later: frame 0 %.0f ns from before, %llu underruns, %llu before\n",
-               Heard(&clock) - before, (unsigned long long)status.underruns,
-               (unsigned long long)underruns);
-        CHECK(false, "70 ms later is frames lost: one underrun, and the clock follows");
+        Cycle();
+    }
+    Watch(context, stream, &heard, &counted);
+    CHECK(heard <= before + 1000.0 && counted == underruns,
+          "70 ms late once is a report placed late: held, nothing counted");
+    // A cycle is 16 ms of the device's frames.
+    Jump(70.0);
+    for (int i = 0; i < 156; ++i)
+    {
+        Cycle();
+    }
+    Watch(context, stream, &heard, &counted);
+    CHECK(heard <= before + 1000.0 && counted == underruns,
+          "70 ms later for 2.5 s: still held, nothing counted yet");
+    for (int i = 0; i < 188; ++i)
+    {
+        Cycle();
+    }
+    Watch(context, stream, &heard, &counted);
+    if (heard < before + 60e6 || counted != underruns + 1)
+    {
+        printf("70 ms later for 5.5 s: frame 0 %.0f ns from before, %llu underruns, %llu before\n",
+               heard - before, (unsigned long long)counted, (unsigned long long)underruns);
+        CHECK(false, "70 ms later for good is frames lost: one underrun, and the clock follows");
     }
     Jump(0.0);
     Stamp(0);

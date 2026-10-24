@@ -119,7 +119,9 @@ EM_JS(void, InstallWeb, (int isolated), {
 // timestamp taken a second earlier, as a starved device's; with 3, the
 // frame taken last heard now, 1 ms later at each call, as a PulseAudio
 // server's drifts (room for 31 ms of drift before a capture would fall
-// in the future).
+// in the future); with 4, the frame taken last heard 60 ms ago, which
+// leaves a capture room to be placed 70 ms late. Late's milliseconds move
+// the next call's alone later.
 EM_JS(void, Stamp, (int on), {
     const sim = globalThis.maudSim;
     sim.base = performance.now() - sim.frame / 48;
@@ -130,8 +132,10 @@ EM_JS(void, Stamp, (int on), {
     globalThis.AudioContext.prototype.getOutputTimestamp = function () {
         const old = on === 2 ? 1 : 0;
         const late = on === 3 ? (sim.late = sim.late === undefined ? 0 : sim.late + 1) : 0;
+        const once = sim.once || 0;
+        sim.once = 0;
         return {contextTime: sim.frame / 48000 - old,
-                performanceTime: performance.now() + (on === 3 ? 0 : 20) - old * 1000 + late};
+                performanceTime: performance.now() + (on === 3 ? 0 : on === 4 ? -60 : 20) - old * 1000 + late + once};
     };
 });
 
@@ -151,6 +155,10 @@ EM_JS(void, SetFrame, (int frame), {
     sim.offset += (sim.frame - frame) / 48;
     sim.frame = frame;
 });
+
+// Places the next delivery `ms` later, once: a timestamp the browser gave
+// late.
+EM_JS(void, Late, (double ms), { globalThis.maudSim.once = ms; });
 
 // The context runs `quanta` while the microphone's frames never reach
 // the capture node: frames the browser lost before the stream got them.
@@ -270,6 +278,18 @@ static double TakeAll(void)
 {
     while (DeliverOneToMain() == 1)
     {
+    }
+    return Taken();
+}
+
+// Captures for `quanta` (a multiple of 4), the main thread taking what
+// arrived every 4 quanta (11 ms); the frame-0 time after the last.
+static double Run(int quanta)
+{
+    for (int i = 0; i < quanta; i += 4)
+    {
+        Pull(4);
+        (void)TakeAll();
     }
     return Taken();
 }
@@ -438,9 +458,17 @@ static void FilterGranted(void* user)
         printf("restarted: frame 0 at %.0f ns, before the stop at %.0f\n", restarted, routed);
         CHECK(false, "frames dropped while stopped start the filter again");
     }
-    // Frames the browser lost before the stream: 29 ms (11 quanta) is
-    // within the estimate's drift, held and uncounted; 32 ms more (12),
-    // 61 ms in all, is an overrun, counted once, and the clock follows it.
+    // On a steady timestamp with room for a late one, from a fresh
+    // filter. Frames the browser lost before the stream: 29 ms (11 quanta)
+    // is within the estimate's drift, held and uncounted. A delivery
+    // placed 70 ms late once, then back, is not a loss: held, uncounted.
+    // 32 ms more lost (12 quanta, 61 ms in all) for good: held and
+    // uncounted 2.5 s on (940 quanta), then one overrun once it has lasted
+    // 5 s, and the clock follows it.
+    Stamp(4);
+    NewRoute();
+    Pull(1);
+    double steady = TakeAll();
     maudStreamStatus status = {0};
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
     uint64_t overruns = status.overruns;
@@ -448,17 +476,27 @@ static void FilterGranted(void* user)
     Pull(1);
     double near = TakeAll();
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
-    CHECK(near <= restarted + 1000.0 && status.overruns == overruns,
+    CHECK(near <= steady + 1000.0 && status.overruns == overruns,
           "29 ms later is drift: held, nothing counted");
-    Skip(12);
+    Late(70.0);
     Pull(1);
-    double lost = TakeAll();
+    (void)TakeAll();
+    double settled = Run(400);
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
-    if (lost < restarted + 55e6 || status.overruns != overruns + 1)
+    CHECK(settled <= steady + 1000.0 && status.overruns == overruns,
+          "70 ms late once is a delivery placed late: held, nothing counted");
+    Skip(12);
+    double waiting = Run(940);
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(waiting <= steady + 1000.0 && status.overruns == overruns,
+          "61 ms later for 2.5 s: still held, nothing counted yet");
+    double lost = Run(1124);
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    if (lost < steady + 55e6 || status.overruns != overruns + 1)
     {
-        printf("61 ms later: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
-               lost - restarted, (unsigned long long)status.overruns, (unsigned long long)overruns);
-        CHECK(false, "61 ms later is frames lost: one overrun, and the clock follows");
+        printf("61 ms later for 5.5 s: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
+               lost - steady, (unsigned long long)status.overruns, (unsigned long long)overruns);
+        CHECK(false, "61 ms later for good is frames lost: one overrun, and the clock follows");
     }
     Stamp(0);
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy the capture");
