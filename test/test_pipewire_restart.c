@@ -8,10 +8,10 @@
 // goes once it has listed the rest; away longer than the backend keeps
 // them, every device goes. Streams the host suspended stay suspended for
 // it across a restart.
-// The daemon is stopped and started by the commands in
-// MAUD_TEST_PIPEWIRE_STOP and MAUD_TEST_PIPEWIRE_START; without them,
-// or without a daemon, the test is skipped.
+// The sound-server fixture's daemon is stopped and started through its
+// script (test_daemon.h); without the fixture the test is skipped.
 
+#include "test_daemon.h"
 #include "test_harness.h"
 
 #include "maul-audio/notification.h"
@@ -152,11 +152,9 @@ static void Note(maudContext* context, Seen* seen)
 
 int main(void)
 {
-    const char* stop = getenv("MAUD_TEST_PIPEWIRE_STOP");
-    const char* start = getenv("MAUD_TEST_PIPEWIRE_START");
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
-    if (stop == nullptr || start == nullptr || maudCreateContext(&def, &context) != maud_success)
+    if (!HaveDaemon() || maudCreateContext(&def, &context) != maud_success)
     {
         return SKIP;
     }
@@ -178,7 +176,7 @@ int main(void)
           "a third plays, then stops");
     Note(context, &seen);
     uint32_t outputs = OutputCount(context);
-    CHECK(system(stop) == 0, "the daemon stops");
+    CHECK(DriveDaemon("stop", ""), "the daemon stops");
     int64_t away = maudGetHostNanoseconds();
     NOTE_UNTIL(context, &seen, 500, seen.reason[0] != 0 && seen.reason[1] != 0);
     CHECK(seen.reason[0] == maud_suspendPlatform && seen.reason[1] == maud_suspendPlatform,
@@ -189,7 +187,7 @@ int main(void)
     seen.streams[2] = Open(context, (maudDeviceId){0, 0}, &during);
     NOTE_UNTIL(context, &seen, 100, seen.reason[2] != 0);
     CHECK(seen.reason[2] == maud_suspendPlatform, "one created while away waits too");
-    CHECK(system(start) == 0, "the daemon starts again");
+    CHECK(DriveDaemon("start", ""), "the daemon starts again");
     NOTE_UNTIL(context, &seen, 500,
                seen.resumed[0] && seen.resumed[1] && seen.resumed[2] && seen.goneRemoved);
     int64_t listed = maudGetHostNanoseconds() - away;
@@ -223,10 +221,10 @@ int main(void)
         seen.reason[i] = 0;
         seen.resumed[i] = false;
     }
-    CHECK(system(stop) == 0, "the daemon stops again");
+    CHECK(DriveDaemon("stop", ""), "the daemon stops again");
     NOTE_UNTIL(context, &seen, 500, seen.reason[1] != 0);
     CHECK(seen.reason[1] == maud_suspendPlatform, "the pinned stream waits again");
-    CHECK(system(start) == 0, "the daemon starts once more");
+    CHECK(DriveDaemon("start", ""), "the daemon starts once more");
     NOTE_UNTIL(context, &seen, 500, seen.resumed[1] && seen.goneRemoved);
     CHECK(seen.resumed[1] && seen.goneRemoved, "the pinned stream resumes, the second sink goes");
     CHECK(!seen.sinkRemoved && SameDevice(FindByKey(context, "maud-test-sink"), seen.sink),
@@ -234,14 +232,14 @@ int main(void)
     // Away for longer than the devices are kept.
     Note(context, &seen);
     seen.resumed[0] = false;
-    CHECK(system(stop) == 0, "the daemon stops for longer");
+    CHECK(DriveDaemon("stop", ""), "the daemon stops for longer");
     NOTE_UNTIL(context, &seen, 1300,
                seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost &&
                    seen.reason[0] == maud_suspendNoDevice);
     CHECK(seen.sinkRemoved && OutputCount(context) == 0, "every device goes");
     CHECK(seen.reason[1] == maud_suspendDeviceLost, "the pinned stream with its device");
     CHECK(seen.reason[0] == maud_suspendNoDevice, "the one on the default waits for a device");
-    CHECK(system(start) == 0, "the daemon starts again");
+    CHECK(DriveDaemon("start", ""), "the daemon starts again");
     NOTE_UNTIL(context, &seen, 500, seen.resumed[0]);
     resumed = atomic_load(&before.count);
     CHECK(seen.resumed[0] && WaitForBlocks(context, &before, resumed + 20),
@@ -265,9 +263,9 @@ int main(void)
     Sleep(300);
     CHECK(atomic_load(&blocks[0].count) == counts[0] && atomic_load(&blocks[1].count) == counts[1],
           "no callbacks while suspended");
-    CHECK(system(stop) == 0, "the daemon stops");
+    CHECK(DriveDaemon("stop", ""), "the daemon stops");
     NOTE_UNTIL(context, &host, 30, false);
-    CHECK(system(start) == 0, "the daemon starts again");
+    CHECK(DriveDaemon("start", ""), "the daemon starts again");
     NOTE_UNTIL(context, &host, 500, SameDevice(FindByKey(context, "maud-test-sink"), host.sink));
     Note(context, &host);
     CHECK(SameDevice(FindByKey(context, "maud-test-sink"), host.sink) &&

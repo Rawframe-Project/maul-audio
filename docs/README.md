@@ -23,5 +23,6 @@
 ## Maintaining it
 
 - [Development](operations/development.md): toolchain, building and testing, generated data, benchmarks, fuzzing.
+- [Checks](operations/checks.md): the local tiers, the CI jobs and their budgets.
 - [Test environments](operations/test-environments.md): the sound servers, Wine, simulators, emulators and browsers the tests run against.
 - [Device checklist](operations/device-checklist.md): what is checked by hand on real hardware before a release.

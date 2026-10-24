@@ -19,15 +19,17 @@ On the shared development machine the default `gcc` is 13: pass `-DCMAKE_C_COMPI
 
 ## Building and testing
 
+Every CI cell is a CMake preset (`CMakePresets.json`) built in `out/<preset>`:
+
 ```sh
-cmake -B out/dev -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Debug -DMAUL_AUDIO_SANITIZE=ON -DMAUL_AUDIO_WERROR=ON
-cmake --build out/dev
-ctest --test-dir out/dev -L reverb        # one suite, by its label
+cmake --preset linux-clang-20-asan
+cmake --build --preset linux-clang-20-asan
+ctest --preset linux-clang-20-asan -L reverb        # one suite, by its label
 ```
 
-Each suite is `test/test_<name>.c`, registered as `<name>` with the label `<name>`. Debug builds turn the library's internal assertions on (`MAUD_ASSERT`, [invariant.h](../../src/invariant.h)); `MAUL_AUDIO_SANITIZE` adds AddressSanitizer and UBSan, `MAUL_AUDIO_TSAN` ThreadSanitizer.
+Each suite is `test/test_<name>.c`, registered as `<name>` with the label `<name>`. Debug presets turn the library's internal assertions on (`MAUD_ASSERT`, [invariant.h](../../src/invariant.h)); the `-asan` presets add AddressSanitizer and UBSan, `-tsan` ThreadSanitizer. [Checks](checks.md) lists the tiers of `tools/check.sh` and what CI runs.
 
-The backend suites (`pipewire`, `pulse`, `alsa`, `wasapi`, `coreaudio`, `aaudio`, the web pages) need a platform; [Test environments](test-environments.md) says how each one runs. Without its platform a backend suite exits 77, which CTest reports as skipped.
+The backend suites need a platform; [Test environments](test-environments.md) says how each one runs. A backend suite whose platform is absent exits 77, which CTest reports as skipped and CI as a failure.
 
 ## Shared family files
 
@@ -86,12 +88,13 @@ On the web, `bench/size_web.c` links one feature at a time, so the web cell repo
 
 ## Fuzzing
 
-`test/fuzz_hrtf.c` and `test/fuzz_bake.c` fuzz the two loaders with libFuzzer (`-DMAUL_AUDIO_FUZZ=ON`, Clang). A target's first byte chooses what the rest is (CMakeLists.txt says how), so the shipped HRTF set behind a `0x01` and the shipped bakes behind a `0x03` seed them, with the minimized corpora in `test/corpus/<target>/`. Always pass `-max_total_time`:
+`test/fuzz_hrtf.c` and `test/fuzz_bake.c` fuzz the two loaders with libFuzzer (`-DMAUL_AUDIO_FUZZ=ON`, Clang). A target's first byte chooses what the rest is (CMakeLists.txt says how), so `tools/fuzz_seeds.sh` seeds each target with the minimized corpus in `test/corpus/<target>/`, the shipped HRTF set behind a `0x01` and the shipped bakes behind a `0x03`. CI carries a larger corpus per target from night to night, each in an Actions cache of its own. Always pass `-max_total_time`:
 
 ```sh
 cmake -B out/fuzz -G Ninja -DCMAKE_C_COMPILER=clang-20 -DMAUL_AUDIO_FUZZ=ON -DMAUL_AUDIO_DEVICE=OFF -DMAUL_AUDIO_BUILD_TESTS=OFF
 cmake --build out/fuzz
-./out/fuzz/fuzz_bake -max_total_time=60 test/corpus/fuzz_bake
+tools/fuzz_seeds.sh out/corpus
+./out/fuzz/fuzz_bake -max_total_time=60 out/corpus/fuzz_bake
 ```
 
 To grow a corpus, run a target on a copy of its directory, then merge back what reaches new code: `fuzz_bake -set_cover_merge=1 test/corpus/fuzz_bake grown/`. A crash becomes a test in its module's suite with the minimized input.

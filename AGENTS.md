@@ -13,22 +13,21 @@ It never compromises on:
 ## Commands
 
 ```sh
-cmake -B out/dev -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=Debug -DMAUL_AUDIO_SANITIZE=ON -DMAUL_AUDIO_WERROR=ON
-cmake --build out/dev
-ctest --test-dir out/dev -L reverb       # one suite, by label: test/test_<label>.c
-ctest --test-dir out/dev                  # everything this machine can run
-for c in check_source check_modules check_docs check_lengths check_guide check_litmus; do python3 tools/$c.py; done
-python3 tools/cost_table.py --check       # README's cost table against bench/baseline.txt
-python3 /home/rawframe-project/.github/scripts/docs_check.py --strict --exclude data/hrtf/apache-2.0
-python3 /home/rawframe-project/.github/maul/family_sync.py --check maul-audio
+tools/check.sh changed          # before every push: rules, format, the suites the changes reach (< 2 min)
+tools/check.sh pr               # what the pull request check runs on Linux (< 10 min)
+tools/check.sh full             # adds TSan, shared, each part alone, the private backend, Clang Release, longer fuzzing (< 20 min)
+cmake --preset linux-clang-20-asan && cmake --build --preset linux-clang-20-asan   # one CI cell
+ctest --preset linux-clang-20-asan -L reverb                  # one suite, by label: test/test_<label>.c
+ctest --preset linux-clang-20-asan -L integration             # the suites that drive a real platform
+python3 /home/rawframe-project/.github/maul/family_sync.py --check maul-audio   # shared files
 ```
 
-Use gcc-14 or clang-20; the machine's default gcc is too old for C23. Run full builds and test runs through the workspace's heavy-job wrapper (`/home/rawframe-project/tools/heavy.sh`). Backend suites need their platform; [docs/operations/test-environments.md](docs/operations/test-environments.md) says how each runs.
+Run the `pr` and `full` tiers through the workspace's heavy-job wrapper (`/home/rawframe-project/tools/heavy.sh`) on the shared machine. Use gcc-14 or clang-20; the machine's default gcc is too old for C23. Every CI cell is a preset in `CMakePresets.json` (configure, build and test of one name, built in `out/<preset>`); add a cell there, never as commands in a workflow. The macOS, iOS, Android, Windows and web cells cannot run on Linux: [docs/operations/test-environments.md](docs/operations/test-environments.md) says how they run.
 
 ## Ways to hurt yourself
 
 - **Killing by pattern.** Never `pkill -f`, `pgrep | kill` or `kill` a PID found by matching a name or path: other sessions run sound servers, Wine, emulators, browsers and fuzzers on the same machine with the same names. Kill only a PID you started; `tools/pipewire_daemon.sh stop <dir>` stops only the daemons it started in `<dir>`.
-- **Touching a real sound server.** Tests reach a private PipeWire daemon in a directory of their own (`tools/pipewire_daemon.sh start <dir>`, then `XDG_RUNTIME_DIR=<dir>/run`). Never run a test, `pactl` or `pw-cli` against the session's own server, and never restart `pipewire`, `pipewire-pulse` or `coreaudiod` on a shared machine: the device checklist's restarts are for a developer's own hardware.
+- **Touching a real sound server.** CTest's `sound-server` fixture starts a private PipeWire daemon in the build tree for the suites that need one, and gives every other test an empty runtime directory. Never run a test binary by hand without that environment, and never point `pactl` or `pw-cli` at the session's own server, and never restart `pipewire`, `pipewire-pulse` or `coreaudiod` on a shared machine: the device checklist's restarts are for a developer's own hardware.
 - **Sharing Wine.** Give Wine a prefix of your own (`WINEPREFIX`), hold one `wineserver -p` for a run and stop it after; another session's wineserver may exit under you.
 - **Leaving emulators, simulators and browsers running.** Stop the Android emulator, iOS simulator, headless Chrome or test daemon you started when the run that needed it ends.
 - **Endless fuzzing.** A libFuzzer target runs until it finds something. Always pass `-max_total_time`.
@@ -57,7 +56,9 @@ Use gcc-14 or clang-20; the machine's default gcc is too old for C23. Run full b
 Follow the [repository standard's Tests section](https://github.com/Rawframe-Project/.github/blob/main/docs/repository-standard.md#tests); in this repository:
 
 - Test the Device part's contract on the offline backend, which scripts device changes; test a backend against what its platform reports, never against the backend's private state.
-- A test that cannot reach its platform exits 77. With its `MAUD_REQUIRE_<BACKEND>` variable set it fails instead; CI sets them, so a broken environment never passes as a skip.
+- A suite that drives a real platform carries the `integration` label (the list in `CMakeLists.txt`) and is kept to end-to-end scenarios. It exits 77 only when its platform is absent; where the fixture or CI provides the platform, `MAUD_REQUIRE_<BACKEND>` is set and a platform that is present but failing fails the suite. CI fails on any skipped test.
+- No unbounded wait: a wait on a platform is bounded well above its measured worst case and fails with a message that names what it waited for.
+- A check that fails intermittently gets the `quarantine` label and an issue; it runs only at night until fixed, never retried.
 - Spatial results are compared against the golden renders in `data/golden/` within -50 dB per block, and bakes against `data/bake/office.maudbake` byte for byte. Keep golden scenes few.
 - Every C snippet of `docs/user/` appears unchanged in `test/test_guide.c`; `tools/check_guide.py` enforces it.
 - A fuzz finding becomes a test in its module's suite with the minimized input.

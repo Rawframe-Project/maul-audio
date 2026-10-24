@@ -1,44 +1,79 @@
-# Continuous integration for Maul Audio.
+# Continuous integration: the pull request check, the full check on main,
+# and every night the extended run (MemorySanitizer, the macOS and iOS
+# sanitizer cells, Linux on arm64, quarantined pages, long fuzzing). Each
+# desktop build cell is a CMake preset built by the organization's shared
+# workflow; the cells that need a simulator, an emulator or a browser, and
+# the other jobs, are here, each through its preset too.
+# docs/operations/checks.md explains each job, and tools/check.sh runs the
+# Linux ones locally.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "7 5 * * *"
   workflow_dispatch:
+
+# A new push to a pull request cancels its running CI; runs on main get a
+# group of their own, so they are never cancelled.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
 
 env:
   PREFIX: MAUL_AUDIO
-  # A mirror that stalls is retried and timed out rather than waited on.
-  # A download that trickles never trips the inactivity timeout, so the
-  # packages are fetched alone under a time limit, up to four times (apt
-  # resumes what it fetched), then installed from the cache with no limit
-  # (a kill never lands in dpkg). The runner's own mirror can stay slow
-  # (95 KB/s seen), so a try that runs out moves the sources to the
-  # Ubuntu archive for the next.
-  APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30
-  APT_FETCH: for try in 1 2 3 4; do sudo timeout 180 apt-get $APT_OPTIONS install -y -q --download-only --no-install-recommends $PACKAGES && break; [ $try -lt 4 ] || exit 1; sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|' /etc/apt/sources.list.d/ubuntu.sources || true; sudo timeout 120 apt-get $APT_OPTIONS update -q || true; done
 
 jobs:
-  # The rules no compiler checks: formatting, static analysis and the
-  # family's source, module, documentation and length checks.
+  # Whether anything beyond documentation changed; the builds skip when not.
+  changes:
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    permissions:
+      pull-requests: read
+
+  # The organization's documentation check. data/hrtf/apache-2.0 holds the
+  # HRTF set's license exactly as published.
+  docs:
+    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    permissions:
+      contents: read
+    with:
+      exclude: data/hrtf/apache-2.0
+
+  zizmor:
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    permissions:
+      contents: read
+
+  # The rules no compiler checks: formatting, the family's source, module,
+  # length, API documentation and snippet checks, the engine-free API, the
+  # README's cost table, the documentation site, and clang-tidy over the
+  # Linux build's sources. It runs on documentation changes too, since the
+  # snippet check and the site read docs/.
   checks:
-    name: checks
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.6@sha256:50c383f608f992c272196139d749f15978e35143a2876362b1e0aef6993480bd
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - name: Install tools
-        timeout-minutes: 15
-        run: |
-          PACKAGES="clang-20 clang-tidy-20 ninja-build libpipewire-0.3-dev libpulse-dev libasound2-dev"
-          sudo apt-get $APT_OPTIONS update -q
-          eval "$APT_FETCH"
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends $PACKAGES
-          pip install clang-format==22.1.5 >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: clang-format
         run: |
           clang-format --version
-          clang-format --dry-run -Werror $(find include src test tools bench samples -name '*.[ch]' 2>/dev/null)
+          mapfile -t files < <(git ls-files 'include/*.h' 'src/*.[chm]' 'test/*.[chm]' 'tools/*.[ch]' \
+            'bench/*.[ch]' 'samples/*.[ch]')
+          [ ${#files[@]} -gt 0 ] || { echo "::error::no C files to check"; exit 1; }
+          clang-format --dry-run -Werror "${files[@]}"
       - name: Family checks
         run: |
           python3 tools/check_source.py
@@ -48,283 +83,268 @@ jobs:
           python3 tools/check_guide.py
           python3 tools/check_litmus.py
       - name: README cost table
-        # The table's figures are bench/baseline.txt's (tools/cost_table.py).
         run: python3 tools/cost_table.py --check
+      - name: The documentation site builds
+        run: python3 tools/build_docs.py
       - name: clang-tidy
+        # The Linux build's sources; the other platforms' code is compiled
+        # with warnings as errors by its own cell.
         run: |
-          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          # Only the sources this build compiles; the Windows and web
-          # backends are compiled, with warnings as errors, by their cells.
-          for f in src/*.c; do
-            grep -q "\"file\": \"$PWD/$f\"" build/compile_commands.json || continue
-            clang-tidy-20 -p build --quiet --warnings-as-errors='*' "$f" || exit 1
-          done
+          cmake -B out/tidy -G Ninja -DCMAKE_C_COMPILER=clang-20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -D${PREFIX}_BUILD_TESTS=OFF
+          cmake --build out/tidy
+          mapfile -t files < <(python3 -c "import json; print('\n'.join(sorted({e['file'] for e in json.load(open('out/tidy/compile_commands.json')) if '/src/' in e['file']})))")
+          [ ${#files[@]} -gt 0 ] || { echo "::error::no sources for clang-tidy"; exit 1; }
+          for f in "${files[@]}"; do clang-tidy-20 -p out/tidy --quiet --warnings-as-errors='*' "$f"; done
 
-  # Every cell builds with warnings as errors and runs the whole suite,
-  # the header tests included.
-  build-test:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+  # Every cell builds with warnings as errors and runs its whole suite, the
+  # header tests included. The Linux cells run the PipeWire, PulseAudio and
+  # ALSA suites against a private sound server that ctest starts for them
+  # (tools/pipewire_daemon.sh). linux-gcc-14 builds both parts with every
+  # Linux backend, as CodeQL does. macOS plays into BlackHole, a virtual
+  # device, since the runners have no audio hardware.
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-gcc-14,        os: ubuntu-24.04, cc: gcc-14,   cxx: g++-14,     config: Release, extra: "" }
-          - { name: linux-clang-20,      os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Release, extra: "" }
-          - { name: linux-clang-20-asan, os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_AUDIO_SANITIZE=ON" }
-          - { name: linux-clang-20-tsan, os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DMAUL_AUDIO_TSAN=ON" }
-          # Reads of memory never written, which AddressSanitizer does not
-          # see. The system's sound libraries are not instrumented, so the
-          # tests that load them (the backends', and the context, guide
-          # and stall tests, which open the default one) are left to the
-          # other cells.
-          - { name: linux-clang-20-msan, os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Debug,   extra: "-DCMAKE_C_FLAGS=-fsanitize=memory -DCMAKE_CXX_FLAGS=-fsanitize=memory -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=memory", exclude: "^(context|guide|stall|pipewire|pipewire_restart|alsa|alsa_hotplug|pulse)$" }
-          - { name: linux-shared,        os: ubuntu-24.04, cc: clang-20, cxx: clang++-20, config: Release, extra: "-DMAUL_AUDIO_BUILD_SHARED=ON" }
-          # Each part alone: it links only if neither part uses the other.
-          - { name: linux-device-only,   os: ubuntu-24.04, cc: gcc-14,   cxx: g++-14,     config: Release, extra: "-DMAUL_AUDIO_SPATIAL=OFF" }
-          - { name: linux-spatial-only,  os: ubuntu-24.04, cc: gcc-14,   cxx: g++-14,     config: Release, extra: "-DMAUL_AUDIO_DEVICE=OFF" }
-          - { name: linux-arm64-gcc-14,  os: ubuntu-24.04-arm, cc: gcc-14, cxx: g++-14,   config: Release, extra: "" }
-          - { name: macos-clang,         os: macos-15,     cc: clang,    cxx: clang++,    config: Release, extra: "" }
-          - { name: macos-clang-asan,    os: macos-15,     cc: clang,    cxx: clang++,    config: Debug,   extra: "-DMAUL_AUDIO_SANITIZE=ON" }
-          - { name: macos-clang-tsan,    os: macos-15,     cc: clang,    cxx: clang++,    config: Debug,   extra: "-DMAUL_AUDIO_TSAN=ON" }
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install compilers
-        # Without recommends (clang's alone pull 50 MB of llvm-dev), naming
-        # what only a recommend brought: clang's sanitizer runtime and
-        # llvm-symbolizer for the sanitizer cells, and PipeWire's client
-        # configuration (pipewire-bin), which every PipeWire system has;
-        # without it libpipewire leaks on its own failed setup. The
-        # daemon, its PulseAudio server, WirePlumber and a session bus
-        # for it run the PipeWire and PulseAudio tests, which drive the
-        # server with pactl. A mirror that stalls past four fetches fails
-        # the step for a rerun.
-        if: runner.os == 'Linux'
-        timeout-minutes: 15
-        run: |
-          PACKAGES="gcc-14 g++-14 clang-20 libclang-rt-20-dev llvm-20 ninja-build libpipewire-0.3-dev pipewire-bin libpulse-dev libasound2-dev pipewire pipewire-pulse wireplumber dbus-daemon pulseaudio-utils"
-          sudo apt-get $APT_OPTIONS update -q
-          eval "$APT_FETCH"
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends $PACKAGES
-      - name: Install BlackHole
-        # The runners have no audio hardware; the CoreAudio test plays
-        # into this virtual device.
-        if: runner.os == 'macOS'
-        timeout-minutes: 15
-        run: |
-          brew install --cask blackhole-2ch
-          sudo killall coreaudiod || true
-          sleep 5
-      - name: Configure
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.extra }}
-      - name: Build
-        run: cmake --build build -j 4
-      - name: Test
-        # On Linux the server tests run against a private PipeWire daemon
-        # with null devices (tools/pipewire_daemon.sh), as the runners
-        # have no sound server. A skipped test fails the step: a platform
-        # that failed to start would otherwise pass with nothing tested.
-        run: |
-          set -o pipefail
-          if [ "$RUNNER_OS" = Linux ]; then
-            daemon="$PWD/tools/pipewire_daemon.sh"
-            "$daemon" start "$RUNNER_TEMP/pw"
-            export XDG_RUNTIME_DIR="$RUNNER_TEMP/pw/run" MAUD_REQUIRE_PIPEWIRE=1 MAUD_REQUIRE_PULSE=1
-            export MAUD_TEST_PIPEWIRE_STOP="$daemon stop $RUNNER_TEMP/pw"
-            export MAUD_TEST_PIPEWIRE_START="$daemon start $RUNNER_TEMP/pw"
-          fi
-          if [ "$RUNNER_OS" = macOS ]; then
-            export MAUD_REQUIRE_COREAUDIO=1
-            export MAUD_TEST_COREAUDIO_RESTART="sudo killall coreaudiod"
-          fi
-          ctest --test-dir build --output-on-failure -E '${{ matrix.exclude || '^$' }}' 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
-      - name: Sound server logs
-        if: failure() && runner.os == 'Linux'
-        run: tail -n 40 "$RUNNER_TEMP"/pw/*.log || true
-      - name: Private backend
-        # A backend built from outside src/ (docs/user/private-backends.md): it
-        # takes the native slot, so only its test and the context's run.
-        if: matrix.name == 'linux-device-only'
-        run: |
-          cmake -B build-private -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ${{ matrix.extra }} \
-            -D${PREFIX}_PRIVATE_BACKEND="$PWD/test/private_backend"
-          cmake --build build-private -j 4 --target test_private_backend test_context
-          set -o pipefail
-          ctest --test-dir build-private -R "^(private_backend|context)$" --output-on-failure 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
-      - name: Package
-        # Installed, then consumed by a project that knows only the
-        # package (samples/minimal), through CMake and pkg-config.
-        if: matrix.name == 'linux-shared' || matrix.name == 'linux-gcc-14' || matrix.name == 'macos-clang'
-        run: |
-          cmake --install build --prefix "$PWD/package"
-          cmake -S samples/minimal -B build-minimal -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-            -DCMAKE_PREFIX_PATH="$PWD/package"
-          cmake --build build-minimal
-          LD_LIBRARY_PATH="$PWD/package/lib" ./build-minimal/minimal
-          [ "$RUNNER_OS" = Linux ] || exit 0
-          static=$([ "${{ matrix.name }}" = linux-gcc-14 ] && echo --static || true)
-          ${{ matrix.cc }} -std=c17 samples/minimal/main.c -o minimal-pc \
-            $(PKG_CONFIG_PATH="$PWD/package/lib/pkgconfig" pkg-config $static --cflags --libs maul-audio)
-          LD_LIBRARY_PATH="$PWD/package/lib" ./minimal-pc
+          - { preset: linux-gcc-14 }
+          - { preset: linux-clang-20 }
+          - { preset: linux-clang-20-asan, repeat: 3 }
+          - { preset: linux-clang-20-tsan }
+          - { preset: linux-shared }
+          - { preset: linux-device-only }
+          - { preset: linux-spatial-only }
+          - { preset: linux-private-backend }
+          - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
+          - { preset: windows-clang-cl, runner: windows-2025 }
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    permissions:
+      contents: read
+    with:
+      preset: ${{ matrix.preset }}
+      runner: ${{ matrix.runner || 'ubuntu-24.04' }}
+      repeat: ${{ matrix.repeat || 1 }}
+      setup: ${{ matrix.setup || '' }}
 
-  # Each fuzz target runs for one minute on every push, from its corpus
-  # in test/corpus/ and the shipped files: the HRTF set behind a 0x01
-  # byte, the bakes behind a 0x03 (CMakeLists.txt says what the bytes
-  # choose). The loaders are the Spatial part's, so the Device part is
-  # not built.
-  fuzz:
-    name: fuzz
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install compilers
-        timeout-minutes: 15
-        run: |
-          PACKAGES="clang-20 libclang-rt-20-dev ninja-build"
-          sudo apt-get $APT_OPTIONS update -q
-          eval "$APT_FETCH"
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends $PACKAGES
-      - name: Build
-        run: |
-          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON \
-            -D${PREFIX}_DEVICE=OFF -D${PREFIX}_BUILD_TESTS=OFF -D${PREFIX}_BUILD_BENCH=OFF \
-            -D${PREFIX}_BUILD_SAMPLES=OFF -D${PREFIX}_WERROR=ON
-          cmake --build build
-      - name: Run
-        run: |
-          mkdir -p corpus-fuzz_hrtf corpus-fuzz_bake
-          cp test/corpus/fuzz_hrtf/* corpus-fuzz_hrtf/
-          cp test/corpus/fuzz_bake/* corpus-fuzz_bake/
-          { printf '\001'; cat data/hrtf/sadie2-ku100-48k.maudhrtf; } > corpus-fuzz_hrtf/seed
-          { printf '\003'; cat data/bake/office.maudbake; } > corpus-fuzz_bake/seed
-          { printf '\003'; cat data/bake/office-v1.maudbake; } > corpus-fuzz_bake/seed-v1
-          for target in build/fuzz_*; do
-            "$target" -max_total_time=60 "corpus-$(basename $target)"
-          done
+  # The extended run's desktop cells, at night and by hand: MemorySanitizer
+  # (the sound servers' libraries are not instrumented, so the integration
+  # suites stay out), the macOS sanitizers, and Linux on arm64.
+  extended:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { preset: linux-clang-20-msan }
+          - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
+          - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
+          - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e75683076741e3a2499e0f3c112081a3dc95a66f # v0.0.11
+    permissions:
+      contents: read
+    with:
+      preset: ${{ matrix.preset }}
+      runner: ${{ matrix.runner || 'ubuntu-24.04' }}
+      setup: ${{ matrix.setup || '' }}
+      timeout: 60
 
-  windows-clang-cl:
-    name: windows-clang-cl
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
+  # The public headers alone under MSVC's cl, as C17 and C++17 with /W4 /WX:
+  # consumers may compile them with it, though it cannot build the library.
+  msvc-headers:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - name: Configure
-        run: cmake -B build -T ClangCL -D${PREFIX}_WERROR=ON
-      - name: Build
-        run: cmake --build build --config Release -j 4
-      - name: Test
-        # The hosted runners have no audio endpoint, and CI installs no
-        # driver to make one: the WASAPI tests and the stall test, which
-        # plays through WASAPI, are left out here and run under Wine in
-        # the lane's gate and on real Windows by the device checklist.
-        # Any other skipped test fails the step.
-        run: |
-          set -o pipefail
-          ctest --test-dir build -C Release --output-on-failure -E "^(wasapi|wasapi_sta|stall)$" 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
-      # The static install, consumed by a project that knows only the
-      # package (samples/minimal), compiled by MSVC's cl.
-      - name: Package
-        run: |
-          cmake --install build --config Release --prefix "$PWD/package"
-          cmake -S samples/minimal -B build-minimal -DCMAKE_PREFIX_PATH="$PWD/package"
-          cmake --build build-minimal --config Release
-          ./build-minimal/Release/minimal.exe
-      # The public headers alone under MSVC's cl, as C17 and C++17 with
-      # /W4 /WX, which cannot build the library itself (family record 0008).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Headers under MSVC
         run: |
-          cmake -S cmake/HeaderCheck -B build-headers
-          cmake --build build-headers --config Release
+          cmake -S cmake/HeaderCheck -B out/headers
+          cmake --build out/headers --config Release
 
-  ios:
-    # iOS in the simulator: every test through simctl spawn, on an iPhone
-    # of the newest runtime. The simulator's microphone and speaker are
-    # the runner's default input and output, which BlackHole is made:
-    # the runner's own virtual sound device stalled the capture tests
-    # one run in a few. A second cell runs them in Debug under
-    # AddressSanitizer.
-    name: ${{ matrix.name }}
-    runs-on: macos-15
+  # The two loaders of hostile files under libFuzzer, one cell per target,
+  # from the committed seeds and the shipped files (tools/fuzz_seeds.sh):
+  # briefly on a pull request, longer on main, ten minutes at night. Each
+  # target's corpus carries from run to run in a cache of its own, restored
+  # first (the newest of that target's), minimized with libFuzzer's merge
+  # and saved from main only.
+  fuzz:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ github.event_name == 'schedule' && 25 || 15 }}
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.6@sha256:50c383f608f992c272196139d749f15978e35143a2876362b1e0aef6993480bd
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { name: ios-simulator,      config: Release, extra: "" }
-          - { name: ios-simulator-asan, config: Debug,   extra: "-DMAUL_AUDIO_SANITIZE=ON" }
+        target: [fuzz_hrtf, fuzz_bake]
+    env:
+      TARGET: ${{ matrix.target }}
+      FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && 20 || github.event_name == 'schedule' && 600 || 90 }}
     steps:
-      - uses: actions/checkout@v7
-      - name: Install BlackHole
-        timeout-minutes: 15
-        run: |
-          brew install --cask blackhole-2ch
-          sudo killall coreaudiod || true
-          sleep 5
-      - name: Boot a simulator
-        run: |
-          udid=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          devices = json.load(sys.stdin)["devices"]
-          runtimes = sorted((r for r in devices if ".iOS-" in r),
-                            key=lambda r: [int(p) for p in r.rsplit("iOS-", 1)[1].split("-")])
-          print(next(d["udid"] for d in devices[runtimes[-1]] if d["name"].startswith("iPhone")))')
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
-          echo "MAUD_IOS_DEVICE=$udid" >> "$GITHUB_ENV"
-      - name: Configure
-        run: >
-          cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/ios-simulator.cmake
-          -DCMAKE_BUILD_TYPE=${{ matrix.config }} -D${PREFIX}_WERROR=ON ${{ matrix.extra }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore the corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
       - name: Build
-        run: cmake --build build -j 4
-      - name: BlackHole as the default devices
         run: |
-          clang -std=c2x -Wall -Werror test/ios/default_device.c -framework CoreAudio \
-            -framework CoreFoundation -o "$RUNNER_TEMP/default_device"
-          "$RUNNER_TEMP/default_device" BlackHole2ch_UID
-          system_profiler SPAudioDataType | grep -B1 -A2 "Default"
-      - name: Test
-        # A skipped test fails the step: a platform that failed to start
-        # would otherwise pass with nothing tested.
+          cmake -B out/fuzz -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON -D${PREFIX}_DEVICE=OFF \
+            -D${PREFIX}_BUILD_TESTS=OFF -D${PREFIX}_BUILD_BENCH=OFF -D${PREFIX}_BUILD_SAMPLES=OFF \
+            -D${PREFIX}_WERROR=ON
+          cmake --build out/fuzz --target "$TARGET"
+      - name: Run
         run: |
-          set -o pipefail
-          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
+          tools/fuzz_seeds.sh out/corpus
+          mkdir -p out/fuzz-logs
+          if "out/fuzz/$TARGET" -max_total_time="$FUZZ_SECONDS" "out/corpus/$TARGET" >"out/fuzz-logs/$TARGET.log" 2>&1; then
+            echo "$TARGET: no finding"
+          else
+            tail -n 60 "out/fuzz-logs/$TARGET.log"
+            echo "::error::$TARGET found something"
+            exit 1
+          fi
+      - name: Minimize the corpus
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p "out/merged/$TARGET"
+          "out/fuzz/$TARGET" -merge=1 "out/merged/$TARGET" "out/corpus/$TARGET" >/dev/null 2>&1
+          rm -rf "out/corpus/$TARGET"
+          mv "out/merged/$TARGET" "out/corpus/$TARGET"
+          echo "$TARGET: $(find "out/corpus/$TARGET" -type f | wc -l) inputs"
+      - name: Save the corpus
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+      - name: Fuzz logs and crash inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: |
+            out/fuzz-logs/
+            crash-*
+            leak-*
+            timeout-*
+            oom-*
+          if-no-files-found: ignore
+          retention-days: 7
 
-  android:
-    # The AAudio backend in the emulator, Android 11 (the oldest the
-    # backend takes) on x86_64 with KVM: every test through adb
-    # (tools/run_android.sh). The emulator plays without a host audio
-    # connection and refuses the shell's recording, so capture is tested
-    # to its refusal. The runner carries the SDK and NDK r28; the
-    # emulator and its image are installed here.
-    name: android-emulator
+  # The web backend built by Emscripten: the suites under Node, the pages in
+  # headless Chrome through puppeteer (test/web/package-lock.json pins it),
+  # and what each feature costs a page. The quarantined pages run at night
+  # only. The job runs in the CI image, with Emscripten from the emsdk
+  # action, so that Chrome plays into the private sound server's null sink
+  # (the sound-server fixture): a runner has no output device of its own,
+  # and a page whose device Chrome loses tests nothing.
+  web-emscripten:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/rawframe-project/ci-cpp:2026.10.6@sha256:50c383f608f992c272196139d749f15978e35143a2876362b1e0aef6993480bd
+      # Chrome keeps its shared memory in /dev/shm, 64 MB in a container;
+      # an init reaps the daemons the sound-server fixture stops.
+      options: --init --shm-size=2g
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: emscripten-core/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
+      - name: Build
+        run: |
+          cmake --preset web-emscripten
+          cmake --build --preset web-emscripten -j 4
+      - name: Browser
+        run: |
+          mkdir -p "$RUNNER_TEMP/browser"
+          cp test/web/package.json test/web/package-lock.json "$RUNNER_TEMP/browser/"
+          npm ci --prefix "$RUNNER_TEMP/browser"
+          echo "MAUD_PUPPETEER=$RUNNER_TEMP/browser/node_modules/puppeteer" >> "$GITHUB_ENV"
+      - name: Test
+        run: |
+          ctest --preset web-emscripten | tee "$RUNNER_TEMP/ctest.log"
+          if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/ctest.log"; then
+            echo "::error::a test did not run"; exit 1
+          fi
+      - name: Quarantined pages
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          ctest --test-dir out/web-emscripten -L '^quarantine$' --output-on-failure --no-tests=error |
+            tee "$RUNNER_TEMP/quarantine.log"
+          if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/quarantine.log"; then
+            echo "::error::a test did not run"; exit 1
+          fi
+      - name: Test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-web-emscripten
+          path: out/web-emscripten/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Size
+        # The static library, and what each feature costs a page: its
+        # program linked alone (bench/size_web.c), raw and gzipped, and the
+        # HRTF set, which a page fetches.
+        run: |
+          stat -c '%s bytes' out/web-emscripten/libmaul-audio.a
+          for f in out/web-emscripten/maul-audio_size_*.wasm out/web-emscripten/maul-audio_size_*.js \
+            data/hrtf/*.maudhrtf; do
+            echo "$f: $(stat -c %s "$f") bytes, $(gzip -9c "$f" | wc -c) gzipped"
+          done
+
+  # The AAudio backend in the emulator, Android 11 (the oldest the backend
+  # takes) on x86_64 with KVM: the suites through adb, the Java half as an
+  # application built by R8 without Gradle. The emulator plays without a
+  # host audio connection and refuses the shell's recording, so capture is
+  # tested to its refusal. The runner carries the SDK and the NDK; the
+  # emulator and its system image come from the SDK manager.
+  android-emulator:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
     env:
       ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
       ANDROID_SERIAL: emulator-5554
       ANDROID_AVD_HOME: /home/runner/.android/avd
       MAUD_REQUIRE_AAUDIO: 1
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Boot the emulator
         timeout-minutes: 15
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           tools="$ANDROID_HOME/cmdline-tools/latest/bin"
           yes | "$tools/sdkmanager" --licenses >/dev/null 2>&1 || true
-          # Runner images move to newer NDKs: the pinned one is installed when
-          # the image lacks it.
+          # Runner images move to newer NDKs: the pinned one is installed
+          # when the image lacks it.
           [ -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ] ||
             "$tools/sdkmanager" --install "ndk;${ANDROID_NDK_HOME##*/}" >/dev/null
           mkdir -p "$ANDROID_AVD_HOME"
@@ -341,63 +361,104 @@ jobs:
           done
           "$adb" shell getprop sys.boot_completed | grep -q 1 || { tail -50 emulator.log; exit 1; }
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-      - name: Configure
-        run: >
-          cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/android-emulator.cmake
-          -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
       - name: Build
-        run: cmake --build build -j 4
-      - name: Test
-        # A skipped test fails the step: a platform that failed to start
-        # would otherwise pass with nothing tested.
         run: |
-          set -o pipefail
-          ctest --test-dir build --output-on-failure --timeout 300 2>&1 | tee ctest.log
-          if grep -q "(Skipped)" ctest.log; then echo "::error::a test was skipped"; exit 1; fi
+          cmake --preset android-emulator
+          cmake --build --preset android-emulator -j 4
+      - name: Test
+        run: |
+          ctest --preset android-emulator | tee "$RUNNER_TEMP/ctest.log"
+          if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/ctest.log"; then
+            echo "::error::a test did not run"; exit 1
+          fi
+      - name: Test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-android-emulator
+          path: out/android-emulator/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 7
 
-  web:
-    name: web-emscripten
-    runs-on: ubuntu-24.04
+  # The iOS backend: built with its tests on every pull request, the only
+  # cell that compiles it, and run in the simulator on main and every
+  # night, since a simulator's boot and first launch take minutes on the
+  # macOS runners, more than the pull request check's budget leaves. The
+  # simulator's microphone and speaker are the runner's default devices,
+  # which BlackHole is made, since the runner's own virtual device can stall
+  # capture. The AddressSanitizer build is the extended run's.
+  ios-simulator:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["ios-simulator", "ios-simulator-asan"]' || '["ios-simulator"]') }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PRESET: ${{ matrix.preset }}
+      RUN: ${{ github.event_name != 'pull_request' }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: emscripten-core/setup-emsdk@v16
-        timeout-minutes: 15
-      - name: Configure
-        run: emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release -D${PREFIX}_WERROR=ON
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build
-        run: cmake --build build -j 4
+        run: |
+          cmake --preset "$PRESET"
+          cmake --build --preset "$PRESET" -j 4
+      - name: BlackHole as the default devices
+        if: env.RUN == 'true'
+        run: |
+          tools/ci_blackhole.sh
+          clang -std=c2x -Wall -Werror test/ios/default_device.c -framework CoreAudio \
+            -framework CoreFoundation -o "$RUNNER_TEMP/default_device"
+          "$RUNNER_TEMP/default_device" BlackHole2ch_UID
+      - name: Boot a simulator
+        if: env.RUN == 'true'
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((r for r in devices if ".iOS-" in r),
+                            key=lambda r: [int(p) for p in r.rsplit("iOS-", 1)[1].split("-")])
+          print(next(d["udid"] for d in devices[runtimes[-1]] if d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "MAUD_IOS_DEVICE=$udid" >> "$GITHUB_ENV"
       - name: Test
+        if: env.RUN == 'true'
         run: |
-          for t in build/test_*.js; do node "$t" || exit 1; done
-      - name: Browser
-        # The web backend in headless Chrome, on a cross-origin isolated
-        # page and on a plain one, and with the microphone refused. The
-        # page checks timing on a shared runner, so each run gets a second
-        # attempt; a real failure fails both, and the stream clocks' page
-        # the same. A loopback stream captures the page's own tab on both
-        # kinds of page.
+          ctest --preset "$PRESET" | tee "$RUNNER_TEMP/ctest.log"
+          if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/ctest.log"; then
+            echo "::error::a test did not run"; exit 1
+          fi
+      - name: Test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-${{ matrix.preset }}
+          path: out/${{ matrix.preset }}/Testing/Temporary/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The one check the ruleset requires: it passes when every job above
+  # passed or was skipped, so adding or renaming a job never touches the
+  # ruleset.
+  required:
+    if: always()
+    needs: [changes, docs, zizmor, checks, build, extended, msvc-headers, fuzz, web-emscripten, android-emulator, ios-simulator]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          npm install --prefix "$RUNNER_TEMP/web" puppeteer@25.12.0
-          export MAUD_PUPPETEER="$RUNNER_TEMP/web/node_modules/puppeteer"
-          for mode in "1" "0" "0 deny"; do
-            node test/web/run_page.js build page_web.html $mode ||
-              node test/web/run_page.js build page_web.html $mode || exit 1
-          done
-          for isolated in 1 0; do
-            node test/web/run_page.js build page_loopback.html $isolated loopback || exit 1
-            node test/web/run_page.js build page_ended.html $isolated || exit 1
-            node test/web/run_page.js build page_default.html $isolated || exit 1
-            node test/web/run_page.js build page_clock.html $isolated ||
-              node test/web/run_page.js build page_clock.html $isolated || exit 1
-            node test/web/run_page.js build page_sink.html $isolated || exit 1
-            node test/web/run_page.js build page_display.html $isolated || exit 1
-          done
-      - name: Size
-        # The static library's size, reported, not gated (family record
-        # 0013), and what each feature costs a page: its program linked
-        # alone (bench/size_web.c), raw and gzipped, and the HRTF set.
-        run: |
-          stat -c '%s bytes' build/libmaul-audio.a
-          for f in build/maul-audio_size_*.wasm build/maul-audio_size_*.js data/hrtf/*.maudhrtf; do
-            echo "$f: $(stat -c %s "$f") bytes, $(gzip -9c "$f" | wc -c) gzipped"
+          echo "$RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success | skipped) ;; *) exit 1 ;; esac
           done
