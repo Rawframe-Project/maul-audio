@@ -1,0 +1,121 @@
+# Public functions that do not enter the library's floating-point
+# environment (tools/check_float_env.py), under the reason they need not.
+# Every other public function enters it: the Spatial simulation's calls,
+# whose bakes, paths and estimates are promised the same bits whatever
+# the host's flush-to-zero, denormals-are-zero or rounding mode
+# (docs/internals/realtime.md).
+
+returns a constant, a default def, a name, a count or a table entry:
+    maudDefaultDirectParams
+    maudDefaultOfflineDeviceDef
+    maudDefaultProbeSetDef
+    maudDefaultSourceDef
+    maudDefaultStreamDef
+    maudGetAmbisonicChannelCount
+    maudGetLayoutChannelCount
+    maudGetLayoutSpeaker
+    maudGetLayoutSpeakerPosition
+    maudGetVersion
+    maudResultName
+
+copies stored values, or stores an id, a flag or bytes, and computes no floats:
+    maudGetAcousticSceneMisuse
+    maudGetDirectResult
+    maudGetHrtfInfo
+    maudGetProbeSet
+    maudGetReverbResult
+    maudGetSpatializerMisuse
+    maudGetSpeakerDecoderMatrix
+    maudLatchResults
+    maudSaveProbeSet
+    maudSetPathing
+    maudUseBakedReverb
+
+destroys an object or a slot, computing no floats:
+    maudDestroyAcousticScene
+    maudDestroyBinaural
+    maudDestroyBinauralDecoder
+    maudDestroyDirectEffect
+    maudDestroyEchoCanceller
+    maudDestroyGainControl
+    maudDestroyHrtf
+    maudDestroyNoiseSuppressor
+    maudDestroyProbeSet
+    maudDestroyReverb
+    maudDestroySceneInstance
+    maudDestroySource
+    maudDestroySpatializer
+    maudDestroySpeakerDecoder
+    maudDestroySpeakerPanner
+    maudDestroyVoiceDetector
+
+the rendering side, reproducible on one platform and build in the same float environment, never touches the mode: the audio thread is the host's, and denormals are kept away in code (flush.h):
+    maudApplyGainControl
+    maudCancelEcho
+    maudDecodeBinaural
+    maudDecodeToSpeakers
+    maudDeinterleave
+    maudDetectVoice
+    maudEncodeAmbisonic
+    maudInterleave
+    maudPanToSpeakers
+    maudProcessBinaural
+    maudProcessDirect
+    maudProcessReverb
+    maudRenderObjects
+    maudRenderReflections
+    maudRotateAmbisonic
+    maudSuppressNoise
+
+makes, resets or feeds the rendering side, whose output is reproducible on one platform and build, not promised the same bits:
+    maudCreateBinaural
+    maudCreateBinauralDecoder
+    maudCreateDirectEffect
+    maudCreateEchoCanceller
+    maudCreateGainControl
+    maudCreateNoiseSuppressor
+    maudCreateReverb
+    maudCreateSpeakerDecoder
+    maudCreateSpeakerPanner
+    maudCreateVoiceDetector
+    maudGetAmbisonicGains
+    maudGetDirectivity
+    maudGetSpeakerGains
+    maudLoadHrtf
+    maudResetBinaural
+    maudResetBinauralDecoder
+    maudResetDirectEffect
+    maudResetReverb
+
+the Device part, which moves the host's samples as they are and keeps frames and times in integers; nothing it reports is promised the same bits across environments:
+    maudAddOfflineDevice
+    maudCreateContext
+    maudCreateStream
+    maudDestroyContext
+    maudDestroyStream
+    maudFeedStream
+    maudGetContextBackend
+    maudGetContextFocus
+    maudGetContextMisuse
+    maudGetDefaultDevice
+    maudGetDeviceInfo
+    maudGetDeviceKey
+    maudGetDeviceName
+    maudGetDevices
+    maudGetHostNanoseconds
+    maudGetStreamClock
+    maudGetStreamFormat
+    maudGetStreamPosition
+    maudGetStreamStatus
+    maudNextNotification
+    maudRemoveOfflineDevice
+    maudRenderStream
+    maudRequestFocus
+    maudResumeContext
+    maudSetContextSuspended
+    maudSetOfflineDefaultDevice
+    maudSetOfflineDeviceForm
+    maudSetOfflineDeviceFormat
+    maudSetOfflineDeviceSpatializer
+    maudStartStream
+    maudStopStream
