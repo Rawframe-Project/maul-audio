@@ -5,7 +5,7 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
-## 0.0.1
+## [0.0.1](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.1) (2026-10-24)
 
 The first release on the organization's standard. Version numbers
 restarted at 0.0.1, and the earlier tags and releases were removed.
@@ -48,3 +48,9 @@ restarted at 0.0.1, and the earlier tags and releases were removed.
   files.
 - Build options to leave out either part, a shared library option, a
   CMake package and a pkg-config module.
+
+### Removed
+
+- Reading version-1 `.maudbake` files, made before reverb tails:
+  `maudLoadProbeSet` returns `maud_errorUnsupported`. Bake the scene
+  again with this release and save it.
