@@ -34,21 +34,21 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@3183452ff90d98f476162bd88260ed5b36a99506 # v0.0.14
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@927292043ce9cd831a92a80486da8b377b05f4ae # v0.0.15
     permissions:
       pull-requests: read
 
   # The organization's documentation check. data/hrtf/apache-2.0 holds the
   # HRTF set's license exactly as published.
   docs:
-    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@3183452ff90d98f476162bd88260ed5b36a99506 # v0.0.14
+    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@927292043ce9cd831a92a80486da8b377b05f4ae # v0.0.15
     permissions:
       contents: read
     with:
       exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@3183452ff90d98f476162bd88260ed5b36a99506 # v0.0.14
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@927292043ce9cd831a92a80486da8b377b05f4ae # v0.0.15
     permissions:
       contents: read
 
@@ -120,7 +120,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@3183452ff90d98f476162bd88260ed5b36a99506 # v0.0.14
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@927292043ce9cd831a92a80486da8b377b05f4ae # v0.0.15
     permissions:
       contents: read
     with:
@@ -144,7 +144,7 @@ jobs:
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@3183452ff90d98f476162bd88260ed5b36a99506 # v0.0.14
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@927292043ce9cd831a92a80486da8b377b05f4ae # v0.0.15
     permissions:
       contents: read
     with:
