@@ -5,6 +5,45 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.0.4](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.4) (2026-10-25)
+
+### Changed
+
+- On 32-bit x86 the library is built with SSE2 math
+  (`-msse2 -mfpmath=sse`), so it needs a processor with SSE2, and every
+  build now leaves trapping math at the compiler's default, from the
+  family's compiler flags. On 64-bit builds the bake still matches byte
+  for byte and every test passes unchanged
+  ([#57](https://github.com/Rawframe-Project/maul-audio/pull/57)).
+
+### Fixed
+
+- An ALSA output through ALSA's PulseAudio plugin, the default PCM
+  wherever ALSA programs are routed to a PulseAudio server (a PipeWire
+  system without `pipewire-alsa` included), counts the gaps it plays.
+  The plugin plays silence for a starved stream without `-EPIPE`, so
+  such gaps used to leave `underruns` unchanged. A running output now
+  counts one underrun when it finds its PCM's queue empty before a
+  write, once the PCM has had the stream's frames, and when a write
+  comes more than a period after every frame written so far could have
+  played out, once the write before it found frames queued; the second
+  catches a stall that `pipewire-pulse` reports with frames still
+  queued. Each gap counts once. The first fill after a start or a
+  recovery, silence written while the stream does not run, and an empty
+  queue reported before the frames could have played count nothing, and
+  neither does a sink that starts late. A sink that stops taking frames
+  mid-stream and resumes later also counts an underrun, since the server
+  reports it as it reports a starved stream. Hardware PCMs are
+  unchanged: their gaps still come as `-EPIPE`
+  ([#35](https://github.com/Rawframe-Project/maul-audio/pull/35),
+  [#62](https://github.com/Rawframe-Project/maul-audio/pull/62)).
+- On 32-bit x86 the library's floating-point setting also holds the x87
+  control word, so a host that leaves x87 at single or double precision
+  no longer changes what the library computes there, and `sqrt` compiles
+  to one rounded instruction rather than a C library call that may set
+  `errno`. The bake and the golden renders are unchanged
+  ([#23](https://github.com/Rawframe-Project/maul-audio/pull/23)).
+
 ## [0.0.3](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.3) (2026-10-24)
 
 ### Changed
