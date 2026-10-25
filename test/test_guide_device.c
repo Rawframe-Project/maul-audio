@@ -7,7 +7,8 @@
 // snippet plays on it. On Linux the sound-server fixture's daemon is the
 // platform. Without a native backend with an output the suite is skipped
 // (77), unless MAUD_REQUIRE_PIPEWIRE, MAUD_REQUIRE_COREAUDIO or
-// MAUD_REQUIRE_AAUDIO says one is there, when it fails instead. ALSA
+// MAUD_REQUIRE_AAUDIO says one is there, when it fails instead, as it
+// does when the native backend is another than the one required. ALSA
 // lists its default PCM with no sound card at all; there the suite skips
 // only when the kernel shows no playback PCM and opening a stream on the
 // default fails as the platform's (maud_errorPlatform). Any other failure
@@ -88,10 +89,35 @@ static void Play(const maudStreamBlock* block, void* user)
 }
 // clang-format on
 
-static bool Required(void)
+// The backend a MAUD_REQUIRE_* switch names; maud_backendNative when no
+// switch is set, and the suite may skip.
+static maudBackendKind RequiredBackend(void)
 {
-    return getenv("MAUD_REQUIRE_PIPEWIRE") != nullptr ||
-           getenv("MAUD_REQUIRE_COREAUDIO") != nullptr || getenv("MAUD_REQUIRE_AAUDIO") != nullptr;
+    if (getenv("MAUD_REQUIRE_PIPEWIRE") != nullptr)
+    {
+        return maud_backendPipewire;
+    }
+    if (getenv("MAUD_REQUIRE_COREAUDIO") != nullptr)
+    {
+        return maud_backendCoreAudio;
+    }
+    return getenv("MAUD_REQUIRE_AAUDIO") != nullptr ? maud_backendAaudio : maud_backendNative;
+}
+
+// Fails the suite when a switch requires a backend and the native
+// context chose another: a fallback that plays is not the platform the
+// run requires.
+static void CheckRequiredBackend(const maudContext* context)
+{
+    maudBackendKind required = RequiredBackend();
+    maudBackendKind chosen = maudGetContextBackend(context);
+    if (required != maud_backendNative && chosen != required)
+    {
+        printf("the native backend is kind %d, and this run requires kind %d\n", (int)chosen,
+               (int)required);
+    }
+    CHECK(required == maud_backendNative || chosen == required,
+          "the native backend is the one this run requires");
 }
 
 #if defined(GUIDE_ALSA)
@@ -170,6 +196,10 @@ static void GuidePlay(void)
     maudContextDef native = maudDefaultContextDef();
     maudContext* context = nullptr;
     CHECK(maudCreateContext(&native, &context) == maud_success, "a native context");
+    if (context != nullptr)
+    {
+        CheckRequiredBackend(context);
+    }
     Synth synth = {0};
     // clang-format off
     maudStreamDef def = maudDefaultStreamDef();   // output, stereo, native rate, the default
@@ -207,7 +237,7 @@ int main(void)
 {
     if (!NativeWithOutput())
     {
-        if (Required())
+        if (RequiredBackend() != maud_backendNative)
         {
             printf("FAIL: the platform this run requires has no native backend with an output\n");
             return 1;
