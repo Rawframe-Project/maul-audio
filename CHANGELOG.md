@@ -26,7 +26,7 @@ may change the API, the ABI and every file format.
   counts one underrun when it finds its PCM's queue empty before a
   write, once the PCM has had the stream's frames, and when a write
   comes more than a period after every frame written so far could have
-  played out, once an earlier write found frames queued; the second
+  played out, once the write before it found frames queued; the second
   catches a stall that `pipewire-pulse` reports with frames still
   queued. Each gap counts once. The first fill after a start or a
   recovery, silence written while the stream does not run, and an empty
@@ -39,9 +39,9 @@ may change the API, the ABI and every file format.
   [#62](https://github.com/Rawframe-Project/maul-audio/pull/62)).
 - On 32-bit x86 the library's floating-point setting also holds the x87
   control word, so a host that leaves x87 at single or double precision
-  no longer changes what the library computes there, and math calls such
-  as `sqrt` no longer set `errno`. The bake and the golden renders are
-  unchanged
+  no longer changes what the library computes there, and `sqrt` compiles
+  to one rounded instruction rather than a C library call that may set
+  `errno`. The bake and the golden renders are unchanged
   ([#23](https://github.com/Rawframe-Project/maul-audio/pull/23)).
 
 ## [0.0.3](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.3) (2026-10-24)
