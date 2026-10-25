@@ -487,8 +487,12 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
                 ${MAUL_AUDIO_PW_INCLUDE_DIRS})
             target_compile_definitions(test_pipewire_parse PRIVATE _GNU_SOURCE)
         endif()
-        # Both use the one test daemon, and the second one restarts it.
-        set_tests_properties(pipewire pipewire_restart PROPERTIES SKIP_RETURN_CODE 77
+        # The loopback's move to a silent sink, which hears sound now and
+        # then on a loaded runner (#50): quarantined, so it runs at night.
+        add_test(NAME pipewire_move COMMAND test_pipewire move)
+        set_tests_properties(pipewire_move PROPERTIES LABELS "pipewire;quarantine")
+        # All three use the one test daemon, and pipewire_restart restarts it.
+        set_tests_properties(pipewire pipewire_move pipewire_restart PROPERTIES SKIP_RETURN_CODE 77
             RESOURCE_LOCK pipewire-daemon)
     endif()
     if(MAUL_AUDIO_ALSA)
@@ -749,8 +753,8 @@ endif()
 # the clock, and the changed-files check (tools/check.sh) runs one only
 # when a change reaches it by name.
 if(MAUL_AUDIO_BUILD_TESTS)
-    foreach(name pipewire pipewire_restart pulse alsa stall guide_device coreaudio wasapi wasapi_sta
-                 ios ios_capture aaudio android_java)
+    foreach(name pipewire pipewire_move pipewire_restart pulse alsa stall guide_device coreaudio
+                 wasapi wasapi_sta ios ios_capture aaudio android_java)
         if(TEST ${name})
             set_property(TEST ${name} APPEND PROPERTY LABELS integration)
         endif()
@@ -772,7 +776,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
     set(maul_audio_server_dir ${PROJECT_BINARY_DIR}/sound-server)
     get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
     set(maul_audio_server_tests "")
-    foreach(name pipewire pipewire_restart pulse alsa stall guide_device)
+    foreach(name pipewire pipewire_move pipewire_restart pulse alsa stall guide_device)
         if(TEST ${name})
             list(APPEND maul_audio_server_tests ${name})
         endif()

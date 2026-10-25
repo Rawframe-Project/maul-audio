@@ -32,6 +32,12 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MAUL_AUDIO_TEST_PACKAGE": "ON" }
     },
     {
+      "name": "linux-quarantine",
+      "displayName": "GCC 14, Release: the quarantined suites alone, at night",
+      "inherits": ["linux", "gcc"],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
       "name": "linux-clang-20",
       "displayName": "Clang 20, Release",
       "inherits": ["linux", "clang"],
@@ -156,6 +162,7 @@
   ],
   "buildPresets": [
     { "name": "linux-gcc-14", "configurePreset": "linux-gcc-14" },
+    { "name": "linux-quarantine", "configurePreset": "linux-quarantine" },
     { "name": "linux-clang-20", "configurePreset": "linux-clang-20" },
     { "name": "linux-clang-20-asan", "configurePreset": "linux-clang-20-asan" },
     { "name": "linux-clang-20-tsan", "configurePreset": "linux-clang-20-tsan" },
@@ -187,6 +194,12 @@
       "filter": { "exclude": { "label": "^quarantine$" } }
     },
     { "name": "linux-gcc-14", "inherits": "default", "configurePreset": "linux-gcc-14" },
+    {
+      "name": "linux-quarantine",
+      "inherits": "base",
+      "configurePreset": "linux-quarantine",
+      "filter": { "include": { "label": "^quarantine$" } }
+    },
     { "name": "linux-clang-20", "inherits": "default", "configurePreset": "linux-clang-20" },
     { "name": "linux-clang-20-asan", "inherits": "default", "configurePreset": "linux-clang-20-asan" },
     { "name": "linux-clang-20-tsan", "inherits": "default", "configurePreset": "linux-clang-20-tsan" },
