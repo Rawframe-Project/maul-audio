@@ -1,6 +1,7 @@
 # Continuous integration: the pull request check, the full check on main,
 # and every night the extended run (MemorySanitizer, the macOS and iOS
-# sanitizer cells, Linux on arm64, quarantined pages, long fuzzing). Each
+# sanitizer cells, Linux on arm64, quarantined pages, long fuzzing), which
+# a dispatch with nightly set runs by hand, the same in every setting. Each
 # desktop build cell is a CMake preset built by the organization's shared
 # workflow; the cells that need a simulator, an emulator or a browser, and
 # the other jobs, are here, each through its preset too.
@@ -15,6 +16,11 @@ on:
   schedule:
     - cron: "7 5 * * *"
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: The nightly extended run, as the schedule runs it
+        type: boolean
+        default: false
 
 # A new push to a pull request cancels its running CI; runs on main get a
 # group of their own, so they are never cancelled.
@@ -132,11 +138,11 @@ jobs:
       # The sound-server fixture's daemon logs, when a cell fails.
       logs: out/${{ matrix.preset }}/sound-server/*.log
 
-  # The extended run's desktop cells, at night and by hand: MemorySanitizer
+  # The extended run's desktop cells: MemorySanitizer
   # (the sound servers' libraries are not instrumented, so the integration
   # suites stay out), the macOS sanitizers, and Linux on arm64.
   extended:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || inputs.nightly
     strategy:
       fail-fast: false
       matrix:
@@ -184,7 +190,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ github.event_name == 'schedule' && 25 || 15 }}
+    timeout-minutes: ${{ (github.event_name == 'schedule' || inputs.nightly) && 25 || 15 }}
     container: ghcr.io/rawframe-project/ci-cpp:2026.10.6@sha256:50c383f608f992c272196139d749f15978e35143a2876362b1e0aef6993480bd
     permissions:
       contents: read
@@ -194,7 +200,7 @@ jobs:
         target: [fuzz_hrtf, fuzz_bake]
     env:
       TARGET: ${{ matrix.target }}
-      FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && 20 || github.event_name == 'schedule' && 600 || 90 }}
+      FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && 20 || (github.event_name == 'schedule' || inputs.nightly) && 600 || 90 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -291,7 +297,7 @@ jobs:
             echo "::error::a test did not run"; exit 1
           fi
       - name: Quarantined pages
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'schedule' || inputs.nightly
         run: |
           ctest --test-dir out/web-emscripten -L '^quarantine$' --output-on-failure --no-tests=error |
             tee "$RUNNER_TEMP/quarantine.log"
@@ -400,7 +406,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        preset: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["ios-simulator", "ios-simulator-asan"]' || '["ios-simulator"]') }}
+        preset: ${{ fromJSON((github.event_name == 'schedule' || inputs.nightly) && '["ios-simulator", "ios-simulator-asan"]' || '["ios-simulator"]') }}
     runs-on: macos-15
     timeout-minutes: 30
     permissions:
