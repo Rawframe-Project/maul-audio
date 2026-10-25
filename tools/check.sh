@@ -5,8 +5,9 @@
 # The checks, in three tiers. Each tier includes the one before it.
 #
 #   tools/check.sh changed   the files changed against origin/main: the
-#                            source rules, formatting, the documentation
-#                            checks, and in the linux-clang-20-asan preset
+#                            source rules, the test hygiene check,
+#                            formatting, the documentation checks, and in
+#                            the linux-clang-20-asan preset
 #                            (assertions on) the suites the changes reach.
 #                            An integration suite runs only when a change
 #                            reaches it by name (its own file, the daemon
@@ -60,6 +61,7 @@ preset() {
     local name=$1
     step "preset $name"
     cmake --preset "$name" >"$out/$name.log"
+    python3 tools/check_test_hygiene.py --ctest "$out/$name"
     cmake --build --preset "$name" -j "$jobs" >>"$out/$name.log"
     ctest --preset "$name" -j "$jobs"
 }
@@ -94,6 +96,7 @@ preset_changed() {
     [ -z "$2" ] || pick=(-L "$2" "${pick[@]}")
     step "preset $name"
     cmake --preset "$name" >"$out/$name.log"
+    python3 tools/check_test_hygiene.py --ctest "$dir"
     cmake --build --preset "$name" -j "$jobs" >>"$out/$name.log"
     units=$(count_tests "$dir" "${pick[@]}")
     [ -z "$3" ] || integration=$(count_tests "$dir" "${reach[@]}")
@@ -187,7 +190,7 @@ labels_for() {
 }
 
 source_checks() {
-    step "source, module, length, documentation, snippet and API rules"
+    step "source, module, length, documentation, snippet, API and test hygiene rules"
     python3 tools/check_source.py
     python3 tools/check_modules.py
     python3 tools/check_float_env.py
@@ -196,6 +199,8 @@ source_checks() {
     python3 tools/check_guide.py
     python3 tools/check_litmus.py
     python3 tools/cost_table.py --check
+    python3 tools/check_test_hygiene.py --self-test
+    python3 tools/check_test_hygiene.py
     if [ -f "$org/scripts/docs_check.py" ]; then
         python3 "$org/scripts/docs_check.py" --strict --exclude data/hrtf/apache-2.0
     else

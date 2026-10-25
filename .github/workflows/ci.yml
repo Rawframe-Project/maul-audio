@@ -65,9 +65,9 @@ jobs:
       contents: read
 
   # The rules no compiler checks: formatting, the family's source, module,
-  # length, API documentation and snippet checks, the engine-free API, the
-  # README's cost table, the documentation site, and clang-tidy over the
-  # Linux build's sources. It runs on documentation changes too, since the
+  # length, API documentation, snippet and test hygiene checks, the
+  # engine-free API, the README's cost table, the documentation site, and
+  # clang-tidy over the Linux build's sources. It runs on documentation changes too, since the
   # snippet check and the site read docs/.
   checks:
     runs-on: ubuntu-24.04
@@ -95,6 +95,14 @@ jobs:
           python3 tools/check_lengths.py
           python3 tools/check_guide.py
           python3 tools/check_litmus.py
+      - name: Test hygiene
+        # The rules' own fixtures, then the tree, then every test of the
+        # Linux build carrying a label.
+        run: |
+          python3 tools/check_test_hygiene.py --self-test
+          python3 tools/check_test_hygiene.py
+          cmake --preset linux-gcc-14 >/dev/null
+          python3 tools/check_test_hygiene.py --ctest out/linux-gcc-14
       - name: README cost table
         run: python3 tools/cost_table.py --check
       - name: The documentation site builds
