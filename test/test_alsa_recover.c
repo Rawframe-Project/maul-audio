@@ -89,7 +89,7 @@ static void Silence(const maudStreamBlock* block, void* user)
 // One transfer of FRAMES into a PCM with delay frames queued before it,
 // pause milliseconds after the last one, and the stream's underruns after
 // it. FRAMES at 48 kHz play out in 1.3 ms, so 10 ms is time to drain on
-// any machine.
+// any machine; a pause is a minimum on the monotonic clock.
 static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay, int pause)
 {
     struct timespec span = {0, (long)pause * 1000000L};
@@ -143,11 +143,16 @@ static void TestSilentGaps(void)
     CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underruns) == 4,
           "an -EPIPE: recovered, one underrun");
     CHECK(WriteWith(&entry, 0, 10) == 4, "the first fill after the recovery: none");
-    // A second's frames queued, then a queue reported empty at once: the
-    // PCM misreports, nothing has played out.
-    CHECK(WriteWith(&entry, 48000, 10) == 4, "a second queued: none");
+    // Half a second's frames queued, then a queue reported empty at once
+    // and for several writes after: the PCM misreports, and those frames
+    // and the writes' own are still to play. Once they could have, a
+    // queue found empty is a real drain.
+    CHECK(WriteWith(&entry, 24000, 10) == 4, "half a second queued: none");
     CHECK(WriteWith(&entry, 0, 0) == 4, "an empty queue reported before it could drain: none");
-    CHECK(WriteWith(&entry, 0, 10) == 5, "a real drain after it still counts");
+    CHECK(WriteWith(&entry, 0, 10) == 4 && WriteWith(&entry, 0, 10) == 4 &&
+              WriteWith(&entry, 0, 10) == 4,
+          "nor while the misreport goes on");
+    CHECK(WriteWith(&entry, 0, 600) == 5, "a real drain once the frames could have played");
 }
 
 int main(void)
