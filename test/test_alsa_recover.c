@@ -18,7 +18,6 @@
 
 #include <errno.h>
 #include <string.h>
-#include <time.h>
 
 static int s_recoverResult;
 static int s_recovered;
@@ -71,6 +70,14 @@ static int FakeDelay(snd_pcm_t* pcm, snd_pcm_sframes_t* delay)
     return s_delayResult;
 }
 
+// The stream's host clock, which the test moves instead of waiting.
+static int64_t s_now;
+
+static int64_t FakeNow(void)
+{
+    return s_now;
+}
+
 static snd_pcm_sframes_t FakeWrite(snd_pcm_t* pcm, const void* buffer, snd_pcm_uframes_t frames)
 {
     (void)pcm;
@@ -87,13 +94,12 @@ static void Silence(const maudStreamBlock* block, void* user)
 #define FRAMES 64
 
 // One transfer of FRAMES into a PCM with delay frames queued before it,
-// pause milliseconds after the last one, and the stream's underruns after
-// it. FRAMES at 48 kHz play out in 1.3 ms, so 10 ms is time to drain on
-// any machine; a pause is a minimum on the monotonic clock.
+// pause milliseconds after the last one on the stream's clock, and the
+// stream's underruns after it. FRAMES at 48 kHz play out in 1.3 ms, so
+// 10 ms is time to drain.
 static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay, int pause)
 {
-    struct timespec span = {0, (long)pause * 1000000L};
-    nanosleep(&span, nullptr);
+    s_now += (int64_t)pause * 1000000;
     s_avail = FRAMES;
     s_delay = delay;
     CHECK(maudAlsaTransfer(entry), "a write");
@@ -125,7 +131,8 @@ static void TestSilentGaps(void)
                             .core = &core,
                             .pcm = (snd_pcm_t*)&dummy,
                             .samples = samples,
-                            .bufferFrames = FRAMES};
+                            .bufferFrames = FRAMES,
+                            .now = FakeNow};
     s_delayResult = 0;
     CHECK(WriteWith(&entry, 0, 0) == 0, "the first fill after a prepare is no gap");
     CHECK(WriteWith(&entry, 0, 10) == 1, "a queue drained of the stream's frames: one underrun");
@@ -184,7 +191,7 @@ int main(void)
     CHECK(s_started == 0, "is not started again");
 
     api.pcmAvailUpdate = FakeAvail;
-    maudAlsaStream entry = {.api = &api, .core = &core, .pcm = pcm};
+    maudAlsaStream entry = {.api = &api, .core = &core, .pcm = pcm, .now = FakeNow};
     Reset(&core, maud_directionOutput, 0);
     s_avail = -EAGAIN;
     CHECK(maudAlsaTransfer(&entry) && s_recovered == 0, "nothing to move now: left as it is");

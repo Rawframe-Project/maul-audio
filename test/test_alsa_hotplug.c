@@ -211,6 +211,7 @@ int main(void)
     maudContext* context = nullptr;
     if (maudCreateContext(&def, &context) != maud_success)
     {
+        // hygiene: skips only where libasound is absent, as AGENTS.md allows
         return getenv("MAUD_REQUIRE_ALSA") != nullptr ? 1 : SKIP;
     }
     char directory[] = "/tmp/maud-snd-XXXXXX";

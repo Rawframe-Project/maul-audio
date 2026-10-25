@@ -513,6 +513,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
             target_include_directories(test_alsa_hotplug SYSTEM PRIVATE
                 ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
             target_compile_definitions(test_alsa_hotplug PRIVATE _GNU_SOURCE)
+            # hygiene: exit 77 means libasound is absent, never a failure
             set_tests_properties(alsa_hotplug PROPERTIES SKIP_RETURN_CODE 77)
         endif()
     endif()
