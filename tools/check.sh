@@ -7,9 +7,12 @@
 #   tools/check.sh changed   the files changed against origin/main: the
 #                            source rules, formatting, the documentation
 #                            checks, and in the linux-clang-20-asan preset
-#                            (assertions on) the suites the changes reach,
-#                            the integration suites left out. Under two
-#                            minutes; run it before every push.
+#                            (assertions on) the suites the changes reach.
+#                            An integration suite runs only when a change
+#                            reaches it by name (its own file, the daemon
+#                            header or script), against the sound-server
+#                            fixture. Under two minutes; run it before
+#                            every push.
 #   tools/check.sh pr        what the pull request check runs on Linux:
 #                            every check, clang-tidy, the linux-gcc-14 and
 #                            linux-clang-20-asan presets with the sound
@@ -73,6 +76,62 @@ preset_labeled() {
     ctest --test-dir "out/$name" -j "$jobs" --timeout 300 --output-on-failure --no-tests=error "$@"
 }
 
+# The changed-files tier's suites in a CI cell's build: those the label
+# filter picks, and the integration suites among them against the
+# sound-server fixture, which must be able to start here. A filter that
+# picks nothing fails, as the presets' noTestsAction does.
+count_tests() { # build directory, then ctest selection arguments
+    local dir=$1
+    shift
+    ctest --test-dir "$dir" -N "$@" | sed -n 's/^Total Tests: //p'
+}
+
+# Stops the sound-server fixture's daemons in one directory, thawing any
+# a suite froze first. The script signals only the processes it started
+# there, so a fixture another run started elsewhere is never touched.
+stop_fixture() {
+    local name
+    for name in wireplumber pipewire-pulse pipewire dbus; do
+        tools/pipewire_daemon.sh signal "$1" "$name" CONT 2>/dev/null || true
+    done
+    tools/pipewire_daemon.sh stop "$1" || true
+}
+
+preset_changed() {
+    local name=$1 filter=$2 dir=out/$1 units integration
+    step "preset $name"
+    cmake --preset "$name" >"$out/$name.log"
+    cmake --build --preset "$name" -j "$jobs" >>"$out/$name.log"
+    units=$(count_tests "$dir" -L "$filter" -LE '^(integration|quarantine)$')
+    integration=$(count_tests "$dir" -L "$filter" -L '^integration$' -LE '^quarantine$')
+    if [ "$units" -eq 0 ] && [ "$integration" -eq 0 ]; then
+        echo "no suite in $dir matches $filter" >&2
+        exit 1
+    fi
+    if [ "$integration" -gt 0 ] && [ "$(count_tests "$dir" -R '^sound_server_start$')" -eq 0 ]; then
+        echo "the changes reach integration suites, but the sound-server fixture cannot start" \
+            "here: it needs pipewire, pipewire-pulse, wireplumber, pw-cli, pactl and dbus-daemon" \
+            "(the CI image has them)" >&2
+        exit 1
+    fi
+    local run=(ctest --test-dir "$dir" -j "$jobs" --timeout 300 --output-on-failure --no-tests=error)
+    if [ "$units" -gt 0 ]; then
+        "${run[@]}" -L "$filter" -LE '^(integration|quarantine)$'
+    fi
+    if [ "$integration" -gt 0 ]; then
+        step "integration suites against the sound-server fixture"
+        # CTest stops the fixture after the run, but not when the run is
+        # interrupted, killed or timed out: then this does, for this build
+        # tree's fixture.
+        # shellcheck disable=SC2064 # the directory is fixed now
+        trap "stop_fixture '$root/$dir/sound-server'" EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        "${run[@]}" -L "$filter" -L '^integration$' -LE '^quarantine$'
+    fi
+}
+
 # The suites of each area, for the changed-files tier.
 base="base allocator buffer layout"
 device="context stream stream_open loopback outputs objects device duplex focus follow device_sync
@@ -96,9 +155,12 @@ labels_for() {
     name=${name%.*}
     case "$1" in
     *.md | LICENSE | .github/* | tools/check_*.py | tools/build_docs.py | tools/gen_api.py | \
-        tools/cost_table.py | tools/*.sh | java/* | samples/* | bench/* | test/corpus/* | \
+        tools/cost_table.py | java/* | samples/* | bench/* | test/corpus/* | \
         test/fuzz_* | test/web/* | test/ios/* | test/android/* | data/hrtf/apache-2.0/*) ;;
     docs/user/*) echo guide ;;
+    test/test_daemon.h) echo "alsa pipewire pipewire_restart pulse" ;;
+    tools/pipewire_daemon.sh) echo "alsa pipewire pipewire_restart pulse stall guide_device" ;;
+    tools/*.sh) ;;
     test/test_harness.h | test/test_signals.h | test/test_names.h | test/test_clock.h | \
         CMakeLists.txt | CMakePresets.json | cmake/* | src/base.c | src/allocator.* | \
         include/maul-audio/base.h) echo all ;;
@@ -182,7 +244,7 @@ if [ "$tier" = changed ]; then
     else
         regex=$(printf '%s\n' $labels | sort -u | paste -sd '|')
         echo "suites labeled $regex"
-        preset_labeled linux-clang-20-asan -L "^($regex)\$" -LE '^(integration|quarantine)$'
+        preset_changed linux-clang-20-asan "^($regex)\$"
     fi
     exit 0
 fi
