@@ -373,7 +373,7 @@ static void TestOutputStream(maudContext* context)
 }
 
 // A callback late past the device buffer: the stream runs on, and counts
-// the gap. PipeWire's ALSA plugin, which the test's default PCM is, plays
+// the gap. ALSA's PulseAudio plugin, which the test's default PCM is, plays
 // silence through the stall with no -EPIPE; the stream counts it from the
 // queue it finds empty. The -EPIPE recovery path runs only on hardware
 // (docs/operations/device-checklist.md).

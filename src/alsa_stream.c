@@ -39,7 +39,7 @@ static maudAlsaStream* EntryOf(maudContext* context, const maudStreamSlot* slot)
 // adds its own length back to its first frame. A running output whose
 // PCM has had its frames and has none of them left queued played a gap
 // without them: an underrun, counted once, by the write that ends it.
-// PipeWire's ALSA plugin plays silence there and reports no -EPIPE; a
+// ALSA's PulseAudio plugin plays silence there and reports no -EPIPE; a
 // PCM in an xrun fails the delay instead, and its -EPIPE is counted. A
 // queue reported empty before the last write's frames could have played
 // out is not believed: a gap needs the time to drain, and the frames

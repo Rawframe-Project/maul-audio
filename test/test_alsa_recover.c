@@ -7,7 +7,7 @@
 // is not; a PCM that cannot recover ends the stream. A transfer whose
 // PCM has nothing to move now (-EAGAIN) leaves it as it is, and one
 // whose PCM ran dry recovers it. A running output that finds its PCM's
-// queue empty before a write, as PipeWire's ALSA plugin leaves it with no
+// queue empty before a write, as ALSA's PulseAudio plugin leaves it with no
 // -EPIPE, counts one underrun per gap: never on the first fill after a
 // prepare or a recovery, after silence written while it did not run,
 // when the delay fails, as a PCM in an xrun does, or when the queue is

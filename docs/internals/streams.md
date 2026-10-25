@@ -27,7 +27,7 @@ The input opens at the output's rate, required where the device runs it, convert
 
 ## Underruns and overruns
 
-The status counts what the platform reveals ([xrun.h](../../src/xrun.h)): a gap in PipeWire's clock of more than one and a half periods; PulseAudio's underflow and overflow callbacks; ALSA's recovery from `-EPIPE`, or a running output's queue found empty before a write once it has had the stream's frames, which is how PipeWire's ALSA plugin plays a gap, with no `-EPIPE`; WASAPI's buffer found empty while playing, or its data discontinuity flag on capture; a jump in Core Audio's and iOS's sample time; AAudio's running total; on the web, a stream's frame 0 moving later for good. Each gap counts once, by the event that shows it: a late cycle, an underflow callback, a recovery, the write that finds the queue empty. A platform that reveals nothing counts nothing; the counters are a diagnostic, not a guarantee.
+The status counts what the platform reveals ([xrun.h](../../src/xrun.h)): a gap in PipeWire's clock of more than one and a half periods; PulseAudio's underflow and overflow callbacks; ALSA's recovery from `-EPIPE`, or a running output's queue found empty before a write once it has had the stream's frames, which is how ALSA's PulseAudio plugin plays a gap, with no `-EPIPE`; WASAPI's buffer found empty while playing, or its data discontinuity flag on capture; a jump in Core Audio's and iOS's sample time; AAudio's running total; on the web, a stream's frame 0 moving later for good. Each gap counts once, by the event that shows it: a late cycle, an underflow callback, a recovery, the write that finds the queue empty. A platform that reveals nothing counts nothing; the counters are a diagnostic, not a guarantee.
 
 ## Exclusive streams
 
