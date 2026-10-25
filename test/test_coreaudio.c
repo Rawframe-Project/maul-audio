@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The CoreAudio backend against the BlackHole virtual device. The test
-// makes BlackHole the system's default output, so it runs only where
-// MAUD_REQUIRE_COREAUDIO is set (the macOS CI cell, which installs
-// BlackHole); elsewhere it skips.
+// The CoreAudio backend against the BlackHole virtual device, with the
+// macOS runners' null device as the other output the default moves to.
+// Without both the test is skipped, unless MAUD_REQUIRE_COREAUDIO is set
+// (the macOS CI cell, which installs BlackHole). Only with that variable
+// set does it change the system's default output: it makes BlackHole the
+// default, moves the default to the null device and back, and gives the
+// default back at its end. A run that does not finish (a crash, a
+// timeout, an interrupt) leaves BlackHole the default; System Settings >
+// Sound > Output restores it. Without the variable it leaves the default
+// alone, plays on BlackHole by its key, and leaves out the checks of the
+// default and its moves, saying so.
 
 #include "test_clock.h"
 #include "test_harness.h"
@@ -91,6 +98,41 @@ static bool MakeDefaultOutput(const char* uid)
                                           kAudioObjectPropertyScopeGlobal, 0};
     return AudioObjectSetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr,
                                       sizeof(device), &device) == noErr;
+}
+
+// Whether this run may change the system's default output: only where
+// MAUD_REQUIRE_COREAUDIO is set.
+static bool s_moveDefault;
+
+// The UID of the system's default output into uid, or an empty string
+// when there is none. A UID, not the device's id, since the audio
+// server's restart gives its devices new ids.
+static void DefaultOutputUid(char* uid, size_t size)
+{
+    uid[0] = '\0';
+    AudioObjectPropertyAddress address = {kAudioHardwarePropertyDefaultOutputDevice,
+                                          kAudioObjectPropertyScopeGlobal, 0};
+    AudioObjectID device = kAudioObjectUnknown;
+    UInt32 bytes = sizeof(device);
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &bytes,
+                                   &device) != noErr ||
+        device == kAudioObjectUnknown)
+    {
+        return;
+    }
+    address.mSelector = kAudioDevicePropertyDeviceUID;
+    CFStringRef text = nullptr;
+    bytes = sizeof(text);
+    if (AudioObjectGetPropertyData(device, &address, 0, nullptr, &bytes, &text) != noErr ||
+        text == nullptr)
+    {
+        return;
+    }
+    if (!CFStringGetCString(text, uid, (CFIndex)size, kCFStringEncodingUTF8))
+    {
+        uid[0] = '\0';
+    }
+    CFRelease(text);
 }
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
@@ -234,6 +276,14 @@ static maudDeviceId FindByKey(const maudContext* context, maudDirection directio
     return (maudDeviceId){0, 0};
 }
 
+// What a stream that follows the default plays on: the default, made
+// BlackHole, where the run may change it; BlackHole by its key otherwise.
+static maudDeviceId PlainOutput(const maudContext* context)
+{
+    return s_moveDefault ? (maudDeviceId){0, 0}
+                         : FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+}
+
 static void TestDevices(maudContext* context)
 {
     ListDevices(context, maud_directionOutput);
@@ -253,7 +303,8 @@ static void TestDevices(maudContext* context)
     CHECK(maudGetDeviceName(context, output, name, sizeof(name) - 1, &length) == maud_success &&
               strcmp(name, "BlackHole 2ch") == 0,
           "its name, not its UID");
-    for (maudDeviceRole role = maud_roleGeneral; role <= maud_roleCommunications; ++role)
+    for (maudDeviceRole role = maud_roleGeneral; s_moveDefault && role <= maud_roleCommunications;
+         ++role)
     {
         maudDeviceId current = {0, 0};
         CHECK(maudGetDefaultDevice(context, maud_directionOutput, role, &current) == maud_success &&
@@ -271,6 +322,7 @@ static void TestOutputStream(maudContext* context)
     double nominal = (double)info.nativeSampleRate;
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
+    def.device = PlainOutput(context);
     maudStreamId stream = OpenStream(context, &def, &blocks);
     maudStreamFormat format;
     CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
@@ -301,6 +353,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(Destroy(context, stream), "destroy while running");
     double other = info.nativeSampleRate == 44100 ? 48000.0 : 44100.0;
     def = maudDefaultStreamDef();
+    def.device = PlainOutput(context);
     def.ratePolicy = maud_rateRequired;
     def.sampleRate = (uint32_t)other;
     def.callback = CountBlocks;
@@ -1104,18 +1157,38 @@ static void TestObjects(maudContext* context)
 
 int main(void)
 {
-    if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
+    bool present = DeviceOfUid(BLACKHOLE_UID) != kAudioObjectUnknown &&
+                   DeviceOfUid(NULL_DEVICE_UID) != kAudioObjectUnknown;
+    if (!present && getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
     {
-        return PlatformAbsent("no BlackHole: MAUD_REQUIRE_COREAUDIO marks a machine that has it");
+        return PlatformAbsent("no BlackHole and null device to play on");
+    }
+    CHECK(present, "BlackHole and the null device, as MAUD_REQUIRE_COREAUDIO says");
+    if (!present)
+    {
+        return 1;
     }
     s_control = pthread_self();
-    CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole made the default output");
+    s_moveDefault = getenv("MAUD_REQUIRE_COREAUDIO") != nullptr;
+    char given[256] = {0};
+    if (s_moveDefault)
+    {
+        DefaultOutputUid(given, sizeof(given));
+        CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole made the default output");
+    }
+    else
+    {
+        printf("the system's default output is left alone, so the default's checks, its moves "
+               "and the service restart are left out: set MAUD_REQUIRE_COREAUDIO to run them, "
+               "which makes BlackHole the default\n");
+    }
     maudContextDef def = maudDefaultContextDef();
     def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
     maudContext* context = nullptr;
     CHECK(maudCreateContext(&def, &context) == maud_success, "a native context");
     if (context == nullptr)
     {
+        CHECK(given[0] == '\0' || MakeDefaultOutput(given), "the default given back");
         return 1;
     }
     CHECK(maudGetContextBackend(context) == maud_backendCoreAudio, "CoreAudio chosen");
@@ -1127,11 +1200,15 @@ int main(void)
     TestVoice(context);
     TestXruns(context);
     TestExclusive(context);
-    TestDefaultMoves(context);
-    TestVoicedMoves(context);
-    TestServiceRestart(context);
+    if (s_moveDefault)
+    {
+        TestDefaultMoves(context);
+        TestVoicedMoves(context);
+        TestServiceRestart(context);
+    }
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     CHECK(s_live == 0, "everything given back");
+    CHECK(given[0] == '\0' || MakeDefaultOutput(given), "the default given back");
     return s_failures == 0 ? 0 : 1;
 }

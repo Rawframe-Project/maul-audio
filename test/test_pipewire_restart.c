@@ -9,7 +9,9 @@
 // them, every device goes. Streams the host suspended stay suspended for
 // it across a restart.
 // The sound-server fixture's daemon is stopped and started through its
-// script (test_daemon.h); without the fixture the test is skipped.
+// script (test_daemon.h); without the fixture the test is skipped, unless
+// MAUD_REQUIRE_PIPEWIRE is set. With the fixture, a context that fails
+// fails the test.
 
 #include "test_daemon.h"
 #include "test_harness.h"
@@ -141,12 +143,20 @@ static void Note(maudContext* context, Seen* seen)
 
 int main(void)
 {
-    maudContextDef def = maudDefaultContextDef();
-    maudContext* context = nullptr;
-    if (!HaveDaemon() || maudCreateContext(&def, &context) != maud_success)
+    if (!HaveDaemon() && getenv("MAUD_REQUIRE_PIPEWIRE") == nullptr)
     {
         return PlatformAbsent("no sound-server fixture to restart");
     }
+    CHECK(HaveDaemon(), "the sound-server fixture to restart");
+    maudContextDef def = maudDefaultContextDef();
+    maudContext* context = nullptr;
+    maudResult result = HaveDaemon() ? maudCreateContext(&def, &context) : maud_errorUnsupported;
+    CHECK(result == maud_success, "a native context on the fixture's daemon");
+    if (result != maud_success)
+    {
+        return 1;
+    }
+    CHECK(maudGetContextBackend(context) == maud_backendPipewire, "the context is on PipeWire");
     CHECK(system("pactl load-module module-null-sink sink_name=maud-test-gone >/dev/null") == 0,
           "a sink the restart will not bring back");
     Seen seen = {0};

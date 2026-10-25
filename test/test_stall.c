@@ -270,11 +270,12 @@ int main(void)
     // every 5 ms, the stalled step stalling the drain too.
     POLL_UNTIL(3000, "ten blocks from the stream", Drain(context),
                atomic_load(&shared->blocks) >= 10);
-    // A platform with no output device opens the stream suspended (the
-    // Windows runners): nothing to stall under there.
+    // A platform with no output device opens the stream suspended for
+    // want of one (the Windows runners): nothing to stall under there.
+    // Any other suspension is the platform failing, and fails the test.
     maudStreamStatus first = {0};
     CHECK(maudGetStreamStatus(context, shared->stream, &first) == maud_success, "status");
-    if (atomic_load(&shared->blocks) < 10 && !required && first.suspension != maud_suspendNone)
+    if (atomic_load(&shared->blocks) < 10 && !required && first.suspension == maud_suspendNoDevice)
     {
         printf("the stream is suspended (reason %d)\n", (int)first.suspension);
         CHECK(maudDestroyContext(context) == maud_success, "destroyed");
