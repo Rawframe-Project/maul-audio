@@ -6,12 +6,17 @@
 // not; a recovered capture is started again and a recovered playback
 // is not; a PCM that cannot recover ends the stream. A transfer whose
 // PCM has nothing to move now (-EAGAIN) leaves it as it is, and one
-// whose PCM ran dry recovers it.
+// whose PCM ran dry recovers it. A running output that finds its PCM's
+// queue empty before a write, as PipeWire's ALSA plugin leaves it with no
+// -EPIPE, counts one underrun per gap: never on the first fill after a
+// prepare or a recovery, after silence written while it did not run, or
+// when the delay fails, as a PCM in an xrun does.
 
 #include "alsa_stream.h"
 #include "test_harness.h"
 
 #include <errno.h>
+#include <string.h>
 
 static int s_recoverResult;
 static int s_recovered;
@@ -54,6 +59,86 @@ static void Reset(maudStreamCore* core, maudDirection direction, int recoverResu
     s_started = 0;
 }
 
+static snd_pcm_sframes_t s_delay;
+static int s_delayResult;
+
+static int FakeDelay(snd_pcm_t* pcm, snd_pcm_sframes_t* delay)
+{
+    (void)pcm;
+    *delay = s_delay;
+    return s_delayResult;
+}
+
+static snd_pcm_sframes_t FakeWrite(snd_pcm_t* pcm, const void* buffer, snd_pcm_uframes_t frames)
+{
+    (void)pcm;
+    (void)buffer;
+    return (snd_pcm_sframes_t)frames;
+}
+
+static void Silence(const maudStreamBlock* block, void* user)
+{
+    (void)user;
+    memset(block->output, 0, (size_t)block->frameCount * 2 * sizeof(float));
+}
+
+#define FRAMES 64
+
+// One transfer of FRAMES into a PCM with delay frames queued before it,
+// and the stream's underruns after it.
+static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay)
+{
+    s_avail = FRAMES;
+    s_delay = delay;
+    CHECK(maudAlsaTransfer(entry), "a write");
+    return atomic_load(&entry->core->underruns);
+}
+
+// The gaps a running output counts from its PCM's queue.
+static void TestSilentGaps(void)
+{
+    static float samples[FRAMES * 2];
+    static float periodSamples[FRAMES * 2];
+    maudAlsaApi api = {.pcmRecover = FakeRecover,
+                       .pcmStart = FakeStart,
+                       .pcmAvailUpdate = FakeAvail,
+                       .pcmDelay = FakeDelay,
+                       .pcmWritei = FakeWrite};
+    int dummy = 0;
+    maudStreamCore core;
+    Reset(&core, maud_directionOutput, 0);
+    maudStreamDef def = maudDefaultStreamDef();
+    def.callback = Silence;
+    core.def = def;
+    core.format = (maudStreamFormat){
+        .sampleRate = 48000, .periodFrames = FRAMES, .layout = maud_layoutStereo};
+    atomic_init(&core.blockRate, 48000);
+    maudInitPeriod(&core.period, &def, &core.format, periodSamples);
+    atomic_init(&core.state, maud_streamRunning);
+    maudAlsaStream entry = {.api = &api,
+                            .core = &core,
+                            .pcm = (snd_pcm_t*)&dummy,
+                            .samples = samples,
+                            .bufferFrames = FRAMES};
+    s_delayResult = 0;
+    CHECK(WriteWith(&entry, 0) == 0, "the first fill after a prepare is no gap");
+    CHECK(WriteWith(&entry, 0) == 1, "an empty queue after the stream's frames: one underrun");
+    CHECK(WriteWith(&entry, 2 * FRAMES) == 1, "a queue with frames left: none");
+    CHECK(WriteWith(&entry, 0) == 2, "the next gap is another");
+    s_delayResult = -EPIPE;
+    CHECK(WriteWith(&entry, 0) == 2, "a delay that fails counts none: the write's -EPIPE does");
+    s_delayResult = 0;
+    atomic_store(&core.state, maud_streamIdle);
+    CHECK(WriteWith(&entry, 0) == 2, "silence while the stream does not run: none");
+    atomic_store(&core.state, maud_streamRunning);
+    CHECK(WriteWith(&entry, 0) == 2, "nor the first fill once it runs again");
+    CHECK(WriteWith(&entry, 0) == 3, "then a gap counts");
+    s_avail = -EPIPE;
+    CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underruns) == 4,
+          "an -EPIPE: recovered, one underrun");
+    CHECK(WriteWith(&entry, 0) == 4, "the first fill after the recovery: none");
+}
+
 int main(void)
 {
     maudAlsaApi api = {.pcmRecover = FakeRecover, .pcmStart = FakeStart};
@@ -93,5 +178,6 @@ int main(void)
     Reset(&core, maud_directionOutput, -ENODEV);
     s_avail = -ENODEV;
     CHECK(!maudAlsaTransfer(&entry), "a PCM gone: the transfer fails");
+    TestSilentGaps();
     return s_failures == 0 ? 0 : 1;
 }

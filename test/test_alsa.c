@@ -372,10 +372,11 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
 }
 
-// A callback late past the device buffer: the stream runs on. PipeWire's
-// ALSA plugin, which the test's default PCM is, absorbs the stall
-// without an xrun (no -EPIPE, no underrun counted), so the recovery
-// path runs only on hardware (docs/operations/device-checklist.md).
+// A callback late past the device buffer: the stream runs on, and counts
+// the gap. PipeWire's ALSA plugin, which the test's default PCM is, plays
+// silence through the stall with no -EPIPE; the stream counts it from the
+// queue it finds empty. The -EPIPE recovery path runs only on hardware
+// (docs/operations/device-checklist.md).
 static void TestXrun(maudContext* context)
 {
     Blocks blocks = {.stallAt = 30};
@@ -384,6 +385,9 @@ static void TestXrun(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(&blocks, 31), "past the stall");
     CHECK(WaitForBlocks(&blocks, 80), "it runs on");
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.underruns > 0,
+          "the stall counted as an underrun");
     CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }

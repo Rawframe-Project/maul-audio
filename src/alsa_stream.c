@@ -36,11 +36,20 @@ static maudAlsaStream* EntryOf(maudContext* context, const maudStreamSlot* slot)
 // not: playback fills samples, capture empties them.
 // Stamps the clock from the frames between the application and the
 // device: ahead of a rendered buffer, or behind a captured one, which
-// adds its own length back to its first frame.
-static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output)
+// adds its own length back to its first frame. A running output whose
+// PCM has had its frames and has none of them left queued played a gap
+// without them: an underrun, counted once, by the write that ends it.
+// PipeWire's ALSA plugin plays silence there and reports no -EPIPE; a
+// PCM in an xrun fails the delay instead, and its -EPIPE is counted.
+static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output, bool running)
 {
     snd_pcm_sframes_t delay = 0;
-    if (entry->api->pcmDelay(entry->pcm, &delay) != 0 || delay < 0)
+    bool known = entry->api->pcmDelay(entry->pcm, &delay) == 0;
+    if (output && running && entry->primed && known && delay <= 0)
+    {
+        maudCountXrun(entry->core);
+    }
+    if (!known || delay < 0)
     {
         delay = 0;
     }
@@ -75,7 +84,11 @@ static void Render(maudAlsaStream* entry, float* samples, uint32_t frames, bool 
         maudPushPeriod(&core->period, samples, frames);
     }
     atomic_store_explicit(&core->renderingThread, 0, memory_order_release);
-    Stamp(entry, frames, output);
+    Stamp(entry, frames, output, running);
+    // The PCM takes these frames before the next render: from then on, an
+    // empty queue is a gap in the stream's own frames, never in silence
+    // written while it did not run.
+    entry->primed = running;
     atomic_fetch_add_explicit(&core->position, frames, memory_order_release);
 }
 
@@ -146,8 +159,13 @@ bool maudAlsaTransfer(maudAlsaStream* entry)
     {
         result = output ? WriteOut(entry, result) : ReadIn(entry, result);
     }
-    return result >= 0 || result == -EAGAIN ||
-           maudAlsaRecover(api, entry->pcm, entry->core, result);
+    if (result >= 0 || result == -EAGAIN)
+    {
+        return true;
+    }
+    // A recovered PCM is prepared again, empty until the next write.
+    entry->primed = false;
+    return maudAlsaRecover(api, entry->pcm, entry->core, result);
 }
 
 bool maudAlsaRecover(const maudAlsaApi* api, snd_pcm_t* pcm, maudStreamCore* core,
@@ -440,6 +458,7 @@ void maudAlsaSetStreamActive(maudContext* context, maudStreamSlot* slot, bool ac
     snd_local_error_handler_t previous = maudAlsaQuiet(entry->api);
     entry->api->pcmPrepare(entry->pcm);
     entry->api->libErrorSetLocal(previous);
+    entry->primed = false;
     entry->threadRunning = true;
     if (!maudStartWorker(&entry->worker, RunStream, entry, "maud-alsa"))
     {
