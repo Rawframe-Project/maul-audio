@@ -1043,6 +1043,10 @@ static bool StaysBelow(maudContext* context, const Blocks* blocks, uint32_t thou
     return atomic_load(&blocks->peak) < thousandths;
 }
 
+// Whether this is the quarantined run, pipewire_move ("test_pipewire
+// move"): the loopback's move alone, with its check of the silent sink.
+static bool s_moveOnly;
+
 // A loopback stream captures what a sink plays, from its monitor:
 // silence while nothing plays there, the tone a stream plays once one
 // does. One on the default follows the default sink away to a silent
@@ -1076,7 +1080,12 @@ static void TestLoopback(maudContext* context, Helper* helper)
           "it moves with the default");
     StaysBelow(context, &following, UINT32_MAX);
     atomic_store(&following.peak, 0);
-    CHECK(StaysBelow(context, &following, 10), "and hears the silent sink");
+    // Heard sound now and then on a loaded runner (#50): judged only in
+    // the quarantined run, pipewire_move, until that is fixed.
+    if (s_moveOnly)
+    {
+        CHECK(StaysBelow(context, &following, 10), "and hears the silent sink");
+    }
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
     CHECK(WaitForStream(context, maud_notifyStreamMoved, loop, &record) &&
               KeyIs(context, record.device, "maud-test-sink"),
@@ -1190,8 +1199,9 @@ static void TestLimits(void)
     CHECK(created, "created once the allocator gives every block");
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+    s_moveOnly = argc > 1 && strcmp(argv[1], "move") == 0;
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
     maudResult result = maudCreateContext(&def, &context);
@@ -1211,6 +1221,19 @@ int main(void)
     if (result != maud_success)
     {
         return 1;
+    }
+    if (s_moveOnly)
+    {
+        Helper helper;
+        bool helped = StartHelper(&helper);
+        CHECK(helped, "the test's own client, with the session manager's metadata");
+        if (helped)
+        {
+            TestLoopback(context, &helper);
+        }
+        StopHelper(&helper);
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        return s_failures == 0 ? 0 : 1;
     }
     TestTheDaemonsDevices(context);
     Helper helper;

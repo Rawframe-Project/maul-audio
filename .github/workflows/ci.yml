@@ -146,7 +146,8 @@ jobs:
 
   # The extended run's desktop cells: MemorySanitizer
   # (the sound servers' libraries are not instrumented, so the integration
-  # suites stay out), the macOS sanitizers, and Linux on arm64.
+  # suites stay out), the macOS sanitizers, Linux on arm64, and the
+  # quarantined Linux suites against the sound-server fixture.
   extended:
     if: github.event_name == 'schedule' || inputs.nightly
     strategy:
@@ -154,6 +155,7 @@ jobs:
       matrix:
         include:
           - { preset: linux-clang-20-msan }
+          - { preset: linux-quarantine }
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
