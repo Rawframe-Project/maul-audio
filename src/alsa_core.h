@@ -46,6 +46,9 @@ typedef struct maudAlsaStream
     // When the frames queued by the last write have played out, on the
     // host clock: a queue reported empty before then is a misreport.
     int64_t drainAt;
+    // The host clock drainAt is read against: maudNowNanoseconds, or a
+    // test's own clock, which sets the time rather than waiting for it.
+    int64_t (*now)(void);
     uint8_t order[MAUD_ALSA_MAX_CHANNELS];
     size_t bytes;
     maudWorker worker;

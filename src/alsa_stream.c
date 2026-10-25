@@ -49,7 +49,7 @@ static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output, bool runn
 {
     snd_pcm_sframes_t delay = 0;
     bool known = entry->api->pcmDelay(entry->pcm, &delay) == 0;
-    int64_t now = maudNowNanoseconds();
+    int64_t now = entry->now();
     bool empty = output && entry->primed && known && delay <= 0;
     bool early = empty && now < entry->drainAt;
     if (empty && running && !early)
@@ -416,7 +416,7 @@ maudResult maudAlsaAttachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudAlsa* alsa = context->native;
     maudAlsaStream* entry = EntryOf(context, slot);
-    *entry = (maudAlsaStream){.api = &alsa->api, .core = &slot->core};
+    *entry = (maudAlsaStream){.api = &alsa->api, .core = &slot->core, .now = maudNowNanoseconds};
     snd_local_error_handler_t previous = maudAlsaQuiet(&alsa->api);
     maudResult result = Open(context, entry);
     alsa->api.libErrorSetLocal(previous);
