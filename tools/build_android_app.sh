@@ -28,13 +28,16 @@ trap 'rm -rf "$work"' EXIT
 sed -e "s/@PACKAGE@/$package/" -e "s/@LIBRARY@/$name/" \
     "$root/test/android/AndroidManifest.xml" > "$work/AndroidManifest.xml"
 mkdir -p "$work/classes" "$work/dex" "$work/lib/$abi"
-javac -nowarn --release 11 -classpath "$jar" -d "$work/classes" \
-    $(find "$root/java" -name '*.java')
+# The sources go through an argument file, each quoted, and the classes
+# through a jar, so that no path is split on its spaces.
+find "$root/java" -name '*.java' | sed 's/.*/"&"/' > "$work/sources.txt"
+javac -nowarn --release 11 -classpath "$jar" -d "$work/classes" "@$work/sources.txt"
+jar cf "$work/classes.jar" -C "$work/classes" .
 "$tools/aapt2" link -o "$work/linked.apk" -I "$jar" --manifest "$work/AndroidManifest.xml" \
     --proguard "$work/manifest.pro" --min-sdk-version 30 --target-sdk-version 35 --debug-mode
 java -cp "$tools/lib/d8.jar" com.android.tools.r8.R8 --release --min-api 30 --lib "$jar" \
     --output "$work/dex" --pg-conf "$work/manifest.pro" \
-    --pg-conf "$root/java/proguard-rules.pro" $(find "$work/classes" -name '*.class')
+    --pg-conf "$root/java/proguard-rules.pro" "$work/classes.jar"
 cp "$library" "$work/lib/$abi/"
 cp "$work/dex/classes.dex" "$work/"
 (cd "$work" && zip -q linked.apk classes.dex "lib/$abi/$(basename "$library")")

@@ -40,6 +40,7 @@ for arg in "$@"; do
 done
 vars=""
 for var in $(env | sed -n 's/^\(MAUD_[A-Z0-9_]*\)=.*/\1/p'); do
+    value=""
     eval "value=\$$var"
     vars="$vars $var='$(printf '%s' "$value" | sed "s/'/'\\\\''/g")'"
 done
