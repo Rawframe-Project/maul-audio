@@ -14,10 +14,11 @@
 // stream none before the stall, and this thread's sleeps woke on time.
 // On a loaded machine the platform delivers late or not at all, which
 // says nothing about the library, so those timing checks are excused,
-// and every run says which it was. Without a device that opens, or with
-// a stream the platform suspends for want of one, the test is skipped,
-// unless MAUD_REQUIRE_PIPEWIRE or MAUD_REQUIRE_COREAUDIO is set, and
-// then the native backend must be the one it names.
+// and every run says which it was, and whether any block started during
+// the stall for the behavior checks to watch. Without a device that
+// opens, or with a stream the platform suspends for want of one, the test
+// is skipped, unless MAUD_REQUIRE_PIPEWIRE or MAUD_REQUIRE_COREAUDIO is
+// set, and then the native backend must be the one it names.
 
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
@@ -127,8 +128,9 @@ typedef struct Shared
     atomic_uint blocks;
     atomic_uint latched;
     atomic_uint torn;
-    // The longest block that started during the stall, in nanoseconds,
-    // timed to its end.
+    // The blocks that started during the stall, and the longest of them
+    // in nanoseconds, timed to its end.
+    atomic_uint startedInStall;
     atomic_llong longestInStall;
     // Read inside the stall, by the host.
     unsigned blocksBefore;
@@ -148,6 +150,10 @@ static void Render(const maudStreamBlock* block, void* user)
     Shared* shared = user;
     int64_t start = maudGetHostNanoseconds();
     bool inStall = atomic_load(&shared->stalling);
+    if (inStall)
+    {
+        atomic_fetch_add(&shared->startedInStall, 1);
+    }
     uint64_t step = maudLatchResults(shared->spatializer);
     float gain = 0.0f;
     maudDirectResult result;
@@ -323,18 +329,24 @@ int main(void)
            (unsigned long long)shared->underrunsBefore, (unsigned long long)status.underruns);
     CHECK(longest < 5000000, "no block waited for the stalled host");
     CHECK(atomic_load(&shared->torn) == 0, "every step read whole");
-    char verdict[256];
+    // With no block started during the stall, the behavior checks above
+    // watched nothing; the verdict says so.
+    const char* unobserved = atomic_load(&shared->startedInStall) == 0
+                                 ? "; behavior unobserved: no block started during the stall"
+                                 : "";
+    char verdict[320];
     if (clean)
     {
-        snprintf(verdict, sizeof(verdict), "judged");
+        snprintf(verdict, sizeof(verdict), "judged%s", unobserved);
     }
     else
     {
         snprintf(verdict, sizeof(verdict),
                  "excused: graph xruns %llu to %llu%s, %llu underruns before the stall, a "
-                 "sleep %.1f ms late",
+                 "sleep %.1f ms late%s",
                  graphBefore, graphAfter, HaveDaemon() && !graphRead ? " (not read)" : "",
-                 (unsigned long long)shared->underrunsBefore, (double)shared->latestWakeup / 1e6);
+                 (unsigned long long)shared->underrunsBefore, (double)shared->latestWakeup / 1e6,
+                 unobserved);
     }
     Report(verdict);
     if (clean)
