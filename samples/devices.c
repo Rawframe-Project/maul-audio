@@ -120,6 +120,7 @@ static void PrintDevice(const maudContext* context, maudDeviceId id)
            info.defaultCommunications ? ", communications default" : "", key);
 }
 
+#if !defined(__EMSCRIPTEN__)
 // The output whose key is key, or the null id.
 static maudDeviceId FindOutput(const maudContext* context, const char* key)
 {
@@ -141,6 +142,7 @@ static maudDeviceId FindOutput(const maudContext* context, const char* key)
     }
     return (maudDeviceId){0, 0};
 }
+#endif
 
 static void ListDevices(const maudContext* context)
 {
