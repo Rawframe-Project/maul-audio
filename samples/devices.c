@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Lists the devices, plays a quiet tone on the default output, and
-// prints every notification with the stream's latency, for a number of
-// seconds (the first argument, 60 by default). With "capture" as the
-// second argument it also captures from the default input and prints,
-// each second, the frames captured and their peak. It is the host the
+// Lists the devices with their keys, plays a quiet tone on the default
+// output, and prints every notification with the stream's latency, for a
+// number of seconds (the first argument, 60 by default). After it,
+// "capture" also captures from the default input and prints, each
+// second, the frames captured and their peak, and "--device <key>" plays
+// on the output with that key instead of following the default. It is
+// the host the
 // device checklist (docs/operations/device-checklist.md) runs while devices are
 // plugged in and out, defaults changed and the audio service
 // restarted. On the web it runs ten minutes with the capture, from the
@@ -107,9 +109,37 @@ static void PrintDevice(const maudContext* context, maudDeviceId id)
         snprintf(format, sizeof(format), "%u Hz, %u channels", info.nativeSampleRate,
                  maudGetLayoutChannelCount(info.nativeLayout));
     }
-    printf("  %u.%u %-40s %s%s%s\n", id.index1, id.generation, name, format,
+    char key[256];
+    if (maudGetDeviceKey(context, id, key, sizeof(key) - 1, &length) != maud_success)
+    {
+        length = 0;
+    }
+    key[length < sizeof(key) - 1 ? length : sizeof(key) - 1] = '\0';
+    printf("  %u.%u %-40s %s%s%s\n        key %s\n", id.index1, id.generation, name, format,
            info.defaultGeneral ? ", default" : "",
-           info.defaultCommunications ? ", communications default" : "");
+           info.defaultCommunications ? ", communications default" : "", key);
+}
+
+// The output whose key is key, or the null id.
+static maudDeviceId FindOutput(const maudContext* context, const char* key)
+{
+    maudDeviceId ids[64];
+    uint32_t count = 0;
+    if (maudGetDevices(context, maud_directionOutput, ids, 64, &count) != maud_success)
+    {
+        return (maudDeviceId){0, 0};
+    }
+    for (uint32_t i = 0; i < count && i < 64; ++i)
+    {
+        char bytes[256];
+        size_t length = 0;
+        if (maudGetDeviceKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
+            length == strlen(key) && memcmp(bytes, key, length) == 0)
+        {
+            return ids[i];
+        }
+    }
+    return (maudDeviceId){0, 0};
 }
 
 static void ListDevices(const maudContext* context)
@@ -249,11 +279,14 @@ EM_JS(void, ListenForClicks, (void),
       { document.addEventListener("click", function() { _SampleClicked(); }); });
 #endif
 
-// Opens and starts a stream on the default device of its direction.
-static maudResult Open(maudDirection direction, maudStreamCallback callback, maudStreamId* out)
+// Opens and starts a stream on device, or with the null id on the
+// default device of its direction.
+static maudResult Open(maudDirection direction, maudDeviceId device, maudStreamCallback callback,
+                       maudStreamId* out)
 {
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = direction;
+    def.device = device;
     def.callback = callback;
     maudResult result = maudCreateStream(s_context, &def, out);
     return result == maud_success ? maudStartStream(s_context, *out) : result;
@@ -268,7 +301,24 @@ int main(int argc, char** argv)
     bool capture = true;
 #else
     int seconds = argc > 1 ? atoi(argv[1]) : 60;
-    bool capture = argc > 2 && strcmp(argv[2], "capture") == 0;
+    bool capture = false;
+    const char* key = nullptr;
+    for (int i = 2; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "capture") == 0)
+        {
+            capture = true;
+        }
+        else if (strcmp(argv[i], "--device") == 0 && i + 1 < argc)
+        {
+            key = argv[++i];
+        }
+        else
+        {
+            fprintf(stderr, "usage: sample_devices [seconds] [capture] [--device <key>]\n");
+            return 2;
+        }
+    }
 #endif
     s_ticks = seconds * 20;
     maudContextDef def = maudDefaultContextDef();
@@ -279,19 +329,30 @@ int main(int argc, char** argv)
         return 1;
     }
     ListDevices(s_context);
-    result = Open(maud_directionOutput, Tone, &s_stream);
+    maudDeviceId output = {0, 0};
+#if !defined(__EMSCRIPTEN__)
+    if (key != nullptr && (output = FindOutput(s_context, key)).index1 == 0)
+    {
+        fprintf(stderr, "no output with the key %s\n", key);
+        (void)maudDestroyContext(s_context);
+        return 1;
+    }
+#endif
+    result = Open(maud_directionOutput, output, Tone, &s_stream);
     if (result != maud_success)
     {
         fprintf(stderr, "no stream: %s\n", maudResultName(result));
         (void)maudDestroyContext(s_context);
         return 1;
     }
-    if (capture && (result = Open(maud_directionInput, Capture, &s_capture)) != maud_success)
+    if (capture && (result = Open(maud_directionInput, (maudDeviceId){0, 0}, Capture,
+                                  &s_capture)) != maud_success)
     {
         fprintf(stderr, "no capture: %s\n", maudResultName(result));
         s_capture = (maudStreamId){0, 0};
     }
-    printf("Playing a tone on the default output%s for %d s.\n",
+    printf("Playing a tone on %s%s for %d s.\n",
+           output.index1 != 0 ? "the output asked for" : "the default output",
            s_capture.index1 != 0 ? " and capturing the default input" : "", seconds);
 #if defined(__EMSCRIPTEN__)
     printf("Click the page to let the browser start the sound.\n");

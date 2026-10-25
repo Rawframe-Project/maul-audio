@@ -67,5 +67,5 @@ From there, [Devices and streams](devices-and-streams.md) continues with the Dev
 
 ## Samples
 
-- `sample_devices [seconds] [capture]` lists the devices, plays a quiet tone on the default output and prints every notification for 60 seconds or the number given; with `capture` it also captures the default input and prints its peak each second. On the web it builds as a page that starts at the first click.
+- `sample_devices [seconds] [capture] [--device <key>]` lists the devices with their keys, plays a quiet tone on the default output and prints every notification for 60 seconds or the number given; with `capture` it also captures the default input and prints its peak each second, and with `--device` it plays on the output with that key instead of following the default. On the web it builds as a page that starts at the first click.
 - `sample_binaural <set.maudhrtf> <out.wav>` renders a source circling the listener to a WAV file, without a device: `sample_binaural data/hrtf/sadie2-ku100-48k.maudhrtf circle.wav`.
