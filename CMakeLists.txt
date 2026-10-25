@@ -494,15 +494,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     if(MAUL_AUDIO_ALSA)
         maul_add_test(alsa THREADS)
         target_compile_definitions(test_alsa PRIVATE _GNU_SOURCE)
-        # The stall's underrun, which the stream can miss through
-        # pipewire-pulse (#60): quarantined, so it runs at night.
-        add_test(NAME alsa_xrun COMMAND test_alsa xrun)
-        set_tests_properties(alsa_xrun PROPERTIES LABELS "alsa;quarantine")
-        # Their streams play through the test daemon's pulse service.
-        set_tests_properties(alsa alsa_xrun PROPERTIES SKIP_RETURN_CODE 77
-            RESOURCE_LOCK pipewire-daemon)
+        # Its streams play through the test daemon's pulse service.
+        set_tests_properties(alsa PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
         if(MAUL_AUDIO_TSAN)
-            set_tests_properties(alsa alsa_xrun PROPERTIES ENVIRONMENT
+            set_tests_properties(alsa PROPERTIES ENVIRONMENT
                 "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-alsa.supp")
         endif()
         if(NOT MAUL_AUDIO_BUILD_SHARED)
@@ -754,8 +749,8 @@ endif()
 # the clock, and the changed-files check (tools/check.sh) runs one only
 # when a change reaches it by name.
 if(MAUL_AUDIO_BUILD_TESTS)
-    foreach(name pipewire pipewire_restart pulse alsa alsa_xrun stall guide_device coreaudio
-                 wasapi wasapi_sta ios ios_capture aaudio android_java)
+    foreach(name pipewire pipewire_restart pulse alsa stall guide_device coreaudio wasapi wasapi_sta
+                 ios ios_capture aaudio android_java)
         if(TEST ${name})
             set_property(TEST ${name} APPEND PROPERTY LABELS integration)
         endif()
@@ -777,7 +772,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
     set(maul_audio_server_dir ${PROJECT_BINARY_DIR}/sound-server)
     get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
     set(maul_audio_server_tests "")
-    foreach(name pipewire pipewire_restart pulse alsa alsa_xrun stall guide_device)
+    foreach(name pipewire pipewire_restart pulse alsa stall guide_device)
         if(TEST ${name})
             list(APPEND maul_audio_server_tests ${name})
         endif()

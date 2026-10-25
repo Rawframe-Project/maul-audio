@@ -11,7 +11,10 @@
 // -EPIPE, counts one underrun per gap: never on the first fill after a
 // prepare or a recovery, after silence written while it did not run,
 // when the delay fails, as a PCM in an xrun does, or when the queue is
-// reported empty before the last write's frames could have played out.
+// reported empty before the last write's frames could have played out;
+// and also when the queue is reported with frames in it long after
+// every frame written could have played out, as pipewire-pulse leaves a
+// starved stream's delay.
 
 #include "alsa_stream.h"
 #include "test_harness.h"
@@ -96,7 +99,7 @@ static void Silence(const maudStreamBlock* block, void* user)
 // One transfer of FRAMES into a PCM with delay frames queued before it,
 // pause milliseconds after the last one on the stream's clock, and the
 // stream's underruns after it. FRAMES at 48 kHz play out in 1.3 ms, so
-// 10 ms is time to drain.
+// 10 ms is time to drain, and 1 ms is not.
 static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay, int pause)
 {
     s_now += (int64_t)pause * 1000000;
@@ -136,7 +139,7 @@ static void TestSilentGaps(void)
     s_delayResult = 0;
     CHECK(WriteWith(&entry, 0, 0) == 0, "the first fill after a prepare is no gap");
     CHECK(WriteWith(&entry, 0, 10) == 1, "a queue drained of the stream's frames: one underrun");
-    CHECK(WriteWith(&entry, 2 * FRAMES, 10) == 1, "a queue with frames left: none");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 1, "a queue with frames left: none");
     CHECK(WriteWith(&entry, 0, 10) == 2, "the next gap is another");
     s_delayResult = -EPIPE;
     CHECK(WriteWith(&entry, 0, 10) == 2, "a delay that fails counts none: the write's -EPIPE does");
@@ -154,12 +157,22 @@ static void TestSilentGaps(void)
     // and for several writes after: the PCM misreports, and those frames
     // and the writes' own are still to play. Once they could have, a
     // queue found empty is a real drain.
-    CHECK(WriteWith(&entry, 24000, 10) == 4, "half a second queued: none");
+    CHECK(WriteWith(&entry, 24000, 1) == 4, "half a second queued: none");
     CHECK(WriteWith(&entry, 0, 0) == 4, "an empty queue reported before it could drain: none");
     CHECK(WriteWith(&entry, 0, 10) == 4 && WriteWith(&entry, 0, 10) == 4 &&
               WriteWith(&entry, 0, 10) == 4,
           "nor while the misreport goes on");
     CHECK(WriteWith(&entry, 0, 600) == 5, "a real drain once the frames could have played");
+    // Writes a millisecond apart into a queue that keeps two writes'
+    // frames, then a write 200 ms after the last, into a queue still
+    // reported with frames in it: the stream stalled and the PCM played
+    // a gap, which its delay does not show.
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 5 && WriteWith(&entry, 2 * FRAMES, 1) == 5 &&
+              WriteWith(&entry, 2 * FRAMES, 1) == 5,
+          "a queue kept full: none");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 200) == 6,
+          "frames reported queued long after they could have played: one underrun");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 6, "and none once the queue is full again");
 }
 
 int main(void)

@@ -372,10 +372,6 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
 }
 
-// Whether this is the quarantined run, alsa_xrun ("test_alsa xrun"): the
-// stall alone, with its check that the stream counted it.
-static bool s_xrunOnly;
-
 // A callback late past the device buffer: the stream runs on, and counts
 // the gap. ALSA's PulseAudio plugin, which the test's default PCM is, plays
 // silence through the stall with no -EPIPE; the stream counts it from the
@@ -389,14 +385,9 @@ static void TestXrun(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(&blocks, 31), "past the stall");
     CHECK(WaitForBlocks(&blocks, 80), "it runs on");
-    // The stream can miss the gap through pipewire-pulse (#60): judged
-    // only in the quarantined run, alsa_xrun, until that is fixed.
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "its status");
-    if (s_xrunOnly)
-    {
-        CHECK(status.underruns > 0, "the stall counted as an underrun");
-    }
+    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.underruns > 0,
+          "the stall counted as an underrun");
     CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
@@ -574,9 +565,8 @@ static void TestRefusingAllocator(bool server)
     CHECK(maudDestroyContext(context) == maud_success && refusing.live == 0, "every block back");
 }
 
-int main(int argc, char** argv)
+int main(void)
 {
-    s_xrunOnly = argc > 1 && strcmp(argv[1], "xrun") == 0;
     if (!UseTestHome())
     {
         return 1;
@@ -589,11 +579,8 @@ int main(int argc, char** argv)
     {
         return getenv("MAUD_REQUIRE_ALSA") != nullptr ? 1 : SKIP;
     }
-    if (!s_xrunOnly)
-    {
-        TestDevices(context);
-        TestSilentFailure(context);
-    }
+    TestDevices(context);
+    TestSilentFailure(context);
     Blocks probe = {0};
     maudStreamDef streamDef = maudDefaultStreamDef();
     streamDef.callback = CountBlocks;
@@ -603,13 +590,6 @@ int main(int argc, char** argv)
     if (server)
     {
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the probe");
-    }
-    if (server && s_xrunOnly)
-    {
-        TestXrun(context);
-    }
-    else if (server)
-    {
         TestOutputStream(context);
         TestServerEnded(context);
         TestHostSuspended(context);
@@ -620,9 +600,6 @@ int main(int argc, char** argv)
     }
     CHECK(server || getenv("MAUD_REQUIRE_ALSA") == nullptr, "a server for the streams");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
-    if (!s_xrunOnly)
-    {
-        TestRefusingAllocator(server);
-    }
+    TestRefusingAllocator(server);
     return s_failures == 0 ? 0 : 1;
 }
