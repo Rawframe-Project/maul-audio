@@ -45,9 +45,11 @@ static maudAlsaStream* EntryOf(maudContext* context, const maudStreamSlot* slot)
 // out is not believed: a gap needs the time to drain, and the frames
 // still owed play out after this write's, however long the PCM goes on
 // reporting none. Nor is a queue reported with frames in it a period
-// after every frame owed could have played out: the PCM played a gap.
-// Through pipewire-pulse a starved stream stops, and the plugin's delay
-// stays at the sink's latency and what was left queued (#60).
+// after every frame owed could have played out, once the PCM was taking
+// them: it played a gap. Through pipewire-pulse a starved stream stops,
+// and the plugin's delay stays at the sink's latency and what was left
+// queued (#60). A fill into an empty queue sets no such time: the sink
+// may start taking frames late, as a resuming or Bluetooth one does.
 static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output, bool running)
 {
     snd_pcm_sframes_t delay = 0;
@@ -57,11 +59,12 @@ static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output, bool runn
     int64_t period = (int64_t)((uint64_t)entry->core->format.periodFrames * 1000000000u / rate);
     bool empty = output && entry->primed && known && delay <= 0;
     bool early = empty && now < entry->drainAt;
-    bool dry = output && entry->primed && known && now > entry->drainAt + period;
+    bool dry = output && entry->primed && entry->playing && known && now > entry->drainAt + period;
     if (running && ((empty && !early) || dry))
     {
         maudCountXrun(entry->core);
     }
+    entry->playing = known && delay > 0;
     if (!known || delay < 0)
     {
         delay = 0;

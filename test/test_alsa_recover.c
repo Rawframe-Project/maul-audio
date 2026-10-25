@@ -14,7 +14,8 @@
 // reported empty before the last write's frames could have played out;
 // and also when the queue is reported with frames in it long after
 // every frame written could have played out, as pipewire-pulse leaves a
-// starved stream's delay.
+// starved stream's delay, but not when the sink starts taking frames
+// late after a fill into an empty queue.
 
 #include "alsa_stream.h"
 #include "test_harness.h"
@@ -173,6 +174,18 @@ static void TestSilentGaps(void)
     CHECK(WriteWith(&entry, 2 * FRAMES, 200) == 6,
           "frames reported queued long after they could have played: one underrun");
     CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 6, "and none once the queue is full again");
+    // A recovery prepares the PCM, and the fill after it finds the queue
+    // empty. The sink starts taking frames 10 ms later, more than three
+    // periods, as a suspended sink resuming or a Bluetooth one does: the
+    // stream started late and played no gap. Once it plays, a stall is a
+    // gap again.
+    s_avail = -EPIPE;
+    CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underruns) == 7,
+          "another -EPIPE: one underrun");
+    CHECK(WriteWith(&entry, 0, 0) == 7, "the fill after the recovery: none");
+    CHECK(WriteWith(&entry, FRAMES, 10) == 7, "a sink that starts late: none");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 7, "it plays");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 200) == 8, "then a stall: one underrun");
 }
 
 int main(void)
