@@ -64,22 +64,13 @@ preset() {
     ctest --preset "$name" -j "$jobs"
 }
 
-# A CI cell's build with only the suites a label filter picks. A test
-# preset's own label exclusion overrides an -LE given beside it, so this
-# runs the build directory with the preset's timeout instead.
-preset_labeled() {
-    local name=$1
-    shift
-    step "preset $name"
-    cmake --preset "$name" >"$out/$name.log"
-    cmake --build --preset "$name" -j "$jobs" >>"$out/$name.log"
-    ctest --test-dir "out/$name" -j "$jobs" --timeout 300 --output-on-failure --no-tests=error "$@"
-}
-
-# The changed-files tier's suites in a CI cell's build: those the label
-# filter picks, and the integration suites among them against the
-# sound-server fixture, which must be able to start here. A filter that
-# picks nothing fails, as the presets' noTestsAction does.
+# The changed-files tier's suites in a CI cell's build: the suites the
+# first label filter picks (every suite when it is empty), and the
+# integration suites the second picks (none when it is empty) against the
+# sound-server fixture, which must be able to start here. Filters that
+# pick nothing fail, as the presets' noTestsAction does. A test preset's
+# own label exclusion overrides an -LE given beside it, so this runs the
+# build directory with the preset's timeout instead.
 count_tests() { # build directory, then ctest selection arguments
     local dir=$1
     shift
@@ -98,14 +89,16 @@ stop_fixture() {
 }
 
 preset_changed() {
-    local name=$1 filter=$2 dir=out/$1 units integration
+    local name=$1 dir=out/$1 units integration=0
+    local pick=(-LE '^(integration|quarantine)$') reach=(-L "$3" -L '^integration$' -LE '^quarantine$')
+    [ -z "$2" ] || pick=(-L "$2" "${pick[@]}")
     step "preset $name"
     cmake --preset "$name" >"$out/$name.log"
     cmake --build --preset "$name" -j "$jobs" >>"$out/$name.log"
-    units=$(count_tests "$dir" -L "$filter" -LE '^(integration|quarantine)$')
-    integration=$(count_tests "$dir" -L "$filter" -L '^integration$' -LE '^quarantine$')
+    units=$(count_tests "$dir" "${pick[@]}")
+    [ -z "$3" ] || integration=$(count_tests "$dir" "${reach[@]}")
     if [ "$units" -eq 0 ] && [ "$integration" -eq 0 ]; then
-        echo "no suite in $dir matches $filter" >&2
+        echo "no suite in $dir matches ${2:-every label} or ${3:-no label}" >&2
         exit 1
     fi
     if [ "$integration" -gt 0 ] && [ "$(count_tests "$dir" -R '^sound_server_start$')" -eq 0 ]; then
@@ -116,7 +109,7 @@ preset_changed() {
     fi
     local run=(ctest --test-dir "$dir" -j "$jobs" --timeout 300 --output-on-failure --no-tests=error)
     if [ "$units" -gt 0 ]; then
-        "${run[@]}" -L "$filter" -LE '^(integration|quarantine)$'
+        "${run[@]}" "${pick[@]}"
     fi
     if [ "$integration" -gt 0 ]; then
         step "integration suites against the sound-server fixture"
@@ -128,7 +121,7 @@ preset_changed() {
         trap 'exit 129' HUP
         trap 'exit 130' INT
         trap 'exit 143' TERM
-        "${run[@]}" -L "$filter" -L '^integration$' -LE '^quarantine$'
+        "${run[@]}" "${reach[@]}"
     fi
 }
 
@@ -239,12 +232,16 @@ if [ "$tier" = changed ]; then
         echo "no suite reached by the changes"
         exit 0
     fi
+    # A change that reaches every suite runs every unit suite, and still
+    # the integration suites the other changes reach by name.
+    regex=$(tr ' ' '\n' <<<"$labels" | grep -vx -e all -e '' | sort -u | paste -sd '|' || true)
+    named=${regex:+^($regex)\$}
     if [[ " $labels " == *" all "* ]]; then
-        preset_labeled linux-clang-20-asan -LE '^(integration|quarantine)$'
+        echo "every suite${regex:+, and the integration suites among $regex}"
+        preset_changed linux-clang-20-asan "" "$named"
     else
-        regex=$(printf '%s\n' $labels | sort -u | paste -sd '|')
         echo "suites labeled $regex"
-        preset_changed linux-clang-20-asan "^($regex)\$"
+        preset_changed linux-clang-20-asan "$named" "$named"
     fi
     exit 0
 fi

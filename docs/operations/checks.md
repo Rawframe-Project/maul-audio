@@ -8,15 +8,15 @@ What runs before a push, on a pull request, on `main` and every night, and the b
 
 | Tier | What it runs | Budget |
 |---|---|---|
-| `changed` | The source, module, length, documentation, snippet and API rules, the cost table, the organization's documentation check, the family sync check, `clang-format` on the changed files, and in `linux-clang-20-asan` the suites the changed files reach, the integration suites left out. | Under 2 minutes |
+| `changed` | The source, module, length, documentation, snippet and API rules, the cost table, the organization's documentation check, the family sync check, `clang-format` on the changed files, and in `linux-clang-20-asan` the suites the changed files reach, an integration suite only when a change reaches it by name, against the sound-server fixture. | Under 2 minutes |
 | `pr` | Every rule, `clang-format` on every file, `clang-tidy` over the Linux build's sources, the `linux-gcc-14` and `linux-clang-20-asan` presets with the sound-server suites, and 10 seconds of fuzzing per target. | Under 10 minutes |
 | `full` | Also the TSan, shared, Device-only, Spatial-only, private-backend and Clang Release presets, and a minute of fuzzing per target. | Under 20 minutes |
 
-The changed tier maps each changed path to the suites of its area (`labels_for` in the script); a change to the base, the build or the test harness runs every suite. Each suite's CTest label is its name.
+The changed tier maps each changed path to the suites of its area (`labels_for` in the script); a change to the base, the build or the test harness runs every unit suite. An integration suite runs only when a change reaches it by name: its own test file, `test/test_daemon.h` or `tools/pipewire_daemon.sh`. It runs then even beside a change that reaches every unit suite. Each suite's CTest label is its name.
 
 ## Labels
 
-- `integration`: a suite that drives a real platform (a sound server, the platform's audio service, a simulator, an emulator, a browser). It may read the clock and use localhost, and stays out of the changed tier.
+- `integration`: a suite that drives a real platform (a sound server, the platform's audio service, a simulator, an emulator, a browser). It may read the clock and use localhost, and runs in the changed tier only when a change reaches it by name.
 - `quarantine`: a check that failed intermittently. It runs only in the nightly run, with an issue, and leaves quarantine after 14 nightly runs in a row pass. Today: the browser clock and loopback pages, and the main page on a plain page (`page_web_plain`).
 - `package`: the installed package consumed by `samples/minimal` through CMake and pkg-config (`MAUL_AUDIO_TEST_PACKAGE`, [PackageTest.cmake](../../cmake/PackageTest.cmake)).
 
