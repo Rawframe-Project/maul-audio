@@ -39,6 +39,13 @@ typedef struct maudAlsaStream
     // Rendered frames a write left for the next one, from pendingOffset.
     uint32_t pendingOffset;
     uint32_t pendingFrames;
+    // Whether the frames last rendered for the PCM were the running
+    // stream's, since the PCM was last prepared or recovered: only then is
+    // a queue found empty a gap.
+    bool primed;
+    // When the frames queued by the last write have played out, on the
+    // host clock: a queue reported empty before then is a misreport.
+    int64_t drainAt;
     uint8_t order[MAUD_ALSA_MAX_CHANNELS];
     size_t bytes;
     maudWorker worker;

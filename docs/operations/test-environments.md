@@ -31,7 +31,7 @@ The script waits for each daemon to answer, at most 20 seconds a step (a loaded 
 
 The timing checks (each stream's rate, a duplex stream's slips) measure in windows of a second or two, by the stream clock's own host times rather than the wall clock. They judge only clean windows: those in which no node of the private graph counted an xrun (`pipewire_daemon.sh xruns`, from `pw-top`), the stream counted none, and the test thread's 10 ms sleeps never woke more than 10 ms late. A machine short of CPU really plays fewer frames, and its server may fill a starved client's gaps with silence it never counts, so such a window measures the machine. Without enough clean windows in 30, or in 45 seconds of windows, a check fails as `starved: k of n windows had xruns or a late wakeup`, never as a wrong rate. At normal load every window is clean. Starved failures in CI mean the runner is short of capacity; the bounds are not to be loosened for them ([test_clock.h](../../test/test_clock.h), [test_daemon.h](../../test/test_daemon.h)).
 
-ALSA's suites run through PipeWire's ALSA plugin, which absorbs a stall without an xrun and has no cards, so ALSA's recovery and card scan are tested by hand (step 7 of the checklist). `test_alsa_hotplug` drives the card watch with a test directory that gains and loses nodes.
+ALSA's suites run through ALSA's PulseAudio plugin, served by `pipewire-pulse`, which plays a stall's gap with no `-EPIPE` and has no cards: the suites see the underrun the stream counts from its empty queue, and ALSA's `-EPIPE` recovery and card scan are tested by hand (step 7 of the checklist). `test_alsa_hotplug` drives the card watch with a test directory that gains and loses nodes.
 
 ## Windows and Wine
 
