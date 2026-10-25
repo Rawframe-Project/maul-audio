@@ -377,12 +377,18 @@ static void TestHotplug(maudContext* context)
 
 // A context made while the server's default is a sink listed after
 // another takes that default from the server's own answer, not from the
-// order of the listing.
+// order of the listing. The other context is made only once the server
+// has announced the sink and then the default to the first: a module's
+// load and a default's change return before a server such as
+// pipewire-pulse has made them its answer.
 static void TestListedDefault(maudContext* context)
 {
     CHECK(Run("pactl load-module module-null-sink sink_name=maud-pulse-default > /dev/null"),
           "load a sink");
+    maudDeviceId announced = WaitForKey(context, maud_directionOutput, "maud-pulse-default");
+    CHECK(announced.index1 != 0, "the server announces the sink");
     CHECK(Run("pactl set-default-sink maud-pulse-default"), "make it the default");
+    CHECK(WaitForDefaults(context, announced), "the server announces it as the default");
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendPulse;
     maudContext* other = nullptr;
@@ -391,10 +397,10 @@ static void TestListedDefault(maudContext* context)
     {
         maudDeviceId sink = FindByKey(other, maud_directionOutput, "maud-pulse-default");
         maudDeviceId current = {0, 0};
-        CHECK(sink.index1 != 0 &&
-                  maudGetDefaultDevice(other, maud_directionOutput, maud_roleGeneral, &current) ==
+        CHECK(sink.index1 != 0, "the other context lists the sink");
+        CHECK(maudGetDefaultDevice(other, maud_directionOutput, maud_roleGeneral, &current) ==
                       maud_success &&
-                  SameDevice(current, sink),
+                  sink.index1 != 0 && SameDevice(current, sink),
               "the server's default from its answer");
         CHECK(maudDestroyContext(other) == maud_success, "destroy it");
     }
