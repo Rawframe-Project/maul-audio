@@ -408,6 +408,21 @@ jobs:
           if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/ctest.log"; then
             echo "::error::a test did not run"; exit 1
           fi
+      # The stall test's verdict on its window, added to the summary from
+      # what CTest recorded of every test's output, since the test cannot
+      # reach the summary from the device itself. The line it greps is
+      # test/test_stall.c's (Report): "stall window: " and the verdict.
+      - name: Stall verdict
+        if: always()
+        env:
+          LOG: out/android-emulator/Testing/Temporary/LastTest.log
+        run: |
+          lines=$(grep -h -o 'stall window: .*' "$LOG" 2>/dev/null || true)
+          if [ -n "$lines" ]; then
+            printf '%s\n' "$lines" | sed "s/^stall window: /- \`stall\`: timing checks /"
+          else
+            echo "- \`stall\`: no stall verdict found"
+          fi >>"$GITHUB_STEP_SUMMARY"
       - name: Test logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -472,6 +487,21 @@ jobs:
           if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/ctest.log"; then
             echo "::error::a test did not run"; exit 1
           fi
+      # The stall test's verdict on its window, added to the summary from
+      # what CTest recorded of every test's output, since the test cannot
+      # reach the summary from the device itself. The line it greps is
+      # test/test_stall.c's (Report): "stall window: " and the verdict.
+      - name: Stall verdict
+        if: always() && env.RUN == 'true'
+        env:
+          LOG: out/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+        run: |
+          lines=$(grep -h -o 'stall window: .*' "$LOG" 2>/dev/null || true)
+          if [ -n "$lines" ]; then
+            printf '%s\n' "$lines" | sed "s/^stall window: /- \`stall\`: timing checks /"
+          else
+            echo "- \`stall\`: no stall verdict found"
+          fi >>"$GITHUB_STEP_SUMMARY"
       - name: Test logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -87,7 +87,9 @@ static int64_t PauseLate(int milliseconds)
 
 // The window's verdict, printed on every run and, in a GitHub Actions
 // job, added to its summary, so that runs show whether CI judges the
-// timing checks at all.
+// timing checks at all. The iOS and Android jobs, whose tests run where
+// the summary file is not, grep the printed line from CTest's log
+// (.github/workflows/ci.yml, "Stall verdict"): keep its prefix.
 static void Report(const char* verdict)
 {
     printf("stall window: %s\n", verdict);
