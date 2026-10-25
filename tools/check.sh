@@ -86,6 +86,17 @@ count_tests() { # build directory, then ctest selection arguments
     ctest --test-dir "$dir" -N "$@" | sed -n 's/^Total Tests: //p'
 }
 
+# Stops the sound-server fixture's daemons in one directory, thawing any
+# a suite froze first. The script signals only the processes it started
+# there, so a fixture another run started elsewhere is never touched.
+stop_fixture() {
+    local name
+    for name in wireplumber pipewire-pulse pipewire dbus; do
+        tools/pipewire_daemon.sh signal "$1" "$name" CONT 2>/dev/null || true
+    done
+    tools/pipewire_daemon.sh stop "$1" || true
+}
+
 preset_changed() {
     local name=$1 filter=$2 dir=out/$1 units integration
     step "preset $name"
@@ -109,6 +120,14 @@ preset_changed() {
     fi
     if [ "$integration" -gt 0 ]; then
         step "integration suites against the sound-server fixture"
+        # CTest stops the fixture after the run, but not when the run is
+        # interrupted, killed or timed out: then this does, for this build
+        # tree's fixture.
+        # shellcheck disable=SC2064 # the directory is fixed now
+        trap "stop_fixture '$root/$dir/sound-server'" EXIT
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
         "${run[@]}" -L "$filter" -L '^integration$' -LE '^quarantine$'
     fi
 }
@@ -139,7 +158,8 @@ labels_for() {
         tools/cost_table.py | java/* | samples/* | bench/* | test/corpus/* | \
         test/fuzz_* | test/web/* | test/ios/* | test/android/* | data/hrtf/apache-2.0/*) ;;
     docs/user/*) echo guide ;;
-    test/test_daemon.h | tools/pipewire_daemon.sh) echo "alsa pipewire pipewire_restart pulse" ;;
+    test/test_daemon.h) echo "alsa pipewire pipewire_restart pulse" ;;
+    tools/pipewire_daemon.sh) echo "alsa pipewire pipewire_restart pulse stall guide_device" ;;
     tools/*.sh) ;;
     test/test_harness.h | test/test_signals.h | test/test_names.h | test/test_clock.h | \
         CMakeLists.txt | CMakePresets.json | cmake/* | src/base.c | src/allocator.* | \
