@@ -28,7 +28,10 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include "test_harness.h"
-#if !defined(_WIN32)
+// The sound-server fixture's daemon runs on a Linux host only; elsewhere
+// there is no graph to read, and iOS has no system() for its helper.
+#if defined(__linux__) && !defined(__ANDROID__)
+#define STALL_FIXTURE
 #include "test_daemon.h"
 #endif
 
@@ -50,13 +53,6 @@ static void Pause(int milliseconds)
 {
     Sleep((DWORD)milliseconds);
 }
-// No sound-server fixture here: no graph to read.
-static bool HaveDaemon(void)
-{
-    return false;
-}
-// How late a sleep may wake before the window counts as starved.
-#define LATE_WAKEUP 10000000LL
 #else
 #include <time.h>
 static void Pause(int milliseconds)
@@ -69,15 +65,27 @@ static void Pause(int milliseconds)
 // The xruns every node of the fixture's graph has counted, summed;
 // false where there is no fixture or the count cannot be read. It takes
 // about a second.
+#if defined(STALL_FIXTURE)
 static bool GraphXruns(unsigned long long* count)
 {
-#if defined(_WIN32)
+    return GraphXrunsEnd(GraphXrunsBegin(), count);
+}
+#else
+static bool GraphXruns(unsigned long long* count)
+{
     (void)count;
     return false;
-#else
-    return GraphXrunsEnd(GraphXrunsBegin(), count);
-#endif
 }
+
+// No sound-server fixture here: no graph to read.
+static bool HaveDaemon(void)
+{
+    return false;
+}
+
+// How late a sleep may wake before the window counts as starved.
+#define LATE_WAKEUP 10000000LL
+#endif
 
 // Sleeps, and returns how many nanoseconds past the time asked it woke.
 static int64_t PauseLate(int milliseconds)
