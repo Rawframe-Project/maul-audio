@@ -28,7 +28,7 @@ Per 10 ms of 48 kHz audio on one core of an AMD Ryzen 9 5900X (Linux, Clang 20, 
 
 ## Quick start
 
-It builds with CMake 3.25 or newer and GCC 14 or newer, Clang 19 or newer, or Apple Clang; on Linux it also needs pkg-config and the development headers of PipeWire, ALSA and PulseAudio. Ubuntu 24.04's default compiler is GCC 13, which the build refuses, so there install GCC 14, with Git, CMake and those packages, and tell CMake to use it:
+It builds with CMake 3.25 or newer and GCC 14 or newer, Clang 19 or newer, or Apple Clang. Ubuntu 24.04's default compiler is GCC 13, which the build refuses, so there install GCC 14, with Git and CMake, and tell CMake to use it:
 
 ```sh
 sudo apt install git cmake gcc-14 pkg-config libpipewire-0.3-dev libasound2-dev libpulse-dev
@@ -42,11 +42,11 @@ git clone https://github.com/Rawframe-Project/maul-audio.git
 cd maul-audio
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/sample_devices 10
 ./build/sample_binaural data/hrtf/sadie2-ku100-48k.maudhrtf circle.wav
+./build/sample_devices 10
 ```
 
-`sample_devices` lists the devices and plays a tone for ten seconds; `sample_binaural` renders a source circling the listener to a WAV file.
+`sample_binaural` renders a source circling the listener to a WAV file; `sample_devices` lists the devices and plays a tone for ten seconds. On a machine without a sound device, `sample_devices` exits 1 and names the cause, such as `no stream: maud_errorPlatform`. On Linux the build also needs pkg-config and the development headers of PipeWire, ALSA and PulseAudio, which the apt line above installs.
 
 A `build/` that GCC 13 already configured keeps that compiler and fails again ("GCC 14 or newer is required"). Remove it and configure again, with `CC` exported as above, then carry on with the rest of the block from `cmake --build build`:
 
