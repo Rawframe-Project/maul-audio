@@ -40,18 +40,26 @@ static maudAlsaStream* EntryOf(maudContext* context, const maudStreamSlot* slot)
 // PCM has had its frames and has none of them left queued played a gap
 // without them: an underrun, counted once, by the write that ends it.
 // PipeWire's ALSA plugin plays silence there and reports no -EPIPE; a
-// PCM in an xrun fails the delay instead, and its -EPIPE is counted.
+// PCM in an xrun fails the delay instead, and its -EPIPE is counted. A
+// queue reported empty before the last write's frames could have played
+// out is not believed: a gap needs the time to drain.
 static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output, bool running)
 {
     snd_pcm_sframes_t delay = 0;
     bool known = entry->api->pcmDelay(entry->pcm, &delay) == 0;
-    if (output && running && entry->primed && known && delay <= 0)
+    int64_t now = maudNowNanoseconds();
+    if (output && running && entry->primed && known && delay <= 0 && now >= entry->drainAt)
     {
         maudCountXrun(entry->core);
     }
     if (!known || delay < 0)
     {
         delay = 0;
+    }
+    if (output)
+    {
+        entry->drainAt = now + (int64_t)(((uint64_t)delay + frames) * 1000000000u /
+                                         entry->core->format.sampleRate);
     }
     uint64_t behind = (uint64_t)delay + (output ? 0u : frames);
     int64_t latency = (int64_t)(behind * 1000000000u / entry->core->format.sampleRate);

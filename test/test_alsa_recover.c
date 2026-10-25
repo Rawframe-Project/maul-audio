@@ -9,14 +9,16 @@
 // whose PCM ran dry recovers it. A running output that finds its PCM's
 // queue empty before a write, as PipeWire's ALSA plugin leaves it with no
 // -EPIPE, counts one underrun per gap: never on the first fill after a
-// prepare or a recovery, after silence written while it did not run, or
-// when the delay fails, as a PCM in an xrun does.
+// prepare or a recovery, after silence written while it did not run,
+// when the delay fails, as a PCM in an xrun does, or when the queue is
+// reported empty before the last write's frames could have played out.
 
 #include "alsa_stream.h"
 #include "test_harness.h"
 
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 
 static int s_recoverResult;
 static int s_recovered;
@@ -85,9 +87,13 @@ static void Silence(const maudStreamBlock* block, void* user)
 #define FRAMES 64
 
 // One transfer of FRAMES into a PCM with delay frames queued before it,
-// and the stream's underruns after it.
-static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay)
+// pause milliseconds after the last one, and the stream's underruns after
+// it. FRAMES at 48 kHz play out in 1.3 ms, so 10 ms is time to drain on
+// any machine.
+static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay, int pause)
 {
+    struct timespec span = {0, (long)pause * 1000000L};
+    nanosleep(&span, nullptr);
     s_avail = FRAMES;
     s_delay = delay;
     CHECK(maudAlsaTransfer(entry), "a write");
@@ -121,22 +127,27 @@ static void TestSilentGaps(void)
                             .samples = samples,
                             .bufferFrames = FRAMES};
     s_delayResult = 0;
-    CHECK(WriteWith(&entry, 0) == 0, "the first fill after a prepare is no gap");
-    CHECK(WriteWith(&entry, 0) == 1, "an empty queue after the stream's frames: one underrun");
-    CHECK(WriteWith(&entry, 2 * FRAMES) == 1, "a queue with frames left: none");
-    CHECK(WriteWith(&entry, 0) == 2, "the next gap is another");
+    CHECK(WriteWith(&entry, 0, 0) == 0, "the first fill after a prepare is no gap");
+    CHECK(WriteWith(&entry, 0, 10) == 1, "a queue drained of the stream's frames: one underrun");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 10) == 1, "a queue with frames left: none");
+    CHECK(WriteWith(&entry, 0, 10) == 2, "the next gap is another");
     s_delayResult = -EPIPE;
-    CHECK(WriteWith(&entry, 0) == 2, "a delay that fails counts none: the write's -EPIPE does");
+    CHECK(WriteWith(&entry, 0, 10) == 2, "a delay that fails counts none: the write's -EPIPE does");
     s_delayResult = 0;
     atomic_store(&core.state, maud_streamIdle);
-    CHECK(WriteWith(&entry, 0) == 2, "silence while the stream does not run: none");
+    CHECK(WriteWith(&entry, 0, 10) == 2, "silence while the stream does not run: none");
     atomic_store(&core.state, maud_streamRunning);
-    CHECK(WriteWith(&entry, 0) == 2, "nor the first fill once it runs again");
-    CHECK(WriteWith(&entry, 0) == 3, "then a gap counts");
+    CHECK(WriteWith(&entry, 0, 10) == 2, "nor the first fill once it runs again");
+    CHECK(WriteWith(&entry, 0, 10) == 3, "then a gap counts");
     s_avail = -EPIPE;
     CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underruns) == 4,
           "an -EPIPE: recovered, one underrun");
-    CHECK(WriteWith(&entry, 0) == 4, "the first fill after the recovery: none");
+    CHECK(WriteWith(&entry, 0, 10) == 4, "the first fill after the recovery: none");
+    // A second's frames queued, then a queue reported empty at once: the
+    // PCM misreports, nothing has played out.
+    CHECK(WriteWith(&entry, 48000, 10) == 4, "a second queued: none");
+    CHECK(WriteWith(&entry, 0, 0) == 4, "an empty queue reported before it could drain: none");
+    CHECK(WriteWith(&entry, 0, 10) == 5, "a real drain after it still counts");
 }
 
 int main(void)
