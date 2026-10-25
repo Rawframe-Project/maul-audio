@@ -508,6 +508,20 @@ static void TestMark(maudContext* context)
           "an unmarked one has no mark");
 }
 
+// Its rate by its own clock, which reads past the tolerance now and then
+// on a loaded machine (#73): checked only in the quarantined run,
+// pulse_rate, until that is fixed.
+static void TestOutputRate(maudContext* context)
+{
+    Blocks blocks = {0};
+    maudDeviceId none = {0, 0};
+    maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
+    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
+    CHECK(RateHolds(MeasureRate(context, stream), 48000.0), "at the sink's rate");
+    CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     Blocks blocks = {0};
@@ -528,7 +542,6 @@ static void TestOutputStream(maudContext* context)
           "stereo's positions");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(RateHolds(MeasureRate(context, stream), 48000.0), "at the sink's rate");
     CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
@@ -1265,8 +1278,11 @@ static void TestExclusiveRefused(maudContext* context)
           "exclusive use is refused");
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+    // The quarantined run, pulse_rate ("test_pulse rate"): the output
+    // stream's rate alone.
+    bool rateOnly = argc > 1 && strcmp(argv[1], "rate") == 0;
     s_control = pthread_self();
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendPulse;
@@ -1274,6 +1290,12 @@ int main(void)
     if (maudCreateContext(&def, &context) != maud_success)
     {
         return getenv("MAUD_REQUIRE_PULSE") != nullptr ? 1 : PlatformAbsent("no PulseAudio server");
+    }
+    if (rateOnly)
+    {
+        TestOutputRate(context);
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        return s_failures == 0 ? 0 : 1;
     }
     TestDevices(context);
     TestHotplug(context);
