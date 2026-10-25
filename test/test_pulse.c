@@ -307,6 +307,26 @@ static maudDeviceId WaitForKey(maudContext* context, maudDirection direction, co
     return device;
 }
 
+// Drains notifications for up to five seconds until an addition names
+// the device with key; announced says whether one did.
+static maudDeviceId WaitForAdded(maudContext* context, maudDirection direction, const char* key,
+                                 bool* announced)
+{
+    *announced = false;
+    for (int tries = 0; tries < 500 && !*announced; ++tries)
+    {
+        maudNotification record;
+        while (maudNextNotification(context, &record) == maud_success)
+        {
+            *announced =
+                *announced || (record.kind == maud_notifyDeviceAdded &&
+                               SameDevice(record.device, FindByKey(context, direction, key)));
+        }
+        Sleep(10);
+    }
+    return FindByKey(context, direction, key);
+}
+
 static void TestDevices(const maudContext* context)
 {
     CHECK(maudGetContextBackend(context) == maud_backendPulse, "PulseAudio");
@@ -348,11 +368,12 @@ static void TestHotplug(maudContext* context)
               "sink_properties='device.description=Hotplug device.form_factor=headphone' "
               "> /dev/null"),
           "load a sink");
+    bool announced = false;
+    maudDeviceId plugged =
+        WaitForAdded(context, maud_directionOutput, "maud-pulse-hotplug", &announced);
+    CHECK(plugged.index1 != 0, "it is added");
+    CHECK(announced, "by its name");
     maudNotification record;
-    maudDeviceId any = {0, 0};
-    CHECK(WaitFor(context, maud_notifyDeviceAdded, any, &record), "it is added");
-    maudDeviceId plugged = FindByKey(context, maud_directionOutput, "maud-pulse-hotplug");
-    CHECK(SameDevice(record.device, plugged), "by its name");
     maudDeviceInfo info = {0};
     CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success &&
               info.form == maud_formHeadphones,
