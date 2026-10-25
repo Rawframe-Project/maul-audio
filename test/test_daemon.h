@@ -12,13 +12,14 @@
 #ifndef MAUL_AUDIO_TEST_TEST_DAEMON_H
 #define MAUL_AUDIO_TEST_TEST_DAEMON_H
 
+#include "test_wait.h"
+
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
 #ifndef MAUD_TEST_DAEMON
 #define MAUD_TEST_DAEMON     ""
@@ -120,9 +121,9 @@ static inline bool GraphWindow(void* user)
                maudNextNotification(watch->context, &ignored) == maud_success)
         {
         }
-        struct timespec pause = {0, 10000000L};
         int64_t before = maudGetHostNanoseconds();
-        nanosleep(&pause, nullptr);
+        // hygiene: the 10 ms sleeps whose late wakes judge the window
+        Pause(10);
         int64_t late = maudGetHostNanoseconds() - before - 10000000LL;
         latest = late > latest ? late : latest;
     }

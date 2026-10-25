@@ -14,6 +14,7 @@
 #include "ios_session.h"
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_wait.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
@@ -38,10 +39,12 @@ typedef struct Blocks
 
 static pthread_t s_control;
 
-static void Sleep(int milliseconds)
+static void Drain(maudContext* context)
 {
-    struct timespec delay = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&delay, nullptr);
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
 }
 
 static double Now(void)
@@ -71,14 +74,7 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
 
 static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", Drain(context), atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -92,7 +88,8 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
         uint64_t last = 0;
         double start = Now();
         CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-        Sleep(2000);
+        // hygiene: a 2 s window of the stream's frames against the wall clock
+        Pause(2000);
         CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
         double rate = (double)(last - first) / (Now() - start);
         best = rate > best ? rate : best;
@@ -178,7 +175,7 @@ static void TestOutput(maudContext* context, const maudDeviceInfo* info)
           "in whole periods, on the IO thread");
     CHECK(Category(AVAudioSessionCategoryPlayback, true), "Playback, mixing with others");
     CHECK(Near(MeasureRate(context, stream), (double)info->nativeSampleRate), "at its rate");
-    CHECK(StreamClockIsSound(context, stream, true, true, Sleep), "its clock");
+    CHECK(StreamClockIsSound(context, stream, true, true, Pause), "its clock");
     CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_success,
           "focus asked for");
     CHECK(Category(AVAudioSessionCategoryPlayback, false), "then not mixing");
@@ -189,14 +186,16 @@ static void TestOutput(maudContext* context, const maudDeviceInfo* info)
     CHECK(Category(AVAudioSessionCategoryPlayback, true), "mixing again");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
-    Sleep(200);
+    // hygiene: gives a callback after the stop 200 ms to show
+    Pause(200);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     // The unit itself stops: its position, which every render moves,
     // stands still.
     uint64_t before = 0;
     uint64_t after = 0;
     CHECK(maudGetStreamPosition(context, stream, &before) == maud_success, "position");
-    Sleep(200);
+    // hygiene: gives a stopped unit 200 ms in which its position would move
+    Pause(200);
     CHECK(maudGetStreamPosition(context, stream, &after) == maud_success && after == before,
           "the unit stops with the stream");
     CHECK(maudStartStream(context, stream) == maud_success &&
@@ -313,7 +312,8 @@ static void TestMediaReset(maudContext* context)
     CHECK(FocusAfterDrain(context) == maud_focusPaused, "a reset pauses focus");
     CHECK(Suspension(context, stream) == maud_suspendPolicy, "and holds the stream");
     uint32_t held = atomic_load(&blocks.count);
-    Sleep(200);
+    // hygiene: gives a held stream 200 ms in which a callback would show
+    Pause(200);
     CHECK(atomic_load(&blocks.count) == held, "silent while held");
     CHECK(maudResumeContext(context) == maud_success &&
               FocusAfterDrain(context) == maud_focusNone &&
@@ -428,10 +428,7 @@ static void TestObjects(maudContext* context)
     printf("object stream: %s\n", maudResultName(result));
     CHECK(result == maud_success && maudStartStream(context, stream) == maud_success,
           "an object stream runs");
-    for (int tries = 0; tries < 500 && atomic_load(&placed.count) < 20; ++tries)
-    {
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the object stream's blocks", (void)0, atomic_load(&placed.count) >= 20);
     CHECK(atomic_load(&placed.count) >= 20 && atomic_load(&placed.offered) == 2,
           "its callback runs, offered every object");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");

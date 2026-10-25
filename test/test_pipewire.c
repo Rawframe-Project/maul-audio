@@ -11,6 +11,7 @@
 #include "test_daemon.h"
 #include "test_harness.h"
 #include "test_names.h"
+#include "test_wait.h"
 
 #include "maul-audio/notification.h"
 
@@ -21,9 +22,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-
-#define SKIP 77
 
 // The test's own client: a thread loop, a core, the default metadata.
 typedef struct Helper
@@ -81,10 +79,22 @@ static const struct pw_registry_events s_helperRegistry = {
     .global = OnHelperGlobal,
 };
 
-static void Sleep(int milliseconds)
+static void Drain(maudContext* context)
 {
-    struct timespec pause = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&pause, nullptr);
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+}
+
+// Whether the helper's loop thread has bound the metadata, read under
+// the loop's lock.
+static bool HelperReady(Helper* helper)
+{
+    pw_thread_loop_lock(helper->loop);
+    bool ready = helper->metadata != nullptr && helper->settings != nullptr;
+    pw_thread_loop_unlock(helper->loop);
+    return ready;
 }
 
 static bool StartHelper(Helper* helper)
@@ -103,17 +113,13 @@ static bool StartHelper(Helper* helper)
                                  helper);
     }
     pw_thread_loop_unlock(helper->loop);
-    // The loop thread binds the metadata when its global arrives; read it
-    // under the loop's lock.
-    bool ready = false;
-    for (int tries = 0; tries < 300 && !ready && helper->core != nullptr; ++tries)
+    // The loop thread binds the metadata when its global arrives.
+    if (helper->core == nullptr)
     {
-        Sleep(10);
-        pw_thread_loop_lock(helper->loop);
-        ready = helper->metadata != nullptr && helper->settings != nullptr;
-        pw_thread_loop_unlock(helper->loop);
+        return false;
     }
-    return ready;
+    POLL_UNTIL(3000, "the helper's metadata", (void)0, HelperReady(helper));
+    return HelperReady(helper);
 }
 
 // Plugs in a null sink named maud-test-hotplug at 44.1 kHz, which says
@@ -222,33 +228,40 @@ static bool KeyIs(const maudContext* context, maudDeviceId device, const char* k
            length == strlen(key) && memcmp(bytes, key, length) == 0;
 }
 
-// Polls of 10 ms a wait for the daemon or the session manager takes at
-// most (SESSION_MANAGER_MS, test_daemon.h).
-#define NOTICE_TRIES (SESSION_MANAGER_MS / 10)
+// The longest a wait for the daemon or the session manager takes, in
+// milliseconds (SESSION_MANAGER_MS, test_daemon.h). A wait ends as soon as
+// the answer comes.
+#define NOTICE_MS SESSION_MANAGER_MS
 
-// Drains notifications for up to NOTICE_TRIES ten-millisecond waits
-// until one of kind arrives whose device has key, or whose device is
-// that one.
+// Drains notifications until one of kind arrives whose device has key,
+// or whose device is that one. Whether one did.
+static bool DrainTo(maudContext* context, maudNotificationKind kind, const char* key,
+                    maudDeviceId* deviceOut)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        bool matches = key == nullptr ? record.device.index1 == deviceOut->index1 &&
+                                            record.device.generation == deviceOut->generation
+                                      : KeyIs(context, record.device, key);
+        if (record.kind == kind && matches)
+        {
+            *deviceOut = record.device;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Drains notifications for up to NOTICE_MS until one of kind arrives
+// whose device has key, or whose device is that one.
 static bool WaitFor(maudContext* context, maudNotificationKind kind, const char* key,
                     maudDeviceId* deviceOut)
 {
-    for (int tries = 0; tries < NOTICE_TRIES; ++tries)
-    {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            bool matches = key == nullptr ? record.device.index1 == deviceOut->index1 &&
-                                                record.device.generation == deviceOut->generation
-                                          : KeyIs(context, record.device, key);
-            if (record.kind == kind && matches)
-            {
-                *deviceOut = record.device;
-                return true;
-            }
-        }
-        Sleep(10);
-    }
-    return false;
+    bool arrived = false;
+    POLL_UNTIL(NOTICE_MS, key != nullptr ? key : "a notification about the device",
+               arrived = DrainTo(context, kind, key, deviceOut), arrived);
+    return arrived;
 }
 
 // Set once a default the daemon names has not reached the context in a
@@ -288,43 +301,38 @@ static void PrintDefaults(const maudContext* context)
     }
 }
 
-// Drains notifications for up to tries polls of 10 ms until device is
-// the default output for both roles.
-static bool WaitForDefaultWithin(maudContext* context, maudDeviceId device, int tries)
+// Whether device is the default output for both roles.
+static bool IsDefault(const maudContext* context, maudDeviceId device)
+{
+    maudDeviceId general = {0, 0};
+    maudDeviceId communications = {0, 0};
+    return maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general) ==
+               maud_success &&
+           maudGetDefaultDevice(context, maud_directionOutput, maud_roleCommunications,
+                                &communications) == maud_success &&
+           general.index1 == device.index1 && general.generation == device.generation &&
+           communications.index1 == device.index1;
+}
+
+// Drains notifications for up to milliseconds until device is the
+// default output for both roles.
+static bool WaitForDefaultWithin(maudContext* context, maudDeviceId device, int milliseconds)
 {
     if (s_defaultsLost)
     {
         return false;
     }
-    for (int poll = 0; poll < tries; ++poll)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        maudDeviceId general = {0, 0};
-        maudDeviceId communications = {0, 0};
-        if (maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general) ==
-                maud_success &&
-            maudGetDefaultDevice(context, maud_directionOutput, maud_roleCommunications,
-                                 &communications) == maud_success &&
-            general.index1 == device.index1 && general.generation == device.generation &&
-            communications.index1 == device.index1)
-        {
-            return true;
-        }
-        Sleep(10);
-    }
-    return false;
+    POLL_UNTIL(milliseconds, "the default output", Drain(context), IsDefault(context, device));
+    return IsDefault(context, device);
 }
 
 static bool WaitForDefault(maudContext* context, maudDeviceId device)
 {
-    if (s_defaultsLost || WaitForDefaultWithin(context, device, NOTICE_TRIES))
+    if (s_defaultsLost || WaitForDefaultWithin(context, device, NOTICE_MS))
     {
         return !s_defaultsLost;
     }
-    printf("the default never reached the context in %d s\n", NOTICE_TRIES / 100);
+    printf("the default never reached the context in %d s\n", NOTICE_MS / 1000);
     PrintDefaults(context);
     s_defaultsLost = true;
     return false;
@@ -392,10 +400,11 @@ static void ResetDefaults(maudContext* context, Helper* helper)
 static bool SetEffectiveDefault(maudContext* context, Helper* helper, const char* nodeName,
                                 maudDeviceId device)
 {
-    for (int attempt = 0; attempt < 30; ++attempt)
+    // hygiene: writes the default again, which the session manager may override
+    for (int write = 0; write < 30; ++write)
     {
         SetDefaultKey(helper, "default.audio.sink", nodeName);
-        if (WaitForDefaultWithin(context, device, 100))
+        if (WaitForDefaultWithin(context, device, 1000))
         {
             return true;
         }
@@ -521,7 +530,8 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
         atomic_store(&blocks->stalling, true);
-        Sleep(300);
+        // hygiene: stalls the callback 300 ms so the test can act during it
+        Pause(300);
         atomic_store(&blocks->stalling, false);
     }
     atomic_fetch_add(&blocks->count, 1);
@@ -531,40 +541,29 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
 // three seconds until the callback has run count times.
 static bool WaitForBlocks(maudContext* context, Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 300 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "the stream's blocks", Drain(context), atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
 // Whether a link into the plugged sink appeared within three seconds.
+// Whether a link into the plugged sink is listed, read under the
+// helper's loop lock.
+static bool LinkedIntoPlugged(Helper* helper)
+{
+    pw_thread_loop_lock(helper->loop);
+    bool linked = false;
+    for (uint32_t i = 0; i < helper->linkCount && helper->pluggedId != 0; ++i)
+    {
+        linked = linked || helper->linkInputs[i] == helper->pluggedId;
+    }
+    pw_thread_loop_unlock(helper->loop);
+    return linked;
+}
+
 static bool WaitForLinkIntoPlugged(maudContext* context, Helper* helper)
 {
-    for (int tries = 0; tries < 300; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        pw_thread_loop_lock(helper->loop);
-        bool linked = false;
-        for (uint32_t i = 0; i < helper->linkCount && helper->pluggedId != 0; ++i)
-        {
-            linked = linked || helper->linkInputs[i] == helper->pluggedId;
-        }
-        pw_thread_loop_unlock(helper->loop);
-        if (linked)
-        {
-            return true;
-        }
-        Sleep(10);
-    }
-    return false;
+    POLL_UNTIL(3000, "a link into the plugged sink", Drain(context), LinkedIntoPlugged(helper));
+    return LinkedIntoPlugged(helper);
 }
 
 // The stream's rate by its own clock (test_clock.h), in windows of a
@@ -605,13 +604,29 @@ static bool EndNewestOutputStream(void)
 
 // The graph ends a stream: a playing one is built again by the drains
 // and plays on, and so is a stopped one, which then starts.
+// Drains notifications until one of kind about a stream arrives, for a
+// suspension one for reason, stopping at it. Whether one did.
+static bool DrainToStream(maudContext* context, maudNotificationKind kind, maudSuspendReason reason)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        if (record.kind == kind && (kind != maud_notifyStreamSuspended || record.reason == reason))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void TestGraphEnded(maudContext* context)
 {
     Blocks blocks = {0};
     maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &blocks);
     CHECK(WaitForBlocks(context, &blocks, 20), "it plays");
     CHECK(EndNewestOutputStream(), "the graph ends it");
-    Sleep(200);
+    // hygiene: lets the graph's end reach the stream before its count is taken
+    Pause(200);
     uint32_t ended = atomic_load(&blocks.count);
     CHECK(WaitForBlocks(context, &blocks, ended + 20), "it plays on, built again");
     Blocks idle = {0};
@@ -619,7 +634,8 @@ static void TestGraphEnded(maudContext* context)
     CHECK(WaitForBlocks(context, &idle, 5) && maudStopStream(context, stopped) == maud_success,
           "a second plays and stops");
     CHECK(EndNewestOutputStream(), "the graph ends the stopped one");
-    Sleep(200);
+    // hygiene: lets the graph's end reach the stopped stream before its count is taken
+    Pause(200);
     uint32_t before = atomic_load(&idle.count);
     CHECK(maudStartStream(context, stopped) == maud_success &&
               WaitForBlocks(context, &idle, before + 20),
@@ -651,30 +667,19 @@ static void TestRebuildFails(maudContext* context)
     CHECK(EndNewestOutputStream(), "the graph ends it");
     // Undrained, so the end is queued for the drain that rebuilds it,
     // which the stopped daemon leaves waiting.
-    Sleep(300);
+    // hygiene: lets the end queue for the drain that rebuilds the stream
+    Pause(300);
     CHECK(SignalDaemon("STOP"), "the daemon stops answering");
-    maudNotification record;
     bool suspended = false;
-    for (int tries = 0; tries < 400 && !suspended; ++tries)
-    {
-        while (!suspended && maudNextNotification(context, &record) == maud_success)
-        {
-            suspended =
-                record.kind == maud_notifyStreamSuspended && record.reason == maud_suspendPlatform;
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(4000, "the stream's suspension for the platform",
+               suspended = DrainToStream(context, maud_notifyStreamSuspended, maud_suspendPlatform),
+               suspended);
     CHECK(SignalDaemon("CONT"), "the daemon answers again");
     CHECK(suspended, "suspended for the platform while the rebuild fails");
     bool resumed = false;
-    for (int tries = 0; tries < NOTICE_TRIES && !resumed; ++tries)
-    {
-        while (!resumed && maudNextNotification(context, &record) == maud_success)
-        {
-            resumed = record.kind == maud_notifyStreamResumed;
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(NOTICE_MS, "the stream's resumption",
+               resumed = DrainToStream(context, maud_notifyStreamResumed, maud_suspendNone),
+               resumed);
     CHECK(resumed, "resumed once it works");
     uint32_t since = atomic_load(&blocks.count);
     CHECK(WaitForBlocks(context, &blocks, since + 20), "and plays");
@@ -718,12 +723,13 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudGetContextMisuse(context) >= 1, "and counted");
     CHECK(RateHolds(MeasureRate(context, stream), 48000.0),
           "the clock advances at the stream's rate");
-    CHECK(StreamClockIsSound(context, stream, true, false, Sleep),
+    CHECK(StreamClockIsSound(context, stream, true, false, Pause),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     WaitForBlocks(context, &blocks, UINT32_MAX / 2);
     uint32_t stopped = atomic_load(&blocks.count);
-    Sleep(100);
+    // hygiene: gives a callback after the stop 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy stream");
     maudStreamDef def = maudDefaultStreamDef();
@@ -761,7 +767,7 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 10), "capture callbacks");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "blocks hold input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "every capture block is one period");
-    CHECK(StreamClockIsSound(context, stream, false, true, Sleep),
+    CHECK(StreamClockIsSound(context, stream, false, true, Pause),
           "its clock maps frames to host time");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy capture");
 }
@@ -842,7 +848,8 @@ static void TestXruns(maudContext* context)
         CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
         uint64_t before = status.underruns;
         CHECK(maudStopStream(context, stream) == maud_success, "stop");
-        Sleep(100);
+        // hygiene: a stop's gap of 100 ms, which the underrun count must not take
+        Pause(100);
         CHECK(maudStartStream(context, stream) == maud_success, "start again");
         CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 5), "it runs again");
         CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
@@ -865,20 +872,14 @@ static void TestDestroyWhileRendering(maudContext* context)
         Blocks blocks = {.stallAt = 10};
         maudDirection direction = duplex ? maud_directionDuplex : maud_directionOutput;
         maudStreamId stream = OpenStream(context, direction, (maudDeviceId){0, 0}, &blocks);
-        for (int tries = 0; tries < 300 && !atomic_load(&blocks.stalling); ++tries)
-        {
-            maudNotification ignored;
-            while (maudNextNotification(context, &ignored) == maud_success)
-            {
-            }
-            Sleep(1);
-        }
+        POLL_UNTIL(300, "the callback's stall", Drain(context), atomic_load(&blocks.stalling));
         CHECK(atomic_load(&blocks.stalling), "its callback is running");
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed meanwhile");
         uint32_t count = atomic_load(&blocks.count);
         CHECK(!atomic_load(&blocks.stalling) && count == blocks.stallAt + 1,
               "after the callback returned");
-        Sleep(100);
+        // hygiene: gives a callback after the destroy 100 ms to show
+        Pause(100);
         CHECK(atomic_load(&blocks.count) == count, "and no callback came after");
     }
 }
@@ -958,24 +959,31 @@ static void TestDuplexStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stalled duplex");
 }
 
+// Drains notifications until one of kind for stream arrives, stopping
+// at it. Whether one did.
+static bool DrainToRecord(maudContext* context, maudNotificationKind kind, maudStreamId stream,
+                          maudNotification* recordOut)
+{
+    while (maudNextNotification(context, recordOut) == maud_success)
+    {
+        if (recordOut->kind == kind && recordOut->stream.index1 == stream.index1 &&
+            recordOut->stream.generation == stream.generation)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Drains notifications for up to three seconds until one of kind for
 // stream arrives.
 static bool WaitForStream(maudContext* context, maudNotificationKind kind, maudStreamId stream,
                           maudNotification* recordOut)
 {
-    for (int tries = 0; tries < 300; ++tries)
-    {
-        while (maudNextNotification(context, recordOut) == maud_success)
-        {
-            if (recordOut->kind == kind && recordOut->stream.index1 == stream.index1 &&
-                recordOut->stream.generation == stream.generation)
-            {
-                return true;
-            }
-        }
-        Sleep(10);
-    }
-    return false;
+    bool arrived = false;
+    POLL_UNTIL(3000, "a notification about the stream",
+               arrived = DrainToRecord(context, kind, stream, recordOut), arrived);
+    return arrived;
 }
 
 static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
@@ -1019,27 +1027,14 @@ static void TestStreamsMoveAndAreLost(maudContext* context, Helper* helper)
 // to two seconds; or for half a second, whether it stays below it.
 static bool Hears(maudContext* context, const Blocks* blocks, uint32_t thousandths)
 {
-    for (int tries = 0; tries < 200 && atomic_load(&blocks->peak) < thousandths; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(2000, "the input to reach its level", Drain(context),
+               atomic_load(&blocks->peak) >= thousandths);
     return atomic_load(&blocks->peak) >= thousandths;
 }
 
 static bool StaysBelow(maudContext* context, const Blocks* blocks, uint32_t thousandths)
 {
-    for (int tries = 0; tries < 50; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    STEP_FOR(500, Drain(context));
     return atomic_load(&blocks->peak) < thousandths;
 }
 
@@ -1215,7 +1210,7 @@ int main(int argc, char** argv)
         {
             CHECK(maudDestroyContext(context) == maud_success, "destroy the other backend");
         }
-        return SKIP;
+        return PlatformAbsent("no PipeWire daemon");
     }
     CHECK(result == maud_success, "a native context on the daemon");
     if (result != maud_success)

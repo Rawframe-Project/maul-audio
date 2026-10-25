@@ -436,7 +436,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     # The snippets that open the native backend. Its stream plays on the
     # test daemon, which other tests plug, unplug and restart.
     maul_add_test(guide_device)
-    set_tests_properties(guide_device PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+    set_tests_properties(guide_device PROPERTIES RESOURCE_LOCK pipewire-daemon)
     # Its stream may open ALSA's default PCM on a machine without sound,
     # where libasound leaks.
     if(MAUL_AUDIO_SANITIZE AND MAUL_AUDIO_ALSA)
@@ -448,7 +448,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     # whose callback runs on the stalled thread itself.
     if(MAUL_AUDIO_SPATIAL AND NOT EMSCRIPTEN)
         maul_add_test(stall)
-        set_tests_properties(stall PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+        set_tests_properties(stall PROPERTIES RESOURCE_LOCK pipewire-daemon)
         # Its stream may open ALSA's default PCM on a machine without
         # sound, where libasound leaks.
         if(MAUL_AUDIO_SANITIZE AND MAUL_AUDIO_ALSA)
@@ -492,14 +492,14 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         add_test(NAME pipewire_move COMMAND test_pipewire move)
         set_tests_properties(pipewire_move PROPERTIES LABELS "pipewire;quarantine")
         # All three use the one test daemon, and pipewire_restart restarts it.
-        set_tests_properties(pipewire pipewire_move pipewire_restart PROPERTIES SKIP_RETURN_CODE 77
+        set_tests_properties(pipewire pipewire_move pipewire_restart PROPERTIES
             RESOURCE_LOCK pipewire-daemon)
     endif()
     if(MAUL_AUDIO_ALSA)
         maul_add_test(alsa THREADS)
         target_compile_definitions(test_alsa PRIVATE _GNU_SOURCE)
         # Its streams play through the test daemon's pulse service.
-        set_tests_properties(alsa PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+        set_tests_properties(alsa PROPERTIES RESOURCE_LOCK pipewire-daemon)
         if(MAUL_AUDIO_TSAN)
             set_tests_properties(alsa PROPERTIES ENVIRONMENT
                 "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-alsa.supp")
@@ -525,7 +525,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_add_test(pulse)
         target_compile_definitions(test_pulse PRIVATE _GNU_SOURCE)
         # The test server is the PipeWire daemon's pulse service.
-        set_tests_properties(pulse PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK pipewire-daemon)
+        set_tests_properties(pulse PROPERTIES RESOURCE_LOCK pipewire-daemon)
         if(MAUL_AUDIO_TSAN)
             set_tests_properties(pulse PROPERTIES ENVIRONMENT
                 "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-pulse.supp")
@@ -565,11 +565,11 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         target_link_libraries(test_wasapi PRIVATE ole32)
         # Both runs move streams between the system's endpoints and make
         # them the default, so they never run at once.
-        set_tests_properties(wasapi PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK wasapi-endpoints)
+        set_tests_properties(wasapi PROPERTIES RESOURCE_LOCK wasapi-endpoints)
         # The same with the host's thread in a single-threaded apartment.
         add_test(NAME wasapi_sta COMMAND test_wasapi)
-        set_tests_properties(wasapi_sta PROPERTIES SKIP_RETURN_CODE 77
-            ENVIRONMENT MAUD_WASAPI_STA=1 RESOURCE_LOCK wasapi-endpoints)
+        set_tests_properties(wasapi_sta PROPERTIES ENVIRONMENT MAUD_WASAPI_STA=1
+            RESOURCE_LOCK wasapi-endpoints)
         if(NOT MAUL_AUDIO_BUILD_SHARED)
             maul_add_test(wasapi_voice WHITEBOX)
             target_link_libraries(test_wasapi_voice PRIVATE ole32)
@@ -609,7 +609,6 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     endif()
     if(MAUL_AUDIO_AAUDIO)
         maul_add_test(aaudio THREADS)
-        set_tests_properties(aaudio PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     # The Java half, as an application in the emulator, built by
     # tools/build_android_app.sh without Gradle and run by
@@ -641,7 +640,6 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_add_test(coreaudio THREADS)
         target_link_libraries(test_coreaudio PRIVATE "-framework CoreAudio"
             "-framework CoreFoundation")
-        set_tests_properties(coreaudio PROPERTIES SKIP_RETURN_CODE 77)
         # Forms and data source listeners, against a fake HAL.
         maul_add_test(coreaudio_form WHITEBOX)
         target_link_libraries(test_coreaudio_form PRIVATE "-framework CoreAudio"
@@ -726,6 +724,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE AND EMSCRIPTEN)
                  ${PROJECT_BINARY_DIR} ${page}.html ${ARGN})
         # A page measures timing and xruns in a real browser, so it runs
         # alone, never beside the other suites.
+        # hygiene: exit 77 means the page has no browser or sound server here
         set_tests_properties(${name} PROPERTIES LABELS "integration;${page}" SKIP_RETURN_CODE 77
                              TIMEOUT 120 RUN_SERIAL TRUE)
     endfunction()
@@ -757,6 +756,15 @@ if(MAUL_AUDIO_BUILD_TESTS)
                  wasapi wasapi_sta ios ios_capture aaudio android_java)
         if(TEST ${name})
             set_property(TEST ${name} APPEND PROPERTY LABELS integration)
+        endif()
+    endforeach()
+    # The suites that skip where their platform is absent
+    # (PlatformAbsent, test/test_wait.h).
+    foreach(name pipewire pipewire_move pipewire_restart pulse alsa stall guide_device coreaudio
+                 wasapi wasapi_sta aaudio)
+        if(TEST ${name})
+            # hygiene: exit 77 means the suite's platform is absent, never a failure
+            set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
         endif()
     endforeach()
 endif()

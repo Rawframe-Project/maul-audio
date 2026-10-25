@@ -17,6 +17,7 @@
 #define TEST_CLOCK_MAX_LATENCY 5000000000
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_wait.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
@@ -32,9 +33,6 @@
 #include <sys/system_properties.h>
 #include <time.h>
 
-// The exit code CTest reads as skipped.
-#define SKIP 77
-
 typedef struct Blocks
 {
     atomic_uint count;
@@ -46,12 +44,6 @@ typedef struct Blocks
 } Blocks;
 
 static pthread_t s_control;
-
-static void Sleep(int milliseconds)
-{
-    struct timespec delay = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&delay, nullptr);
-}
 
 static double Now(void)
 {
@@ -77,7 +69,8 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
-        Sleep(300);
+        // hygiene: stalls the callback past the buffer so the device underruns
+        Pause(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
@@ -92,11 +85,7 @@ static void Drain(maudContext* context)
 
 static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        Drain(context);
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", Drain(context), atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -124,7 +113,8 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
         CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
         while (Now() - start < 3.0)
         {
-            Sleep(10);
+            // hygiene: 10 ms steps through a rate window, timing this thread's wakes
+            Pause(10);
             double now = Now();
             late = now - previous - 0.010 > late ? now - previous - 0.010 : late;
             previous = now;
@@ -246,14 +236,15 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
               format.sampleRate == info.nativeSampleRate,
           "native at the device's rate");
-    Sleep(100);
+    // hygiene: gives a callback before the start 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(atomic_load(&blocks.onControl) == 0, "on AAudio's thread");
     CHECK(Near(MeasureRate(context, stream), (double)info.nativeSampleRate), "at its rate");
-    CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
+    CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
     // The emulator's backlog, which the lane's gate reads to restart an
     // emulator before it reaches TEST_CLOCK_MAX_LATENCY.
@@ -265,20 +256,22 @@ static void TestOutputStream(maudContext* context)
     uint64_t before = 0;
     uint64_t after = 0;
     CHECK(maudGetStreamPosition(context, stream, &before) == maud_success, "position");
-    Sleep(200);
+    // hygiene: gives a stopped device 200 ms in which its position would move
+    Pause(200);
     CHECK(maudGetStreamPosition(context, stream, &after) == maud_success, "position");
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(after == before, "the device stops with the stream");
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
-    CHECK(StreamClockIsSound(context, stream, true, true, Sleep), "its clock after a restart");
+    CHECK(StreamClockIsSound(context, stream, true, true, Pause), "its clock after a restart");
     // A stream that ran waits a burst, 10 ms at least, before AAudio
     // closes it, so that no callback of the legacy path outlives it.
     double destroying = Now();
     CHECK(Destroy(context, stream), "destroy while running");
     CHECK(Now() - destroying >= 0.010, "the close waits for late callbacks");
     uint32_t destroyed = atomic_load(&blocks.count);
-    Sleep(50);
+    // hygiene: gives a callback after the destroy 50 ms to show
+    Pause(50);
     CHECK(atomic_load(&blocks.count) == destroyed, "no callbacks once destroyed");
     // A stream marked as already spatialized: Android before API 32 has
     // no spatializer; after, the open stream carries the mark.
@@ -323,11 +316,9 @@ static void TestXruns(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
     maudStreamStatus status = {0};
-    for (int tries = 0; tries < 100 && status.underruns == 0; ++tries)
-    {
-        Sleep(10);
-        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
-    }
+    POLL_UNTIL(1000, "the stall's underrun",
+               CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status"),
+               status.underruns != 0);
     printf("xruns after a stall: %llu under, %llu over\n", (unsigned long long)status.underruns,
            (unsigned long long)status.overruns);
     CHECK(status.underruns >= 1 && status.overruns == 0, "the stall counted as an underrun");
@@ -450,8 +441,7 @@ int main(void)
     maudResult result = maudCreateContext(&def, &context);
     if (result == maud_errorUnsupported && getenv("MAUD_REQUIRE_AAUDIO") == nullptr)
     {
-        printf("AAudio opens no stream here: skipped\n");
-        return SKIP;
+        return PlatformAbsent("AAudio opens no stream here");
     }
     CHECK(result == maud_success, "a native context");
     if (context == nullptr)

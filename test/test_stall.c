@@ -48,19 +48,8 @@
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-static void Pause(int milliseconds)
-{
-    Sleep((DWORD)milliseconds);
-}
-#else
-#include <time.h>
-static void Pause(int milliseconds)
-{
-    struct timespec span = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&span, nullptr);
-}
 #endif
+#include "test_wait.h"
 
 // The xruns every node of the fixture's graph has counted, summed;
 // false where there is no fixture or the count cannot be read. It takes
@@ -91,6 +80,7 @@ static bool HaveDaemon(void)
 static int64_t PauseLate(int milliseconds)
 {
     int64_t before = maudGetHostNanoseconds();
+    // hygiene: the host's own steps and stall, which the test times
     Pause(milliseconds);
     return maudGetHostNanoseconds() - before - (int64_t)milliseconds * 1000000;
 }
@@ -118,8 +108,6 @@ static void Drain(maudContext* context)
     }
 }
 
-// The exit code CTest reads as skipped.
-#define SKIP         77
 #define STEPS        200
 #define STALLED_STEP 100
 #define STALL_MS     50
@@ -215,6 +203,7 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
     }
     shared->blocksBefore = atomic_load(&shared->blocks);
     atomic_store(&shared->stalling, true);
+    // hygiene: the stall itself, a host thread stuck in its physics
     int64_t late = PauseLate(STALL_MS);
     shared->latestWakeup = late > shared->latestWakeup ? late : shared->latestWakeup;
     atomic_store(&shared->stalling, false);
@@ -239,7 +228,7 @@ int main(void)
     if (maudCreateContext(&contextDef, &context) != maud_success)
     {
         CHECK(!required, "a native context");
-        return required ? 1 : SKIP;
+        return required ? 1 : PlatformAbsent("no native backend opens here");
     }
     maudBackendKind chosen = maudGetContextBackend(context);
     if (required && chosen != requiredKind)
@@ -270,28 +259,25 @@ int main(void)
         CHECK(!required, "a native output stream");
         maudDestroySpatializer(shared->spatializer);
         CHECK(maudDestroyContext(context) == maud_success, "destroyed");
-        return required ? 1 : SKIP;
+        return required ? 1 : PlatformAbsent("no native output stream opens here");
     }
     maudStreamFormat format;
     CHECK(maudGetStreamFormat(context, shared->stream, &format) == maud_success, "format");
     // The host drains its notifications as a game does once a frame,
     // which on some platforms is what connects the stream; then it steps
     // every 5 ms, the stalled step stalling the drain too.
-    for (int tries = 0; tries < 300 && atomic_load(&shared->blocks) < 10; ++tries)
-    {
-        Drain(context);
-        Pause(10);
-    }
+    POLL_UNTIL(3000, "ten blocks from the stream", Drain(context),
+               atomic_load(&shared->blocks) >= 10);
     // A platform with no output device opens the stream suspended (the
     // Windows runners): nothing to stall under there.
     maudStreamStatus first = {0};
     CHECK(maudGetStreamStatus(context, shared->stream, &first) == maud_success, "status");
     if (atomic_load(&shared->blocks) < 10 && !required && first.suspension != maud_suspendNone)
     {
-        printf("skipped: the stream is suspended (reason %d)\n", (int)first.suspension);
+        printf("the stream is suspended (reason %d)\n", (int)first.suspension);
         CHECK(maudDestroyContext(context) == maud_success, "destroyed");
         maudDestroySpatializer(shared->spatializer);
-        return s_failures == 0 ? SKIP : 1;
+        return s_failures == 0 ? PlatformAbsent("no output device for the stream") : 1;
     }
     if (atomic_load(&shared->blocks) < 10)
     {
@@ -309,6 +295,7 @@ int main(void)
         atomic_store(&shared->step, step);
         CHECK(maudSimulateDirect(shared->spatializer, &listener) == maud_success, "a step");
         Drain(context);
+        // hygiene: the host steps every 5 ms, as a game's thread does
         int64_t late = PauseLate(5);
         if (step >= STALLED_STEP && step <= STALLED_STEP + 10)
         {

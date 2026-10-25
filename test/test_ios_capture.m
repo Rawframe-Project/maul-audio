@@ -20,6 +20,7 @@
 
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_wait.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
@@ -45,10 +46,12 @@ typedef struct Blocks
 
 static pthread_t s_control;
 
-static void Sleep(int milliseconds)
+static void Drain(maudContext* context)
 {
-    struct timespec delay = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&delay, nullptr);
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
 }
 
 static double Now(void)
@@ -74,14 +77,7 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
 
 static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", Drain(context), atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -103,7 +99,8 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
         uint64_t last = 0;
         double start = Now();
         CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-        Sleep(2000);
+        // hygiene: a 2 s window of the stream's frames against the wall clock
+        Pause(2000);
         CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
         double rate = (double)(last - first) / (Now() - start);
         best = rate > best ? rate : best;
@@ -202,7 +199,7 @@ static void TestCapture(maudContext* context)
           "Record, which takes no mixing option");
     uint64_t skippedBefore = Overruns(context, stream);
     bool atRate = Near(MeasureRate(context, stream), (double)info.nativeSampleRate);
-    bool clockSound = StreamClockIsSound(context, stream, false, true, Sleep);
+    bool clockSound = StreamClockIsSound(context, stream, false, true, Pause);
     uint64_t skipped = Overruns(context, stream) - skippedBefore;
     if (skipped > 0 && !(atRate && clockSound))
     {
@@ -344,14 +341,8 @@ static void TestVoicedDuplex(maudContext* context)
     CHECK((status.voiceActive & maud_voiceGainControl) == 0, "no gain control unasked");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     // The simulator's voice unit can be slow to settle on a loaded runner.
-    for (int tries = 0; tries < 1500 && atomic_load(&duplex.withInput) < 20; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(15000, "the voiced duplex's captured input", Drain(context),
+               atomic_load(&duplex.withInput) >= 20);
     printf("voiced duplex: %u blocks, %u with input\n", atomic_load(&duplex.count),
            atomic_load(&duplex.withInput));
     CHECK(atomic_load(&duplex.withInput) >= 20, "blocks with captured input");

@@ -18,6 +18,7 @@
 #include "test_clock.h"
 #include "test_harness.h"
 #include "test_names.h"
+#include "test_wait.h"
 #include "wasapi_core.h"
 #include "wasapi_stream.h"
 
@@ -32,8 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SKIP 77
-
 static const GUID s_clsidEnumerator = {
     0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
 static const GUID s_iidEnumerator = {
@@ -42,12 +41,6 @@ static const PROPERTYKEY s_otherKey = {
     {0x12345678, 0x1234, 0x1234, {0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34}}, 1};
 static const PROPERTYKEY s_formatKey = {
     {0xF19F064D, 0x082C, 0x4E27, {0xBC, 0x73, 0x68, 0x82, 0xA1, 0xBB, 0x8E, 0x4C}}, 0};
-
-// The tests' sleep with the signature test_clock.h takes.
-static void Pause(int milliseconds)
-{
-    Sleep((DWORD)milliseconds);
-}
 
 static uint32_t Drain(maudContext* context, maudNotificationKind kind)
 {
@@ -234,21 +227,24 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
+        // hygiene: stalls the callback past the buffer so the endpoint underruns
         Pause(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
 
+static void DrainAll(maudContext* context)
+{
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+}
+
 static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", DrainAll(context),
+               atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -263,7 +259,8 @@ static double MeasureWindow(const maudContext* context, maudStreamId stream, int
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&start);
     CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-    Sleep(milliseconds);
+    // hygiene: a window of the stream's frames against the wall clock
+    Pause(milliseconds);
     CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
     QueryPerformanceCounter(&end);
     double seconds = (double)(end.QuadPart - start.QuadPart) / (double)frequency.QuadPart;
@@ -444,7 +441,8 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 48000,
           "native at the engine's rate");
-    Sleep(100);
+    // hygiene: gives a callback before the start 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
@@ -456,7 +454,8 @@ static void TestOutputStream(maudContext* context)
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
-    Sleep(100);
+    // hygiene: gives a callback after the stop 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
@@ -516,19 +515,18 @@ static void TestLoopback(maudContext* context)
     CHECK(maudStartStream(context, tone) == maud_success &&
               maudStartStream(context, loop) == maud_success,
           "a tone and a loopback on the default endpoint");
-    for (int tries = 0; tries < 300 && atomic_load(&heard.peak) < 400; ++tries)
-    {
-        Pause(10);
-    }
+    POLL_UNTIL(3000, "the loopback to hear the tone", (void)0, atomic_load(&heard.peak) >= 400);
     CHECK(atomic_load(&heard.peak) >= 400 && atomic_load(&heard.peak) <= 600,
           "the loopback captures the tone");
     CHECK(atomic_load(&heard.withInput) == atomic_load(&heard.count) &&
               atomic_load(&heard.wrongSize) == 0,
           "as input, in whole periods");
     CHECK(maudDestroyStream(context, tone) == maud_success, "the tone ends");
+    // hygiene: lets the ended tone leave the loopback before the quiet window
     Pause(200);
     uint32_t before = atomic_load(&heard.count);
     atomic_store(&heard.peak, 0);
+    // hygiene: a second of silence for the loopback to capture
     Pause(1000);
     uint32_t during = atomic_load(&heard.count) - before;
     printf("loopback in silence: %u blocks in 1 s, peak %u\n", during, atomic_load(&heard.peak));
@@ -687,26 +685,33 @@ static void TestResume(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// Drains notifications until one of kind for stream arrives, with reason
+// when it is a suspension, stopping at it. Whether one did.
+static bool DrainToNotice(maudContext* context, maudStreamId stream, maudNotificationKind kind,
+                          maudSuspendReason reason)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        if (record.kind == kind && record.stream.index1 == stream.index1 &&
+            record.stream.generation == stream.generation &&
+            (kind != maud_notifyStreamSuspended || record.reason == reason))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Drains notifications for up to a second until one of kind for stream
 // arrives, with reason when it is a suspension.
 static bool NoticeFor(maudContext* context, maudStreamId stream, maudNotificationKind kind,
                       maudSuspendReason reason)
 {
-    for (int tries = 0; tries < 100; ++tries)
-    {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            if (record.kind == kind && record.stream.index1 == stream.index1 &&
-                record.stream.generation == stream.generation &&
-                (kind != maud_notifyStreamSuspended || record.reason == reason))
-            {
-                return true;
-            }
-        }
-        Sleep(10);
-    }
-    return false;
+    bool arrived = false;
+    POLL_UNTIL(1000, "a notification about the stream",
+               arrived = DrainToNotice(context, stream, kind, reason), arrived);
+    return arrived;
 }
 
 // The host suspends the context: the stream is suspended for the host,
@@ -721,9 +726,11 @@ static void TestHostSuspended(maudContext* context)
     CHECK(maudSetContextSuspended(context, true) == maud_success &&
               NoticeFor(context, stream, maud_notifyStreamSuspended, maud_suspendHost),
           "suspended for the host");
-    Sleep(100);
+    // hygiene: lets callbacks in flight at the suspension end before counting
+    Pause(100);
     uint32_t count = atomic_load(&blocks.count);
-    Sleep(300);
+    // hygiene: gives a callback while suspended 300 ms to show
+    Pause(300);
     CHECK(atomic_load(&blocks.count) == count, "no callbacks while suspended");
     CHECK(maudSetContextSuspended(context, false) == maud_success &&
               NoticeFor(context, stream, maud_notifyStreamResumed, maud_suspendNone),
@@ -829,10 +836,7 @@ static void TestObjects(maudContext* context)
            info.spatialObjects);
     CHECK(result == maud_success && maudStartStream(context, stream) == maud_success,
           "an object stream runs");
-    for (int tries = 0; tries < 300 && atomic_load(&placed.count) < 20; ++tries)
-    {
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "the object stream's blocks", (void)0, atomic_load(&placed.count) >= 20);
     CHECK(atomic_load(&placed.count) >= 20, "its callback runs");
     CHECK(atomic_load(&placed.mostOffered) <= info.spatialObjects,
           "offered no more objects than the endpoint takes");
@@ -843,10 +847,8 @@ static void TestObjects(maudContext* context)
               maudStartStream(context, stream) == maud_success,
           "stops and starts again");
     uint32_t before = atomic_load(&placed.count);
-    for (int tries = 0; tries < 300 && atomic_load(&placed.count) < before + 10; ++tries)
-    {
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "the object stream's blocks again", (void)0,
+               atomic_load(&placed.count) >= before + 10);
     CHECK(atomic_load(&placed.count) >= before + 10, "and runs again");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
@@ -917,7 +919,7 @@ int main(void)
         {
             OleUninitialize();
         }
-        return getenv("MAUD_REQUIRE_WASAPI") != nullptr ? 1 : SKIP;
+        return getenv("MAUD_REQUIRE_WASAPI") != nullptr ? 1 : PlatformAbsent("no audio endpoint");
     }
     TestApartment(context);
     TestDevices(context);

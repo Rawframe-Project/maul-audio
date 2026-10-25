@@ -8,6 +8,7 @@
 
 #include "test_clock.h"
 #include "test_harness.h"
+#include "test_wait.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
@@ -31,8 +32,6 @@
 #define NULL_DEVICE_UID "NullAudioDevice_UID"
 // The aggregate device the test makes and destroys, over BlackHole.
 #define AGGREGATE_UID "maud-test-aggregate"
-// The exit code CTest reads as skipped.
-#define SKIP 77
 
 typedef struct Blocks
 {
@@ -50,10 +49,12 @@ typedef struct Blocks
 
 static pthread_t s_control;
 
-static void Sleep(int milliseconds)
+static void Drain(maudContext* context)
 {
-    struct timespec delay = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&delay, nullptr);
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
 }
 
 static double Now(void)
@@ -119,21 +120,15 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
-        Sleep(300);
+        // hygiene: stalls the callback past the buffer so the device underruns
+        Pause(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
 
 static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", Drain(context), atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -148,7 +143,8 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
         uint64_t last = 0;
         double start = Now();
         CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
-        Sleep(1000);
+        // hygiene: a second's window of the stream's frames against the wall clock
+        Pause(1000);
         CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
         double rate = (double)(last - first) / (Now() - start);
         best = rate > best ? rate : best;
@@ -280,21 +276,23 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
               format.sampleRate == info.nativeSampleRate,
           "native at the nominal rate");
-    Sleep(100);
+    // hygiene: gives a callback before the start 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(atomic_load(&blocks.onControl) == 0, "on the IO thread");
     CHECK(Near(MeasureRate(context, stream), nominal), "at its rate");
-    CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
+    CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
     uint64_t before = 0;
     uint64_t after = 0;
     CHECK(maudGetStreamPosition(context, stream, &before) == maud_success, "position");
-    Sleep(100);
+    // hygiene: gives a stopped device 100 ms in which its position would move
+    Pause(100);
     CHECK(maudGetStreamPosition(context, stream, &after) == maud_success, "position");
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(after == before, "the device stops with the stream");
@@ -321,31 +319,44 @@ static void TestOutputStream(maudContext* context)
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no pull mode");
 }
 
+// What the library told of a move to device: the default, the stream's
+// move and its new rate.
+typedef struct Move
+{
+    bool defaulted;
+    bool moved;
+    bool reformatted;
+} Move;
+
+static void NoteMove(maudContext* context, maudStreamId stream, maudDeviceId device, Move* move)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        bool here =
+            record.device.index1 == device.index1 && record.device.generation == device.generation;
+        move->defaulted = move->defaulted || (record.kind == maud_notifyDefaultChanged && here &&
+                                              record.direction == maud_directionOutput);
+        move->moved = move->moved || (record.kind == maud_notifyStreamMoved && here &&
+                                      record.stream.index1 == stream.index1);
+        move->reformatted = move->reformatted || (record.kind == maud_notifyStreamFormatChanged &&
+                                                  record.stream.index1 == stream.index1);
+    }
+}
+
 // Waits up to three seconds for the system's default output to reach
 // the library: the default, the stream's move and, when the rate
 // differs, its new rate.
 static bool WaitForMove(maudContext* context, maudStreamId stream, maudDeviceId device,
                         bool rateChanges)
 {
-    bool defaulted = false;
-    bool moved = false;
-    bool reformatted = !rateChanges;
-    for (int tries = 0; tries < 300 && !(defaulted && moved && reformatted); ++tries)
-    {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            bool here = record.device.index1 == device.index1 &&
-                        record.device.generation == device.generation;
-            defaulted = defaulted || (record.kind == maud_notifyDefaultChanged && here &&
-                                      record.direction == maud_directionOutput);
-            moved = moved || (record.kind == maud_notifyStreamMoved && here &&
-                              record.stream.index1 == stream.index1);
-            reformatted = reformatted || (record.kind == maud_notifyStreamFormatChanged &&
-                                          record.stream.index1 == stream.index1);
-        }
-        Sleep(10);
-    }
+    Move move = {.reformatted = !rateChanges};
+    POLL_UNTIL(3000, "the default, the stream's move and its new rate",
+               NoteMove(context, stream, device, &move),
+               move.defaulted && move.moved && move.reformatted);
+    bool defaulted = move.defaulted;
+    bool moved = move.moved;
+    bool reformatted = move.reformatted;
     if (!(defaulted && moved && reformatted))
     {
         fprintf(stderr, "default %d, moved %d, new rate %d\n", defaulted, moved, reformatted);
@@ -413,36 +424,45 @@ static AudioObjectID MakeAggregate(void)
     return status == noErr ? aggregate : kAudioObjectUnknown;
 }
 
+// Drains notifications until one of kind about device (by key, when
+// added) or stream arrives, stopping at it; returns its device id, or
+// the null id.
+static maudDeviceId DrainToKind(maudContext* context, maudNotificationKind kind,
+                                maudStreamId stream)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        bool aggregate = false;
+        char key[128] = {0};
+        size_t length = 0;
+        if (record.kind == maud_notifyDeviceAdded)
+        {
+            aggregate = maudGetDeviceKey(context, record.device, key, sizeof(key) - 1, &length) ==
+                            maud_success &&
+                        strcmp(key, AGGREGATE_UID) == 0 && record.direction == maud_directionOutput;
+        }
+        bool streamMatches = record.stream.index1 == stream.index1 && stream.index1 != 0;
+        if (record.kind == kind && (aggregate || streamMatches || kind == maud_notifyDeviceRemoved))
+        {
+            return record.device.index1 != 0 ? record.device : (maudDeviceId){1, 0};
+        }
+    }
+    return (maudDeviceId){0, 0};
+}
+
 // Drains notifications for up to three seconds until one of kind about
 // device (by key, when added) or stream arrives; returns its device id.
 static maudDeviceId WaitFor(maudContext* context, maudNotificationKind kind, maudStreamId stream)
 {
-    for (int tries = 0; tries < 300; ++tries)
+    maudDeviceId found = {0, 0};
+    POLL_UNTIL(3000, "a notification of the kind asked for",
+               found = DrainToKind(context, kind, stream), found.index1 != 0);
+    if (found.index1 == 0)
     {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            bool aggregate = false;
-            char key[128] = {0};
-            size_t length = 0;
-            if (record.kind == maud_notifyDeviceAdded)
-            {
-                aggregate = maudGetDeviceKey(context, record.device, key, sizeof(key) - 1,
-                                             &length) == maud_success &&
-                            strcmp(key, AGGREGATE_UID) == 0 &&
-                            record.direction == maud_directionOutput;
-            }
-            bool streamMatches = record.stream.index1 == stream.index1 && stream.index1 != 0;
-            if (record.kind == kind &&
-                (aggregate || streamMatches || kind == maud_notifyDeviceRemoved))
-            {
-                return record.device.index1 != 0 ? record.device : (maudDeviceId){1, 0};
-            }
-        }
-        Sleep(10);
+        fprintf(stderr, "no notification of kind %u\n", (unsigned)kind);
     }
-    fprintf(stderr, "no notification of kind %u\n", (unsigned)kind);
-    return (maudDeviceId){0, 0};
+    return found;
 }
 
 static maudSuspendReason Suspension(const maudContext* context, maudStreamId stream)
@@ -472,7 +492,8 @@ static void TestHotplug(maudContext* context)
     CHECK(WaitFor(context, maud_notifyStreamSuspended, stream).index1 != 0, "the stream suspends");
     CHECK(Suspension(context, stream) == maud_suspendDeviceLost, "for the lost device");
     uint32_t lost = atomic_load(&blocks.count);
-    Sleep(200);
+    // hygiene: gives a lost stream 200 ms in which a callback would show
+    Pause(200);
     CHECK(atomic_load(&blocks.count) == lost, "silent while lost");
     aggregate = MakeAggregate();
     CHECK(aggregate != kAudioObjectUnknown, "the device made again");
@@ -480,12 +501,24 @@ static void TestHotplug(maudContext* context)
     CHECK(again.index1 != 0 &&
               (again.index1 != device.index1 || again.generation != device.generation),
           "it comes back as a new id");
-    Sleep(200);
+    // hygiene: gives the lost stream 200 ms in which a wrong resume would show
+    Pause(200);
     CHECK(Suspension(context, stream) == maud_suspendDeviceLost, "the stream stays lost");
     CHECK(atomic_load(&blocks.count) == lost, "and silent");
     CHECK(Destroy(context, stream), "destroy");
     CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed again");
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
+}
+
+// Drains and prints the notifications the restart brings.
+static void PrintNotifications(maudContext* context)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        printf("after the restart: notification %u, stream %u, device %u\n", (unsigned)record.kind,
+               record.stream.index1, record.device.index1);
+    }
 }
 
 // The audio server restarted under a running stream on the default
@@ -516,16 +549,7 @@ static void TestServiceRestart(maudContext* context)
     uint32_t last = atomic_load(&blocks.count);
     for (int second = 1; second <= 20 && !again; ++second)
     {
-        for (int tick = 0; tick < 100; ++tick)
-        {
-            maudNotification record;
-            while (maudNextNotification(context, &record) == maud_success)
-            {
-                printf("after the restart: notification %u, stream %u, device %u\n",
-                       (unsigned)record.kind, record.stream.index1, record.device.index1);
-            }
-            Sleep(10);
-        }
+        STEP_FOR(1000, PrintNotifications(context));
         uint32_t now = atomic_load(&blocks.count);
         printf("second %d after the restart: %u blocks\n", second, now - last);
         again = second > 1 && now - last > 100;
@@ -570,7 +594,7 @@ static void TestCapture(maudContext* context)
         fprintf(stderr, "loudest captured sample %u thousandths\n", loudest);
     }
     CHECK(loudest >= 200, "it hears what plays into BlackHole");
-    CHECK(StreamClockIsSound(context, recorder, false, true, Sleep),
+    CHECK(StreamClockIsSound(context, recorder, false, true, Pause),
           "its clock maps frames to host time");
     CHECK(Destroy(context, recorder), "destroy the capture");
     CHECK(Destroy(context, player), "destroy the player");
@@ -798,7 +822,8 @@ static double HeardLevel(maudContext* context, maudVoiceProcessing voice,
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create a duplex");
     CHECK(maudStartStream(context, stream) == maud_success, "start it");
-    Sleep(3500);
+    // hygiene: lets the duplex run 3.5 s before its status is read
+    Pause(3500);
     CHECK(maudGetStreamStatus(context, stream, statusOut) == maud_success, "its status");
     CHECK(Destroy(context, stream), "destroy it");
     CHECK(tone.wild == 0, "every input sample is a sample");
@@ -850,10 +875,7 @@ static void TestVoiceApart(maudContext* context)
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a voiced duplex apart");
     CHECK(maudStartStream(context, stream) == maud_success, "start it");
-    for (int tries = 0; tries < 300 && atomic_load(&tone.count) < 40; ++tries)
-    {
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "the duplex's blocks", (void)0, atomic_load(&tone.count) >= 40);
     CHECK(atomic_load(&tone.count) >= 40, "its blocks arrive");
     maudStreamStatus status = {0};
     CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
@@ -884,10 +906,7 @@ static void TestVoicedMoves(maudContext* context)
           "a voiced duplex stream runs");
     maudStreamFormat before = {0};
     CHECK(maudGetStreamFormat(context, stream, &before) == maud_success, "its format");
-    for (int tries = 0; tries < 300 && atomic_load(&tone.count) < 20; ++tries)
-    {
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "the duplex's blocks", (void)0, atomic_load(&tone.count) >= 20);
     CHECK(MakeDefaultOutput(NULL_DEVICE_UID), "the null device made the default");
     CHECK(WaitForMove(context, stream, other, false), "the voiced stream follows the default");
     maudStreamFormat after = {0};
@@ -896,26 +915,14 @@ static void TestVoicedMoves(maudContext* context)
               after.ratePolicy == maud_ratePlatformConverted,
           "at its own rate, converted");
     uint32_t moved = atomic_load(&tone.count);
-    for (int tries = 0; tries < 500 && atomic_load(&tone.count) < moved + 20; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks on the null device", Drain(context),
+               atomic_load(&tone.count) >= moved + 20);
     CHECK(atomic_load(&tone.count) >= moved + 20, "it runs there");
     CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole the default again");
     CHECK(WaitForMove(context, stream, blackhole, false), "and back");
     uint32_t back = atomic_load(&tone.count);
-    for (int tries = 0; tries < 500 && atomic_load(&tone.count) < back + 20; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks on BlackHole", Drain(context),
+               atomic_load(&tone.count) >= back + 20);
     CHECK(atomic_load(&tone.count) >= back + 20, "it runs again there");
     CHECK(Destroy(context, stream), "destroy it");
 }
@@ -1032,7 +1039,8 @@ static double RightOverLeft(maudContext* context, float x)
     CHECK(maudStartStream(context, recorder) == maud_success &&
               maudStartStream(context, player) == maud_success,
           "both run");
-    Sleep(2500);
+    // hygiene: lets the objects play 2.5 s for the capture to hear them
+    Pause(2500);
     CHECK(Destroy(context, recorder) && Destroy(context, player), "destroy both");
     CHECK(atomic_load(&placed.blocks) > 100 && atomic_load(&placed.offered) == 2,
           "the callback ran, offered every object");
@@ -1098,7 +1106,7 @@ int main(void)
 {
     if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
     {
-        return SKIP;
+        return PlatformAbsent("no BlackHole: MAUD_REQUIRE_COREAUDIO marks a machine that has it");
     }
     s_control = pthread_self();
     CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole made the default output");

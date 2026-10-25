@@ -12,6 +12,7 @@
 #include "test_daemon.h"
 #include "test_harness.h"
 #include "test_names.h"
+#include "test_wait.h"
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
@@ -26,16 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
-
-#define SKIP 77
-
-static void Sleep(int milliseconds)
-{
-    struct timespec pause = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&pause, nullptr);
-}
 
 // The test's HOME, removed when it ends.
 static char s_home[] = "/tmp/maud-alsa-XXXXXX";
@@ -107,17 +99,15 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
-        Sleep(200);
+        // hygiene: stalls the callback past the buffer so the PCM runs dry
+        Pause(200);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
 
 static bool WaitForBlocks(const Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", (void)0, atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -153,12 +143,8 @@ static int ThreadCount(void)
 // joined stays listed.
 static int ThreadsAfterJoin(void)
 {
-    int count = ThreadCount();
-    for (int tries = 0; tries < 100 && count != 0; ++tries)
-    {
-        Sleep(10);
-        count = ThreadCount();
-    }
+    int count = 0;
+    POLL_UNTIL(1000, "the joined stream threads to leave /proc", count = ThreadCount(), count == 0);
     return count;
 }
 
@@ -260,26 +246,33 @@ static maudStreamId OpenDefault(maudContext* context, maudDirection direction, B
     return stream;
 }
 
+// Drains notifications until one of kind for stream arrives, with reason
+// when it is a suspension, stopping at it. Whether one did.
+static bool DrainToNotice(maudContext* context, maudStreamId stream, maudNotificationKind kind,
+                          maudSuspendReason reason)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        if (record.kind == kind && record.stream.index1 == stream.index1 &&
+            record.stream.generation == stream.generation &&
+            (kind != maud_notifyStreamSuspended || record.reason == reason))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Drains notifications for up to a second until one of kind for stream
 // arrives, with reason when it is a suspension.
 static bool NoticeFor(maudContext* context, maudStreamId stream, maudNotificationKind kind,
                       maudSuspendReason reason)
 {
-    for (int tries = 0; tries < 100; ++tries)
-    {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            if (record.kind == kind && record.stream.index1 == stream.index1 &&
-                record.stream.generation == stream.generation &&
-                (kind != maud_notifyStreamSuspended || record.reason == reason))
-            {
-                return true;
-            }
-        }
-        Sleep(10);
-    }
-    return false;
+    bool arrived = false;
+    POLL_UNTIL(1000, "a notification about the stream",
+               arrived = DrainToNotice(context, stream, kind, reason), arrived);
+    return arrived;
 }
 
 // The host suspends the context: the stream is suspended for the host,
@@ -294,9 +287,11 @@ static void TestHostSuspended(maudContext* context)
     CHECK(maudSetContextSuspended(context, true) == maud_success &&
               NoticeFor(context, stream, maud_notifyStreamSuspended, maud_suspendHost),
           "suspended for the host");
-    Sleep(100);
+    // hygiene: lets callbacks in flight at the suspension end before counting
+    Pause(100);
     uint32_t count = atomic_load(&blocks.count);
-    Sleep(300);
+    // hygiene: gives a callback while suspended 300 ms to show
+    Pause(300);
     CHECK(atomic_load(&blocks.count) == count, "no callbacks while suspended");
     CHECK(maudSetContextSuspended(context, false) == maud_success &&
               NoticeFor(context, stream, maud_notifyStreamResumed, maud_suspendNone),
@@ -319,7 +314,8 @@ static void TestServerEnded(maudContext* context)
     CHECK(system("pw-cli destroy \"$(pactl list sink-inputs | "
                  "awk -F'\\\"' '/object.id/{id=$2} END{print id}')\" >/dev/null 2>&1") == 0,
           "the server ends it");
-    Sleep(200);
+    // hygiene: lets the server's end reach the stream before its count is taken
+    Pause(200);
     uint32_t ended = atomic_load(&blocks.count);
     CHECK(WaitForBlocks(&blocks, ended + 20), "it plays on, recovered");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
@@ -340,14 +336,15 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(&blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
-    CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
+    CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     CHECK(ThreadsAfterJoin() == 0, "joined when it stops");
-    Sleep(200);
+    POLL_UNTIL(2000, "the queue's drop", (void)0, Corked());
     CHECK(Corked(), "and what it queued is dropped");
     uint32_t stopped = atomic_load(&blocks.count);
-    Sleep(100);
+    // hygiene: gives a callback after the stop 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(&blocks, stopped + 20), "it runs again");
@@ -415,7 +412,8 @@ static void TestSignals(maudContext* context)
         for (int i = 0; i < 20; ++i)
         {
             pthread_kill(blocks.thread, SIGUSR1);
-            Sleep(5);
+            // hygiene: spaces the signals over the stream's writes
+            Pause(5);
         }
     }
     uint32_t signalled = atomic_load(&blocks.count);
@@ -434,7 +432,7 @@ static void TestInputStream(maudContext* context)
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
-    CHECK(StreamClockIsSound(context, stream, false, true, Sleep),
+    CHECK(StreamClockIsSound(context, stream, false, true, Pause),
           "its clock maps frames to host time");
     maudStreamStatus status = {0};
     CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
@@ -577,7 +575,7 @@ int main(void)
     maudContext* context = nullptr;
     if (maudCreateContext(&def, &context) != maud_success)
     {
-        return getenv("MAUD_REQUIRE_ALSA") != nullptr ? 1 : SKIP;
+        return getenv("MAUD_REQUIRE_ALSA") != nullptr ? 1 : PlatformAbsent("no libasound");
     }
     TestDevices(context);
     TestSilentFailure(context);
