@@ -85,16 +85,20 @@ static inline bool StreamClockIsSound(const maudContext* context, maudStreamId s
     return false;
 }
 
-// One window of a rate measure: waits about a second and says whether
+// One window of a rate measure: waits a second or two and says whether
 // the platform reported no stall in it, so that the window shows the
 // stream's rate rather than the machine's.
 typedef bool RateWindowFn(void* user);
 
 // A rate measured by the stream clock: the median of the clean windows'
 // rates once RATE_CLEAN_WINDOWS came up, out of how many windows, and how
-// many a reported stall spoiled.
+// many a reported stall spoiled. A measure gives up after RATE_MAX_WINDOWS
+// windows or RATE_MAX_SECONDS, whichever comes first, so that a suite of
+// several measures in 2 s windows fails as starved within its CTest
+// timeout rather than running past it.
 #define RATE_CLEAN_WINDOWS 3
 #define RATE_MAX_WINDOWS   30
+#define RATE_MAX_SECONDS   45
 typedef struct ClockRate
 {
     double rate;
@@ -106,7 +110,7 @@ typedef struct ClockRate
 // The rate a running stream plays at by its own clock: the frames
 // between two clock reads over the time between the host times the clock
 // gave them, in windows `window` waits out; the median of the first
-// RATE_CLEAN_WINDOWS clean ones, out of RATE_MAX_WINDOWS at most. Each
+// RATE_CLEAN_WINDOWS clean ones, out of the most the limits allow. Each
 // host time is the platform's own report at a callback (when it read the
 // host clock, plus or less the delay it reported then), so a callback a
 // loaded machine holds back reads a later time and a shorter delay
@@ -126,7 +130,9 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
     {
         return measured;
     }
-    while (measured.windows < RATE_MAX_WINDOWS && measured.clean < RATE_CLEAN_WINDOWS)
+    int64_t deadline = maudGetHostNanoseconds() + RATE_MAX_SECONDS * 1000000000LL;
+    while (measured.windows < RATE_MAX_WINDOWS && measured.clean < RATE_CLEAN_WINDOWS &&
+           maudGetHostNanoseconds() < deadline)
     {
         bool clean = window(user);
         maudStreamClock second = {0};
