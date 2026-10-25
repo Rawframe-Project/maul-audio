@@ -51,7 +51,7 @@ The microphone needs the page served from `https` or `localhost`. Until the user
 
 - **Creation fails with `maud_errorUnsupported`.** No backend answered: on Linux no sound server is running and libasound is missing, or the build left the platform's backend out.
 - **A stream is started but silent.** Read `maudGetStreamStatus`: its `suspension` says why (see [Devices and streams](devices-and-streams.md#why-a-stream-is-suspended)). On the web the usual reason is a missing gesture.
-- **Clicks and gaps.** The status counts underruns and overruns the platform revealed. A callback that allocates, locks, logs or waits misses its deadline; so does one that does more work than a period allows.
+- **Clicks and gaps.** The status counts underruns and overruns the platform revealed. On ALSA through a sound server (its default device), an output whose sink stops taking frames mid-stream and resumes later also counts an underrun, since the server reports it as it reports a starved stream. A callback that allocates, locks, logs or waits misses its deadline; so does one that does more work than a period allows.
 - **Calls fail with `maud_errorState`.** The call came from the stream's callback, or from the allocator or a hook the object was running; `maudGetContextMisuse` and `maudGetSpatializerMisuse` count such calls.
 - **`maud_errorVersion`.** The program was built against headers of another version than the library it runs with. Rebuild it against the library's headers.
 - **The device list is stale.** Drain the notification queue regularly: on PipeWire and PulseAudio the drain is what takes in the server's reports.
