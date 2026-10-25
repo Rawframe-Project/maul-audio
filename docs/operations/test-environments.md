@@ -45,7 +45,7 @@ Wine does not enforce COM apartments, so a COM call on the wrong thread passes u
 
 ## macOS
 
-macOS runners have no audio hardware either. The Core Audio suite plays into BlackHole, a virtual device that `tools/ci_blackhole.sh` installs in CI, and makes an aggregate device over it to test hotplug and defaults. In CI, `MAUD_TEST_COREAUDIO_RESTART="sudo killall coreaudiod"` lets the suite restart the audio server under a running stream; never set it on a machine someone uses. After such a restart on BlackHole, a lone stream runs several times fast until another client starts the device; on real hardware, step 4 of the checklist checks the rate by ear.
+macOS runners have no audio hardware either. The Core Audio suite plays into BlackHole, a virtual device that `tools/ci_blackhole.sh` installs in CI, and makes an aggregate device over it to test hotplug and defaults. It needs the runners' null device too, as the other output the default moves to; without both it is skipped, and it gives the system's default output back when it ends. In CI, `MAUD_TEST_COREAUDIO_RESTART="sudo killall coreaudiod"` lets the suite restart the audio server under a running stream; never set it on a machine someone uses. After such a restart on BlackHole, a lone stream runs several times fast until another client starts the device; on real hardware, step 4 of the checklist checks the rate by ear.
 
 ## iOS
 

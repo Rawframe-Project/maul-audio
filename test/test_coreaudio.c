@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The CoreAudio backend against the BlackHole virtual device. The test
-// makes BlackHole the system's default output, so it runs only where
-// MAUD_REQUIRE_COREAUDIO is set (the macOS CI cell, which installs
-// BlackHole); elsewhere it skips.
+// The CoreAudio backend against the BlackHole virtual device, with the
+// macOS runners' null device as the other output the default moves to.
+// Without both the test is skipped, unless MAUD_REQUIRE_COREAUDIO is set
+// (the macOS CI cell, which installs BlackHole). It makes BlackHole the
+// system's default output, and gives the default back at the end.
 
 #include "test_clock.h"
 #include "test_harness.h"
@@ -91,6 +92,37 @@ static bool MakeDefaultOutput(const char* uid)
                                           kAudioObjectPropertyScopeGlobal, 0};
     return AudioObjectSetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr,
                                       sizeof(device), &device) == noErr;
+}
+
+// The UID of the system's default output into uid, or an empty string
+// when there is none. A UID, not the device's id, since the audio
+// server's restart gives its devices new ids.
+static void DefaultOutputUid(char* uid, size_t size)
+{
+    uid[0] = '\0';
+    AudioObjectPropertyAddress address = {kAudioHardwarePropertyDefaultOutputDevice,
+                                          kAudioObjectPropertyScopeGlobal, 0};
+    AudioObjectID device = kAudioObjectUnknown;
+    UInt32 bytes = sizeof(device);
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &bytes,
+                                   &device) != noErr ||
+        device == kAudioObjectUnknown)
+    {
+        return;
+    }
+    address.mSelector = kAudioDevicePropertyDeviceUID;
+    CFStringRef text = nullptr;
+    bytes = sizeof(text);
+    if (AudioObjectGetPropertyData(device, &address, 0, nullptr, &bytes, &text) != noErr ||
+        text == nullptr)
+    {
+        return;
+    }
+    if (!CFStringGetCString(text, uid, (CFIndex)size, kCFStringEncodingUTF8))
+    {
+        uid[0] = '\0';
+    }
+    CFRelease(text);
 }
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
@@ -1104,11 +1136,20 @@ static void TestObjects(maudContext* context)
 
 int main(void)
 {
-    if (getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
+    bool present = DeviceOfUid(BLACKHOLE_UID) != kAudioObjectUnknown &&
+                   DeviceOfUid(NULL_DEVICE_UID) != kAudioObjectUnknown;
+    if (!present && getenv("MAUD_REQUIRE_COREAUDIO") == nullptr)
     {
-        return PlatformAbsent("no BlackHole: MAUD_REQUIRE_COREAUDIO marks a machine that has it");
+        return PlatformAbsent("no BlackHole and null device to play on");
+    }
+    CHECK(present, "BlackHole and the null device, as MAUD_REQUIRE_COREAUDIO says");
+    if (!present)
+    {
+        return 1;
     }
     s_control = pthread_self();
+    char given[256];
+    DefaultOutputUid(given, sizeof(given));
     CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole made the default output");
     maudContextDef def = maudDefaultContextDef();
     def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
@@ -1116,6 +1157,7 @@ int main(void)
     CHECK(maudCreateContext(&def, &context) == maud_success, "a native context");
     if (context == nullptr)
     {
+        CHECK(given[0] == '\0' || MakeDefaultOutput(given), "the default given back");
         return 1;
     }
     CHECK(maudGetContextBackend(context) == maud_backendCoreAudio, "CoreAudio chosen");
@@ -1133,5 +1175,6 @@ int main(void)
     TestHotplug(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     CHECK(s_live == 0, "everything given back");
+    CHECK(given[0] == '\0' || MakeDefaultOutput(given), "the default given back");
     return s_failures == 0 ? 0 : 1;
 }
