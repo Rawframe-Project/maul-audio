@@ -28,7 +28,14 @@ Per 10 ms of 48 kHz audio on one core of an AMD Ryzen 9 5900X (Linux, Clang 20, 
 
 ## Quick start
 
-It builds with CMake 3.25 or newer and GCC 14 or newer, Clang 19 or newer, or Apple Clang. On Linux and macOS:
+It builds with CMake 3.25 or newer and GCC 14 or newer, Clang 19 or newer, or Apple Clang; on Linux it also needs pkg-config and the development headers of PipeWire, ALSA and PulseAudio. Ubuntu 24.04's default compiler is GCC 13, which the build refuses, so there install GCC 14, with Git, CMake and those packages, and tell CMake to use it:
+
+```sh
+sudo apt install git cmake gcc-14 pkg-config libpipewire-0.3-dev libasound2-dev libpulse-dev
+export CC=gcc-14
+```
+
+Then, on Linux and macOS:
 
 ```sh
 git clone https://github.com/Rawframe-Project/maul-audio.git
@@ -41,11 +48,10 @@ cmake --build build
 
 `sample_devices` lists the devices and plays a tone for ten seconds; `sample_binaural` renders a source circling the listener to a WAV file.
 
-On Linux the build also needs pkg-config and the development headers of PipeWire, ALSA and PulseAudio. Ubuntu 24.04 has none of them by default, and its default compiler is GCC 13, which the build refuses ("GCC 14 or newer is required"). Install GCC 14 and the headers, and configure again in a fresh build directory, since `build/` keeps the compiler it first found; then go on from `cmake --build build`:
+A `build/` that GCC 13 already configured keeps that compiler and fails again ("GCC 14 or newer is required"). Remove it and configure again, with `CC` exported as above, then carry on with the rest of the block from `cmake --build build`:
 
 ```sh
-sudo apt install gcc-14 pkg-config libpipewire-0.3-dev libasound2-dev libpulse-dev
-rm -rf build && CC=gcc-14 cmake -B build -DCMAKE_BUILD_TYPE=Release
+rm -rf build && cmake -B build -DCMAKE_BUILD_TYPE=Release
 ```
 
 On Windows the library builds with `clang-cl`, and on the web with Emscripten; [Platforms](docs/user/platforms.md) lists what each needs.
