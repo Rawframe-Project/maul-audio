@@ -293,7 +293,10 @@ extern "C"
         // Times the platform revealed that an output played without the
         // stream's frames (underruns) or that an input lost frames before
         // the stream got them (overruns). A duplex stream's are its
-        // output's and its input's; its slips are counted apart.
+        // output's and its input's; its slips are counted apart. On ALSA
+        // through a sound server, an output whose sink stops taking frames
+        // mid-stream and resumes later also counts an underrun: the server
+        // reports it as it reports a starved stream.
         uint64_t underruns;
         uint64_t overruns;
         // Whether the stream keeps other streams and applications off its
