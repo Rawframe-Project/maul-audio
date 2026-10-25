@@ -79,7 +79,12 @@ extern "C"
         uint32_t frameCount;
         uint32_t sampleRate;
         maudChannelLayout layout;
-        // The stream frame index of the block's first frame.
+        // The stream frame index of the block's first frame. An input's
+        // blocks follow on one another, except where its platform stream
+        // is connected again, after a move or a server's restart: the
+        // frames it had gathered toward a block there are dropped, so that
+        // no block joins two devices' sound, and the next block's position
+        // is past them.
         uint64_t position;
         // Object streams: the def's objectCount objects to fill and place
         // (maul-audio/objects.h), and how many active ones the platform
