@@ -15,6 +15,7 @@
 #include "test_daemon.h"
 #include "test_harness.h"
 #include "test_names.h"
+#include "test_wait.h"
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
@@ -31,16 +32,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <time.h>
 #include <unistd.h>
-
-#define SKIP 77
-
-static void Sleep(int milliseconds)
-{
-    struct timespec pause = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&pause, nullptr);
-}
 
 static bool SameDevice(maudDeviceId a, maudDeviceId b)
 {
@@ -85,24 +77,39 @@ static bool HasMonitor(const maudContext* context)
     return false;
 }
 
+static void Drain(maudContext* context)
+{
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+}
+
+// Drains notifications until one of kind arrives; with a device given,
+// only one about that device. Whether one did.
+static bool DrainTo(maudContext* context, maudNotificationKind kind, maudDeviceId device,
+                    maudNotification* recordOut)
+{
+    while (maudNextNotification(context, recordOut) == maud_success)
+    {
+        if (recordOut->kind == kind &&
+            (device.index1 == 0 || SameDevice(recordOut->device, device)))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Drains notifications for up to milliseconds until one of kind
 // arrives; with a device given, only one about that device.
 static bool WaitForWithin(maudContext* context, maudNotificationKind kind, maudDeviceId device,
                           maudNotification* recordOut, int milliseconds)
 {
-    for (int tries = 0; tries < milliseconds / 10; ++tries)
-    {
-        while (maudNextNotification(context, recordOut) == maud_success)
-        {
-            if (recordOut->kind == kind &&
-                (device.index1 == 0 || SameDevice(recordOut->device, device)))
-            {
-                return true;
-            }
-        }
-        Sleep(10);
-    }
-    return false;
+    bool arrived = false;
+    POLL_UNTIL(milliseconds, "a notification of the kind asked for",
+               arrived = DrainTo(context, kind, device, recordOut), arrived);
+    return arrived;
 }
 
 // Drains notifications for up to five seconds until one of kind
@@ -121,31 +128,57 @@ static bool WaitAfterDefault(maudContext* context, maudNotificationKind kind, ma
     return WaitForWithin(context, kind, device, recordOut, SESSION_MANAGER_MS);
 }
 
+// Drains notifications until a stream is suspended for reason (with a
+// stream given, that one), stopping at that record. Whether one was.
+static bool DrainToSuspended(maudContext* context, maudSuspendReason reason, maudStreamId stream)
+{
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        if (record.kind == maud_notifyStreamSuspended && record.reason == reason &&
+            (stream.index1 == 0 || record.stream.index1 == stream.index1))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Drains every notification; whether a stream was suspended for reason
+// among them.
+static bool SuspensionAmong(maudContext* context, maudSuspendReason reason)
+{
+    bool suspended = false;
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        suspended =
+            suspended || (record.kind == maud_notifyStreamSuspended && record.reason == reason);
+    }
+    return suspended;
+}
+
+// Whether both roles' output default is device.
+static bool DefaultsAre(const maudContext* context, maudDeviceId device)
+{
+    maudDeviceId general = {0, 0};
+    maudDeviceId communications = {0, 0};
+    maudResult first =
+        maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general);
+    maudResult second = maudGetDefaultDevice(context, maud_directionOutput, maud_roleCommunications,
+                                             &communications);
+    return first == maud_success && second == maud_success && SameDevice(general, device) &&
+           SameDevice(communications, device);
+}
+
 // Drains notifications until both roles' output default is device, for
 // as long as the session manager takes to make it the default
 // (SESSION_MANAGER_MS).
 static bool WaitForDefaults(maudContext* context, maudDeviceId device)
 {
-    for (int tries = 0; tries < SESSION_MANAGER_MS / 10; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        maudDeviceId general = {0, 0};
-        maudDeviceId communications = {0, 0};
-        maudResult first =
-            maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general);
-        maudResult second = maudGetDefaultDevice(context, maud_directionOutput,
-                                                 maud_roleCommunications, &communications);
-        if (first == maud_success && second == maud_success && SameDevice(general, device) &&
-            SameDevice(communications, device))
-        {
-            return true;
-        }
-        Sleep(10);
-    }
-    return false;
+    POLL_UNTIL(SESSION_MANAGER_MS, "both roles' output default to be the device", Drain(context),
+               DefaultsAre(context, device));
+    return DefaultsAre(context, device);
 }
 
 // The thread that runs the test, which no callback may run on.
@@ -206,21 +239,15 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
-        Sleep(300);
+        // hygiene: stalls the callback past the buffer so the server underruns
+        Pause(300);
     }
     atomic_fetch_add(&blocks->count, 1);
 }
 
 static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", Drain(context), atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -256,12 +283,8 @@ static int ThreadCount(void)
 // joined stays listed.
 static int ThreadsAfterJoin(void)
 {
-    int count = ThreadCount();
-    for (int tries = 0; tries < 100 && count != 0; ++tries)
-    {
-        Sleep(10);
-        count = ThreadCount();
-    }
+    int count = 0;
+    POLL_UNTIL(1000, "the joined stream threads to leave /proc", count = ThreadCount(), count == 0);
     return count;
 }
 
@@ -312,16 +335,23 @@ static int Corked(void)
 static maudDeviceId WaitForKey(maudContext* context, maudDirection direction, const char* key)
 {
     maudDeviceId device = {0, 0};
-    for (int tries = 0; tries < 500 && device.index1 == 0; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        device = FindByKey(context, direction, key);
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, key, (Drain(context), device = FindByKey(context, direction, key)),
+               device.index1 != 0);
     return device;
+}
+
+// Drains notifications; whether an addition among them names the device
+// with key.
+static bool AdditionNames(maudContext* context, maudDirection direction, const char* key)
+{
+    bool named = false;
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        named = named || (record.kind == maud_notifyDeviceAdded &&
+                          SameDevice(record.device, FindByKey(context, direction, key)));
+    }
+    return named;
 }
 
 // Drains notifications for up to five seconds until an addition names
@@ -330,17 +360,8 @@ static maudDeviceId WaitForAdded(maudContext* context, maudDirection direction, 
                                  bool* announced)
 {
     *announced = false;
-    for (int tries = 0; tries < 500 && !*announced; ++tries)
-    {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            *announced =
-                *announced || (record.kind == maud_notifyDeviceAdded &&
-                               SameDevice(record.device, FindByKey(context, direction, key)));
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, key, *announced = *announced || AdditionNames(context, direction, key),
+               *announced);
     return FindByKey(context, direction, key);
 }
 
@@ -494,11 +515,12 @@ static void TestOutputStream(maudContext* context)
     maudStreamId stream = OpenStream(context, maud_directionOutput, none, &blocks);
     CHECK(ThreadCount() == 0, "no stream thread before start");
     CHECK(Corked() == 1, "connected corked");
-    Sleep(100);
+    // hygiene: gives a callback before the start 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
     CHECK(maudStartStream(context, stream) == maud_success, "start");
     CHECK(ThreadCount() == 1, "one thread while it runs");
-    Sleep(200);
+    POLL_UNTIL(2000, "the stream's uncorking", (void)0, Corked() == 0);
     CHECK(Corked() == 0, "uncorked while it runs");
     CHECK(Run("pactl list sink-inputs | grep -q 'node.latency = \"256/48000\"'"),
           "a period of latency asked for");
@@ -507,14 +529,15 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(RateHolds(MeasureRate(context, stream), 48000.0), "at the sink's rate");
-    CHECK(StreamClockIsSound(context, stream, true, true, Sleep),
+    CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
     CHECK(maudStopStream(context, stream) == maud_success, "stop");
     CHECK(ThreadsAfterJoin() == 0, "joined when it stops");
-    Sleep(200);
+    POLL_UNTIL(2000, "the stream's corking", (void)0, Corked() == 1);
     CHECK(Corked() == 1, "corked once stopped");
     uint32_t stopped = atomic_load(&blocks.count);
-    Sleep(100);
+    // hygiene: gives a callback after the stop 100 ms to show
+    Pause(100);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(maudStartStream(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
@@ -546,7 +569,7 @@ static void TestInputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
-    CHECK(StreamClockIsSound(context, stream, false, true, Sleep),
+    CHECK(StreamClockIsSound(context, stream, false, true, Pause),
           "its clock maps frames to host time");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
@@ -625,17 +648,10 @@ static void TestPinnedStream(maudContext* context)
                "maud-test-sink 2> /dev/null"),
           "the server may not move it");
     CHECK(Run("pactl unload-module module-null-sink"), "unplug it");
-    maudNotification record;
     bool lost = false;
-    for (int tries = 0; tries < 500 && !lost; ++tries)
-    {
-        while (!lost && maudNextNotification(context, &record) == maud_success)
-        {
-            lost = record.kind == maud_notifyStreamSuspended &&
-                   record.reason == maud_suspendDeviceLost;
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's loss",
+               lost = DrainToSuspended(context, maud_suspendDeviceLost, (maudStreamId){0, 0}),
+               lost);
     CHECK(lost, "the stream is lost with it");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
@@ -702,7 +718,8 @@ static void TestServerEnded(maudContext* context)
     CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 20),
           "it plays");
     CHECK(EndNewestSinkInput(), "the server ends it");
-    Sleep(200);
+    // hygiene: lets the server's end reach the stream before its count is taken
+    Pause(200);
     uint32_t ended = atomic_load(&blocks.count);
     CHECK(WaitForBlocks(context, &blocks, ended + 20), "it plays on, rebuilt");
     Blocks idle = {0};
@@ -711,7 +728,8 @@ static void TestServerEnded(maudContext* context)
               maudStopStream(context, stopped) == maud_success,
           "a second plays and stops");
     CHECK(EndNewestSinkInput(), "the server ends the stopped one");
-    Sleep(200);
+    // hygiene: lets the server's end reach the stopped stream before its count is taken
+    Pause(200);
     uint32_t before = atomic_load(&idle.count);
     CHECK(maudStartStream(context, stopped) == maud_success &&
               WaitForBlocks(context, &idle, before + 20),
@@ -745,19 +763,14 @@ static void TestRebuildFails(maudContext* context)
     CHECK(EndNewestSinkInput(), "the server ends it");
     // Undrained, so the stream's thread marks it lost before the drain
     // that tries to rebuild it, which the stopped server leaves waiting.
-    Sleep(300);
+    // hygiene: lets the stream's thread mark it lost before the next drain
+    Pause(300);
     CHECK(SignalPulseServer("STOP"), "the server stops answering");
     maudNotification record;
     bool suspended = false;
-    for (int tries = 0; tries < 100 && !suspended; ++tries)
-    {
-        while (!suspended && maudNextNotification(context, &record) == maud_success)
-        {
-            suspended =
-                record.kind == maud_notifyStreamSuspended && record.reason == maud_suspendPlatform;
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(1000, "the stream's suspension for the platform",
+               suspended = DrainToSuspended(context, maud_suspendPlatform, (maudStreamId){0, 0}),
+               suspended);
     CHECK(SignalPulseServer("CONT"), "the server answers again");
     CHECK(suspended, "suspended for the platform while the rebuild fails");
     CHECK(WaitFor(context, maud_notifyStreamResumed, none, &record), "resumed once it works");
@@ -879,21 +892,14 @@ static void TestRebuildPacing(maudContext* context)
           "it plays");
     CHECK(EndNewestSinkInput(), "the server ends it");
     // Undrained, so the stream is lost before the drains that rebuild it.
-    Sleep(300);
+    // hygiene: lets the stream's thread mark it lost before the next drain
+    Pause(300);
     char server[80];
     snprintf(server, sizeof(server), "unix:%s", refuser.path);
     setenv("PULSE_SERVER", server, 1);
     maudNotification record;
     bool suspended = false;
-    for (int tries = 0; tries < 200; ++tries)
-    {
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            suspended = suspended || (record.kind == maud_notifyStreamSuspended &&
-                                      record.reason == maud_suspendPlatform);
-        }
-        Sleep(10);
-    }
+    STEP_FOR(2000, suspended = SuspensionAmong(context, maud_suspendPlatform) || suspended);
     int taken = atomic_load(&refuser.taken);
     unsetenv("PULSE_SERVER");
     // Tries at 0, 0.25, 0.75 and 1.75 s in two seconds of drains every
@@ -925,12 +931,10 @@ static void TestRestart(maudContext* context)
     CHECK(Run("pactl load-module module-null-sink sink_name=maud-test-gone >/dev/null"),
           "a sink the restart will not bring back");
     Restart seen = {0};
-    for (int tries = 0; tries < 300 && seen.gone.index1 == 0; ++tries)
-    {
-        Note(context, &seen);
-        seen.gone = FindByKey(context, maud_directionOutput, "maud-test-gone");
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "maud-test-gone",
+               (Note(context, &seen),
+                seen.gone = FindByKey(context, maud_directionOutput, "maud-test-gone")),
+               seen.gone.index1 != 0);
     seen.sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
     CHECK(seen.gone.index1 != 0 && seen.sink.index1 != 0, "both sinks listed");
     Blocks blocks = {0};
@@ -953,11 +957,8 @@ static void TestRestart(maudContext* context)
     Note(context, &seen);
     CHECK(DriveDaemon("stop", ""), "the server stops");
     int64_t away = maudGetHostNanoseconds();
-    for (int tries = 0; tries < 300 && !(seen.reason[0] != 0 && seen.reason[1] != 0); ++tries)
-    {
-        Note(context, &seen);
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "both streams' suspension", Note(context, &seen),
+               seen.reason[0] != 0 && seen.reason[1] != 0);
     CHECK(seen.reason[0] == maud_suspendPlatform && seen.reason[1] == maud_suspendPlatform,
           "both wait for the platform while it is away");
     CHECK(!seen.sinkRemoved && !seen.goneRemoved, "its devices are kept");
@@ -965,20 +966,12 @@ static void TestRestart(maudContext* context)
     seen.streams[2] = OpenStream(context, maud_directionOutput, none, &during);
     CHECK(seen.streams[2].index1 != 0 && maudStartStream(context, seen.streams[2]) == maud_success,
           "one created and started while away");
-    for (int tries = 0; tries < 100 && seen.reason[2] == 0; ++tries)
-    {
-        Note(context, &seen);
-        Sleep(10);
-    }
+    POLL_UNTIL(1000, "the late stream's suspension", Note(context, &seen), seen.reason[2] != 0);
     CHECK(seen.reason[2] == maud_suspendPlatform, "waits too");
     CHECK(DriveDaemon("start", ""), "the server starts again");
-    for (int tries = 0; tries < 500 && !(seen.resumed[0] && seen.resumed[1] && seen.resumed[2] &&
-                                         seen.goneRemoved);
-         ++tries)
-    {
-        Note(context, &seen);
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the three streams' resumption and maud-test-gone's removal",
+               Note(context, &seen),
+               seen.resumed[0] && seen.resumed[1] && seen.resumed[2] && seen.goneRemoved);
     int64_t listed = maudGetHostNanoseconds() - away;
     CHECK(seen.resumed[0] && seen.resumed[1] && seen.resumed[2], "all three resume");
     CHECK(seen.goneRemoved && listed < 9000000000ll,
@@ -1021,20 +1014,13 @@ static void TestRestart(maudContext* context)
     Note(context, &seen);
     seen.resumed[0] = false;
     CHECK(DriveDaemon("stop", ""), "the server stops for longer");
-    for (int tries = 0;
-         tries < 1300 && !(seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost); ++tries)
-    {
-        Note(context, &seen);
-        Sleep(10);
-    }
+    POLL_UNTIL(13000, "the sink's removal and the pinned stream's loss", Note(context, &seen),
+               seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost);
     CHECK(seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost,
           "its devices go, and the pinned stream with its device");
     CHECK(DriveDaemon("start", ""), "the server starts again");
-    for (int tries = 0; tries < 500 && !seen.resumed[0]; ++tries)
-    {
-        Note(context, &seen);
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream on the default's resumption", Note(context, &seen),
+               seen.resumed[0]);
     resumed = atomic_load(&blocks.count);
     CHECK(seen.resumed[0] && WaitForBlocks(context, &blocks, resumed + 20),
           "the stream on the default plays on the new sink");
@@ -1058,45 +1044,35 @@ static void TestHostSuspended(maudContext* context)
           "they play");
     Note(context, &seen);
     CHECK(maudSetContextSuspended(context, true) == maud_success, "the host suspends");
-    for (int tries = 0; tries < 100 && !(seen.reason[0] != 0 && seen.reason[1] != 0); ++tries)
-    {
-        Note(context, &seen);
-        Sleep(10);
-    }
+    POLL_UNTIL(1000, "both streams' suspension for the host", Note(context, &seen),
+               seen.reason[0] != 0 && seen.reason[1] != 0);
     CHECK(seen.reason[0] == maud_suspendHost && seen.reason[1] == maud_suspendHost,
           "both suspended for the host");
-    Sleep(100);
+    // hygiene: lets callbacks in flight at the suspension end before counting
+    Pause(100);
     uint32_t counts[2] = {atomic_load(&blocks[0].count), atomic_load(&blocks[1].count)};
-    Sleep(300);
+    // hygiene: gives a callback while suspended 300 ms to show
+    Pause(300);
     CHECK(atomic_load(&blocks[0].count) == counts[0] && atomic_load(&blocks[1].count) == counts[1],
           "no callbacks while suspended");
     if (HaveDaemon())
     {
         CHECK(DriveDaemon("stop", ""), "the server stops");
-        for (int tries = 0; tries < 30; ++tries)
-        {
-            Note(context, &seen);
-            Sleep(10);
-        }
+        STEP_FOR(300, Note(context, &seen));
         CHECK(DriveDaemon("start", ""), "the server starts again");
         maudDeviceId sink = {0, 0};
-        for (int tries = 0; tries < 500 && !SameDevice(sink, seen.sink); ++tries)
-        {
-            Note(context, &seen);
-            sink = FindByKey(context, maud_directionOutput, "maud-test-sink");
-            Sleep(10);
-        }
+        POLL_UNTIL(5000, "maud-test-sink back with its id",
+                   (Note(context, &seen),
+                    sink = FindByKey(context, maud_directionOutput, "maud-test-sink")),
+                   SameDevice(sink, seen.sink));
         Note(context, &seen);
         CHECK(SameDevice(sink, seen.sink) && seen.reason[0] == maud_suspendHost &&
                   seen.reason[1] == maud_suspendHost && !seen.resumed[0] && !seen.resumed[1],
               "across a restart they stay suspended for the host");
     }
     CHECK(maudSetContextSuspended(context, false) == maud_success, "the host resumes");
-    for (int tries = 0; tries < 500 && !(seen.resumed[0] && seen.resumed[1]); ++tries)
-    {
-        Note(context, &seen);
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "both streams' resumption", Note(context, &seen),
+               seen.resumed[0] && seen.resumed[1]);
     counts[0] = atomic_load(&blocks[0].count);
     counts[1] = atomic_load(&blocks[1].count);
     CHECK(seen.resumed[0] && seen.resumed[1] &&
@@ -1201,20 +1177,15 @@ static void TestLimits(void)
 // thousandths within two seconds, or staying below it for half a second.
 static bool Hears(const Blocks* blocks, uint32_t thousandths)
 {
-    for (int tries = 0; tries < 200; ++tries)
-    {
-        if (atomic_load(&blocks->peak) >= thousandths)
-        {
-            return true;
-        }
-        Sleep(10);
-    }
-    return false;
+    POLL_UNTIL(2000, "the input to reach its level", (void)0,
+               atomic_load(&blocks->peak) >= thousandths);
+    return atomic_load(&blocks->peak) >= thousandths;
 }
 
 static bool StaysBelow(const Blocks* blocks, uint32_t thousandths)
 {
-    Sleep(500);
+    // hygiene: half a second for sound above the level to show
+    Pause(500);
     return atomic_load(&blocks->peak) < thousandths;
 }
 
@@ -1250,7 +1221,8 @@ static void TestLoopback(maudContext* context)
     CHECK(Run("pactl set-default-sink maud-pulse-loop") &&
               WaitAfterDefault(context, maud_notifyStreamMoved, away, &record),
           "it moves with the default");
-    Sleep(200);
+    // hygiene: lets the old sink's sound leave the loopback before the peak is cleared
+    Pause(200);
     atomic_store(&following.peak, 0);
     CHECK(StaysBelow(&following, 10), "and hears the silent sink");
     CHECK(Run("pactl set-default-sink maud-test-sink") &&
@@ -1268,15 +1240,8 @@ static void TestLoopback(maudContext* context)
           "one pinned to the silent sink runs");
     CHECK(Run("pactl unload-module module-null-sink"), "unplug the silent sink");
     bool lost = false;
-    for (int tries = 0; tries < 500 && !lost; ++tries)
-    {
-        while (!lost && maudNextNotification(context, &record) == maud_success)
-        {
-            lost = record.kind == maud_notifyStreamSuspended &&
-                   record.reason == maud_suspendDeviceLost && record.stream.index1 == pinned.index1;
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the pinned loopback's loss",
+               lost = DrainToSuspended(context, maud_suspendDeviceLost, pinned), lost);
     CHECK(lost, "it is lost with its sink");
     CHECK(maudDestroyStream(context, pinned) == maud_success, "destroy it");
     maudStreamDef def = maudDefaultStreamDef();
@@ -1308,7 +1273,7 @@ int main(void)
     maudContext* context = nullptr;
     if (maudCreateContext(&def, &context) != maud_success)
     {
-        return getenv("MAUD_REQUIRE_PULSE") != nullptr ? 1 : SKIP;
+        return getenv("MAUD_REQUIRE_PULSE") != nullptr ? 1 : PlatformAbsent("no PulseAudio server");
     }
     TestDevices(context);
     TestHotplug(context);

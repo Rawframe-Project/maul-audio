@@ -13,15 +13,13 @@
 
 #include "test_daemon.h"
 #include "test_harness.h"
+#include "test_wait.h"
 
 #include "maul-audio/notification.h"
 
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-
-#define SKIP 77
 
 typedef struct Blocks
 {
@@ -33,12 +31,6 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     (void)block;
     Blocks* blocks = user;
     atomic_fetch_add(&blocks->count, 1);
-}
-
-static void Sleep(int milliseconds)
-{
-    struct timespec pause = {0, (long)milliseconds * 1000000L};
-    nanosleep(&pause, nullptr);
 }
 
 static maudStreamId Open(maudContext* context, maudDeviceId device, Blocks* blocks)
@@ -59,16 +51,17 @@ static bool SameStream(maudStreamId a, maudStreamId b)
     return a.index1 == b.index1 && a.generation == b.generation;
 }
 
+static void Drain(maudContext* context)
+{
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+}
+
 static bool WaitForBlocks(maudContext* context, Blocks* blocks, uint32_t count)
 {
-    for (int tries = 0; tries < 500 && atomic_load(&blocks->count) < count; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(5000, "the stream's blocks", Drain(context), atomic_load(&blocks->count) >= count);
     return atomic_load(&blocks->count) >= count;
 }
 
@@ -142,13 +135,9 @@ static void Note(maudContext* context, Seen* seen)
     }
 }
 
-// Notes for up to tries polls of 10 ms, until done.
-#define NOTE_UNTIL(context, seen, tries, done)                                                     \
-    for (int poll = 0; poll < (tries) && !(done); ++poll)                                          \
-    {                                                                                              \
-        Note(context, seen);                                                                       \
-        Sleep(10);                                                                                 \
-    }
+// Notes every 10 ms for up to milliseconds, until done.
+#define NOTE_UNTIL(context, seen, milliseconds, done)                                              \
+    POLL_UNTIL(milliseconds, #done, Note(context, seen), done)
 
 int main(void)
 {
@@ -156,12 +145,13 @@ int main(void)
     maudContext* context = nullptr;
     if (!HaveDaemon() || maudCreateContext(&def, &context) != maud_success)
     {
-        return SKIP;
+        return PlatformAbsent("no sound-server fixture to restart");
     }
     CHECK(system("pactl load-module module-null-sink sink_name=maud-test-gone >/dev/null") == 0,
           "a sink the restart will not bring back");
     Seen seen = {0};
-    NOTE_UNTIL(context, &seen, 300, (seen.gone = FindByKey(context, "maud-test-gone")).index1 != 0);
+    NOTE_UNTIL(context, &seen, 3000,
+               (seen.gone = FindByKey(context, "maud-test-gone")).index1 != 0);
     seen.sink = FindByKey(context, "maud-test-sink");
     CHECK(seen.gone.index1 != 0 && seen.sink.index1 != 0, "both sinks listed");
     Blocks before = {0};
@@ -178,17 +168,17 @@ int main(void)
     uint32_t outputs = OutputCount(context);
     CHECK(DriveDaemon("stop", ""), "the daemon stops");
     int64_t away = maudGetHostNanoseconds();
-    NOTE_UNTIL(context, &seen, 500, seen.reason[0] != 0 && seen.reason[1] != 0);
+    NOTE_UNTIL(context, &seen, 5000, seen.reason[0] != 0 && seen.reason[1] != 0);
     CHECK(seen.reason[0] == maud_suspendPlatform && seen.reason[1] == maud_suspendPlatform,
           "both wait for the platform while it is away");
     CHECK(!seen.sinkRemoved && !seen.goneRemoved && OutputCount(context) == outputs,
           "its devices are kept");
     Blocks during = {0};
     seen.streams[2] = Open(context, (maudDeviceId){0, 0}, &during);
-    NOTE_UNTIL(context, &seen, 100, seen.reason[2] != 0);
+    NOTE_UNTIL(context, &seen, 1000, seen.reason[2] != 0);
     CHECK(seen.reason[2] == maud_suspendPlatform, "one created while away waits too");
     CHECK(DriveDaemon("start", ""), "the daemon starts again");
-    NOTE_UNTIL(context, &seen, 500,
+    NOTE_UNTIL(context, &seen, 5000,
                seen.resumed[0] && seen.resumed[1] && seen.resumed[2] && seen.goneRemoved);
     int64_t listed = maudGetHostNanoseconds() - away;
     CHECK(seen.resumed[0] && seen.resumed[1] && seen.resumed[2], "all three resume");
@@ -214,7 +204,8 @@ int main(void)
           "a second sink the restart will not bring back");
     seen.gone = (maudDeviceId){0, 0};
     seen.goneRemoved = false;
-    NOTE_UNTIL(context, &seen, 300, (seen.gone = FindByKey(context, "maud-test-gone")).index1 != 0);
+    NOTE_UNTIL(context, &seen, 3000,
+               (seen.gone = FindByKey(context, "maud-test-gone")).index1 != 0);
     CHECK(seen.gone.index1 != 0 && !SameDevice(seen.gone, seen.sink), "the second sink listed");
     for (int i = 0; i < 3; ++i)
     {
@@ -222,10 +213,10 @@ int main(void)
         seen.resumed[i] = false;
     }
     CHECK(DriveDaemon("stop", ""), "the daemon stops again");
-    NOTE_UNTIL(context, &seen, 500, seen.reason[1] != 0);
+    NOTE_UNTIL(context, &seen, 5000, seen.reason[1] != 0);
     CHECK(seen.reason[1] == maud_suspendPlatform, "the pinned stream waits again");
     CHECK(DriveDaemon("start", ""), "the daemon starts once more");
-    NOTE_UNTIL(context, &seen, 500, seen.resumed[1] && seen.goneRemoved);
+    NOTE_UNTIL(context, &seen, 5000, seen.resumed[1] && seen.goneRemoved);
     CHECK(seen.resumed[1] && seen.goneRemoved, "the pinned stream resumes, the second sink goes");
     CHECK(!seen.sinkRemoved && SameDevice(FindByKey(context, "maud-test-sink"), seen.sink),
           "the sink keeps its id past the other name");
@@ -233,14 +224,14 @@ int main(void)
     Note(context, &seen);
     seen.resumed[0] = false;
     CHECK(DriveDaemon("stop", ""), "the daemon stops for longer");
-    NOTE_UNTIL(context, &seen, 1300,
+    NOTE_UNTIL(context, &seen, 13000,
                seen.sinkRemoved && seen.reason[1] == maud_suspendDeviceLost &&
                    seen.reason[0] == maud_suspendNoDevice);
     CHECK(seen.sinkRemoved && OutputCount(context) == 0, "every device goes");
     CHECK(seen.reason[1] == maud_suspendDeviceLost, "the pinned stream with its device");
     CHECK(seen.reason[0] == maud_suspendNoDevice, "the one on the default waits for a device");
     CHECK(DriveDaemon("start", ""), "the daemon starts again");
-    NOTE_UNTIL(context, &seen, 500, seen.resumed[0]);
+    NOTE_UNTIL(context, &seen, 5000, seen.resumed[0]);
     resumed = atomic_load(&before.count);
     CHECK(seen.resumed[0] && WaitForBlocks(context, &before, resumed + 20),
           "the one on the default plays on the new sink");
@@ -255,25 +246,27 @@ int main(void)
           "two more play");
     Note(context, &host);
     CHECK(maudSetContextSuspended(context, true) == maud_success, "the host suspends");
-    NOTE_UNTIL(context, &host, 100, host.reason[0] != 0 && host.reason[1] != 0);
+    NOTE_UNTIL(context, &host, 1000, host.reason[0] != 0 && host.reason[1] != 0);
     CHECK(host.reason[0] == maud_suspendHost && host.reason[1] == maud_suspendHost,
           "both suspended for the host");
-    Sleep(100);
+    // hygiene: lets callbacks in flight at the suspension end before counting
+    Pause(100);
     uint32_t counts[2] = {atomic_load(&blocks[0].count), atomic_load(&blocks[1].count)};
-    Sleep(300);
+    // hygiene: gives a callback while suspended 300 ms to show
+    Pause(300);
     CHECK(atomic_load(&blocks[0].count) == counts[0] && atomic_load(&blocks[1].count) == counts[1],
           "no callbacks while suspended");
     CHECK(DriveDaemon("stop", ""), "the daemon stops");
-    NOTE_UNTIL(context, &host, 30, false);
+    STEP_FOR(300, Note(context, &host));
     CHECK(DriveDaemon("start", ""), "the daemon starts again");
-    NOTE_UNTIL(context, &host, 500, SameDevice(FindByKey(context, "maud-test-sink"), host.sink));
+    NOTE_UNTIL(context, &host, 5000, SameDevice(FindByKey(context, "maud-test-sink"), host.sink));
     Note(context, &host);
     CHECK(SameDevice(FindByKey(context, "maud-test-sink"), host.sink) &&
               host.reason[0] == maud_suspendHost && host.reason[1] == maud_suspendHost &&
               !host.resumed[0] && !host.resumed[1],
           "across a restart they stay suspended for the host");
     CHECK(maudSetContextSuspended(context, false) == maud_success, "the host resumes");
-    NOTE_UNTIL(context, &host, 500, host.resumed[0] && host.resumed[1]);
+    NOTE_UNTIL(context, &host, 5000, host.resumed[0] && host.resumed[1]);
     counts[0] = atomic_load(&blocks[0].count);
     counts[1] = atomic_load(&blocks[1].count);
     CHECK(host.resumed[0] && host.resumed[1] &&

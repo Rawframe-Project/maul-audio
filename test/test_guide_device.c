@@ -22,6 +22,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include "test_harness.h"
+#include "test_wait.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
@@ -40,22 +41,6 @@
 #include <dirent.h>
 #include <string.h>
 #define GUIDE_ALSA 1
-#endif
-
-#if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-static void Pause(int milliseconds)
-{
-    Sleep((DWORD)milliseconds);
-}
-#else
-#include <time.h>
-static void Pause(int milliseconds)
-{
-    struct timespec span = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&span, nullptr);
-}
 #endif
 
 // The host's state the stream snippet plays from: a 440 Hz tone at
@@ -172,6 +157,14 @@ static bool NativeWithOutput(void)
     return any;
 }
 
+static void Drain(maudContext* context)
+{
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+}
+
 static void GuideContext(void)
 {
     // clang-format off
@@ -220,14 +213,10 @@ static void GuidePlay(void)
     CHECK(result == maud_success, "the stream snippet starts a stream");
     // Two seconds at most for the first block: a loaded machine's server
     // starts a stream within a few hundred milliseconds.
-    for (int tries = 0; result == maud_success && tries < 200 && atomic_load(&synth.samples) == 0;
-         ++tries)
+    if (result == maud_success)
     {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Pause(10);
+        POLL_UNTIL(2000, "the stream's first block", Drain(context),
+                   atomic_load(&synth.samples) > 0);
     }
     CHECK(atomic_load(&synth.samples) > 0, "the stream snippet plays within two seconds");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -242,8 +231,7 @@ int main(void)
             printf("FAIL: the platform this run requires has no native backend with an output\n");
             return 1;
         }
-        printf("skipped: no native backend with an output here\n");
-        return 77;
+        return PlatformAbsent("no native backend with an output here");
     }
     GuideContext();
     GuidePlay();

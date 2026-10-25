@@ -15,6 +15,7 @@
 // which the library attaches to the VM only while it calls Java.
 
 #include "test_harness.h"
+#include "test_wait.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
@@ -44,10 +45,37 @@ static Run s_run;
 static atomic_uint s_blocks;
 static atomic_uint s_captured;
 
-static void Sleep(int milliseconds)
+static void Drain(maudContext* context)
 {
-    struct timespec delay = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
-    nanosleep(&delay, nullptr);
+    maudNotification ignored;
+    while (maudNextNotification(context, &ignored) == maud_success)
+    {
+    }
+}
+
+// Drains notifications; whether one among them says stream resumed.
+static bool ResumedAmong(maudContext* context, maudStreamId stream)
+{
+    bool resumed = false;
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        resumed = resumed || (record.kind == maud_notifyStreamResumed &&
+                              record.stream.index1 == stream.index1);
+    }
+    return resumed;
+}
+
+// Drains notifications; whether a focus record among them says focus.
+static bool FocusAmong(maudContext* context, maudFocus focus)
+{
+    bool seen = false;
+    maudNotification record;
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        seen = seen || (record.kind == maud_notifyFocusChanged && record.focus == focus);
+    }
+    return seen;
 }
 
 static void Silence(const maudStreamBlock* block, void* user)
@@ -238,14 +266,7 @@ static void TestPinned(maudContext* context, maudDeviceId speaker)
               maudStartStream(context, stream) == maud_success,
           "a stream on the speaker");
     atomic_store(&s_blocks, 0);
-    for (int tries = 0; tries < 300 && atomic_load(&s_blocks) < 20; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "the speaker's blocks", Drain(context), atomic_load(&s_blocks) >= 20);
     CHECK(atomic_load(&s_blocks) >= 20, "it plays");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed");
 }
@@ -267,38 +288,16 @@ static void TestPermission(maudContext* context)
               maudStartStream(context, stream) == maud_success,
           "an input stream");
     CHECK(Suspension(context, stream) == maud_suspendPermission, "waits for the microphone");
-    for (int tries = 0; tries < 30; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    STEP_FOR(300, Drain(context));
     CHECK(Suspension(context, stream) == maud_suspendPermission, "and goes on waiting");
     printf("adb: pm grant %s android.permission.RECORD_AUDIO\n", MAUD_TEST_PACKAGE);
     bool resumed = false;
-    for (int tries = 0; tries < 1500 && !resumed; ++tries)
-    {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            resumed = resumed || (record.kind == maud_notifyStreamResumed &&
-                                  record.stream.index1 == stream.index1);
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(15000, "the input stream's resumption once granted",
+               resumed = ResumedAmong(context, stream) || resumed, resumed);
     CHECK(resumed && Suspension(context, stream) != maud_suspendPermission,
           "granted, it leaves the wait");
     atomic_store(&s_captured, 0);
-    for (int tries = 0; tries < 300 && atomic_load(&s_captured) < 20; ++tries)
-    {
-        maudNotification ignored;
-        while (maudNextNotification(context, &ignored) == maud_success)
-        {
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(3000, "the captured blocks", Drain(context), atomic_load(&s_captured) >= 20);
     CHECK(atomic_load(&s_captured) >= 20, "and captures");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroyed");
 }
@@ -354,15 +353,7 @@ static bool OtherFocus(int gain)
 static bool FocusBecomes(maudContext* context, maudFocus focus)
 {
     bool seen = false;
-    for (int tries = 0; tries < 200 && !seen; ++tries)
-    {
-        maudNotification record;
-        while (maudNextNotification(context, &record) == maud_success)
-        {
-            seen = seen || (record.kind == maud_notifyFocusChanged && record.focus == focus);
-        }
-        Sleep(10);
-    }
+    POLL_UNTIL(2000, "the focus record", seen = FocusAmong(context, focus) || seen, seen);
     maudFocus now = maud_focusNone;
     CHECK(maudGetContextFocus(context, &now) == maud_success, "focus read");
     if (!seen || now != focus)
