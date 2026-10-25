@@ -5,6 +5,14 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.0.4](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.3...v0.0.4) (2026-10-25)
+
+
+### Fixed
+
+* **alsa:** count a gap the PCM's delay does not show ([#62](https://github.com/Rawframe-Project/maul-audio/issues/62)) ([4378db7](https://github.com/Rawframe-Project/maul-audio/commit/4378db700b7bf9594ad76723bb1cc637e7b41459)), closes [#60](https://github.com/Rawframe-Project/maul-audio/issues/60)
+* **alsa:** count the underruns ALSA's PulseAudio plugin hides ([#35](https://github.com/Rawframe-Project/maul-audio/issues/35)) ([fb2db22](https://github.com/Rawframe-Project/maul-audio/commit/fb2db22600007f07c117edcf3b52a266dc10a790)), closes [#31](https://github.com/Rawframe-Project/maul-audio/issues/31)
+
 ## [0.0.3](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.3) (2026-10-24)
 
 ### Changed
