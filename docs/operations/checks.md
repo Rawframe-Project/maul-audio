@@ -17,7 +17,7 @@ The changed tier maps each changed path to the suites of its area (`labels_for` 
 ## Labels
 
 - `integration`: a suite that drives a real platform (a sound server, the platform's audio service, a simulator, an emulator, a browser). It may read the clock and use localhost, and runs in the changed tier only when a change reaches it by name.
-- `quarantine`: a check that failed intermittently. It runs only in the nightly run, with an issue, and leaves quarantine after 14 nightly runs in a row pass. Today: the browser clock and loopback pages, and the main page on a plain page (`page_web_plain`).
+- `quarantine`: a check that failed intermittently. It runs only in the nightly run, with an issue, and leaves quarantine after 14 nightly runs in a row pass. Today: the browser clock and loopback pages, the main page on a plain page (`page_web_plain`), and `alsa_xrun`, the ALSA stall's underrun (`test_alsa xrun`, #60), whose run of `alsa` leaves that one check out.
 - `package`: the installed package consumed by `samples/minimal` through CMake and pkg-config (`MAUL_AUDIO_TEST_PACKAGE`, [PackageTest.cmake](../../cmake/PackageTest.cmake)).
 
 On Linux the `sound-server` fixture starts a private PipeWire daemon for the suites that need one and stops it after them ([Test environments](test-environments.md#linux-a-private-sound-server)). Every other test runs with an empty runtime directory of the build's, so no test reaches the session's own sound server.
@@ -28,7 +28,7 @@ On Linux the `sound-server` fixture starts a private PipeWire daemon for the sui
 
 | Job | What it checks |
 |---|---|
-| `docs`, `zizmor` | The organization's documentation check; the workflows' security audit. |
+| `docs`, `zizmor` | The organization's documentation check, run from the pinned commit of `.github`, so the pin fixes the rules; the workflows' security audit. |
 | `checks` | `clang-format`, the family's rules, the engine-free API (`check_litmus.py`), the README's cost table, the documentation site, `clang-tidy` over the Linux build's sources. |
 | `build` | One shared-workflow cell per preset: `linux-gcc-14` (both parts, every Linux backend, the package test), `linux-clang-20`, `linux-clang-20-asan` (each test up to three times on a pull request, so a flaky one fails before it merges), `linux-clang-20-tsan`, `linux-shared` (the package test), `linux-device-only`, `linux-spatial-only`, `linux-private-backend`, `macos-clang` (into BlackHole, the package test), `windows-clang-cl` (the package test; the WASAPI suites need an endpoint the runners lack, so they run under Wine in development). |
 | `msvc-headers` | The public headers alone under MSVC's `cl`, as C17 and C++17 with `/W4 /WX`. |

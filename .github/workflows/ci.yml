@@ -40,21 +40,27 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@c84f41e11c17d61e2876d65faf9aed1bea5130f7 # v0.0.19
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@e6b9db735576653736d19d9c50d47e1b428af77a # v0.0.22
     permissions:
       pull-requests: read
 
   # The organization's documentation check. data/hrtf/apache-2.0 holds the
   # HRTF set's license exactly as published.
   docs:
-    uses: Rawframe-Project/.github/.github/workflows/docs-check.yml@c84f41e11c17d61e2876d65faf9aed1bea5130f7 # v0.0.19
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
-    with:
-      exclude: data/hrtf/apache-2.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@e6b9db735576653736d19d9c50d47e1b428af77a # v0.0.22
+        with:
+          exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@c84f41e11c17d61e2876d65faf9aed1bea5130f7 # v0.0.19
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@e6b9db735576653736d19d9c50d47e1b428af77a # v0.0.22
     permissions:
       contents: read
 
@@ -127,7 +133,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c84f41e11c17d61e2876d65faf9aed1bea5130f7 # v0.0.19
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e6b9db735576653736d19d9c50d47e1b428af77a # v0.0.22
     permissions:
       contents: read
     with:
@@ -151,7 +157,7 @@ jobs:
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c84f41e11c17d61e2876d65faf9aed1bea5130f7 # v0.0.19
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@e6b9db735576653736d19d9c50d47e1b428af77a # v0.0.22
     permissions:
       contents: read
     with:
