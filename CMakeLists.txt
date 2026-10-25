@@ -744,8 +744,9 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE AND EMSCRIPTEN)
 endif()
 
 # The suites that drive a real platform: a sound server, the platform's
-# own audio service, a simulator, an emulator or a browser. They are kept
-# out of the changed-files check (tools/check.sh) and may read the clock.
+# own audio service, a simulator, an emulator or a browser. They may read
+# the clock, and the changed-files check (tools/check.sh) runs one only
+# when a change reaches it by name.
 if(MAUL_AUDIO_BUILD_TESTS)
     foreach(name pipewire pipewire_restart pulse alsa stall guide_device coreaudio wasapi wasapi_sta
                  ios ios_capture aaudio android_java)
