@@ -524,10 +524,14 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     if(MAUL_AUDIO_PULSE)
         maul_add_test(pulse)
         target_compile_definitions(test_pulse PRIVATE _GNU_SOURCE)
+        # The output stream's rate, which reads past its tolerance now and
+        # then on a loaded runner (#73): quarantined, so it runs at night.
+        add_test(NAME pulse_rate COMMAND test_pulse rate)
+        set_tests_properties(pulse_rate PROPERTIES LABELS "pulse;quarantine")
         # The test server is the PipeWire daemon's pulse service.
-        set_tests_properties(pulse PROPERTIES RESOURCE_LOCK pipewire-daemon)
+        set_tests_properties(pulse pulse_rate PROPERTIES RESOURCE_LOCK pipewire-daemon)
         if(MAUL_AUDIO_TSAN)
-            set_tests_properties(pulse PROPERTIES ENVIRONMENT
+            set_tests_properties(pulse pulse_rate PROPERTIES ENVIRONMENT
                 "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-pulse.supp")
         endif()
     endif()
@@ -752,16 +756,16 @@ endif()
 # the clock, and the changed-files check (tools/check.sh) runs one only
 # when a change reaches it by name.
 if(MAUL_AUDIO_BUILD_TESTS)
-    foreach(name pipewire pipewire_move pipewire_restart pulse alsa stall guide_device coreaudio
-                 wasapi wasapi_sta ios ios_capture aaudio android_java)
+    foreach(name pipewire pipewire_move pipewire_restart pulse pulse_rate alsa stall guide_device
+                 coreaudio wasapi wasapi_sta ios ios_capture aaudio android_java)
         if(TEST ${name})
             set_property(TEST ${name} APPEND PROPERTY LABELS integration)
         endif()
     endforeach()
     # The suites that skip where their platform is absent
     # (PlatformAbsent, test/test_wait.h).
-    foreach(name pipewire pipewire_move pipewire_restart pulse alsa stall guide_device coreaudio
-                 wasapi wasapi_sta aaudio)
+    foreach(name pipewire pipewire_move pipewire_restart pulse pulse_rate alsa stall guide_device
+                 coreaudio wasapi wasapi_sta aaudio)
         if(TEST ${name})
             # hygiene: exit 77 means the suite's platform is absent, never a failure
             set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
@@ -784,7 +788,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
     set(maul_audio_server_dir ${PROJECT_BINARY_DIR}/sound-server)
     get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
     set(maul_audio_server_tests "")
-    foreach(name pipewire pipewire_move pipewire_restart pulse alsa stall guide_device)
+    foreach(name pipewire pipewire_move pipewire_restart pulse pulse_rate alsa stall guide_device)
         if(TEST ${name})
             list(APPEND maul_audio_server_tests ${name})
         endif()
