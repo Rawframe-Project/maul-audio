@@ -10,7 +10,8 @@
 // say which step made them (the wall is up on odd steps), so a torn
 // read shows. Without a device that opens, or with a stream the
 // platform suspends for want of one, the test is skipped, unless
-// MAUD_REQUIRE_PIPEWIRE or MAUD_REQUIRE_COREAUDIO is set.
+// MAUD_REQUIRE_PIPEWIRE or MAUD_REQUIRE_COREAUDIO is set, and then the
+// native backend must be the one it names.
 
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
@@ -152,8 +153,16 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
 
 int main(void)
 {
-    bool required =
-        getenv("MAUD_REQUIRE_PIPEWIRE") != nullptr || getenv("MAUD_REQUIRE_COREAUDIO") != nullptr;
+    maudBackendKind requiredKind = maud_backendNative;
+    if (getenv("MAUD_REQUIRE_PIPEWIRE") != nullptr)
+    {
+        requiredKind = maud_backendPipewire;
+    }
+    else if (getenv("MAUD_REQUIRE_COREAUDIO") != nullptr)
+    {
+        requiredKind = maud_backendCoreAudio;
+    }
+    bool required = requiredKind != maud_backendNative;
     maudContextDef contextDef = maudDefaultContextDef();
     maudContext* context = nullptr;
     if (maudCreateContext(&contextDef, &context) != maud_success)
@@ -161,6 +170,13 @@ int main(void)
         CHECK(!required, "a native context");
         return required ? 1 : SKIP;
     }
+    maudBackendKind chosen = maudGetContextBackend(context);
+    if (required && chosen != requiredKind)
+    {
+        printf("the native backend is kind %d, and this run requires kind %d\n", (int)chosen,
+               (int)requiredKind);
+    }
+    CHECK(!required || chosen == requiredKind, "the native backend is the one this run requires");
     Shared* shared = &s_shared;
     maudSpatializerDef spatialDef = maudDefaultSpatializerDef();
     spatialDef.anyHit = AnyHit;
