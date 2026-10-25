@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Drives the sound-server fixture's daemon (tools/pipewire_daemon.sh), for
-// the backend tests that stop, start or signal it, and reads the xruns its
-// graph counted, which the timing checks judge their windows by. CMake
+// the backend tests that stop, start or signal it, reads the xruns its
+// graph counted, which the timing checks judge their windows by, and
+// bounds a wait on its session manager. CMake
 // compiles the script and the fixture's directory in where the fixture
 // runs, so no command comes from the environment; elsewhere there is no
 // daemon.
@@ -23,6 +24,15 @@
 #define MAUD_TEST_DAEMON     ""
 #define MAUD_TEST_SERVER_DIR ""
 #endif
+
+// The longest a wait on the fixture's session manager takes, in
+// milliseconds: WirePlumber makes a configured default the default the
+// server then announces, and finishes what the daemon starts. Thirty
+// seconds, since a loaded machine slows it well past its usual tens of
+// milliseconds (ten seconds ran out at a load of 200, and five on an
+// ASan cell whose bake suite took 147 s). A wait ends as soon as the
+// answer comes.
+#define SESSION_MANAGER_MS 30000
 
 // Whether this build has the fixture's daemon to drive.
 static inline bool HaveDaemon(void)

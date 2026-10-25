@@ -223,10 +223,8 @@ static bool KeyIs(const maudContext* context, maudDeviceId device, const char* k
 }
 
 // Polls of 10 ms a wait for the daemon or the session manager takes at
-// most: thirty seconds, since a loaded machine slows WirePlumber well
-// past its usual tens of milliseconds (ten seconds ran out at a load of
-// 200). A wait ends as soon as the answer comes.
-#define NOTICE_TRIES 3000
+// most (SESSION_MANAGER_MS, test_daemon.h).
+#define NOTICE_TRIES (SESSION_MANAGER_MS / 10)
 
 // Drains notifications for up to NOTICE_TRIES ten-millisecond waits
 // until one of kind arrives whose device has key, or whose device is

@@ -85,12 +85,12 @@ static bool HasMonitor(const maudContext* context)
     return false;
 }
 
-// Drains notifications for up to five seconds until one of kind
+// Drains notifications for up to milliseconds until one of kind
 // arrives; with a device given, only one about that device.
-static bool WaitFor(maudContext* context, maudNotificationKind kind, maudDeviceId device,
-                    maudNotification* recordOut)
+static bool WaitForWithin(maudContext* context, maudNotificationKind kind, maudDeviceId device,
+                          maudNotification* recordOut, int milliseconds)
 {
-    for (int tries = 0; tries < 500; ++tries)
+    for (int tries = 0; tries < milliseconds / 10; ++tries)
     {
         while (maudNextNotification(context, recordOut) == maud_success)
         {
@@ -105,11 +105,28 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, maudDeviceI
     return false;
 }
 
-// Drains notifications for up to five seconds until both roles' output
-// default is device.
+// Drains notifications for up to five seconds until one of kind
+// arrives; with a device given, only one about that device.
+static bool WaitFor(maudContext* context, maudNotificationKind kind, maudDeviceId device,
+                    maudNotification* recordOut)
+{
+    return WaitForWithin(context, kind, device, recordOut, 5000);
+}
+
+// The same for a notification that follows a default the server
+// changed, which waits on the session manager (SESSION_MANAGER_MS).
+static bool WaitAfterDefault(maudContext* context, maudNotificationKind kind, maudDeviceId device,
+                             maudNotification* recordOut)
+{
+    return WaitForWithin(context, kind, device, recordOut, SESSION_MANAGER_MS);
+}
+
+// Drains notifications until both roles' output default is device, for
+// as long as the session manager takes to make it the default
+// (SESSION_MANAGER_MS).
 static bool WaitForDefaults(maudContext* context, maudDeviceId device)
 {
-    for (int tries = 0; tries < 500; ++tries)
+    for (int tries = 0; tries < SESSION_MANAGER_MS / 10; ++tries)
     {
         maudNotification ignored;
         while (maudNextNotification(context, &ignored) == maud_success)
@@ -307,6 +324,26 @@ static maudDeviceId WaitForKey(maudContext* context, maudDirection direction, co
     return device;
 }
 
+// Drains notifications for up to five seconds until an addition names
+// the device with key; announced says whether one did.
+static maudDeviceId WaitForAdded(maudContext* context, maudDirection direction, const char* key,
+                                 bool* announced)
+{
+    *announced = false;
+    for (int tries = 0; tries < 500 && !*announced; ++tries)
+    {
+        maudNotification record;
+        while (maudNextNotification(context, &record) == maud_success)
+        {
+            *announced =
+                *announced || (record.kind == maud_notifyDeviceAdded &&
+                               SameDevice(record.device, FindByKey(context, direction, key)));
+        }
+        Sleep(10);
+    }
+    return FindByKey(context, direction, key);
+}
+
 static void TestDevices(const maudContext* context)
 {
     CHECK(maudGetContextBackend(context) == maud_backendPulse, "PulseAudio");
@@ -348,17 +385,19 @@ static void TestHotplug(maudContext* context)
               "sink_properties='device.description=Hotplug device.form_factor=headphone' "
               "> /dev/null"),
           "load a sink");
+    bool announced = false;
+    maudDeviceId plugged =
+        WaitForAdded(context, maud_directionOutput, "maud-pulse-hotplug", &announced);
+    CHECK(plugged.index1 != 0, "it is added");
+    CHECK(announced, "by its name");
     maudNotification record;
-    maudDeviceId any = {0, 0};
-    CHECK(WaitFor(context, maud_notifyDeviceAdded, any, &record), "it is added");
-    maudDeviceId plugged = FindByKey(context, maud_directionOutput, "maud-pulse-hotplug");
-    CHECK(SameDevice(record.device, plugged), "by its name");
     maudDeviceInfo info = {0};
     CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success &&
               info.form == maud_formHeadphones,
           "its form factor read as headphones");
     CHECK(Run("pactl set-default-sink maud-pulse-hotplug"), "make it the default");
-    CHECK(WaitFor(context, maud_notifyDefaultChanged, plugged, &record), "the default follows");
+    CHECK(WaitAfterDefault(context, maud_notifyDefaultChanged, plugged, &record),
+          "the default follows");
     CHECK(WaitForDefaults(context, plugged), "for both roles");
     CHECK(Run("pactl set-default-sink maud-test-sink"), "restore the default");
     bool back =
@@ -624,7 +663,7 @@ static void TestFollowRate(maudContext* context)
     maudDeviceId other = WaitForKey(context, maud_directionOutput, "maud-pulse-follow");
     maudNotification record;
     CHECK(Run("pactl set-default-sink maud-pulse-follow"), "make it the default");
-    CHECK(WaitFor(context, maud_notifyStreamMoved, other, &record), "the stream moves");
+    CHECK(WaitAfterDefault(context, maud_notifyStreamMoved, other, &record), "the stream moves");
     CHECK(WaitFor(context, maud_notifyStreamFormatChanged, (maudDeviceId){0, 0}, &record) &&
               record.sampleRate == 44100,
           "at the new default's rate");
@@ -636,7 +675,7 @@ static void TestFollowRate(maudContext* context)
     CHECK(Run("pactl list sink-inputs | grep -q 'Sample Specification: float32le 2ch 44100Hz'"),
           "reopened at 44.1 kHz");
     CHECK(Run("pactl set-default-sink maud-test-sink"), "restore the default");
-    CHECK(WaitFor(context, maud_notifyStreamMoved, home, &record), "it moves back");
+    CHECK(WaitAfterDefault(context, maud_notifyStreamMoved, home, &record), "it moves back");
     CHECK(WaitFor(context, maud_notifyStreamFormatChanged, (maudDeviceId){0, 0}, &record) &&
               record.sampleRate == before.sampleRate,
           "at its first rate");
@@ -1209,13 +1248,13 @@ static void TestLoopback(maudContext* context)
           "one on the default hears the tone");
     maudNotification record;
     CHECK(Run("pactl set-default-sink maud-pulse-loop") &&
-              WaitFor(context, maud_notifyStreamMoved, away, &record),
+              WaitAfterDefault(context, maud_notifyStreamMoved, away, &record),
           "it moves with the default");
     Sleep(200);
     atomic_store(&following.peak, 0);
     CHECK(StaysBelow(&following, 10), "and hears the silent sink");
     CHECK(Run("pactl set-default-sink maud-test-sink") &&
-              WaitFor(context, maud_notifyStreamMoved, home, &record),
+              WaitAfterDefault(context, maud_notifyStreamMoved, home, &record),
           "back with the default");
     atomic_store(&following.peak, 0);
     CHECK(Hears(&following, 400), "and hears the tone again");

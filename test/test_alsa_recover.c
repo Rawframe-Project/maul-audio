@@ -11,14 +11,17 @@
 // -EPIPE, counts one underrun per gap: never on the first fill after a
 // prepare or a recovery, after silence written while it did not run,
 // when the delay fails, as a PCM in an xrun does, or when the queue is
-// reported empty before the last write's frames could have played out.
+// reported empty before the last write's frames could have played out;
+// and also when the queue is reported with frames in it long after
+// every frame written could have played out, as pipewire-pulse leaves a
+// starved stream's delay, but not when the sink starts taking frames
+// late after a fill into an empty queue.
 
 #include "alsa_stream.h"
 #include "test_harness.h"
 
 #include <errno.h>
 #include <string.h>
-#include <time.h>
 
 static int s_recoverResult;
 static int s_recovered;
@@ -71,6 +74,14 @@ static int FakeDelay(snd_pcm_t* pcm, snd_pcm_sframes_t* delay)
     return s_delayResult;
 }
 
+// The stream's host clock, which the test moves instead of waiting.
+static int64_t s_now;
+
+static int64_t FakeNow(void)
+{
+    return s_now;
+}
+
 static snd_pcm_sframes_t FakeWrite(snd_pcm_t* pcm, const void* buffer, snd_pcm_uframes_t frames)
 {
     (void)pcm;
@@ -87,13 +98,12 @@ static void Silence(const maudStreamBlock* block, void* user)
 #define FRAMES 64
 
 // One transfer of FRAMES into a PCM with delay frames queued before it,
-// pause milliseconds after the last one, and the stream's underruns after
-// it. FRAMES at 48 kHz play out in 1.3 ms, so 10 ms is time to drain on
-// any machine; a pause is a minimum on the monotonic clock.
+// pause milliseconds after the last one on the stream's clock, and the
+// stream's underruns after it. FRAMES at 48 kHz play out in 1.3 ms, so
+// 10 ms is time to drain, and 1 ms is not.
 static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay, int pause)
 {
-    struct timespec span = {0, (long)pause * 1000000L};
-    nanosleep(&span, nullptr);
+    s_now += (int64_t)pause * 1000000;
     s_avail = FRAMES;
     s_delay = delay;
     CHECK(maudAlsaTransfer(entry), "a write");
@@ -125,11 +135,12 @@ static void TestSilentGaps(void)
                             .core = &core,
                             .pcm = (snd_pcm_t*)&dummy,
                             .samples = samples,
-                            .bufferFrames = FRAMES};
+                            .bufferFrames = FRAMES,
+                            .now = FakeNow};
     s_delayResult = 0;
     CHECK(WriteWith(&entry, 0, 0) == 0, "the first fill after a prepare is no gap");
     CHECK(WriteWith(&entry, 0, 10) == 1, "a queue drained of the stream's frames: one underrun");
-    CHECK(WriteWith(&entry, 2 * FRAMES, 10) == 1, "a queue with frames left: none");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 1, "a queue with frames left: none");
     CHECK(WriteWith(&entry, 0, 10) == 2, "the next gap is another");
     s_delayResult = -EPIPE;
     CHECK(WriteWith(&entry, 0, 10) == 2, "a delay that fails counts none: the write's -EPIPE does");
@@ -147,12 +158,34 @@ static void TestSilentGaps(void)
     // and for several writes after: the PCM misreports, and those frames
     // and the writes' own are still to play. Once they could have, a
     // queue found empty is a real drain.
-    CHECK(WriteWith(&entry, 24000, 10) == 4, "half a second queued: none");
+    CHECK(WriteWith(&entry, 24000, 1) == 4, "half a second queued: none");
     CHECK(WriteWith(&entry, 0, 0) == 4, "an empty queue reported before it could drain: none");
     CHECK(WriteWith(&entry, 0, 10) == 4 && WriteWith(&entry, 0, 10) == 4 &&
               WriteWith(&entry, 0, 10) == 4,
           "nor while the misreport goes on");
     CHECK(WriteWith(&entry, 0, 600) == 5, "a real drain once the frames could have played");
+    // Writes a millisecond apart into a queue that keeps two writes'
+    // frames, then a write 200 ms after the last, into a queue still
+    // reported with frames in it: the stream stalled and the PCM played
+    // a gap, which its delay does not show.
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 5 && WriteWith(&entry, 2 * FRAMES, 1) == 5 &&
+              WriteWith(&entry, 2 * FRAMES, 1) == 5,
+          "a queue kept full: none");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 200) == 6,
+          "frames reported queued long after they could have played: one underrun");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 6, "and none once the queue is full again");
+    // A recovery prepares the PCM, and the fill after it finds the queue
+    // empty. The sink starts taking frames 10 ms later, more than three
+    // periods, as a suspended sink resuming or a Bluetooth one does: the
+    // stream started late and played no gap. Once it plays, a stall is a
+    // gap again.
+    s_avail = -EPIPE;
+    CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underruns) == 7,
+          "another -EPIPE: one underrun");
+    CHECK(WriteWith(&entry, 0, 0) == 7, "the fill after the recovery: none");
+    CHECK(WriteWith(&entry, FRAMES, 10) == 7, "a sink that starts late: none");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 1) == 7, "it plays");
+    CHECK(WriteWith(&entry, 2 * FRAMES, 200) == 8, "then a stall: one underrun");
 }
 
 int main(void)
@@ -184,7 +217,7 @@ int main(void)
     CHECK(s_started == 0, "is not started again");
 
     api.pcmAvailUpdate = FakeAvail;
-    maudAlsaStream entry = {.api = &api, .core = &core, .pcm = pcm};
+    maudAlsaStream entry = {.api = &api, .core = &core, .pcm = pcm, .now = FakeNow};
     Reset(&core, maud_directionOutput, 0);
     s_avail = -EAGAIN;
     CHECK(maudAlsaTransfer(&entry) && s_recovered == 0, "nothing to move now: left as it is");

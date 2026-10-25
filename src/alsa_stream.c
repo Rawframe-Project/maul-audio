@@ -44,30 +44,38 @@ static maudAlsaStream* EntryOf(maudContext* context, const maudStreamSlot* slot)
 // queue reported empty before the last write's frames could have played
 // out is not believed: a gap needs the time to drain, and the frames
 // still owed play out after this write's, however long the PCM goes on
-// reporting none.
+// reporting none. Nor is a queue reported with frames in it a period
+// after every frame owed could have played out, once the PCM was taking
+// them: it played a gap. Through pipewire-pulse a starved stream stops,
+// and the plugin's delay stays at the sink's latency and what was left
+// queued (#60). A fill into an empty queue sets no such time: the sink
+// may start taking frames late, as a resuming or Bluetooth one does.
 static void Stamp(maudAlsaStream* entry, uint32_t frames, bool output, bool running)
 {
     snd_pcm_sframes_t delay = 0;
     bool known = entry->api->pcmDelay(entry->pcm, &delay) == 0;
-    int64_t now = maudNowNanoseconds();
+    int64_t now = entry->now();
+    uint32_t rate = entry->core->format.sampleRate;
+    int64_t period = (int64_t)((uint64_t)entry->core->format.periodFrames * 1000000000u / rate);
     bool empty = output && entry->primed && known && delay <= 0;
     bool early = empty && now < entry->drainAt;
-    if (empty && running && !early)
+    bool dry = output && entry->primed && entry->playing && known && now > entry->drainAt + period;
+    if (running && ((empty && !early) || dry))
     {
         maudCountXrun(entry->core);
     }
+    entry->playing = known && delay > 0;
     if (!known || delay < 0)
     {
         delay = 0;
     }
     if (output)
     {
-        uint32_t rate = entry->core->format.sampleRate;
         entry->drainAt = early ? entry->drainAt + (int64_t)((uint64_t)frames * 1000000000u / rate)
                                : now + (int64_t)(((uint64_t)delay + frames) * 1000000000u / rate);
     }
     uint64_t behind = (uint64_t)delay + (output ? 0u : frames);
-    int64_t latency = (int64_t)(behind * 1000000000u / entry->core->format.sampleRate);
+    int64_t latency = (int64_t)(behind * 1000000000u / rate);
     if (output)
     {
         maudStampOutputClock(entry->core, latency);
@@ -416,7 +424,7 @@ maudResult maudAlsaAttachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudAlsa* alsa = context->native;
     maudAlsaStream* entry = EntryOf(context, slot);
-    *entry = (maudAlsaStream){.api = &alsa->api, .core = &slot->core};
+    *entry = (maudAlsaStream){.api = &alsa->api, .core = &slot->core, .now = maudNowNanoseconds};
     snd_local_error_handler_t previous = maudAlsaQuiet(&alsa->api);
     maudResult result = Open(context, entry);
     alsa->api.libErrorSetLocal(previous);

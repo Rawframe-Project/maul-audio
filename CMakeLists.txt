@@ -513,6 +513,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
             target_include_directories(test_alsa_hotplug SYSTEM PRIVATE
                 ${MAUL_AUDIO_ASOUND_INCLUDE_DIRS})
             target_compile_definitions(test_alsa_hotplug PRIVATE _GNU_SOURCE)
+            # hygiene: exit 77 means libasound is absent, never a failure
             set_tests_properties(alsa_hotplug PROPERTIES SKIP_RETURN_CODE 77)
         endif()
     endif()
@@ -824,8 +825,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
         foreach(name ${maul_audio_server_tests})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
                          MAUD_REQUIRE_PIPEWIRE=1 MAUD_REQUIRE_PULSE=1 ${require_alsa})
-            target_compile_definitions(test_${name} PRIVATE MAUD_TEST_DAEMON="${daemon}"
-                                       MAUD_TEST_SERVER_DIR="${maul_audio_server_dir}")
+            if(TARGET test_${name})
+                target_compile_definitions(test_${name} PRIVATE MAUD_TEST_DAEMON="${daemon}"
+                                           MAUD_TEST_SERVER_DIR="${maul_audio_server_dir}")
+            endif()
         endforeach()
     endif()
 endif()
