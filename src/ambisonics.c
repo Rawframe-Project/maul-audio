@@ -162,8 +162,8 @@ static void RotateFrame(uint32_t order, const float* a, const float* b, float t,
             float sb = 0.0f;
             for (uint32_t j = 0; j < size; ++j)
             {
-                sa += a[at + i * size + j] * in[first + j];
-                sb += b != nullptr ? b[at + i * size + j] * in[first + j] : 0.0f;
+                sa += a[at + (size_t)i * size + j] * in[first + j];
+                sb += b != nullptr ? b[at + (size_t)i * size + j] * in[first + j] : 0.0f;
             }
             frame[first + i] = b != nullptr ? sa + t * (sb - sa) : sa;
         }
