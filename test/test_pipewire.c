@@ -466,6 +466,13 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     ResetDefaults(context, helper);
 }
 
+// The input blocks a trace keeps: 256 periods of 256 frames at 48 kHz,
+// 1.4 s.
+#define TRACE_BLOCKS 256
+// The frames at a block's end a trace measures apart: a 1 kHz tone at
+// 48 kHz is never silent over 8 of them.
+#define TAIL_FRAMES 8
+
 // What a stream's callback saw, written on libpipewire's data thread.
 typedef struct Blocks
 {
@@ -487,6 +494,14 @@ typedef struct Blocks
     bool tone;
     float phase;
     _Atomic(uint32_t) peak;
+    // While trace is set, each input block's host time, its loudest
+    // sample and the loudest over its last TAIL_FRAMES frames, in
+    // thousandths, the first TRACE_BLOCKS of them.
+    atomic_bool trace;
+    _Atomic(uint32_t) traced;
+    int64_t traceNs[TRACE_BLOCKS];
+    uint32_t tracePeak[TRACE_BLOCKS];
+    uint32_t traceTail[TRACE_BLOCKS];
 } Blocks;
 
 static void CountBlocks(const maudStreamBlock* block, void* user)
@@ -500,13 +515,28 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     {
         atomic_fetch_add(&blocks->withInput, 1);
         uint32_t channels = maudGetLayoutChannelCount(block->layout);
-        uint32_t peak = atomic_load(&blocks->peak);
+        uint32_t loudest = 0;
+        uint32_t tail = 0;
+        uint32_t tailFrom = block->frameCount > TAIL_FRAMES ? block->frameCount - TAIL_FRAMES : 0;
         for (uint32_t i = 0; i < block->frameCount * channels; ++i)
         {
             float level = fabsf(block->input[i]) * 1000.0f;
-            peak = level > (float)peak ? (uint32_t)level : peak;
+            loudest = level > (float)loudest ? (uint32_t)level : loudest;
+            if (i / channels >= tailFrom)
+            {
+                tail = level > (float)tail ? (uint32_t)level : tail;
+            }
         }
-        atomic_store(&blocks->peak, peak);
+        uint32_t peak = atomic_load(&blocks->peak);
+        atomic_store(&blocks->peak, loudest > peak ? loudest : peak);
+        uint32_t traced = atomic_load(&blocks->traced);
+        if (atomic_load(&blocks->trace) && traced < TRACE_BLOCKS)
+        {
+            blocks->traceNs[traced] = maudGetHostNanoseconds();
+            blocks->tracePeak[traced] = loudest;
+            blocks->traceTail[traced] = tail;
+            atomic_store(&blocks->traced, traced + 1);
+        }
     }
     if (blocks->tone && block->output != nullptr)
     {
@@ -1038,17 +1068,70 @@ static bool StaysBelow(maudContext* context, const Blocks* blocks, uint32_t thou
     return atomic_load(&blocks->peak) < thousandths;
 }
 
+// The traced blocks that join a sink's tone and another's silence: loud,
+// and silent over their last TAIL_FRAMES frames, which no block of the
+// tone alone is. A block gathered across a loopback's move would be.
+static uint32_t JoinedBlocks(Blocks* blocks)
+{
+    atomic_store(&blocks->trace, false);
+    uint32_t traced = atomic_load(&blocks->traced);
+    uint32_t joined = 0;
+    for (uint32_t i = 0; i < traced; ++i)
+    {
+        joined += blocks->tracePeak[i] >= 10 && blocks->traceTail[i] < 10 ? 1 : 0;
+    }
+    return joined;
+}
+
+// Prints a traced loopback's blocks since the default was set: how many
+// came, and each that carried sound, in milliseconds since the set and
+// since the stream reported its move; then where the server has its
+// streams.
+static void PrintTrace(const Blocks* blocks, int64_t setAt, int64_t movedAt)
+{
+    uint32_t traced = atomic_load(&blocks->traced);
+    printf("move: reported %.1f ms after the set; %u blocks traced\n",
+           (double)(movedAt - setAt) / 1e6, traced);
+    for (uint32_t i = 0; i < traced; ++i)
+    {
+        if (blocks->tracePeak[i] >= 10)
+        {
+            printf("  block %u at %.1f ms (%.1f after the move): peak %u, last frames %u\n", i,
+                   (double)(blocks->traceNs[i] - setAt) / 1e6,
+                   (double)(blocks->traceNs[i] - movedAt) / 1e6, blocks->tracePeak[i],
+                   blocks->traceTail[i]);
+        }
+    }
+    // The fixture's own server, never the session's.
+    (void)!system("echo 'the server now:'; pactl list sink-inputs short;"
+                  "pactl list source-outputs short; pw-link -l");
+}
+
 // Whether this is the quarantined run, pipewire_move ("test_pipewire
 // move"): the loopback's move alone, with its check of the silent sink.
 static bool s_moveOnly;
 
+// Forces the fixture's graph to a quantum, or lets it choose again (0).
+static bool ForceQuantum(uint32_t frames)
+{
+    char command[128];
+    snprintf(command, sizeof(command),
+             "pw-metadata -n settings 0 clock.force-quantum %u >/dev/null", frames);
+    return system(command) == 0;
+}
+
 // A loopback stream captures what a sink plays, from its monitor:
 // silence while nothing plays there, the tone a stream plays once one
 // does. One on the default follows the default sink away to a silent
-// sink and back.
+// sink and back, and hears only the silent sink there: no block joins
+// the frames it gathered on the old sink to the new one's. The graph
+// runs a quantum of 1000 frames, no whole number of the stream's
+// periods, so the stream has frames gathered toward a block whenever it
+// moves (#50).
 static void TestLoopback(maudContext* context, Helper* helper)
 {
     ResetDefaults(context, helper);
+    CHECK(ForceQuantum(1000), "the graph at a quantum of 1000 frames");
     maudDeviceId home = {0, 0};
     CHECK(FindByKey(context, maud_directionOutput, "maud-test-sink", &home), "the test sink");
     Blocks heard = {0};
@@ -1068,18 +1151,26 @@ static void TestLoopback(maudContext* context, Helper* helper)
     PlugSink(helper);
     maudDeviceId plugged = {0, 0};
     CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
+    atomic_store(&following.trace, true);
+    int64_t setAt = maudGetHostNanoseconds();
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
     maudNotification record;
     CHECK(WaitForStream(context, maud_notifyStreamMoved, loop, &record) &&
               KeyIs(context, record.device, "maud-test-hotplug"),
           "it moves with the default");
+    int64_t movedAt = maudGetHostNanoseconds();
     StaysBelow(context, &following, UINT32_MAX);
     atomic_store(&following.peak, 0);
-    // Heard sound now and then on a loaded runner (#50): judged only in
-    // the quarantined run, pipewire_move, until that is fixed.
-    if (s_moveOnly)
+    // Heard the old sink now and then on a loaded runner (#50): judged
+    // only in the quarantined run, pipewire_move, until 14 nights in a
+    // row pass after the fix.
+    bool silent = !s_moveOnly || StaysBelow(context, &following, 10);
+    CHECK(silent, "and hears the silent sink");
+    uint32_t joined = JoinedBlocks(&following);
+    CHECK(joined == 0, "no block joins the old sink's tone to the new sink's silence");
+    if (!silent || joined != 0)
     {
-        CHECK(StaysBelow(context, &following, 10), "and hears the silent sink");
+        PrintTrace(&following, setAt, movedAt);
     }
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
     CHECK(WaitForStream(context, maud_notifyStreamMoved, loop, &record) &&
@@ -1099,6 +1190,7 @@ static void TestLoopback(maudContext* context, Helper* helper)
           "it is lost with its sink");
     CHECK(maudDestroyStream(context, pinned) == maud_success, "destroy it");
     ResetDefaults(context, helper);
+    CHECK(ForceQuantum(0), "the graph's quantum its own again");
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionLoopback;
     def.callback = CountBlocks;

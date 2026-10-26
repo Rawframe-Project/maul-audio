@@ -395,6 +395,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     maul_add_test(follow WHITEBOX)
     maul_add_test(form WHITEBOX)
     maul_add_test(stream_open WHITEBOX)
+    maul_add_test(period WHITEBOX)
     if(NOT MAUL_AUDIO_PRIVATE_BACKEND STREQUAL "")
         maul_add_test(private_backend)
     endif()
@@ -487,8 +488,9 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
                 ${MAUL_AUDIO_PW_INCLUDE_DIRS})
             target_compile_definitions(test_pipewire_parse PRIVATE _GNU_SOURCE)
         endif()
-        # The loopback's move to a silent sink, which hears sound now and
-        # then on a loaded runner (#50): quarantined, so it runs at night.
+        # The loopback's move to a silent sink, which heard the old sink now
+        # and then on a loaded runner (#50): quarantined, so it runs at
+        # night, until 14 nights in a row pass after the fix.
         add_test(NAME pipewire_move COMMAND test_pipewire move)
         set_tests_properties(pipewire_move PROPERTIES LABELS "pipewire;quarantine")
         # All three use the one test daemon, and pipewire_restart restarts it.
@@ -805,7 +807,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
                      PULSE_SERVER=unix:${runtime}/pulse/native)
     endforeach()
     set(maul_audio_server_found TRUE)
-    foreach(program pipewire pipewire-pulse wireplumber pw-cli pactl dbus-daemon)
+    foreach(program pipewire pipewire-pulse wireplumber pw-cli pw-metadata pactl dbus-daemon)
         string(MAKE_C_IDENTIFIER ${program} variable)
         find_program(MAUL_AUDIO_HAVE_${variable} ${program})
         if(NOT MAUL_AUDIO_HAVE_${variable})

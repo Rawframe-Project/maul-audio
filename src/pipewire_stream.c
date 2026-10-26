@@ -242,6 +242,12 @@ static maudResult ConnectStream(maudContext* context, maudStreamSlot* slot, bool
         return maud_errorPlatform;
     }
     *entry = (maudPipewireStream){.owner = pipewire, .core = core};
+    // An input that ran on another pw_stream, before a move or the
+    // daemon's restart, starts its next block afresh.
+    if (core->def.direction != maud_directionOutput)
+    {
+        maudRestartInputPeriod(&core->period);
+    }
     entry->stream = pipewire->api.streamNew(pipewire->connection.core, "Maul Audio", props);
     if (entry->stream == nullptr)
     {
