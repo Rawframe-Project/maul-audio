@@ -485,14 +485,16 @@ static bool SessionManagerExits(void)
 
 // The session manager owns the default metadata: when it restarts, the
 // metadata goes and a new one comes with another id. The context binds
-// the new one and follows the defaults it names (#80). Says whether the
-// helper, which binds the metadata too, is connected again for the tests
-// after.
-static bool TestSessionManagerRestart(maudContext* context, Helper* helper)
+// the new one and follows the defaults it names (#80). WirePlumber
+// 0.4.17, started again once a stream has played on the test sink, never
+// activates that sink's session item ("pending linkable(s) not activated"
+// in its log) and links nothing more, so this runs last on its server
+// (#81).
+static void TestSessionManagerRestart(maudContext* context, Helper* helper)
 {
     if (!HaveDaemon())
     {
-        return true;
+        return;
     }
     ResetDefaults(context, helper);
     StopHelper(helper);
@@ -512,7 +514,7 @@ static bool TestSessionManagerRestart(maudContext* context, Helper* helper)
     CHECK(helped, "the test's own client, on the new metadata");
     if (!helped)
     {
-        return false;
+        return;
     }
     maudDeviceId plugged = {0, 0};
     PlugSink(helper);
@@ -525,7 +527,6 @@ static bool TestSessionManagerRestart(maudContext* context, Helper* helper)
     maudDeviceId removed = plugged;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
     ResetDefaults(context, helper);
-    return true;
 }
 
 // The input blocks a trace keeps: 256 periods of 256 frames at 48 kHz,
@@ -1385,20 +1386,27 @@ int main(int argc, char** argv)
         if (helped && s_defaultsOnly)
         {
             TestHotplugAndDefaults(context, &helper);
-            // A helper that could not connect again has no metadata to
-            // write: the tests that need it are left out.
-            helped = TestSessionManagerRestart(context, &helper);
-            if (helped)
-            {
-                TestStreamsMoveAndAreLost(context, &helper);
-            }
+            TestStreamsMoveAndAreLost(context, &helper);
         }
         if (helped)
         {
             TestLoopback(context, &helper);
         }
+        // Last: the session manager it starts again links nothing to a
+        // sink that played before (TestSessionManagerRestart).
+        if (helped && s_defaultsOnly)
+        {
+            TestSessionManagerRestart(context, &helper);
+        }
         StopHelper(&helper);
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        // The suites after this one get a server whose session manager
+        // links again.
+        if (s_defaultsOnly && HaveDaemon())
+        {
+            CHECK(DriveDaemon("stop", "") && DriveDaemon("start", ""),
+                  "a new server for the suites after");
+        }
         return s_failures == 0 ? 0 : 1;
     }
     TestTheDaemonsDevices(context);
