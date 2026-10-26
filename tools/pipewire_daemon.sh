@@ -46,7 +46,7 @@ stat_fields() {
 
 start_time() {
     local fields
-    fields=($(stat_fields "$1")) || return 0
+    read -r -a fields < <(stat_fields "$1") || return 0
     echo "${fields[19]}"
 }
 
@@ -58,7 +58,7 @@ running() {
     [ -f "$record" ] || return 1
     read -r pid started < "$record" || return 1
     [ -n "$pid" ] || return 1
-    fields=($(stat_fields "$pid")) || return 1
+    read -r -a fields < <(stat_fields "$pid") || return 1
     [ "${fields[19]}" = "$started" ] && [ "${fields[0]}" != Z ] && [ "${fields[0]}" != X ]
 }
 
