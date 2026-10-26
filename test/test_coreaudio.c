@@ -7,11 +7,15 @@
 // (the macOS CI cell, which installs BlackHole). Only with that variable
 // set does it change the system's default output: it makes BlackHole the
 // default, moves the default to the null device and back, and gives the
-// default back at its end. A run that does not finish (a crash, a
+// default back at its end; and only then does it open inputs other than
+// BlackHole's, which on a developer's Mac are its real microphones. (Any
+// capture, BlackHole's too, asks once for microphone access for the
+// program that runs the suite.) A run that does not finish (a crash, a
 // timeout, an interrupt) leaves BlackHole the default; System Settings >
 // Sound > Output restores it. Without the variable it leaves the default
-// alone, plays on BlackHole by its key, and leaves out the checks of the
-// default and its moves, saying so.
+// alone, plays on BlackHole by its key, opens no other input, and leaves
+// out the checks of the default, its moves and the inputs apart, saying
+// so.
 
 #include "test_clock.h"
 #include "test_harness.h"
@@ -100,9 +104,9 @@ static bool MakeDefaultOutput(const char* uid)
                                       sizeof(device), &device) == noErr;
 }
 
-// Whether this run may change the system's default output: only where
-// MAUD_REQUIRE_COREAUDIO is set.
-static bool s_moveDefault;
+// Whether this run may change the system's default output and open
+// inputs other than BlackHole's: only where MAUD_REQUIRE_COREAUDIO is set.
+static bool s_required;
 
 // The UID of the system's default output into uid, or an empty string
 // when there is none. A UID, not the device's id, since the audio
@@ -280,8 +284,8 @@ static maudDeviceId FindByKey(const maudContext* context, maudDirection directio
 // BlackHole, where the run may change it; BlackHole by its key otherwise.
 static maudDeviceId PlainOutput(const maudContext* context)
 {
-    return s_moveDefault ? (maudDeviceId){0, 0}
-                         : FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
+    return s_required ? (maudDeviceId){0, 0}
+                      : FindByKey(context, maud_directionOutput, BLACKHOLE_UID);
 }
 
 static void TestDevices(maudContext* context)
@@ -303,7 +307,7 @@ static void TestDevices(maudContext* context)
     CHECK(maudGetDeviceName(context, output, name, sizeof(name) - 1, &length) == maud_success &&
               strcmp(name, "BlackHole 2ch") == 0,
           "its name, not its UID");
-    for (maudDeviceRole role = maud_roleGeneral; s_moveDefault && role <= maud_roleCommunications;
+    for (maudDeviceRole role = maud_roleGeneral; s_required && role <= maud_roleCommunications;
          ++role)
     {
         maudDeviceId current = {0, 0};
@@ -734,7 +738,10 @@ static void TestDuplex(maudContext* context)
     }
     CHECK(loudest >= 200, "it hears what it plays");
     CHECK(Destroy(context, stream), "destroy the duplex");
-    TestDuplexApart(context, def.device, def.inputDevice);
+    if (s_required)
+    {
+        TestDuplexApart(context, def.device, def.inputDevice);
+    }
 }
 
 // A callback that stalls makes the device skip its cycles: an underrun
@@ -1003,7 +1010,10 @@ static void TestVoice(maudContext* context)
           "the voiced one reports echo cancellation and noise suppression");
     CHECK((voiced.voiceActive & maud_voiceGainControl) != 0, "and the gain control it asked for");
     CHECK(voiced.drift == maud_driftNone, "on the unit's one clock");
-    TestVoiceApart(context);
+    if (s_required)
+    {
+        TestVoiceApart(context);
+    }
     Blocks heard = {0};
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionInput;
@@ -1169,18 +1179,19 @@ int main(void)
         return 1;
     }
     s_control = pthread_self();
-    s_moveDefault = getenv("MAUD_REQUIRE_COREAUDIO") != nullptr;
+    s_required = getenv("MAUD_REQUIRE_COREAUDIO") != nullptr;
     char given[256] = {0};
-    if (s_moveDefault)
+    if (s_required)
     {
         DefaultOutputUid(given, sizeof(given));
         CHECK(MakeDefaultOutput(BLACKHOLE_UID), "BlackHole made the default output");
     }
     else
     {
-        printf("the system's default output is left alone, so the default's checks, its moves "
-               "and the service restart are left out: set MAUD_REQUIRE_COREAUDIO to run them, "
-               "which makes BlackHole the default\n");
+        printf("the system's default output and inputs other than BlackHole's are left alone, "
+               "so the default's checks, its moves, the service restart and the duplexes on "
+               "two devices are left out: set MAUD_REQUIRE_COREAUDIO to run them, which makes "
+               "BlackHole the default and opens the other inputs\n");
     }
     maudContextDef def = maudDefaultContextDef();
     def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
@@ -1200,7 +1211,7 @@ int main(void)
     TestVoice(context);
     TestXruns(context);
     TestExclusive(context);
-    if (s_moveDefault)
+    if (s_required)
     {
         TestDefaultMoves(context);
         TestVoicedMoves(context);
