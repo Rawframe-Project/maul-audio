@@ -466,6 +466,44 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     ResetDefaults(context, helper);
 }
 
+// Whether the daemon lists a metadata named default.
+static bool HasDefaultMetadata(void)
+{
+    return system("pw-cli ls Metadata | grep -q 'metadata.name = \"default\"'") == 0;
+}
+
+// The session manager owns the default metadata: when it restarts, the
+// metadata goes and a new one comes with another id. The context binds
+// the new one and follows the defaults it names (#80).
+static void TestSessionManagerRestart(maudContext* context, Helper* helper)
+{
+    if (!HaveDaemon())
+    {
+        return;
+    }
+    ResetDefaults(context, helper);
+    StopHelper(helper);
+    CHECK(DriveDaemon("signal", "wireplumber TERM"), "the session manager stops");
+    // The script starts it again only once the process it recorded is
+    // gone: signal 0 fails from then on.
+    POLL_UNTIL(SESSION_MANAGER_MS, "the session manager to exit", (void)0,
+               !DriveDaemon("signal", "wireplumber 0"));
+    CHECK(!HasDefaultMetadata(), "and its default metadata goes");
+    CHECK(DriveDaemon("start", ""), "the session manager starts again");
+    CHECK(StartHelper(helper), "the test's own client, on the new metadata");
+    maudDeviceId plugged = {0, 0};
+    PlugSink(helper);
+    CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
+    CHECK(WaitForDefault(context, plugged),
+          "the context follows the new session manager's default");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
+    UnplugSink(helper);
+    maudDeviceId removed = plugged;
+    CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
+    ResetDefaults(context, helper);
+}
+
 // The input blocks a trace keeps: 256 periods of 256 frames at 48 kHz,
 // 1.4 s.
 #define TRACE_BLOCKS 256
@@ -1323,6 +1361,7 @@ int main(int argc, char** argv)
         if (helped && s_defaultsOnly)
         {
             TestHotplugAndDefaults(context, &helper);
+            TestSessionManagerRestart(context, &helper);
             TestStreamsMoveAndAreLost(context, &helper);
         }
         if (helped)
