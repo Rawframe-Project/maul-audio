@@ -208,8 +208,11 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           cmake --preset linux-quarantine
           cmake --build --preset linux-quarantine
+      # The base test preset's options, which the runner's ctest call does
+      # not read: a hung suite times out as a known flake instead of
+      # running the job out of time, and a lost label fails the night.
       - name: Quarantined suites
-        run: tools/run_quarantine.sh out/linux-quarantine
+        run: tools/run_quarantine.sh out/linux-quarantine --timeout 300 -j 4 --no-tests=error
       - name: Test logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -354,7 +357,7 @@ jobs:
       # job summary; a skip, a sanitizer report or a crash fails the step.
       - name: Quarantined pages
         if: github.event_name == 'schedule' || inputs.nightly
-        run: tools/run_quarantine.sh out/web-emscripten
+        run: tools/run_quarantine.sh out/web-emscripten --no-tests=error
       - name: Test logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
