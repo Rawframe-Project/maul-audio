@@ -405,6 +405,8 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_add_test(worker WHITEBOX)
     endif()
     maul_add_test(stream)
+    # The backend tests' rate measure, on clock reads of its own.
+    maul_add_test(clock)
     maul_add_test(loopback)
     # Outputs on failure across the parts: the device layer's calls, and
     # the spatial part's where it is built.
