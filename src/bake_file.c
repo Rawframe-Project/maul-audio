@@ -199,6 +199,16 @@ size_t maudBakeFileBytes(const maudProbeGraph* graph, const maudProbeBake* bake,
     Layout l;
     uint64_t at[PART_COUNT];
     Measure(&h, &l, at);
+    // A part's length is a uint32 in its frame.
+    uint64_t bytes[PART_COUNT];
+    PartBytes(&h, bytes);
+    for (int part = 0; part < PART_COUNT; ++part)
+    {
+        if (bytes[part] > UINT32_MAX)
+        {
+            return 0;
+        }
+    }
     return l.end <= (uint64_t)SIZE_MAX ? (size_t)l.end : 0;
 }
 

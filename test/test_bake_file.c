@@ -6,15 +6,16 @@
 // and write again to the same bytes; one with reverberation alone reads
 // back; a range, times and levels at
 // either end of their bounds read; every malformed part is refused as
-// invalid (magic, size, checksum, range, layers, a neighbour out of
-// range, a self link, a falling row, a link listed twice, rows not
-// spanning the links, a link listed from one end only, a link longer
-// than the range, a point (an unlinked one's in one axis too), a time,
-// a level, a tail's time and level and a field out of range), another
-// version as unsupported (version 1 included),
+// invalid (magic, size, checksum, a field twice, its padding, a part
+// left out, the parts' combinations, a count its parts' lengths do not
+// hold, range, a neighbour out of range, a self link, a falling row, a
+// link listed twice, rows not spanning the links, a link listed from one
+// end only, a link longer than the range, a point (an unlinked one's in
+// one axis too), a time, a level, a tail's time and level and a field
+// out of range), another version or a later field as a version error,
 // counts past the limits as capacity, and fields of another layout as
-// unsupported; a failing allocator is a capacity error with nothing
-// leaked.
+// unsupported; a set whose energy fields pass a field's length does not
+// size; a failing allocator is a capacity error with nothing leaked.
 
 #include "allocator.h"
 #include "bake_file.h"
@@ -447,6 +448,15 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     CHECK(Read(&c, &s_limits) == maud_errorInvalid, "the checksum");
     free(c.bytes);
     c = Changed(f);
+    Put(c.bytes + Part(&c, "head"), f->probes + 1);
+    Expect(&c, maud_errorInvalid, "a probe count its parts do not hold");
+    // The energy fields, last, two floats short of their probes: read by
+    // the counts alone, the last probe's would run past the file.
+    c = Changed(f);
+    Put(c.bytes + Part(&c, "flds") - 4, Get(c.bytes + Part(&c, "flds") - 4) - 8);
+    c.size -= 8;
+    Expect(&c, maud_errorInvalid, "energy fields shorter than their probes'");
+    c = Changed(f);
     PutFloat(c.bytes + Part(&c, "head") + 8, 0.05f);
     Expect(&c, maud_errorInvalid, "the range");
     c = Changed(f);
@@ -577,6 +587,25 @@ static void TestPairs(void)
 
 // The set's block failing, then the bake's: a capacity error with
 // nothing leaked.
+// The most probes whose energy fields, at order 3 and 401 bins, a
+// field's uint32 length holds size (beyond size_t on 32 bits); one more
+// does not. Sizing reads only the counts, so nothing that large is made.
+static void TestLargest(void)
+{
+    enum
+    {
+        FLOATS = 16 * 3 * 401
+    };
+    float stand = 0.0f;
+    maudProbeBake b = {.fieldFloats = FLOATS, .memory = &stand};
+    maudProbeGraph g = {.count = UINT32_MAX / (FLOATS * 4), .range = 1.0f};
+    size_t most = maudBakeFileBytes(&g, &b, 3, 401);
+    CHECK(SIZE_MAX > UINT32_MAX ? most > UINT32_MAX : most == 0, "the most probes a field holds");
+    g.count += 1;
+    CHECK(g.count == 55785 && maudBakeFileBytes(&g, &b, 3, 401) == 0,
+          "one probe more: no size, which saves as a capacity error");
+}
+
 static void TestFailingAllocator(const File* f)
 {
     const maudAllocator counted = {CountedAlloc, CountedFree, nullptr};
@@ -602,6 +631,7 @@ int main(void)
     TestRoundTrip(&g, &b, &f);
     TestRefused(&g, &b, &f);
     TestPairs();
+    TestLargest();
     TestFailingAllocator(&f);
     free(f.bytes);
     maudReleaseProbeBake(&s_allocator, &b);

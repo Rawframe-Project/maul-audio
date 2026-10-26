@@ -14,7 +14,7 @@ Both are made of tagged fields, so that a later version can add one without brea
 
 After the header comes a sequence of fields to the end of the file ([file_fields.h](../../src/file_fields.h)). Each field is a uint32 tag, a uint32 byte length and the payload. The payload starts at a multiple of 8 bytes from the file's start, and is padded with zero bytes to the next multiple of 8. No payload holds an element wider than 4 bytes, and the loaders copy what they keep, so 8 is enough. A tag is four ASCII characters, the first in the lowest byte, so a dump shows it in order.
 
-A reader takes the fields in any order. It refuses a tag it does not know with `maud_errorVersion`, since only a later version writes one. It refuses a field written twice, a field longer than what is left, and padding that is not zero, with `maud_errorInvalid`. An absent field takes its documented default; a field with no default is required. A writer puts the fields in the order the tables below give, and leaves out a field that holds its default, so its bytes depend only on the content.
+A reader takes the fields in any order. It refuses a tag it does not know with `maud_errorVersion`, since only a later version writes one. It refuses a field written twice, a field longer than what is left, and padding that is not zero, with `maud_errorInvalid`. An absent field takes its documented default; a field with no default is required. A writer puts the fields in the order the tables below give, and leaves out a field that holds its default, so its bytes depend only on the content. A field holds at most UINT32_MAX bytes; a writer refuses content that would pass it rather than write a file no reader takes.
 
 ## HRTF sets (.maudhrtf)
 

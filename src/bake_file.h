@@ -25,7 +25,9 @@ typedef struct maudBakeLimits
 } maudBakeLimits;
 
 // The size of a set's file; with a bake whose fields are of the given
-// order and bins (order 0 for none). 0 if it would not fit in size_t.
+// order and bins (order 0 for none). 0 if a part would pass the
+// UINT32_MAX bytes its frame's length holds, or the file would not fit
+// in size_t.
 size_t maudBakeFileBytes(const maudProbeGraph* graph, const maudProbeBake* bake,
                          uint32_t fieldOrder, uint32_t fieldBins);
 
