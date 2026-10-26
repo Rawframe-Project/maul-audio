@@ -11,16 +11,17 @@
 # its log to out/fuzz-logs/NAME.log; OUT overrides out. Both stay on the
 # machine that ran it. Every run's log is public in CI, and libFuzzer
 # prints a finding's input there as bytes, text and Base64, so on a
-# finding this reports only the target, the finding's file name (the
-# SHA-1 of the input), the sanitizers' runtime error lines and the
+# finding this reports only the target, the kind of each finding (crash,
+# leak, timeout, oom), the sanitizers' runtime error lines and the
 # report from its "==PID== ERROR:" line to its "SUMMARY:" line, all
 # taken from the log above libFuzzer's first input dump.
 #
-# The seed is printed too, except in a pull_request run. That run starts
-# from the committed seeds and builds from public sources, so its seed
-# would let anyone replay the finding; the maintainers fuzz the target
-# locally instead. A push or scheduled run starts from the corpus in the
-# Actions cache, which its log does not show.
+# Neither the seed nor a finding's file name is printed. A run that
+# starts from the committed seeds builds from public sources, so its
+# seed would let anyone replay the finding, and the file name is the
+# SHA-1 of the input, which gives a short input away. Both stay in the
+# log on the machine that ran it; the maintainers reproduce a finding by
+# fuzzing the target locally.
 #
 # The report goes to out/fuzz-reports/NAME.txt, written fresh by each
 # run, and the script prints an error line and exits 1; it exits 0 when
@@ -54,12 +55,9 @@ rm -f "$report"
 touch "$stamp"
 
 seed=$(($(od -An -N4 -tu4 /dev/urandom) % 2147483647 + 1))
-shown="seed $seed"
-if [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then
-  shown="seed not shown in a pull_request run"
-fi
-if "$target" -seed="$seed" -artifact_prefix="$crashes/" "$@" >"$log" 2>&1; then
-  echo "$name: no finding ($shown)"
+echo "seed $seed" >"$log"
+if "$target" -seed="$seed" -artifact_prefix="$crashes/" "$@" >>"$log" 2>&1; then
+  echo "$name: no finding"
   exit 0
 fi
 
@@ -67,11 +65,13 @@ fi
 # input; no line of it is read.
 head=$(sed '/^MS: [0-9]/,$d' "$log")
 {
-  echo "$name: $shown"
-  # Only this run's findings, not those an earlier run left.
-  find "$crashes" -maxdepth 1 -type f -newer "$stamp" -printf '%f\n' | sort
+  echo "$name:"
+  # Only this run's findings, not those an earlier run left, by kind.
+  find "$crashes" -maxdepth 1 -type f -newer "$stamp" -printf '%f\n' |
+    sed 's/-.*//' | sort | uniq -c
   grep -E -m 5 '^[^ ]+:[0-9]+:[0-9]+: runtime error: ' <<<"$head" || true
-  sed -n '/^==[0-9]*== *ERROR: /,/^SUMMARY: /p' <<<"$head" | head -n 80
+  # head may close the pipe early on a long report; that is not an error.
+  sed -n '/^==[0-9]*== *ERROR: /,/^SUMMARY: /p' <<<"$head" | head -n 80 || true
 } >"$report"
 echo "::error::$name found something"
 exit 1
