@@ -40,7 +40,7 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       pull-requests: read
 
@@ -55,12 +55,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
         with:
           exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       contents: read
 
@@ -149,7 +149,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       contents: read
     with:
@@ -162,8 +162,7 @@ jobs:
 
   # The extended run's desktop cells: MemorySanitizer
   # (the sound servers' libraries are not instrumented, so the integration
-  # suites stay out), the macOS sanitizers, Linux on arm64, and the
-  # quarantined Linux suites against the sound-server fixture.
+  # suites stay out), the macOS sanitizers and Linux on arm64.
   extended:
     if: github.event_name == 'schedule' || inputs.nightly
     strategy:
@@ -171,11 +170,10 @@ jobs:
       matrix:
         include:
           - { preset: linux-clang-20-msan }
-          - { preset: linux-quarantine }
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@56543e92d01e59abdb4299c4824a0c1facdc08ce # v0.0.25
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
     permissions:
       contents: read
     with:
@@ -185,6 +183,43 @@ jobs:
       # The sound-server fixture's daemon logs, when a cell fails.
       logs: out/${{ matrix.preset }}/sound-server/*.log
       timeout: 60
+
+  # The quarantined Linux suites against the sound-server fixture, through
+  # tools/run_quarantine.sh: a quarantined test's failure is a known flake,
+  # reported in the job summary and as a warning, while a skip, a
+  # sanitizer report or a crash fails the job. The shared workflow runs a
+  # preset's tests with ctest alone, so this cell is its own job.
+  quarantine:
+    if: github.event_name == 'schedule' || inputs.nightly
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/rawframe-project/ci-cpp:2026.10.7@sha256:08c846597243dc000c83d6c008d078a8c3fabf8633d83963d46c0e6d02c2577e
+      # An init reaps the daemons the sound-server fixture stops.
+      options: --init
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cmake --preset linux-quarantine
+          cmake --build --preset linux-quarantine
+      - name: Quarantined suites
+        run: tools/run_quarantine.sh out/linux-quarantine
+      - name: Test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-linux-quarantine
+          path: |
+            out/linux-quarantine/Testing/Temporary/
+            out/linux-quarantine/sound-server/*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   # The public headers alone under MSVC's cl, as C17 and C++17 with /W4 /WX:
   # consumers may compile them with it, though it cannot build the library.
@@ -255,14 +290,19 @@ jobs:
           exit "$status"
       # Both run only after a run with no finding: a finding's input never
       # reaches the cache.
+      # tools/fuzz_target.sh --merge prints no log and fails when the
+      # merge met a finding, which libFuzzer's own merge does not.
       - name: Minimize the corpus
         if: success() && github.event_name != 'pull_request'
         run: |
-          mkdir -p "out/merged/$TARGET"
-          "out/fuzz/$TARGET" -merge=1 "out/merged/$TARGET" "out/corpus/$TARGET" >/dev/null 2>&1
+          rm -rf out/fuzz-reports
+          status=0
+          tools/fuzz_target.sh --merge "out/fuzz/$TARGET" "out/merged/$TARGET" "out/corpus/$TARGET" ||
+            status=$?
+          cat out/fuzz-reports/*.txt 2>/dev/null || true
+          [ "$status" -eq 0 ] || exit "$status"
           rm -rf "out/corpus/$TARGET"
           mv "out/merged/$TARGET" "out/corpus/$TARGET"
-          echo "$TARGET: $(find "out/corpus/$TARGET" -type f | wc -l) inputs"
       - name: Save the corpus
         if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -310,14 +350,11 @@ jobs:
           if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/ctest.log"; then
             echo "::error::a test did not run"; exit 1
           fi
+      # A quarantined page's failure is a known flake, reported in the
+      # job summary; a skip, a sanitizer report or a crash fails the step.
       - name: Quarantined pages
         if: github.event_name == 'schedule' || inputs.nightly
-        run: |
-          ctest --test-dir out/web-emscripten -L '^quarantine$' --output-on-failure --no-tests=error |
-            tee "$RUNNER_TEMP/quarantine.log"
-          if grep -E '\*\*\*(Skipped|Not Run)' "$RUNNER_TEMP/quarantine.log"; then
-            echo "::error::a test did not run"; exit 1
-          fi
+        run: tools/run_quarantine.sh out/web-emscripten
       - name: Test logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -506,7 +543,7 @@ jobs:
   # ruleset.
   required:
     if: always()
-    needs: [changes, docs, zizmor, checks, build, extended, msvc-headers, fuzz, web-emscripten, android-emulator, ios-simulator]
+    needs: [changes, docs, zizmor, checks, build, extended, quarantine, msvc-headers, fuzz, web-emscripten, android-emulator, ios-simulator]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}
