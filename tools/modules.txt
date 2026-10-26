@@ -24,7 +24,7 @@ backend_pipewire: allocator backend context context_core device follow form layo
 backend_pulse: allocator backend context context_core device form layout pulse_api pulse_core pulse_stream
 backend_wasapi: allocator backend context device layout wasapi_apartment wasapi_core wasapi_stream
 backend_web: allocator backend context device follow period thread web_capture web_clock web_core web_devices
-bake_file: allocator crc32 probe_bake probe_graph
+bake_file: allocator crc32 file_fields probe_bake probe_graph
 band_eq: flush
 binaural: allocator binaural_dsp hrtf_core hrtf_lookup near_field ramp
 binaural_decoder: allocator binaural_dsp hrtf_core magls

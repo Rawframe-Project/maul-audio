@@ -425,10 +425,10 @@ static void TestFile(maudAcousticScene* scene)
     // A file is untrusted data: refusing it counts no misuse.
     uint64_t misuse = maudGetSpatializerMisuse(loaded);
     bytes[8] = 1;
-    CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorUnsupported &&
+    CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorVersion &&
               refused.index1 == 0 && maudGetSpatializerMisuse(loaded) == misuse,
           "version 1 refused, no misuse counted");
-    bytes[8] = 2;
+    bytes[8] = 3;
     bytes[size - 1] ^= 1;
     CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorInvalid, "a bad checksum");
     bytes[size - 1] ^= 1;
@@ -547,7 +547,7 @@ static void TestGolden(maudAcousticScene* scene)
         hash = (hash ^ bytes[i]) * 1099511628211u;
     }
     printf("golden: %zu bytes, hash %016llx\n", size, (unsigned long long)hash);
-    CHECK(hash == 0xd5029c358e533970u, "the shipped bake's hash");
+    CHECK(hash == 0x9f7b377624d904dbu, "the shipped bake's hash");
 #ifndef __EMSCRIPTEN__
     const char* path = MAUD_DATA_DIR "/bake/office.maudbake";
     if (getenv("MAUD_WRITE_GOLDEN") != nullptr)

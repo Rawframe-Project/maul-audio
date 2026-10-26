@@ -714,8 +714,10 @@ extern "C"
     /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
     ///         or size, or a 0 or unknown id; `maud_errorStale` for a
     ///         destroyed set's id; `maud_errorCapacity` when capacity is
-    ///         short of the size (nothing written) or the size does not
-    ///         fit in size_t.
+    ///         short of the size (nothing written), a part of the file
+    ///         would pass the 4 GiB a field holds (the energy fields of
+    ///         about 55,800 probes at order 3 and 401 bins), or the size
+    ///         does not fit in size_t.
     /// @par Thread safety
     /// Safe from any thread; the simulation side is used by one thread at
     /// a time.
@@ -734,8 +736,10 @@ extern "C"
     /// @param size         Its size in bytes.
     /// @param setOut       Receives the set; 0 on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a file
-    ///         not well formed; `maud_errorUnsupported` for another version or
-    ///         fields that do not match; `maud_errorCapacity` past maxProbes or
+    ///         not well formed; `maud_errorVersion` for another format
+    ///         version or a field only a later version writes;
+    ///         `maud_errorUnsupported` for energy fields that do not match;
+    ///         `maud_errorCapacity` past maxProbes or
     ///         maxProbePairs, with the spatializer's sets all taken or none
     ///         asked for, or when memory runs out; `maud_errorState` when host
     ///         code the spatializer is running (its hooks or allocator) makes
