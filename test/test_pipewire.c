@@ -1111,6 +1111,11 @@ static void PrintTrace(const Blocks* blocks, int64_t setAt, int64_t movedAt)
 // move"): the loopback's move alone, with its check of the silent sink.
 static bool s_moveOnly;
 
+// Whether this is the quarantined run, pipewire_defaults ("test_pipewire
+// defaults"): the tests that change the default, whose context stopped
+// following it once on a runner (#81).
+static bool s_defaultsOnly;
+
 // Forces the fixture's graph to a quantum, or lets it choose again (0).
 static bool ForceQuantum(uint32_t frames)
 {
@@ -1289,6 +1294,7 @@ static void TestLimits(void)
 int main(int argc, char** argv)
 {
     s_moveOnly = argc > 1 && strcmp(argv[1], "move") == 0;
+    s_defaultsOnly = argc > 1 && strcmp(argv[1], "defaults") == 0;
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
     maudResult result = maudCreateContext(&def, &context);
@@ -1309,11 +1315,16 @@ int main(int argc, char** argv)
     {
         return 1;
     }
-    if (s_moveOnly)
+    if (s_moveOnly || s_defaultsOnly)
     {
         Helper helper;
         bool helped = StartHelper(&helper);
         CHECK(helped, "the test's own client, with the session manager's metadata");
+        if (helped && s_defaultsOnly)
+        {
+            TestHotplugAndDefaults(context, &helper);
+            TestStreamsMoveAndAreLost(context, &helper);
+        }
         if (helped)
         {
             TestLoopback(context, &helper);
@@ -1328,9 +1339,10 @@ int main(int argc, char** argv)
     // write it fail here rather than crash.
     bool helped = StartHelper(&helper);
     CHECK(helped, "the test's own client, with the session manager's metadata");
+    // The tests that change the default run in pipewire_defaults until
+    // #81 is fixed.
     if (helped)
     {
-        TestHotplugAndDefaults(context, &helper);
         TestLayoutFromFormats(context, &helper);
     }
     TestMark(context);
@@ -1342,11 +1354,6 @@ int main(int argc, char** argv)
     TestDestroyWhileRendering(context);
     TestGraphEnded(context);
     TestRebuildFails(context);
-    if (helped)
-    {
-        TestStreamsMoveAndAreLost(context, &helper);
-        TestLoopback(context, &helper);
-    }
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestLimits();

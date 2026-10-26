@@ -493,8 +493,12 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         # night, until 14 nights in a row pass after the fix.
         add_test(NAME pipewire_move COMMAND test_pipewire move)
         set_tests_properties(pipewire_move PROPERTIES LABELS "pipewire;quarantine")
-        # All three use the one test daemon, and pipewire_restart restarts it.
-        set_tests_properties(pipewire pipewire_move pipewire_restart PROPERTIES
+        # The tests that change the default, whose context stopped following
+        # it once on a loaded runner (#81): quarantined likewise.
+        add_test(NAME pipewire_defaults COMMAND test_pipewire defaults)
+        set_tests_properties(pipewire_defaults PROPERTIES LABELS "pipewire;quarantine")
+        # All four use the one test daemon, and pipewire_restart restarts it.
+        set_tests_properties(pipewire pipewire_move pipewire_defaults pipewire_restart PROPERTIES
             RESOURCE_LOCK pipewire-daemon)
     endif()
     if(MAUL_AUDIO_ALSA)
@@ -758,16 +762,16 @@ endif()
 # the clock, and the changed-files check (tools/check.sh) runs one only
 # when a change reaches it by name.
 if(MAUL_AUDIO_BUILD_TESTS)
-    foreach(name pipewire pipewire_move pipewire_restart pulse pulse_rate alsa stall guide_device
-                 coreaudio wasapi wasapi_sta ios ios_capture aaudio android_java)
+    foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pulse pulse_rate alsa
+                 stall guide_device coreaudio wasapi wasapi_sta ios ios_capture aaudio android_java)
         if(TEST ${name})
             set_property(TEST ${name} APPEND PROPERTY LABELS integration)
         endif()
     endforeach()
     # The suites that skip where their platform is absent
     # (PlatformAbsent, test/test_wait.h).
-    foreach(name pipewire pipewire_move pipewire_restart pulse pulse_rate alsa stall guide_device
-                 coreaudio wasapi wasapi_sta aaudio)
+    foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pulse pulse_rate alsa
+                 stall guide_device coreaudio wasapi wasapi_sta aaudio)
         if(TEST ${name})
             # hygiene: exit 77 means the suite's platform is absent, never a failure
             set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
@@ -790,7 +794,8 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
     set(maul_audio_server_dir ${PROJECT_BINARY_DIR}/sound-server)
     get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
     set(maul_audio_server_tests "")
-    foreach(name pipewire pipewire_move pipewire_restart pulse pulse_rate alsa stall guide_device)
+    foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pulse pulse_rate alsa
+                 stall guide_device)
         if(TEST ${name})
             list(APPEND maul_audio_server_tests ${name})
         endif()
