@@ -136,6 +136,7 @@ set(MAUL_AUDIO_SPATIAL_SOURCES
     src/crc32.c
     src/direct_effect.c
     src/direct_step.c
+    src/file_fields.c
     src/host_tasks.c
     src/hrtf.c
     src/hrtf_file.c

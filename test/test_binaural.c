@@ -62,7 +62,10 @@ enum
 {
     DIRECTIONS = 6,
     TAPS = 8,
-    CRAFTED_BYTES = 48 + 4 + 8 + 3 * 8 + DIRECTIONS * 4 + DIRECTIONS * 2 * TAPS * 2
+    // The header, then the head, name, license, rings, delays and taps,
+    // each field framed in 8 bytes and padded to a multiple of 8.
+    CRAFTED_BYTES = 16 + (8 + 24) + (8 + 8) + (8 + 8) + (8 + 3 * 8) + (8 + DIRECTIONS * 4) +
+                    (8 + DIRECTIONS * 2 * TAPS * 2)
 };
 
 static unsigned char s_crafted[CRAFTED_BYTES];
@@ -101,43 +104,59 @@ static float Expected(int direction, int ear)
     return (float)(1 + direction + 8 * ear) / 64.0f;
 }
 
+// Frames a field of length bytes at *at, zeroes its padding to a
+// multiple of 8, and moves *at past it; where its payload starts.
+static unsigned char* Field(unsigned char** at, const char* tag, uint32_t length)
+{
+    unsigned char* payload = *at + 8;
+    memcpy(*at, tag, 4);
+    Put(*at + 4, length, 4);
+    uint32_t padded = (length + 7u) / 8u * 8u;
+    memset(payload, 0, padded);
+    *at = payload + padded;
+    return payload;
+}
+
 static void Craft(void)
 {
     unsigned char* b = s_crafted;
     memcpy(b, "MAUDHRTF", 8);
-    Put(b + 8, 2, 4);
-    Put(b + 12, 48000, 4);
-    Put(b + 16, TAPS, 4);
-    Put(b + 20, 3, 4);
-    Put(b + 24, DIRECTIONS, 4);
-    PutFloat(b + 28, 1.0f / 2048.0f);
-    PutFloat(b + 32, 1.5f);
-    Put(b + 36, 4, 4);
-    Put(b + 40, 8, 4);
-    memcpy(b + 48, "Test", 4);
-    memcpy(b + 52, "License.", 8);
+    Put(b + 8, 3, 4);
+    unsigned char* at = b + 16;
+    unsigned char* head = Field(&at, "head", 24);
+    Put(head, 48000, 4);
+    Put(head + 4, TAPS, 4);
+    Put(head + 8, 3, 4);
+    Put(head + 12, DIRECTIONS, 4);
+    PutFloat(head + 16, 1.0f / 2048.0f);
+    PutFloat(head + 20, 1.5f);
+    memcpy(Field(&at, "name", 4), "Test", 4);
+    memcpy(Field(&at, "lics", 8), "License.", 8);
     float elevations[3] = {-90.0f, 0.0f, 90.0f};
     uint32_t azimuths[3] = {1, 4, 1};
-    unsigned char* at = b + 60;
-    for (int ring = 0; ring < 3; ++ring, at += 8)
+    unsigned char* rings = Field(&at, "ring", 3 * 8);
+    for (int ring = 0; ring < 3; ++ring)
     {
-        PutFloat(at, elevations[ring]);
-        Put(at + 4, azimuths[ring], 4);
+        PutFloat(rings + 8 * ring, elevations[ring]);
+        Put(rings + 8 * ring + 4, azimuths[ring], 4);
     }
-    for (int d = 0; d < DIRECTIONS; ++d, at += 4)
-    {
-        Put(at, (uint32_t)(2 + d) * 256u, 2);
-        Put(at + 2, 3 * 256, 2);
-    }
+    unsigned char* delays = Field(&at, "dlay", DIRECTIONS * 4);
     for (int d = 0; d < DIRECTIONS; ++d)
     {
-        for (int ear = 0; ear < 2; ++ear, at += 2 * TAPS)
+        Put(delays + 4 * d, (uint32_t)(2 + d) * 256u, 2);
+        Put(delays + 4 * d + 2, 3 * 256, 2);
+    }
+    unsigned char* taps = Field(&at, "taps", DIRECTIONS * 2 * TAPS * 2);
+    for (int d = 0; d < DIRECTIONS; ++d)
+    {
+        for (int ear = 0; ear < 2; ++ear)
         {
             // The tap's value over the scale, 1 / 2048: (1 + d + 8e) * 32.
-            Put(at + 2 * (d + ear), (uint32_t)(1 + d + 8 * ear) * 32u, 2);
+            unsigned char* response = taps + 2 * TAPS * (2 * d + ear);
+            Put(response + 2 * (d + ear), (uint32_t)(1 + d + 8 * ear) * 32u, 2);
         }
     }
-    Put(b + 44, Crc32(b + 48, CRAFTED_BYTES - 48), 4);
+    Put(b + 12, Crc32(b + 16, CRAFTED_BYTES - 16), 4);
 }
 
 static maudHrtf* LoadCrafted(void)

@@ -5,10 +5,11 @@
 // license, its interaural delay on the right side, and resampled to 44.1
 // and 96 kHz with its response at 1 kHz kept (the resampled responses
 // start 24 input samples early, a constant latency); crafted files
-// with a valid checksum are refused for each rule they break, and one
-// with the most taps, 1024, is taken; a seeded sweep of mutations loads
-// exactly the well-formed ones and never crashes; an allocator that
-// fails is a capacity error with nothing leaked.
+// with a valid checksum are refused for each rule they break, a field
+// only a later version writes is refused as such and an absent name and
+// license read as empty, and one with the most taps, 1024, is taken; a seeded sweep of mutations
+// loads exactly the well-formed ones and never crashes; an allocator that fails is a capacity error
+// with nothing leaked.
 
 // fopen reads the shipped set; the C runtime's warning that it is unsafe
 // is about the Annex K alternative, which the family does not use.
@@ -114,7 +115,7 @@ static void TestShippedSet(void)
 #endif
     size_t count = 0;
     unsigned char* bytes = ReadFile(MAUD_DATA_DIR "/hrtf/sadie2-ku100-48k.maudhrtf", &count);
-    CHECK(bytes != nullptr && count == 853896, "the shipped file");
+    CHECK(bytes != nullptr && count == 853944, "the shipped file");
     if (bytes == nullptr)
     {
         return;
@@ -168,13 +169,47 @@ static void TestShippedSet(void)
     free(bytes);
 }
 
-// A small file: two rings (-90 with one azimuth, 90 with three), 8 taps.
-typedef struct Crafted
+// The parts of a file, in the order a writer puts them, and their tags.
+enum
 {
-    // The file, and room for one byte past it.
-    unsigned char bytes[48 + 4 + 8 + 16 + 16 + 4 * 2 * 8 * 2 + 1];
-    size_t count;
-} Crafted;
+    PART_HEAD,
+    PART_NAME,
+    PART_LICENSE,
+    PART_RINGS,
+    PART_DELAYS,
+    PART_TAPS,
+    PART_PARTS
+};
+
+static const char* const s_tags[PART_PARTS] = {"head", "name", "lics", "ring", "dlay", "taps"};
+
+// What a crafted file holds: two rings (-90 with one azimuth, 90 with
+// the rest) or one at the horizon, delays and taps from a byte pattern.
+// A NULL name or license leaves its field out.
+typedef struct Spec
+{
+    uint32_t rate;
+    uint32_t taps;
+    uint32_t directions;
+    bool horizon;
+    float distance;
+    const char* name;
+    size_t nameBytes;
+    const char* license;
+    size_t licenseBytes;
+} Spec;
+
+static Spec SmallSpec(void)
+{
+    return (Spec){.rate = 48000,
+                  .taps = 8,
+                  .directions = 4,
+                  .distance = 1.5f,
+                  .name = "Test",
+                  .nameBytes = 4,
+                  .license = "License.",
+                  .licenseBytes = 8};
+}
 
 static void Put32(unsigned char* at, uint32_t value)
 {
@@ -184,6 +219,11 @@ static void Put32(unsigned char* at, uint32_t value)
     }
 }
 
+static uint32_t Get32(const unsigned char* at)
+{
+    return (uint32_t)at[0] | (uint32_t)at[1] << 8 | (uint32_t)at[2] << 16 | (uint32_t)at[3] << 24;
+}
+
 static void PutFloat(unsigned char* at, float value)
 {
     uint32_t bits;
@@ -191,36 +231,115 @@ static void PutFloat(unsigned char* at, float value)
     Put32(at, bits);
 }
 
-static void Seal(Crafted* file)
+// A field of length bytes: frame, payload, and zero bytes to a multiple
+// of 8.
+static size_t FieldBytes(size_t length)
 {
-    Put32(file->bytes + 44, maudCrc32(file->bytes + 48, file->count - 48));
+    return 8 + (length + 7) / 8 * 8;
+}
+
+static size_t SizeOf(const Spec* spec)
+{
+    size_t rings = spec->horizon ? 1 : 2;
+    return 16 + FieldBytes(24) + (spec->name != nullptr ? FieldBytes(spec->nameBytes) : 0) +
+           (spec->license != nullptr ? FieldBytes(spec->licenseBytes) : 0) + FieldBytes(8 * rings) +
+           FieldBytes((size_t)4 * spec->directions) +
+           FieldBytes((size_t)4 * spec->directions * spec->taps);
+}
+
+// Puts a field at bytes + *count, frame and padding, and moves *count
+// past it; where its payload starts.
+static size_t PutField(unsigned char* bytes, size_t* count, const char* tag, size_t length)
+{
+    memcpy(bytes + *count, tag, 4);
+    Put32(bytes + *count + 4, (uint32_t)length);
+    size_t at = *count + 8;
+    memset(bytes + at, 0, FieldBytes(length) - 8);
+    *count += FieldBytes(length);
+    return at;
+}
+
+static void Seal(unsigned char* bytes, size_t count)
+{
+    Put32(bytes + 12, maudCrc32(bytes + 16, count - 16));
+}
+
+// Writes the file spec describes into bytes, SizeOf(spec) of them, and
+// seals it; at gets each payload's offset, 0 for a part left out.
+static size_t Write(const Spec* spec, unsigned char* bytes, size_t at[PART_PARTS])
+{
+    memcpy(bytes, "MAUDHRTF", 8);
+    Put32(bytes + 8, 3);
+    size_t count = 16;
+    for (int part = 0; part < PART_PARTS; ++part)
+    {
+        at[part] = 0;
+    }
+    at[PART_HEAD] = PutField(bytes, &count, s_tags[PART_HEAD], 24);
+    Put32(bytes + at[PART_HEAD], spec->rate);
+    Put32(bytes + at[PART_HEAD] + 4, spec->taps);
+    Put32(bytes + at[PART_HEAD] + 8, spec->horizon ? 1 : 2);
+    Put32(bytes + at[PART_HEAD] + 12, spec->directions);
+    PutFloat(bytes + at[PART_HEAD] + 16, 1.0f / 32768.0f);
+    PutFloat(bytes + at[PART_HEAD] + 20, spec->distance);
+    if (spec->name != nullptr)
+    {
+        at[PART_NAME] = PutField(bytes, &count, s_tags[PART_NAME], spec->nameBytes);
+        memcpy(bytes + at[PART_NAME], spec->name, spec->nameBytes);
+    }
+    if (spec->license != nullptr)
+    {
+        at[PART_LICENSE] = PutField(bytes, &count, s_tags[PART_LICENSE], spec->licenseBytes);
+        memcpy(bytes + at[PART_LICENSE], spec->license, spec->licenseBytes);
+    }
+    at[PART_RINGS] = PutField(bytes, &count, s_tags[PART_RINGS], spec->horizon ? 8 : 16);
+    if (spec->horizon)
+    {
+        PutFloat(bytes + at[PART_RINGS], 0.0f);
+        Put32(bytes + at[PART_RINGS] + 4, spec->directions);
+    }
+    else
+    {
+        PutFloat(bytes + at[PART_RINGS], -90.0f);
+        Put32(bytes + at[PART_RINGS] + 4, 1);
+        PutFloat(bytes + at[PART_RINGS] + 8, 90.0f);
+        Put32(bytes + at[PART_RINGS] + 12, spec->directions - 1);
+    }
+    at[PART_DELAYS] = PutField(bytes, &count, s_tags[PART_DELAYS], (size_t)4 * spec->directions);
+    at[PART_TAPS] =
+        PutField(bytes, &count, s_tags[PART_TAPS], (size_t)4 * spec->directions * spec->taps);
+    size_t patterned[2][2] = {{at[PART_DELAYS], (size_t)4 * spec->directions},
+                              {at[PART_TAPS], (size_t)4 * spec->directions * spec->taps}};
+    for (int part = 0; part < 2; ++part)
+    {
+        for (size_t i = patterned[part][0]; i < patterned[part][0] + patterned[part][1]; ++i)
+        {
+            bytes[i] = (unsigned char)(i * 7u);
+        }
+    }
+    Seal(bytes, count);
+    return count;
+}
+
+// The small file, and room for one byte past it.
+typedef struct Crafted
+{
+    unsigned char bytes[400];
+    size_t count;
+    size_t at[PART_PARTS];
+} Crafted;
+
+static Crafted CraftSpec(const Spec* spec)
+{
+    Crafted file = {0};
+    file.count = Write(spec, file.bytes, file.at);
+    return file;
 }
 
 static Crafted Craft(void)
 {
-    Crafted file = {.count = sizeof(file.bytes) - 1};
-    memcpy(file.bytes, "MAUDHRTF", 8);
-    Put32(file.bytes + 8, 2);
-    Put32(file.bytes + 12, 48000);
-    Put32(file.bytes + 16, 8);
-    Put32(file.bytes + 20, 2);
-    Put32(file.bytes + 24, 4);
-    PutFloat(file.bytes + 28, 1.0f / 32768.0f);
-    PutFloat(file.bytes + 32, 1.5f);
-    Put32(file.bytes + 36, 4);
-    Put32(file.bytes + 40, 8);
-    memcpy(file.bytes + 48, "Test", 4);
-    memcpy(file.bytes + 52, "License.", 8);
-    PutFloat(file.bytes + 60, -90.0f);
-    Put32(file.bytes + 64, 1);
-    PutFloat(file.bytes + 68, 90.0f);
-    Put32(file.bytes + 72, 3);
-    for (size_t i = 76; i < file.count; ++i)
-    {
-        file.bytes[i] = (unsigned char)(i * 7u);
-    }
-    Seal(&file);
-    return file;
+    Spec spec = SmallSpec();
+    return CraftSpec(&spec);
 }
 
 static maudResult LoadCrafted(const Crafted* file)
@@ -231,32 +350,25 @@ static maudResult LoadCrafted(const Crafted* file)
     return result;
 }
 
-// The small file's layout with taps taps a response, on the heap.
-static unsigned char* CraftTaps(uint32_t taps, size_t* countOut)
+// The file spec describes, on the heap; the caller frees it.
+static unsigned char* WriteSpec(const Spec* spec, size_t* countOut)
 {
-    size_t count = 48 + 4 + 8 + 16 + 16 + (size_t)4 * 2 * taps * 2;
-    unsigned char* bytes = malloc(count);
-    if (bytes == nullptr)
+    unsigned char* bytes = calloc(SizeOf(spec), 1);
+    if (bytes != nullptr)
     {
-        return nullptr;
+        size_t at[PART_PARTS];
+        *countOut = Write(spec, bytes, at);
     }
-    Crafted small = Craft();
-    memcpy(bytes, small.bytes, 76);
-    Put32(bytes + 16, taps);
-    for (size_t i = 76; i < count; ++i)
-    {
-        bytes[i] = (unsigned char)(i * 7u);
-    }
-    Put32(bytes + 44, maudCrc32(bytes + 48, count - 48));
-    *countOut = count;
     return bytes;
 }
 
 // The most taps a response may have, 1024, are taken.
 static void TestMostTaps(void)
 {
+    Spec spec = SmallSpec();
+    spec.taps = 1024;
     size_t count = 0;
-    unsigned char* bytes = CraftTaps(1024, &count);
+    unsigned char* bytes = WriteSpec(&spec, &count);
     maudHrtf* hrtf = nullptr;
     CHECK(bytes != nullptr && Load(bytes, count, 0, &hrtf) == maud_success && hrtf != nullptr &&
               hrtf->taps == 1024,
@@ -265,54 +377,125 @@ static void TestMostTaps(void)
     free(bytes);
 }
 
+// The small file with one more field after the rest, sealed.
+static Crafted CraftWithField(const char* tag, size_t length)
+{
+    Crafted file = Craft();
+    PutField(file.bytes, &file.count, tag, length);
+    Seal(file.bytes, file.count);
+    return file;
+}
+
+// The small file without a part: the parts are written again without
+// it, sealed.
+static Crafted CraftWithout(int part)
+{
+    Crafted file = Craft();
+    Crafted without = {0};
+    memcpy(without.bytes, file.bytes, 16);
+    without.count = 16;
+    for (int p = 0; p < PART_PARTS; ++p)
+    {
+        if (p == part || file.at[p] == 0)
+        {
+            continue;
+        }
+        size_t length = Get32(file.bytes + file.at[p] - 4);
+        without.at[p] = PutField(without.bytes, &without.count, s_tags[p], length);
+        memcpy(without.bytes + without.at[p], file.bytes + file.at[p], length);
+    }
+    Seal(without.bytes, without.count);
+    return without;
+}
+
+// Fields: one a later version writes is refused as such, an absent name
+// and license read as empty, a part with no default is required, and the
+// framing is checked: a tag twice, padding that is not zero.
+static void TestFields(void)
+{
+    Crafted file = CraftWithField("zzzz", 4);
+    CHECK(LoadCrafted(&file) == maud_errorVersion, "a field only a later version writes");
+    file = CraftWithField("name", 4);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a field written twice");
+    Spec spec = SmallSpec();
+    spec.name = nullptr;
+    spec.license = nullptr;
+    file = CraftSpec(&spec);
+    maudHrtf* hrtf = nullptr;
+    maudHrtfInfo info = {0};
+    CHECK(Load(file.bytes, file.count, 0, &hrtf) == maud_success &&
+              maudGetHrtfInfo(hrtf, &info) == maud_success && info.nameLength == 0 &&
+              info.licenseLength == 0,
+          "no name and no license field: both empty, their default");
+    maudDestroyHrtf(hrtf);
+    const int required[4] = {PART_HEAD, PART_RINGS, PART_DELAYS, PART_TAPS};
+    for (int i = 0; i < 4; ++i)
+    {
+        file = CraftWithout(required[i]);
+        CHECK(LoadCrafted(&file) == maud_errorInvalid, "a part with no default left out");
+    }
+    file = Craft();
+    file.bytes[file.at[PART_NAME] + 4] = 1;
+    Seal(file.bytes, file.count);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "padding that is not zero");
+    file = Craft();
+    Put32(file.bytes + file.at[PART_HEAD] - 4, 20);
+    Seal(file.bytes, file.count);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a head of another length");
+    file = Craft();
+    Put32(file.bytes + file.at[PART_LICENSE] - 4, 0xFFFFFFF0u);
+    Seal(file.bytes, file.count);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a field longer than the file");
+}
+
 static void TestCraftedFiles(void)
 {
     Crafted file = Craft();
     CHECK(LoadCrafted(&file) == maud_success, "a well-formed small file");
     file = Craft();
     file.count--;
-    Seal(&file);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "one byte short");
     file = Craft();
     file.count++;
-    Seal(&file);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "one byte long");
     file = Craft();
-    file.bytes[100] ^= 1;
+    file.bytes[file.at[PART_TAPS] + 20] ^= 1;
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a flipped bit the checksum catches");
     file = Craft();
     file.bytes[0] = 'X';
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a wrong magic");
     file = Craft();
-    Put32(file.bytes + 8, 1);
-    CHECK(LoadCrafted(&file) == maud_errorUnsupported, "version 1, never released");
+    Put32(file.bytes + 8, 2);
+    CHECK(LoadCrafted(&file) == maud_errorVersion, "version 2, the fixed layout before fields");
     file = Craft();
-    Put32(file.bytes + 8, 3);
-    CHECK(LoadCrafted(&file) == maud_errorUnsupported, "a later version");
+    Put32(file.bytes + 8, 4);
+    CHECK(LoadCrafted(&file) == maud_errorVersion, "a later version");
     file = Craft();
-    PutFloat(file.bytes + 68, -90.0f);
-    Seal(&file);
+    PutFloat(file.bytes + file.at[PART_RINGS] + 8, -90.0f);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "elevations that do not rise");
     file = Craft();
-    PutFloat(file.bytes + 68, 91.0f);
-    Seal(&file);
+    PutFloat(file.bytes + file.at[PART_RINGS] + 8, 91.0f);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "an elevation past 90");
     file = Craft();
-    Put32(file.bytes + 72, 2);
-    Seal(&file);
+    Put32(file.bytes + file.at[PART_RINGS] + 12, 2);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "azimuths not adding up to the directions");
     file = Craft();
-    Put32(file.bytes + 72, 4);
-    Seal(&file);
+    Put32(file.bytes + file.at[PART_RINGS] + 12, 4);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "nor adding up to more");
     file = Craft();
-    Put32(file.bytes + 64, 0);
-    Put32(file.bytes + 72, 4);
-    Seal(&file);
+    Put32(file.bytes + file.at[PART_RINGS] + 4, 0);
+    Put32(file.bytes + file.at[PART_RINGS] + 12, 4);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a ring without an azimuth");
     file = Craft();
-    file.bytes[49] = 0xC0;
-    Seal(&file);
+    file.bytes[file.at[PART_NAME] + 1] = 0xC0;
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a name that is not UTF-8");
     // Well-shaped sequences whose values UTF-8 excludes, in the name.
     const char* excluded[3][2] = {{"\xC1\xBF", "an overlong character"},
@@ -321,49 +504,39 @@ static void TestCraftedFiles(void)
     for (int i = 0; i < 3; ++i)
     {
         file = Craft();
-        memcpy(file.bytes + 48, excluded[i][0], strlen(excluded[i][0]));
-        Seal(&file);
+        memcpy(file.bytes + file.at[PART_NAME], excluded[i][0], strlen(excluded[i][0]));
+        Seal(file.bytes, file.count);
         CHECK(LoadCrafted(&file) == maud_errorInvalid, excluded[i][1]);
     }
     file = Craft();
-    file.bytes[59] = 0xE2;
-    Seal(&file);
+    file.bytes[file.at[PART_LICENSE] + 7] = 0xE2;
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a license cut inside a character");
-    // A lead byte last, and a continuation byte right after the text, in
-    // the first ring's elevation (-89.99999): the character may not borrow
-    // it.
     file = Craft();
-    file.bytes[59] = 0xC3;
-    Put32(file.bytes + 60, 0xC2B3FFA9u);
-    Seal(&file);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a character reaching past its text");
-    file = Craft();
-    PutFloat(file.bytes + 28, NAN);
-    Seal(&file);
+    PutFloat(file.bytes + file.at[PART_HEAD] + 16, NAN);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "a scale that is not a number");
-    // Four taps, the file cut to match (16 bytes of taps per tap gone).
-    file = Craft();
-    Put32(file.bytes + 16, 4);
-    file.count -= 4 * 16;
-    Seal(&file);
+    Spec fewer = SmallSpec();
+    fewer.taps = 4;
+    file = CraftSpec(&fewer);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "fewer taps than the format allows");
     file = Craft();
-    PutFloat(file.bytes + 28, INFINITY);
-    Seal(&file);
+    Put32(file.bytes + file.at[PART_HEAD] + 4, 4);
+    Seal(file.bytes, file.count);
+    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a taps field longer than the head says");
+    file = Craft();
+    PutFloat(file.bytes + file.at[PART_HEAD] + 16, INFINITY);
+    Seal(file.bytes, file.count);
     CHECK(LoadCrafted(&file) == maud_errorInvalid, "an infinite scale");
     // Distances just outside the bounds, and not a number.
     float distances[3] = {0.049f, 100.5f, NAN};
     for (int i = 0; i < 3; ++i)
     {
         file = Craft();
-        PutFloat(file.bytes + 32, distances[i]);
-        Seal(&file);
+        PutFloat(file.bytes + file.at[PART_HEAD] + 20, distances[i]);
+        Seal(file.bytes, file.count);
         CHECK(LoadCrafted(&file) == maud_errorInvalid, "a measurement distance out of bounds");
     }
-    file = Craft();
-    Put32(file.bytes + 40, 0xFFFFFFF0u);
-    Seal(&file);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a license length past the bound");
     maudHrtf* hrtf = (maudHrtf*)&file;
     maudHrtfDef def = maudDefaultHrtfDef();
     CHECK(maudLoadHrtf(&def, &hrtf) == maud_errorInvalid && hrtf == nullptr, "no bytes");
@@ -375,48 +548,22 @@ static void TestCraftedFiles(void)
 }
 
 // A file of one ring at the horizon with directions azimuths, 8 taps, a
-// one-byte license, and the given rate, distance and name, sealed; in a
-// buffer the caller frees.
-static unsigned char* Build(uint32_t rate, uint32_t directions, float distance, const char* name,
-                            size_t nameBytes, size_t* countOut)
-{
-    size_t count = 48 + nameBytes + 1 + 8 + (size_t)directions * (4 + 2 * 8 * 2);
-    unsigned char* bytes = calloc(count, 1);
-    if (bytes == nullptr)
-    {
-        return nullptr;
-    }
-    memcpy(bytes, "MAUDHRTF", 8);
-    Put32(bytes + 8, 2);
-    Put32(bytes + 12, rate);
-    Put32(bytes + 16, 8);
-    Put32(bytes + 20, 1);
-    Put32(bytes + 24, directions);
-    PutFloat(bytes + 28, 1.0f / 32768.0f);
-    PutFloat(bytes + 32, distance);
-    Put32(bytes + 36, (uint32_t)nameBytes);
-    Put32(bytes + 40, 1);
-    memcpy(bytes + 48, name, nameBytes);
-    unsigned char* at = bytes + 48 + nameBytes;
-    *at++ = 'L';
-    PutFloat(at, 0.0f);
-    Put32(at + 4, directions);
-    at += 8 + (size_t)directions * 4;
-    for (size_t d = 0; d < 2u * directions; ++d)
-    {
-        at[d * 16] = 0x00;
-        at[d * 16 + 1] = 0x40;
-    }
-    Put32(bytes + 44, maudCrc32(bytes + 48, count - 48));
-    *countOut = count;
-    return bytes;
-}
-
+// one-byte license, and the given rate, distance and name, loaded with a
+// def's limit of maxDirections.
 static maudResult LoadBuilt(uint32_t rate, uint32_t directions, float distance, const char* name,
                             size_t nameBytes, uint32_t maxDirections)
 {
+    Spec spec = {.rate = rate,
+                 .taps = 8,
+                 .directions = directions,
+                 .horizon = true,
+                 .distance = distance,
+                 .name = name,
+                 .nameBytes = nameBytes,
+                 .license = "L",
+                 .licenseBytes = 1};
     size_t count = 0;
-    unsigned char* bytes = Build(rate, directions, distance, name, nameBytes, &count);
+    unsigned char* bytes = WriteSpec(&spec, &count);
     if (bytes == nullptr)
     {
         return maud_errorCapacity;
@@ -451,6 +598,10 @@ static void TestBounds(void)
     char name[256];
     memset(name, 'n', sizeof(name));
     CHECK(LoadBuilt(48000, 4, 1.5f, name, 256, 65536) == maud_success, "the longest name");
+    char longer[257];
+    memset(longer, 'n', sizeof(longer));
+    CHECK(LoadBuilt(48000, 4, 1.5f, longer, 257, 65536) == maud_errorInvalid,
+          "a name past 256 bytes");
     CHECK(LoadBuilt(48000, 1, 1.5f, "T", 1, 1) == maud_success, "one direction, the def's limit");
     CHECK(LoadBuilt(48000, 4, 1.5f, "T", 1, 4) == maud_success, "four, the def's limit");
     CHECK(LoadBuilt(48000, 5, 1.5f, "T", 1, 4) == maud_errorCapacity, "five, past it");
@@ -480,9 +631,9 @@ static void TestMutations(void)
         {
             file.count = (state >> 8) % file.count;
         }
-        if ((state & 16u) != 0 && file.count >= 48)
+        if ((state & 16u) != 0 && file.count >= 16)
         {
-            Seal(&file);
+            Seal(file.bytes, file.count);
         }
         maudResult result = LoadCrafted(&file);
         maudHrtfFile view;
@@ -568,6 +719,7 @@ int main(void)
 {
     TestShippedSet();
     TestCraftedFiles();
+    TestFields();
     TestMostTaps();
     TestMutations();
     TestBounds();

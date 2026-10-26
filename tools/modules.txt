@@ -49,6 +49,7 @@ echo_canceller: allocator echo_filter echo_suppressor flush real_fft
 echo_filter: allocator flush real_fft
 echo_suppressor: allocator flush real_fft voice_dsp
 fft:
+file_fields:
 flush:
 focus: backend context context_core notify
 follow: backend context context_core notify retry
@@ -57,7 +58,7 @@ fpenv:
 host_tasks: fpenv
 hrtf: allocator hrtf_core hrtf_file hrtf_resample
 hrtf_core:
-hrtf_file: crc32
+hrtf_file: crc32 file_fields
 hrtf_lookup: hrtf_core
 hrtf_resample:
 gain_control: allocator flush vad_core voice_dsp

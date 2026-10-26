@@ -1,43 +1,47 @@
 # File formats
 
-The library reads two kinds of file, and writes one. Both are little-endian, start with an eight-byte magic, a version and a fixed header, end with nothing after their last section, and seal their body with a CRC-32 (ISO-HDLC, as zlib computes it) of every byte after the header. Both loaders treat the bytes as hostile: every count is checked against a limit, the file's exact length is computed from the counts and compared, and the checksum verified, before anything is allocated or any value is read; then every value is checked against its range. Both are fuzzed (`test/fuzz_hrtf.c`, `test/fuzz_bake.c`).
+The library reads two kinds of file, and writes one. Both are little-endian, start with an eight-byte magic and a version, and seal what follows with a CRC-32 (ISO-HDLC, as zlib computes it). Both loaders treat the bytes as hostile: every count is checked against a limit, every size is computed from the counts and compared, and the checksum verified, before anything is allocated or any value is read; then every value is checked against its range. Both are fuzzed (`test/fuzz_hrtf.c`, `test/fuzz_bake.c`).
 
-A format's version changes whenever its bytes change. Before 1.0 nothing promises that a later release reads an earlier file.
+HRTF sets are made of tagged fields, so that a later version can add one without breaking an earlier reader's files ([maul-conventions.md](maul-conventions.md#compatibility)). Bakes still have a fixed layout. A format's version changes whenever its bytes change, and before 1.0 a reader takes only the current version: the HRTF reader refuses another with `maud_errorVersion`, the bake reader, until bakes are made of fields too, with `maud_errorUnsupported`.
 
 ## Contents
 
+- [Tagged fields](#tagged-fields)
 - [HRTF sets (.maudhrtf)](#hrtf-sets-maudhrtf)
 - [Bakes (.maudbake)](#bakes-maudbake)
 
+## Tagged fields
+
+After the header comes a sequence of fields to the end of the file ([file_fields.h](../../src/file_fields.h)). Each field is a uint32 tag, a uint32 byte length and the payload. The payload starts at a multiple of 8 bytes from the file's start, and is padded with zero bytes to the next multiple of 8. No payload holds an element wider than 4 bytes, and the loaders copy what they keep, so 8 is enough. A tag is four ASCII characters, the first in the lowest byte, so a dump shows it in order.
+
+A reader takes the fields in any order. It refuses a tag it does not know with `maud_errorVersion`, since only a later version writes one. It refuses a field written twice, a field longer than what is left, and padding that is not zero, with `maud_errorInvalid`. An absent field takes its documented default; a field with no default is required. A writer puts the fields in the order the tables below give, and leaves out a field that holds its default, so its bytes depend only on the content.
+
 ## HRTF sets (.maudhrtf)
 
-One head-related transfer function set at one sample rate, laid out for the renderer: minimum-phase responses with their onset delays kept apart, on elevation rings of evenly spaced azimuths. Kept apart, a renderer interpolates responses and delays separately, which keeps interaural time differences right between measured directions; a measured response with its delay inside would smear when two are blended. `tools/sofa_to_maudhrtf.py` writes it from a SOFA file; [hrtf_file.h](../../src/hrtf_file.h) reads it in place.
+One head-related transfer function set at one sample rate, laid out for the renderer: minimum-phase responses with their onset delays kept apart, on elevation rings of evenly spaced azimuths. Kept apart, a renderer interpolates responses and delays separately, which keeps interaural time differences right between measured directions; a measured response with its delay inside would smear when two are blended. `tools/sofa_to_maudhrtf.py` writes it from a SOFA file; [hrtf_file.h](../../src/hrtf_file.h) reads it.
 
 ### Header
 
 | Offset | Type | Field | Valid values |
 |---|---|---|---|
 | 0 | 8 bytes | magic | `MAUDHRTF` |
-| 8 | uint32 | version | 2; another is `maud_errorUnsupported` |
-| 12 | uint32 | sample rate | 8,000 to 384,000 |
-| 16 | uint32 | taps per response | 8 to 1,024 |
-| 20 | uint32 | ring count | 1 to 181 |
-| 24 | uint32 | direction count | 1 to 65,536, the sum of the rings' azimuth counts |
-| 28 | float32 | scale | finite and above 0: a tap is its int16 value times this |
-| 32 | float32 | distance | 0.05 to 100: metres from the head's centre at which the set was measured |
-| 36 | uint32 | name bytes | 0 to 256 |
-| 40 | uint32 | license bytes | 0 to 65,536 |
-| 44 | uint32 | CRC-32 | of every byte from offset 48 to the end |
+| 8 | uint32 | version | 3; another is `maud_errorVersion` |
+| 12 | uint32 | CRC-32 | of every byte from offset 16 to the end |
 
-### Body
+### Fields
 
-From offset 48, with nothing between the sections:
+From offset 16:
 
-1. **Name**: UTF-8, the dataset and subject, not terminated.
-2. **License**: UTF-8, the dataset's license and attribution, not terminated. A set travels with its license, and `maudGetHrtfInfo` hands both texts to the host.
-3. **Rings**: per ring, a float32 elevation in degrees and a uint32 azimuth count of at least 1. Elevations rise strictly from -90 to 90 inclusive. Each ring's first azimuth is 0 and its step 360 divided by its count.
-4. **Delays**: per direction, ring by ring and azimuth by azimuth, two uint16, the left ear's onset delay then the right's, in 1/256 of a sample.
-5. **Taps**: per direction in the same order, the left ear's taps then the right's, int16 each.
+| Tag | Payload | Absent |
+|---|---|---|
+| `head` | 24 bytes: the sample rate (uint32, 8,000 to 384,000), taps per response (uint32, 8 to 1,024), ring count (uint32, 1 to 181), direction count (uint32, 1 to 65,536, the sum of the rings' azimuth counts), scale (float32, finite and above 0: a tap is its int16 value times this) and distance (float32, 0.05 to 100: metres from the head's centre at which the set was measured) | `maud_errorInvalid` |
+| `name` | UTF-8, the dataset and subject, not terminated, up to 256 bytes | empty |
+| `lics` | UTF-8, the dataset's license and attribution, not terminated, up to 65,536 bytes. A set travels with its license, and `maudGetHrtfInfo` hands both texts to the host. | empty |
+| `ring` | per ring, a float32 elevation in degrees and a uint32 azimuth count of at least 1. Elevations rise strictly from -90 to 90 inclusive. Each ring's first azimuth is 0 and its step 360 divided by its count. | `maud_errorInvalid` |
+| `dlay` | per direction, ring by ring and azimuth by azimuth, two uint16, the left ear's onset delay then the right's, in 1/256 of a sample | `maud_errorInvalid` |
+| `taps` | per direction in the same order, the left ear's taps then the right's, int16 each | `maud_errorInvalid` |
+
+Each field's length must be the one the head's counts give: 8 bytes a ring, 4 a direction for the delays, 4 times the taps a direction for the taps.
 
 Directions follow SOFA's convention: azimuth counterclockwise from straight ahead (90 is the left), elevation up from the horizontal plane. The library converts from the listener frame at its API.
 
