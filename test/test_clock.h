@@ -100,12 +100,24 @@ typedef bool RateWindowFn(void* user);
 #define RATE_CLEAN_WINDOWS 3
 #define RATE_MAX_WINDOWS   30
 #define RATE_MAX_SECONDS   45
+// One window as measured, for the report of a measure that fails: its
+// rate (0 without a span), whether it was clean, and the clock read that
+// ends it.
+typedef struct RateWindow
+{
+    double rate;
+    bool clean;
+    maudStreamClock end;
+} RateWindow;
 typedef struct ClockRate
 {
     double rate;
     int clean;
     int stalled;
     int windows;
+    // The clock read the first window starts at, and every window.
+    maudStreamClock start;
+    RateWindow each[RATE_MAX_WINDOWS];
 } ClockRate;
 
 // The rate a running stream plays at by its own clock: the frames
@@ -123,7 +135,7 @@ typedef struct ClockRate
 static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId stream,
                                         RateWindowFn* window, void* user)
 {
-    ClockRate measured = {0.0, 0, 0, 0};
+    ClockRate measured = {0};
     double rates[RATE_CLEAN_WINDOWS] = {0};
     maudStreamClock first = {0};
     (void)window(user);
@@ -131,6 +143,7 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
     {
         return measured;
     }
+    measured.start = first;
     int64_t deadline = maudGetHostNanoseconds() + RATE_MAX_SECONDS * 1000000000LL;
     while (measured.windows < RATE_MAX_WINDOWS && measured.clean < RATE_CLEAN_WINDOWS &&
            maudGetHostNanoseconds() < deadline)
@@ -141,12 +154,16 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
         {
             return measured;
         }
+        double span = (double)(second.hostNanoseconds - first.hostNanoseconds);
+        double rate = first.hostNanoseconds != 0 && span > 0.0
+                          ? (double)(second.position - first.position) * 1e9 / span
+                          : 0.0;
+        measured.each[measured.windows] = (RateWindow){rate, clean, second};
         measured.windows += 1;
         measured.stalled += clean ? 0 : 1;
-        double span = (double)(second.hostNanoseconds - first.hostNanoseconds);
-        if (clean && first.hostNanoseconds != 0 && span > 0.0)
+        if (clean && rate > 0.0)
         {
-            rates[measured.clean++] = (double)(second.position - first.position) * 1e9 / span;
+            rates[measured.clean++] = rate;
         }
         first = second;
     }
@@ -176,18 +193,42 @@ static inline bool RateIsNear(double rate, double expected)
     return within;
 }
 
+// Prints every window of a measure and the clock reads that bound it, so
+// that a failed one shows what the clock did (#73).
+static inline void PrintRateWindows(const ClockRate* measured)
+{
+    const maudStreamClock* start = &measured->start;
+    fprintf(stderr, "rate: starts at frame %llu, host %lld ns, latency %lld ns\n",
+            (unsigned long long)start->position, (long long)start->hostNanoseconds,
+            (long long)start->latencyNanoseconds);
+    for (int i = 0; i < measured->windows; ++i)
+    {
+        const RateWindow* window = &measured->each[i];
+        fprintf(stderr,
+                "rate: window %d %s, %.0f frames/s, to frame %llu, host %lld ns, latency %lld ns\n",
+                i + 1, window->clean ? "clean" : "stalled", window->rate,
+                (unsigned long long)window->end.position, (long long)window->end.hostNanoseconds,
+                (long long)window->end.latencyNanoseconds);
+    }
+}
+
 // Whether a measure shows the expected rate. Without enough clean
 // windows it fails as starved, with the count, so that a machine short of
-// CPU reads as such and never as a wrong rate.
+// CPU reads as such and never as a wrong rate. A measure that fails
+// prints its windows.
 static inline bool RateHolds(ClockRate measured, double expected)
 {
+    bool holds = measured.clean == RATE_CLEAN_WINDOWS && RateIsNear(measured.rate, expected);
     if (measured.clean < RATE_CLEAN_WINDOWS)
     {
         fprintf(stderr, "starved: %d of %d windows had xruns or a late wakeup\n", measured.stalled,
                 measured.windows);
-        return false;
     }
-    return RateIsNear(measured.rate, expected);
+    if (!holds)
+    {
+        PrintRateWindows(&measured);
+    }
+    return holds;
 }
 
 #endif // MAUL_AUDIO_TEST_TEST_CLOCK_H
