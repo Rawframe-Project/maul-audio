@@ -115,10 +115,49 @@ typedef struct ClockRate
     int clean;
     int stalled;
     int windows;
-    // The clock read the first window starts at, and every window.
+    // The clock read the first window starts at, every window, and the
+    // clean windows' rates.
     maudStreamClock start;
     RateWindow each[RATE_MAX_WINDOWS];
+    double rates[RATE_CLEAN_WINDOWS];
 } ClockRate;
+
+// Counts one window of a measure, between the clock reads first and
+// second; clean says whether the platform reported no stall in it. A
+// clean window between two stamped reads a positive span apart counts,
+// at the rate the positions show: 0 for a clock that stood still, which
+// then fails as a wrong rate, never as starved.
+static inline void CountRateWindow(ClockRate* measured, const maudStreamClock* first,
+                                   const maudStreamClock* second, bool clean)
+{
+    double span = (double)(second->hostNanoseconds - first->hostNanoseconds);
+    bool timed = first->hostNanoseconds != 0 && span > 0.0;
+    double rate = timed ? (double)(second->position - first->position) * 1e9 / span : 0.0;
+    measured->each[measured->windows] = (RateWindow){rate, clean, *second};
+    measured->windows += 1;
+    measured->stalled += clean ? 0 : 1;
+    if (clean && timed)
+    {
+        measured->rates[measured->clean++] = rate;
+    }
+}
+
+// Sets a measure's rate to the median of its clean windows' once it has
+// RATE_CLEAN_WINDOWS of them, else 0.
+static inline void SettleRate(ClockRate* measured)
+{
+    double* rates = measured->rates;
+    for (int i = 1; i < measured->clean; ++i)
+    {
+        for (int j = i; j > 0 && rates[j] < rates[j - 1]; --j)
+        {
+            double swap = rates[j];
+            rates[j] = rates[j - 1];
+            rates[j - 1] = swap;
+        }
+    }
+    measured->rate = measured->clean == RATE_CLEAN_WINDOWS ? rates[RATE_CLEAN_WINDOWS / 2] : 0.0;
+}
 
 // The rate a running stream plays at by its own clock: the frames
 // between two clock reads over the time between the host times the clock
@@ -136,7 +175,6 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
                                         RateWindowFn* window, void* user)
 {
     ClockRate measured = {0};
-    double rates[RATE_CLEAN_WINDOWS] = {0};
     maudStreamClock first = {0};
     (void)window(user);
     if (maudGetStreamClock(context, stream, &first) != maud_success)
@@ -154,29 +192,10 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
         {
             return measured;
         }
-        double span = (double)(second.hostNanoseconds - first.hostNanoseconds);
-        double rate = first.hostNanoseconds != 0 && span > 0.0
-                          ? (double)(second.position - first.position) * 1e9 / span
-                          : 0.0;
-        measured.each[measured.windows] = (RateWindow){rate, clean, second};
-        measured.windows += 1;
-        measured.stalled += clean ? 0 : 1;
-        if (clean && rate > 0.0)
-        {
-            rates[measured.clean++] = rate;
-        }
+        CountRateWindow(&measured, &first, &second, clean);
         first = second;
     }
-    for (int i = 1; i < measured.clean; ++i)
-    {
-        for (int j = i; j > 0 && rates[j] < rates[j - 1]; --j)
-        {
-            double swap = rates[j];
-            rates[j] = rates[j - 1];
-            rates[j - 1] = swap;
-        }
-    }
-    measured.rate = measured.clean == RATE_CLEAN_WINDOWS ? rates[RATE_CLEAN_WINDOWS / 2] : 0.0;
+    SettleRate(&measured);
     return measured;
 }
 
