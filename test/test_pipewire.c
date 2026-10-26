@@ -466,6 +466,68 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     ResetDefaults(context, helper);
 }
 
+// Whether the daemon lists a metadata named default.
+static bool HasDefaultMetadata(void)
+{
+    return system("pw-cli ls Metadata | grep -q 'metadata.name = \"default\"'") == 0;
+}
+
+// Waits for the fixture's session manager to exit, and says whether it
+// did: the script starts it again only once the process it recorded is
+// gone, and signal 0 fails from then on.
+static bool SessionManagerExits(void)
+{
+    bool exited = false;
+    POLL_UNTIL(SESSION_MANAGER_MS, "the session manager to exit",
+               exited = !DriveDaemon("signal", "wireplumber 0"), exited);
+    return exited;
+}
+
+// The session manager owns the default metadata: when it restarts, the
+// metadata goes and a new one comes with another id. The context binds
+// the new one and follows the defaults it names (#80). Says whether the
+// helper, which binds the metadata too, is connected again for the tests
+// after.
+static bool TestSessionManagerRestart(maudContext* context, Helper* helper)
+{
+    if (!HaveDaemon())
+    {
+        return true;
+    }
+    ResetDefaults(context, helper);
+    StopHelper(helper);
+    CHECK(DriveDaemon("signal", "wireplumber TERM"), "the session manager stops");
+    bool exited = SessionManagerExits();
+    if (!exited)
+    {
+        printf("the session manager outlived TERM by %d ms: killed\n", SESSION_MANAGER_MS);
+        CHECK(DriveDaemon("signal", "wireplumber KILL"), "the session manager killed");
+        exited = SessionManagerExits();
+    }
+    CHECK(exited, "the session manager exits");
+    POLL_UNTIL(SESSION_MANAGER_MS, "the default metadata to go", (void)0, !HasDefaultMetadata());
+    CHECK(!HasDefaultMetadata(), "and its default metadata goes");
+    CHECK(DriveDaemon("start", ""), "the session manager starts again");
+    bool helped = StartHelper(helper);
+    CHECK(helped, "the test's own client, on the new metadata");
+    if (!helped)
+    {
+        return false;
+    }
+    maudDeviceId plugged = {0, 0};
+    PlugSink(helper);
+    CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
+    CHECK(WaitForDefault(context, plugged),
+          "the context follows the new session manager's default");
+    SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
+    UnplugSink(helper);
+    maudDeviceId removed = plugged;
+    CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
+    ResetDefaults(context, helper);
+    return true;
+}
+
 // The input blocks a trace keeps: 256 periods of 256 frames at 48 kHz,
 // 1.4 s.
 #define TRACE_BLOCKS 256
@@ -1323,7 +1385,13 @@ int main(int argc, char** argv)
         if (helped && s_defaultsOnly)
         {
             TestHotplugAndDefaults(context, &helper);
-            TestStreamsMoveAndAreLost(context, &helper);
+            // A helper that could not connect again has no metadata to
+            // write: the tests that need it are left out.
+            helped = TestSessionManagerRestart(context, &helper);
+            if (helped)
+            {
+                TestStreamsMoveAndAreLost(context, &helper);
+            }
         }
         if (helped)
         {
