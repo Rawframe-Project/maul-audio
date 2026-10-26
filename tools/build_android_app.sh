@@ -28,9 +28,10 @@ trap 'rm -rf "$work"' EXIT
 sed -e "s/@PACKAGE@/$package/" -e "s/@LIBRARY@/$name/" \
     "$root/test/android/AndroidManifest.xml" > "$work/AndroidManifest.xml"
 mkdir -p "$work/classes" "$work/dex" "$work/lib/$abi"
-# The sources go through an argument file, each quoted, and the classes
-# through a jar, so that no path is split on its spaces.
-find "$root/java" -name '*.java' | sed 's/.*/"&"/' > "$work/sources.txt"
+# The sources go through an argument file, each quoted with its
+# backslashes and quotes escaped, and the classes through a jar, so that
+# no path is split on its spaces or cut at a quote.
+find "$root/java" -name '*.java' | sed -e 's/[\\"]/\\&/g' -e 's/.*/"&"/' > "$work/sources.txt"
 javac -nowarn --release 11 -classpath "$jar" -d "$work/classes" "@$work/sources.txt"
 jar cf "$work/classes.jar" -C "$work/classes" .
 "$tools/aapt2" link -o "$work/linked.apk" -I "$jar" --manifest "$work/AndroidManifest.xml" \
