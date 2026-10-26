@@ -40,7 +40,7 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@c3e9ba81140f28b7df1ccfb172c031b6e164a73f # v0.0.24
     permissions:
       pull-requests: read
 
@@ -55,12 +55,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@c3e9ba81140f28b7df1ccfb172c031b6e164a73f # v0.0.24
         with:
           exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@c3e9ba81140f28b7df1ccfb172c031b6e164a73f # v0.0.24
     permissions:
       contents: read
 
@@ -149,7 +149,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c3e9ba81140f28b7df1ccfb172c031b6e164a73f # v0.0.24
     permissions:
       contents: read
     with:
@@ -175,7 +175,7 @@ jobs:
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@23883e3610442d449485b0a5ec5192709efbc33c # v0.0.23
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@c3e9ba81140f28b7df1ccfb172c031b6e164a73f # v0.0.24
     permissions:
       contents: read
     with:
@@ -230,6 +230,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Restore the corpus
+        if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/corpus/${{ matrix.target }}
@@ -244,14 +245,14 @@ jobs:
       - name: Run
         run: |
           tools/fuzz_seeds.sh out/corpus
-          mkdir -p out/fuzz-logs
-          if "out/fuzz/$TARGET" -max_total_time="$FUZZ_SECONDS" "out/corpus/$TARGET" >"out/fuzz-logs/$TARGET.log" 2>&1; then
-            echo "$TARGET: no finding"
-          else
-            tail -n 60 "out/fuzz-logs/$TARGET.log"
-            echo "::error::$TARGET found something"
-            exit 1
-          fi
+          # tools/fuzz_target.sh reports a finding without its input, and
+          # keeps the input and the log on the runner.
+          rm -rf out/fuzz-reports
+          status=0
+          tools/fuzz_target.sh "out/fuzz/$TARGET" -max_total_time="$FUZZ_SECONDS" \
+            "out/corpus/$TARGET" || status=$?
+          cat out/fuzz-reports/*.txt 2>/dev/null || true
+          exit "$status"
       - name: Minimize the corpus
         if: github.event_name != 'pull_request'
         run: |
@@ -266,19 +267,6 @@ jobs:
         with:
           path: out/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
-      - name: Fuzz logs and crash inputs
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz-${{ matrix.target }}
-          path: |
-            out/fuzz-logs/
-            crash-*
-            leak-*
-            timeout-*
-            oom-*
-          if-no-files-found: ignore
-          retention-days: 7
 
   # The web backend built by Emscripten: the suites under Node, the pages in
   # headless Chrome through puppeteer (test/web/package-lock.json pins it),
