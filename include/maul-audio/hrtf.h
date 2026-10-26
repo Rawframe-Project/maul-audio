@@ -96,9 +96,10 @@ extern "C"
     ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a def
     ///         without its cookie or out of range, or bytes that are not a
-    ///         well-formed file (a wrong magic, size, ring layout, text or
-    ///         checksum); `maud_errorUnsupported` for a format version this
-    ///         library does not read; `maud_errorCapacity` when the set
+    ///         well-formed file (a wrong magic, field, size, ring layout,
+    ///         text or checksum); `maud_errorVersion` also for another format
+    ///         version, or a field only a later version writes;
+    ///         `maud_errorCapacity` when the set
     ///         passes the def's limits or the allocator fails.
     /// @par Thread safety
     /// Safe from any thread.

@@ -68,7 +68,7 @@ A pull request that rewrites a golden file says which change in results caused i
       --license-file data/hrtf/sadie2-ku100.notice.txt
   ```
 
-- **Result:** 1,652 directions on 37 rings, 128 taps at 48 kHz, measured at 1.2 m, 853,896 bytes, SHA-256 `6867385a5f475ff735151daeba145d12e5c7524c9a52cb1be37f65c587deac33`.
+- **Result:** 1,652 directions on 37 rings, 128 taps at 48 kHz, measured at 1.2 m, 853,944 bytes, SHA-256 `078fa52db8d39fd5bff5875ce888f9d3dcd24b06f9ecf3beaf6b7e7325784d41`.
 
 `data/hrtf/sadie2-ku100.notice.txt` carries the copyright, the license notice, the reference the authors ask for and the changes made; the same text is inside the file. `data/hrtf/apache-2.0/` holds the license text exactly as published, with its SHA-256.
 

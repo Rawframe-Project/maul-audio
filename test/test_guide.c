@@ -319,7 +319,7 @@ static maudHrtf* GuideHrtf(void)
     def.byteCount = byteCount;
     maudHrtf* hrtf = NULL;
     maudResult result = maudLoadHrtf(&def, &hrtf);
-    // maud_errorInvalid: a damaged or foreign file; maud_errorUnsupported: a newer version.
+    // maud_errorInvalid: a damaged or foreign file; maud_errorVersion: another version.
     // clang-format on
     CHECK(result == maud_success, "the HRTF snippet loads the shipped set");
     return hrtf;

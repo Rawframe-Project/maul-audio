@@ -37,12 +37,13 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     uint8_t* bytes = malloc(count > 0 ? count : 1);
     Expect(bytes != nullptr);
     memcpy(bytes, data + 1, count);
-    if ((choice & 1u) != 0 && count >= 48)
+    // The header: magic, version, then the checksum of every byte after.
+    if ((choice & 1u) != 0 && count >= 16)
     {
-        uint32_t crc = maudCrc32(bytes + 48, count - 48);
+        uint32_t crc = maudCrc32(bytes + 16, count - 16);
         for (int i = 0; i < 4; ++i)
         {
-            bytes[44 + i] = (uint8_t)(crc >> (8 * i));
+            bytes[12 + i] = (uint8_t)(crc >> (8 * i));
         }
     }
     maudHrtfDef def = maudDefaultHrtfDef();

@@ -43,7 +43,10 @@ except ImportError:
     sys.exit("sofa_to_maudhrtf.py needs numpy and h5py: pip install numpy h5py")
 
 MAGIC = b"MAUDHRTF"
-VERSION = 2
+VERSION = 3
+# Every field's payload starts at a multiple of this from the file's
+# start, and is padded with zero bytes to the next.
+ALIGN = 8
 RING_STEP = 5.0
 AZIMUTHS_AT_EQUATOR = 72
 TAPS_AT_48K = 128
@@ -209,6 +212,12 @@ def convert(ir, rate, azimuth, elevation):
     return taps, ring_elevations, ring_counts, delays, taps_out
 
 
+def field(tag, payload):
+    """A tagged field: its four-character tag, its length, its payload and
+    zero bytes to the next multiple of ALIGN."""
+    return tag + struct.pack("<I", len(payload)) + payload + bytes(-len(payload) % ALIGN)
+
+
 def encode(rate, distance, taps, ring_elevations, ring_counts, delays, responses, name, license_text):
     peak = float(np.abs(responses).max())
     scale = np.float32(peak / 32767.0 if peak > 0 else 1.0)
@@ -218,24 +227,29 @@ def encode(rate, distance, taps, ring_elevations, ring_counts, delays, responses
     license_bytes = license_text.encode("utf-8")
     if len(license_bytes) > 65536:
         sys.exit("the license text is longer than 65,536 bytes")
-    body = bytearray(name_bytes)
-    body += license_bytes
-    for elevation, count in zip(ring_elevations, ring_counts):
-        body += struct.pack("<fI", float(elevation), count)
-    body += units.tobytes()
-    body += samples.tobytes()
-    header = MAGIC + struct.pack(
-        "<IIIIIffII",
-        VERSION,
+    head = struct.pack(
+        "<IIIIff",
         int(round(rate)),
         taps,
         len(ring_counts),
         int(sum(ring_counts)),
         float(scale),
         distance,
-        len(name_bytes),
-        len(license_bytes),
     )
+    rings = b"".join(
+        struct.pack("<fI", float(elevation), count)
+        for elevation, count in zip(ring_elevations, ring_counts)
+    )
+    body = bytearray(field(b"head", head))
+    # A field that holds its default, an empty text, is left out.
+    if name_bytes:
+        body += field(b"name", name_bytes)
+    if license_bytes:
+        body += field(b"lics", license_bytes)
+    body += field(b"ring", rings)
+    body += field(b"dlay", units.tobytes())
+    body += field(b"taps", samples.tobytes())
+    header = MAGIC + struct.pack("<I", VERSION)
     return header + struct.pack("<I", zlib.crc32(body)) + bytes(body)
 
 
