@@ -132,12 +132,13 @@ static File Write(const maudProbeGraph* g, const maudProbeBake* b)
     return f;
 }
 
+// The header: magic, version, then the checksum of every byte after.
 static void Seal(File* f)
 {
-    uint32_t crc = maudCrc32(f->bytes + 40, f->size - 40);
+    uint32_t crc = maudCrc32(f->bytes + 16, f->size - 16);
     for (int k = 0; k < 4; ++k)
     {
-        f->bytes[36 + k] = (uint8_t)(crc >> (8 * k));
+        f->bytes[12 + k] = (uint8_t)(crc >> (8 * k));
     }
 }
 
@@ -173,20 +174,39 @@ static maudResult Read(const File* f, const maudBakeLimits* limits)
     return r;
 }
 
-// Sections' offsets, as the format lays them out.
+// A field's bytes in all: frame, payload and zero padding to 8.
+static size_t FieldBytes(size_t length)
+{
+    return 8 + (length + 7) / 8 * 8;
+}
+
+// Where the payload of the field tagged tag starts, read from the file's
+// own frames; 0 when it has none.
+static size_t Part(const File* f, const char* tag)
+{
+    for (size_t at = 16; at + 8 <= f->size; at += FieldBytes(Get(f->bytes + at + 4)))
+    {
+        if (memcmp(f->bytes + at, tag, 4) == 0)
+        {
+            return at + 8;
+        }
+    }
+    return 0;
+}
+
 static size_t Rows(const File* f)
 {
-    return 40 + 12 * (size_t)f->probes;
+    return Part(f, "rows");
 }
 
 static size_t Neighbours(const File* f)
 {
-    return Rows(f) + 4 * ((size_t)f->probes + 1);
+    return Part(f, "nbrs");
 }
 
 static size_t Times(const File* f)
 {
-    return Neighbours(f) + 8 * (size_t)f->links;
+    return Part(f, "revb");
 }
 
 // A copy of the file with one change, resealed.
@@ -195,6 +215,37 @@ static File Changed(const File* f)
     File c = *f;
     c.bytes = malloc(f->size + 1);
     memcpy(c.bytes, f->bytes, f->size);
+    return c;
+}
+
+// A copy of the file without the field tagged tag.
+static File Without(const File* f, const char* tag)
+{
+    File c = *f;
+    c.bytes = malloc(f->size);
+    memcpy(c.bytes, f->bytes, 16);
+    c.size = 16;
+    for (size_t at = 16; at + 8 <= f->size; at += FieldBytes(Get(f->bytes + at + 4)))
+    {
+        size_t bytes = FieldBytes(Get(f->bytes + at + 4));
+        if (memcmp(f->bytes + at, tag, 4) != 0)
+        {
+            memcpy(c.bytes + c.size, f->bytes + at, bytes);
+            c.size += bytes;
+        }
+    }
+    return c;
+}
+
+// A copy of the file with a field of length zero bytes after the rest.
+static File With(const File* f, const char* tag, uint32_t length)
+{
+    File c = *f;
+    c.size = f->size + FieldBytes(length);
+    c.bytes = calloc(c.size, 1);
+    memcpy(c.bytes, f->bytes, f->size);
+    memcpy(c.bytes + f->size, tag, 4);
+    Put(c.bytes + f->size + 4, length);
     return c;
 }
 
@@ -245,9 +296,18 @@ static void TestRoundTrip(const maudProbeGraph* g, const maudProbeBake* b, const
     maudReleaseProbeGraph(&s_allocator, &rg);
     maudReleaseProbeBake(&s_allocator, &rb);
     // Probes and links alone load whatever the fields' layout.
+    // The writer leaves out the layers it does not have, which the reader
+    // takes as their default: no estimates and no fields.
     File bare = Write(g, nullptr);
     const maudBakeLimits other = {64, 64, 3, 401};
-    CHECK(bare.size == Times(f) && Read(&bare, &other) == maud_success, "probes and links alone");
+    CHECK(bare.size == Times(f) - 8 && Part(&bare, "revb") == 0 && Part(&bare, "fhdr") == 0 &&
+              Part(&bare, "flds") == 0,
+          "probes and links alone: no layer written");
+    CHECK(maudReadBakeFile(bare.bytes, bare.size, &other, &s_allocator, &rg, &rb) == maud_success &&
+              rg.count == g->count && rb.memory == nullptr,
+          "probes and links alone: read with no estimates, whatever the fields' layout");
+    maudReleaseProbeGraph(&s_allocator, &rg);
+    maudReleaseProbeBake(&s_allocator, &rb);
     free(bare.bytes);
     // Reverberation without fields, as a spatializer without reflections
     // saves it.
@@ -345,14 +405,36 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     c.bytes[0] ^= 1;
     Expect(&c, maud_errorInvalid, "magic");
     c = Changed(f);
-    Put(c.bytes + 8, 3);
-    Expect(&c, maud_errorUnsupported, "a later version");
+    Put(c.bytes + 8, 4);
+    Expect(&c, maud_errorVersion, "a later version");
     c = Changed(f);
     Put(c.bytes + 8, 0);
-    Expect(&c, maud_errorUnsupported, "version 0");
+    Expect(&c, maud_errorVersion, "version 0");
     c = Changed(f);
     Put(c.bytes + 8, 1);
-    Expect(&c, maud_errorUnsupported, "version 1, before tails");
+    Expect(&c, maud_errorVersion, "version 1, before tails");
+    c = Changed(f);
+    Put(c.bytes + 8, 2);
+    Expect(&c, maud_errorVersion, "version 2, the fixed layout before fields");
+    c = With(f, "zzzz", 4);
+    Expect(&c, maud_errorVersion, "a field only a later version writes");
+    c = With(f, "head", 12);
+    Expect(&c, maud_errorInvalid, "a field written twice");
+    c = Changed(f);
+    c.bytes[Part(&c, "head") + 12] = 1;
+    Expect(&c, maud_errorInvalid, "padding that is not zero");
+    const char* required[4] = {"head", "prob", "rows", "nbrs"};
+    for (int i = 0; i < 4; ++i)
+    {
+        c = Without(f, required[i]);
+        Expect(&c, maud_errorInvalid, "a part with no default left out");
+    }
+    c = Without(f, "revb");
+    Expect(&c, maud_errorInvalid, "energy fields without the estimates");
+    c = Without(f, "fhdr");
+    Expect(&c, maud_errorInvalid, "energy fields without their layout");
+    c = Without(f, "flds");
+    Expect(&c, maud_errorInvalid, "a layout without the energy fields");
     c = Changed(f);
     c.size -= 1;
     Expect(&c, maud_errorInvalid, "a byte short");
@@ -365,11 +447,11 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     CHECK(Read(&c, &s_limits) == maud_errorInvalid, "the checksum");
     free(c.bytes);
     c = Changed(f);
-    PutFloat(c.bytes + 20, 0.05f);
+    PutFloat(c.bytes + Part(&c, "head") + 8, 0.05f);
     Expect(&c, maud_errorInvalid, "the range");
     c = Changed(f);
-    Put(c.bytes + 24, 2);
-    Expect(&c, maud_errorInvalid, "the layers");
+    Put(c.bytes + Part(&c, "fhdr"), 4);
+    Expect(&c, maud_errorInvalid, "an order past 3");
     c = Changed(f);
     Put(c.bytes + Neighbours(&c), f->probes);
     Expect(&c, maud_errorInvalid, "a neighbour out of range");
@@ -391,10 +473,10 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     CHECK(OneEnded(&c, g), "a pair in range unlinked");
     Expect(&c, maud_errorInvalid, "a link from one end");
     c = Changed(f);
-    PutFloat(c.bytes + 40, -9.0f);
+    PutFloat(c.bytes + Part(&c, "prob"), -9.0f);
     Expect(&c, maud_errorInvalid, "a link past the range");
     c = Changed(f);
-    PutFloat(c.bytes + 44, NAN);
+    PutFloat(c.bytes + Part(&c, "prob") + 4, NAN);
     Expect(&c, maud_errorInvalid, "a point not finite");
     // Times, levels, tails' times and tails' levels, each at both ends
     // of its bounds, read.
@@ -419,10 +501,10 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     PutFloat(c.bytes + Times(&c) + 36 * (size_t)f->probes, 30.0f);
     Expect(&c, maud_errorInvalid, "a tail's level");
     c = Changed(f);
-    PutFloat(c.bytes + Times(&c) + 48 * (size_t)f->probes, -1.0f);
+    PutFloat(c.bytes + Part(&c, "flds"), -1.0f);
     Expect(&c, maud_errorInvalid, "a negative W");
     c = Changed(f);
-    PutFloat(c.bytes + Times(&c) + 48 * (size_t)f->probes + 4 * 3 * BINS, INFINITY);
+    PutFloat(c.bytes + Part(&c, "flds") + 4 * 3 * BINS, INFINITY);
     Expect(&c, maud_errorInvalid, "a field not finite");
     const maudBakeLimits fewProbes = {f->probes - 1, 64, ORDER, BINS};
     const maudBakeLimits fewLinks = {64, f->links - 1, ORDER, BINS};
@@ -435,7 +517,7 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     maudProbeGraph rg;
     maudProbeBake rb;
     CHECK(maudReadBakeFile(nullptr, 0, &s_limits, &s_allocator, &rg, &rb) == maud_errorInvalid &&
-              maudReadBakeFile(f->bytes, 39, &s_limits, &s_allocator, &rg, &rb) ==
+              maudReadBakeFile(f->bytes, 15, &s_limits, &s_allocator, &rg, &rb) ==
                   maud_errorInvalid,
           "no file, a short one");
 }
@@ -473,18 +555,18 @@ static void TestPairs(void)
     File apart = Pair(0, nullptr);
     CHECK(Read(&apart, &s_limits) == maud_success, "two probes, no links");
     File c = Changed(&apart);
-    PutFloat(c.bytes + 20, 1000.0f);
+    PutFloat(c.bytes + Part(&c, "head") + 8, 1000.0f);
     Seal(&c);
     CHECK(Read(&c, &s_limits) == maud_success, "the longest range");
-    PutFloat(c.bytes + 20, 0.1f);
+    PutFloat(c.bytes + Part(&c, "head") + 8, 0.1f);
     Seal(&c);
     CHECK(Read(&c, &s_limits) == maud_success, "the shortest range");
     free(c.bytes);
     c = Changed(&apart);
-    PutFloat(c.bytes + 40 + 12 + 4, NAN);
+    PutFloat(c.bytes + Part(&c, "prob") + 12 + 4, NAN);
     Expect(&c, maud_errorInvalid, "an unlinked point not finite in y");
     c = Changed(&apart);
-    PutFloat(c.bytes + 40 + 12, NAN);
+    PutFloat(c.bytes + Part(&c, "prob") + 12, NAN);
     Expect(&c, maud_errorInvalid, "an unlinked point not finite in x");
     free(apart.bytes);
     const uint32_t twice[4] = {1, 1, 0, 0};

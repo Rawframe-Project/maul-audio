@@ -34,12 +34,13 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     uint8_t* bytes = malloc(count > 0 ? count : 1);
     Expect(bytes != nullptr);
     memcpy(bytes, data + 1, count);
-    if ((data[0] & 1) != 0 && count >= MAUD_BAKE_HEADER)
+    // The header: magic, version, then the checksum of every byte after.
+    if ((data[0] & 1) != 0 && count >= 16)
     {
-        uint32_t crc = maudCrc32(bytes + MAUD_BAKE_HEADER, count - MAUD_BAKE_HEADER);
+        uint32_t crc = maudCrc32(bytes + 16, count - 16);
         for (int k = 0; k < 4; ++k)
         {
-            bytes[36 + k] = (uint8_t)(crc >> (8 * k));
+            bytes[12 + k] = (uint8_t)(crc >> (8 * k));
         }
     }
     uint32_t order = (uint32_t)(data[0] >> 1) & 3u;
