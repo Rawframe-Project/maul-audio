@@ -64,7 +64,8 @@ extern "C"
         // Devices, of both directions, that exist at once.
         uint16_t devices;
         // Records the notification queue holds before it overflows; at
-        // least MAUD_MIN_NOTIFICATIONS.
+        // least MAUD_MIN_NOTIFICATIONS. Fewer, 0 included, is refused with
+        // maud_errorLimit.
         uint16_t notifications;
         // Bytes of a device's name, and of its key.
         uint16_t deviceTextBytes;
@@ -147,9 +148,9 @@ extern "C"
     ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL
     ///         argument, a def without its cookie, an allocator with one function, a limit
-    ///         of 0 or an offline rate out of range; `maud_errorLimit` for a
-    ///         period limit past MAUD_MAX_PERIOD_FRAMES or fewer
-    ///         notifications than MAUD_MIN_NOTIFICATIONS; `maud_errorUnsupported`
+    ///         other than notifications of 0, or an offline rate out of range;
+    ///         `maud_errorLimit` for a period limit past MAUD_MAX_PERIOD_FRAMES or
+    ///         fewer notifications than MAUD_MIN_NOTIFICATIONS, 0 included; `maud_errorUnsupported`
     ///         when this build or platform lacks the backend asked for, or
     ///         no audio service of it answers;
     ///         `maud_errorCapacity` when the allocator fails, or when the
