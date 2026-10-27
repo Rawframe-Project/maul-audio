@@ -71,17 +71,8 @@ static uint32_t ChannelsIn(maudCoreAudio* coreaudio, AudioObjectID object,
 {
     AudioObjectPropertyAddress address =
         maudCoreAudioAddress(kAudioDevicePropertyStreamConfiguration, scope);
-    if (ReadScratch(coreaudio, object, &address) < sizeof(AudioBufferList))
-    {
-        return 0;
-    }
-    const AudioBufferList* list = (const AudioBufferList*)(void*)coreaudio->scratch;
-    uint32_t channels = 0;
-    for (UInt32 i = 0; i < list->mNumberBuffers; ++i)
-    {
-        channels += list->mBuffers[i].mNumberChannels;
-    }
-    return channels;
+    UInt32 size = ReadScratch(coreaudio, object, &address);
+    return maudCoreAudioChannelsOf((const AudioBufferList*)(void*)coreaudio->scratch, size);
 }
 
 // Reads the nominal rate into info, and the bounds of the rates the
