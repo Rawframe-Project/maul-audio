@@ -297,6 +297,15 @@ void maudSetDeviceSpatializer(maudContext* context, maudDeviceSlot* slot,
                                   });
 }
 
+uint32_t maudDeviceRate(double rate)
+{
+    if (!(rate >= MAUD_DEVICE_MIN_RATE - 0.5 && rate < MAUD_DEVICE_MAX_RATE + 0.5))
+    {
+        return 0;
+    }
+    return (uint32_t)(rate + 0.5);
+}
+
 bool maudSetDeviceFormat(maudContext* context, maudDeviceSlot* slot, const maudDeviceInfo* info)
 {
     if (slot->info.nativeLayout == info->nativeLayout &&

@@ -4,10 +4,11 @@
 // Syncing the device table with a backend's list (whitebox): when one
 // device's native rate changes and the others' do not, a stream at the
 // native rate on it takes the new rate and says so, and so it does when
-// every device's rate changes at once. Two devices of opposite
-// directions under one key are each found by their direction, an
-// unknown key by none; a removed device's slot taken again leaves its
-// old id stale.
+// every device's rate changes at once; a platform's rate outside the
+// rates a stream runs at reads as none, and a device that cannot tell
+// its rate leaves the stream's. Two devices of opposite directions under
+// one key are each found by their direction, an unknown key by none; a
+// removed device's slot taken again leaves its old id stale.
 
 #include "context.h"
 #include "device.h"
@@ -17,6 +18,8 @@
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
+
+#include <math.h>
 
 static void Ignore(const maudStreamBlock* block, void* user)
 {
@@ -86,6 +89,33 @@ int main(void)
     while (maudNextNotification(context, &record) == maud_success)
     {
     }
+    // A platform's rate is taken within the rates a stream runs at;
+    // anything else reads as one it cannot tell.
+    CHECK(maudDeviceRate(8000.0) == 8000 && maudDeviceRate(384000.0) == 384000 &&
+              maudDeviceRate(44099.6) == 44100,
+          "rates within the range, rounded");
+    CHECK(maudDeviceRate(7999.0) == 0 && maudDeviceRate(384001.0) == 0 &&
+              maudDeviceRate(0.0) == 0 && maudDeviceRate(-48000.0) == 0 &&
+              maudDeviceRate(4294967296.0 * 2.0) == 0 && maudDeviceRate((double)NAN) == 0 &&
+              maudDeviceRate((double)INFINITY) == 0,
+          "rates outside it, past uint32_t or not a number, as none");
+    // A device that cannot tell its rate leaves a native stream at its
+    // own, and says nothing of it.
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        specs[i].info.nativeSampleRate = 0;
+        specs[i].info.minSampleRate = 0;
+        specs[i].info.maxSampleRate = 0;
+    }
+    bool changed = false;
+    CHECK(maudSyncDevices(context, specs, count, nullptr) == maud_success, "synced again");
+    while (maudNextNotification(context, &record) == maud_success)
+    {
+        changed = changed || record.kind == maud_notifyStreamFormatChanged;
+    }
+    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+              format.sampleRate == 32000 && !changed,
+          "a rate the device cannot tell leaves the stream's");
     // Two devices, an output and an input, under one key (as Core Audio
     // keys a device's two directions by its UID): each direction finds
     // its own; a key no device has finds none, every slot looked at.
