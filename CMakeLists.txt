@@ -495,11 +495,13 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         # and then on a loaded runner (#50): quarantined, so it runs at
         # night, until 14 nights in a row pass after the fix.
         add_test(NAME pipewire_move COMMAND test_pipewire move)
-        set_tests_properties(pipewire_move PROPERTIES LABELS "pipewire;quarantine")
+        set_tests_properties(pipewire_move PROPERTIES LABELS pipewire)
+        maul_quarantine(pipewire_move)
         # The tests that change the default, whose context stopped following
         # it once on a loaded runner (#81): quarantined likewise.
         add_test(NAME pipewire_defaults COMMAND test_pipewire defaults)
-        set_tests_properties(pipewire_defaults PROPERTIES LABELS "pipewire;quarantine")
+        set_tests_properties(pipewire_defaults PROPERTIES LABELS pipewire)
+        maul_quarantine(pipewire_defaults)
         # All four use the one test daemon, and pipewire_restart restarts it.
         set_tests_properties(pipewire pipewire_move pipewire_defaults pipewire_restart PROPERTIES
             RESOURCE_LOCK pipewire-daemon)
@@ -536,7 +538,8 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         # The output stream's rate, which reads past its tolerance now and
         # then on a loaded runner (#73): quarantined, so it runs at night.
         add_test(NAME pulse_rate COMMAND test_pulse rate)
-        set_tests_properties(pulse_rate PROPERTIES LABELS "pulse;quarantine")
+        set_tests_properties(pulse_rate PROPERTIES LABELS pulse)
+        maul_quarantine(pulse_rate)
         # The test server is the PipeWire daemon's pulse service.
         set_tests_properties(pulse pulse_rate PROPERTIES RESOURCE_LOCK pipewire-daemon)
         if(MAUL_AUDIO_TSAN)
@@ -743,7 +746,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE AND EMSCRIPTEN)
     endfunction()
     maul_audio_page(page_web_isolated page_web 1)
     maul_audio_page(page_web_plain page_web 0)
-    set_property(TEST page_web_plain APPEND PROPERTY LABELS quarantine)
+    maul_quarantine(page_web_plain)
     maul_audio_page(page_web_denied page_web 0 deny)
     foreach(isolated 1 0)
         if(isolated)
@@ -756,7 +759,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE AND EMSCRIPTEN)
         endforeach()
         maul_audio_page(page_loopback_${kind} page_loopback ${isolated} loopback)
         maul_audio_page(page_clock_${kind} page_clock ${isolated})
-        set_property(TEST page_loopback_${kind} page_clock_${kind} APPEND PROPERTY LABELS quarantine)
+        maul_quarantine(page_loopback_${kind} page_clock_${kind})
     endforeach()
 endif()
 
