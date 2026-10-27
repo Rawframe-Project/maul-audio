@@ -15,7 +15,8 @@
 // out of range), another version or a later field as a version error,
 // counts past the limits as capacity, and fields of another layout as
 // unsupported; a set whose energy fields pass a field's length does not
-// size; a failing allocator is a capacity error with nothing leaked.
+// size; each kind of file is the same bytes over storage of either byte
+// pattern; a failing allocator is a capacity error with nothing leaked.
 
 #include "allocator.h"
 #include "bake_file.h"
@@ -606,6 +607,37 @@ static void TestLargest(void)
           "one probe more: no size, which saves as a capacity error");
 }
 
+// Written over storage filled with one byte pattern, then over storage
+// filled with another, each kind of file has the same bytes: nothing of
+// the caller's storage reaches it.
+static void TestStorageLeftOut(const maudProbeGraph* g, const maudProbeBake* b)
+{
+    maudProbeBake plain;
+    CHECK(maudCreateProbeBake(&s_allocator, g->count, 0, &plain), "a bake without fields");
+    size_t bands = (size_t)g->count * 3 * sizeof(float);
+    memcpy(plain.times, b->times, bands);
+    memcpy(plain.levels, b->levels, bands);
+    memcpy(plain.tailTimes, b->tailTimes, bands);
+    memcpy(plain.tailLevels, b->tailLevels, bands);
+    const maudProbeBake* bakes[3] = {b, &plain, nullptr};
+    const uint32_t orders[3] = {ORDER, 0, 0};
+    const uint32_t bins[3] = {BINS, 0, 0};
+    for (int kind = 0; kind < 3; ++kind)
+    {
+        size_t size = maudBakeFileBytes(g, bakes[kind], orders[kind], bins[kind]);
+        uint8_t* first = malloc(size);
+        uint8_t* second = malloc(size);
+        memset(first, 0xA5, size);
+        memset(second, 0x5A, size);
+        maudWriteBakeFile(g, bakes[kind], orders[kind], bins[kind], first);
+        maudWriteBakeFile(g, bakes[kind], orders[kind], bins[kind], second);
+        CHECK(memcmp(first, second, size) == 0, "the same bytes over either pattern");
+        free(first);
+        free(second);
+    }
+    maudReleaseProbeBake(&s_allocator, &plain);
+}
+
 static void TestFailingAllocator(const File* f)
 {
     const maudAllocator counted = {CountedAlloc, CountedFree, nullptr};
@@ -632,6 +664,7 @@ int main(void)
     TestRefused(&g, &b, &f);
     TestPairs();
     TestLargest();
+    TestStorageLeftOut(&g, &b);
     TestFailingAllocator(&f);
     free(f.bytes);
     maudReleaseProbeBake(&s_allocator, &b);
