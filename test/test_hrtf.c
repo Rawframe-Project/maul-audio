@@ -165,6 +165,16 @@ static void TestShippedSet(void)
     def.maxTaps = 200;
     def.sampleRate = 96000;
     CHECK(maudLoadHrtf(&def, &hrtf) == maud_errorCapacity, "or than it after resampling");
+    def.maxTaps = UINT32_MAX;
+    CHECK(maudLoadHrtf(&def, &hrtf) == maud_success, "loaded under the largest limit");
+    uint32_t resampled = hrtf != nullptr ? hrtf->taps : 0;
+    maudDestroyHrtf(hrtf);
+    def.maxTaps = resampled;
+    CHECK(maudLoadHrtf(&def, &hrtf) == maud_success, "and under a limit of its taps exactly");
+    maudDestroyHrtf(hrtf);
+    def.maxTaps = resampled - 1;
+    CHECK(maudLoadHrtf(&def, &hrtf) == maud_errorCapacity && hrtf == nullptr,
+          "refused one tap below");
     maudDestroyHrtf(nullptr);
     free(bytes);
 }
