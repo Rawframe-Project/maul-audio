@@ -4,8 +4,9 @@
 // What the PipeWire backend reads out of the daemon's objects, without a
 // daemon: a channel choice's default with other values after it, a
 // node's card and profile device, a default's node name out of the
-// metadata's JSON (and what is not that JSON), the graph's rate, and a
-// stream's format positions and media properties.
+// metadata's JSON (and what is not that JSON), the graph's rate, a
+// captured chunk's bytes, and a stream's format positions and media
+// properties.
 
 #include "pipewire_parse.h"
 #include "test_harness.h"
@@ -82,6 +83,23 @@ static void TestGraphRate(void)
     CHECK(maudPipewireGraphRate(0, 0, 48000) == 48000, "then the fallback");
 }
 
+static void TestChunkBytes(void)
+{
+    uint32_t offset = 1;
+    CHECK(maudPipewireChunkBytes(0, 4096, 8192, &offset) == 4096 && offset == 0,
+          "a chunk within its data whole");
+    CHECK(maudPipewireChunkBytes(1024, 4096, 8192, &offset) == 4096 && offset == 1024,
+          "a chunk at an offset whole");
+    CHECK(maudPipewireChunkBytes(4096, 8192, 8192, &offset) == 4096 && offset == 4096,
+          "a size past the data's end up to the end");
+    CHECK(maudPipewireChunkBytes(0, UINT32_MAX, 8192, &offset) == 8192 && offset == 0,
+          "the largest size the data's length");
+    CHECK(maudPipewireChunkBytes(16384, 4096, 8192, &offset) == 0 && offset == 8192,
+          "an offset past the data's end nothing");
+    CHECK(maudPipewireChunkBytes(UINT32_MAX, UINT32_MAX, 8192, &offset) == 0 && offset == 8192,
+          "the largest offset nothing");
+}
+
 // The positions a format names, from its pod.
 static bool Positions(maudChannelLayout layout, const uint32_t* expected, uint32_t count)
 {
@@ -120,6 +138,7 @@ int main(void)
     TestCard();
     TestDefaultName();
     TestGraphRate();
+    TestChunkBytes();
     TestFormat();
     return s_failures == 0 ? 0 : 1;
 }
