@@ -10,9 +10,10 @@
 // ring and on posted chunks: the wait for the permission, the frames in
 // order, quanta the ring could not fit counted as overruns, and the
 // clock the stream is stamped with, with and without the context's
-// output timestamp and with a stale one. The grant settles on a promise,
-// so the checks run from timers and the result is the process's exit
-// code.
+// output timestamp and with a stale one; and, when the microphone's
+// track ends, a capture opened again whose first block holds none of the
+// old track's frames. The grant settles on a promise, so the checks run
+// from timers and the result is the process's exit code.
 
 #include "test_harness.h"
 
@@ -28,6 +29,7 @@
 #define QUANTUM  128
 #define CAPACITY 4096
 #define LATENCY  5000000LL // the track's own, 5 ms
+#define TAIL     64        // the frames a joined block ends silent over
 
 // clang-format off
 
@@ -65,7 +67,11 @@ EM_JS(void, InstallWeb, (int isolated), {
     const track = {
         getSettings: function () { return {latency: 0.005, echoCancellation: false, noiseSuppression: false,
                                             autoGainControl: false, groupId: "mic"}; },
-        addEventListener: function () {},
+        addEventListener: function (type, listener) {
+            if (type === "ended") {
+                sim.ended = listener;
+            }
+        },
         stop: function () {},
     };
     const stream = {
@@ -179,12 +185,12 @@ EM_JS(void, NewRoute, (void), {
 });
 
 // The device takes quanta from the microphone, a ramp, into the capture
-// node.
+// node; silence once its track has ended.
 EM_JS(void, Pull, (int quanta), {
     const sim = globalThis.maudSim;
     for (let q = 0; q < quanta; ++q) {
         const samples = new Float32Array(128);
-        for (let i = 0; i < 128; ++i) {
+        for (let i = 0; i < 128 && !sim.silent; ++i) {
             samples[i] = (sim.ramp++ % 1000) / 1000;
         }
         sim.capture.processor.process([[samples]]);
@@ -203,6 +209,13 @@ EM_JS(int, DeliverOneToMain, (void), {
         message.port.onmessage({data: message.data});
     }
     return 1;
+});
+
+// The microphone's track ends, as when the microphone goes; the one
+// granted after it hears silence.
+EM_JS(void, EndTrack, (void), {
+    globalThis.maudSim.silent = true;
+    globalThis.maudSim.ended();
 });
 
 EM_JS(void, DropReports, (void), {
@@ -234,6 +247,28 @@ static void Take(const maudStreamBlock* block, void* user)
     s_frames += block->frameCount;
 }
 
+static uint32_t s_blocks;
+static uint32_t s_joined;
+static uint64_t s_firstPosition;
+
+// Counts the blocks, and those that join the ramp's frames to silence:
+// loud, and silent over their last TAIL frames, which no block of the
+// ramp alone is.
+static void Watch(const maudStreamBlock* block, void* user)
+{
+    (void)user;
+    bool loud = false;
+    bool tail = false;
+    for (uint32_t i = 0; i < block->frameCount; ++i)
+    {
+        loud = loud || block->input[i] != 0.0f;
+        tail = tail || (i >= block->frameCount - TAIL && block->input[i] != 0.0f);
+    }
+    s_joined += loud && !tail ? 1u : 0u;
+    s_firstPosition = s_blocks == 0 ? block->position : s_firstPosition;
+    s_blocks++;
+}
+
 static void Drain(void)
 {
     maudNotification record;
@@ -262,6 +297,7 @@ static bool Near(int64_t value, int64_t expected, int64_t tolerance, const char*
 
 static void Begin(bool isolated);
 static void BeginFilter(bool isolated);
+static void BeginEnded(bool isolated);
 
 // When the capture's clock says frame 0 was captured, from where the
 // page's clock stood at frame 0 when the timestamp was given: a capture's
@@ -506,17 +542,69 @@ static void FilterGranted(void* user)
         BeginFilter(false);
         return;
     }
+    BeginEnded(true);
+}
+
+// Granted again after the track ended: the frames the stream had
+// gathered toward a block on the old track are dropped, so its first
+// block is the new track's alone, at a position past them.
+static void Reopened(void* user)
+{
+    (void)user;
+    Drain();
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+              status.suspension == maud_suspendNone,
+          "granted again, the capture runs");
+    Pull(8);
+    (void)TakeAll();
+    CHECK(s_blocks == 2, "two blocks of the new track");
+    CHECK(s_joined == 0, "no block joins the old track's frames to the new track's");
+    if (s_firstPosition != 3 * QUANTUM)
+    {
+        printf("ended: the first block at frame %llu\n", (unsigned long long)s_firstPosition);
+        CHECK(false, "the first block's position is past the dropped frames");
+    }
+    CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy the capture");
+    CHECK(maudDestroyContext(s_context) == maud_success, "destroy the context");
+    if (s_isolated)
+    {
+        BeginEnded(false);
+        return;
+    }
     printf("capture: %s\n", s_failures == 0 ? "pass" : "fail");
     ExitWith(s_failures == 0 ? 0 : 1);
 }
 
-// Opens a capture; it waits for the permission until getUserMedia's
-// promise settles, after this step, then runs `then`.
-static void Open(bool isolated, void (*then)(void*))
+// After the grant, three quanta toward a block of 480 frames; then the
+// track ends, and the stream asks for the microphone again.
+static void EndedGranted(void* user)
+{
+    (void)user;
+    Drain();
+    Pull(3);
+    (void)TakeAll();
+    CHECK(s_blocks == 0, "three quanta, short of a block");
+    EndTrack();
+    maudStreamStatus status = {0};
+    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+              status.suspension == maud_suspendPermission,
+          "the track ended, it waits for the permission again");
+    emscripten_set_timeout(Reopened, 0, nullptr);
+}
+
+// Opens a capture of periodFrames (0 for the default) feeding callback;
+// it waits for the permission until getUserMedia's promise settles,
+// after this step, then runs `then`.
+static void Open(bool isolated, maudStreamCallback callback, uint32_t periodFrames,
+                 void (*then)(void*))
 {
     s_isolated = isolated;
     s_frames = 0;
     s_disorder = 0;
+    s_blocks = 0;
+    s_joined = 0;
+    s_firstPosition = 0;
     InstallWeb(isolated ? 1 : 0);
     maudContextDef def = maudDefaultContextDef();
     s_context = nullptr;
@@ -529,7 +617,8 @@ static void Open(bool isolated, void (*then)(void*))
     maudStreamDef stream = maudDefaultStreamDef();
     stream.direction = maud_directionInput;
     stream.layout = maud_layoutMono;
-    stream.callback = Take;
+    stream.periodFrames = periodFrames;
+    stream.callback = callback;
     CHECK(maudCreateStream(s_context, &stream, &s_stream) == maud_success &&
               maudStartStream(s_context, s_stream) == maud_success,
           "a capture");
@@ -542,12 +631,17 @@ static void Open(bool isolated, void (*then)(void*))
 
 static void Begin(bool isolated)
 {
-    Open(isolated, Granted);
+    Open(isolated, Take, 0, Granted);
 }
 
 static void BeginFilter(bool isolated)
 {
-    Open(isolated, FilterGranted);
+    Open(isolated, Take, 0, FilterGranted);
+}
+
+static void BeginEnded(bool isolated)
+{
+    Open(isolated, Watch, 480, EndedGranted);
 }
 
 int main(void)
