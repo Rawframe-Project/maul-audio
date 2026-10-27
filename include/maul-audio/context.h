@@ -19,6 +19,10 @@ extern "C"
     // A context. Create it with maudCreateContext.
     typedef struct maudContext maudContext;
 
+// The largest period a context's limit may allow, in frames: over
+// twenty seconds at 48 kHz.
+#define MAUD_MAX_PERIOD_FRAMES 1048576u
+
     // Which backend a context talks to.
     typedef uint8_t maudBackendKind;
 
@@ -51,7 +55,8 @@ extern "C"
     {
         // Streams that exist at once.
         uint16_t streams;
-        // The largest period a stream may ask for, in frames.
+        // The largest period a stream may ask for, in frames, from 1 to
+        // MAUD_MAX_PERIOD_FRAMES.
         uint32_t periodFrames;
         // Devices, of both directions, that exist at once.
         uint16_t devices;
@@ -139,7 +144,8 @@ extern "C"
     ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL
     ///         argument, a def without its cookie, an allocator with one function, a limit
-    ///         of 0 or an offline rate out of range; `maud_errorUnsupported`
+    ///         of 0, a period limit past MAUD_MAX_PERIOD_FRAMES or an offline
+    ///         rate out of range; `maud_errorUnsupported`
     ///         when this build or platform lacks the backend asked for, or
     ///         no audio service of it answers;
     ///         `maud_errorCapacity` when the allocator fails, or when the

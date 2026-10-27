@@ -129,6 +129,14 @@ static void TestInvalidDefsAreRefused(void)
     def = OfflineDef(&counter);
     def.limits.periodFrames = 0;
     CheckRefused(&def, "no period frames");
+    def.limits.periodFrames = MAUD_MAX_PERIOD_FRAMES + 1;
+    CheckRefused(&def, "period frames past the largest");
+    maudContextDef largest = maudDefaultContextDef();
+    largest.backend = maud_backendOffline;
+    largest.limits.periodFrames = MAUD_MAX_PERIOD_FRAMES;
+    CHECK(maudCreateContext(&largest, &context) == maud_success &&
+              maudDestroyContext(context) == maud_success,
+          "the largest period frames taken");
     def = OfflineDef(&counter);
     def.offlineSampleRate = 7999;
     CheckRefused(&def, "rate below range");
