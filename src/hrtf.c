@@ -46,8 +46,10 @@ static Parts LayOut(const maudHrtfFile* file, uint32_t taps)
         maudLayoutAdd(&layout, file->ringCount, sizeof(uint32_t), alignof(uint32_t));
     parts.delays =
         maudLayoutAdd(&layout, 2u * (size_t)file->directionCount, sizeof(float), alignof(float));
-    parts.responses = maudLayoutAdd(&layout, 2u * (size_t)file->directionCount * taps,
-                                    sizeof(float), alignof(float));
+    // One item per direction and ear, a whole response, so that the
+    // layout checks the product of the counts.
+    parts.responses = maudLayoutAdd(&layout, 2u * (size_t)file->directionCount,
+                                    (size_t)taps * sizeof(float), alignof(float));
     parts.name = maudLayoutAdd(&layout, file->nameLength, 1, 1);
     parts.license = maudLayoutAdd(&layout, file->licenseLength, 1, 1);
     parts.size = layout.size;
