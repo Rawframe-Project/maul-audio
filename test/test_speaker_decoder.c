@@ -260,7 +260,7 @@ static void TestDecode(void)
     maudSpeakerDecoderDef def = maudDefaultSpeakerDecoderDef();
     maudSpeakerDecoder* none = (maudSpeakerDecoder*)&def;
     def.order = 4;
-    CHECK(maudCreateSpeakerDecoder(&def, &none) == maud_errorInvalid && none == nullptr, "order 4");
+    CHECK(maudCreateSpeakerDecoder(&def, &none) == maud_errorLimit && none == nullptr, "order 4");
     def = maudDefaultSpeakerDecoderDef();
     def.layout = maud_layoutNone;
     CHECK(maudCreateSpeakerDecoder(&def, &none) == maud_errorInvalid, "no layout");

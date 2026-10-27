@@ -430,7 +430,7 @@ static void TestFile(maudAcousticScene* scene)
           "version 1 refused, no misuse counted");
     bytes[8] = 3;
     bytes[size - 1] ^= 1;
-    CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorInvalid, "a bad checksum");
+    CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorFormat, "a bad checksum");
     bytes[size - 1] ^= 1;
     CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorCapacity &&
               refused.index1 == 0,

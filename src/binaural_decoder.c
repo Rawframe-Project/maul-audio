@@ -63,6 +63,11 @@ maudResult maudCreateBinauralDecoder(const maudBinauralDecoderDef* def,
     {
         return maud_errorVersion;
     }
+    if (def != nullptr && decoderOut != nullptr &&
+        def->cookie == MAUD_BINAURAL_DECODER_DEF_COOKIE && def->order > MAUD_MAX_AMBISONIC_ORDER)
+    {
+        return maud_errorLimit;
+    }
     if (def == nullptr || decoderOut == nullptr || !DefValid(def))
     {
         return maud_errorInvalid;

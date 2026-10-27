@@ -44,10 +44,11 @@ static void TestAmbisonics(void)
               maudGetAmbisonicGains(3, ahead, gains) == maud_success,
           "orders 1 and 3");
     CHECK(maudGetAmbisonicGains(0, ahead, gains) == maud_errorInvalid &&
-              maudGetAmbisonicGains(4, ahead, gains) == maud_errorInvalid &&
               maudGetAmbisonicGains(1, ahead, nullptr) == maud_errorInvalid &&
               maudGetAmbisonicGains(1, lost, gains) == maud_errorInvalid,
-          "gains for orders 0 and 4, nowhere, or a direction not finite");
+          "gains for order 0, nowhere, or a direction not finite");
+    CHECK(maudGetAmbisonicGains(4, ahead, gains) == maud_errorLimit,
+          "gains past the largest order");
     maudPanSource source = {ahead, 1.0f};
     maudPanSource badDirection = {lost, 1.0f};
     maudPanSource badGain = {ahead, NAN};
@@ -55,8 +56,9 @@ static void TestAmbisonics(void)
     float* holed[4] = {s_buffers[0], nullptr, s_buffers[2], s_buffers[3]};
     const float* in = s_buffers[8];
     CHECK(maudEncodeAmbisonic(1, &source, &source, in, bed, 64) == maud_success, "an encode");
+    CHECK(maudEncodeAmbisonic(4, &source, &source, in, bed, 64) == maud_errorLimit,
+          "an encode past the largest order");
     CHECK(maudEncodeAmbisonic(0, &source, &source, in, bed, 64) == maud_errorInvalid &&
-              maudEncodeAmbisonic(4, &source, &source, in, bed, 64) == maud_errorInvalid &&
               maudEncodeAmbisonic(1, nullptr, &source, in, bed, 64) == maud_errorInvalid &&
               maudEncodeAmbisonic(1, &source, nullptr, in, bed, 64) == maud_errorInvalid &&
               maudEncodeAmbisonic(1, &badDirection, &source, in, bed, 64) == maud_errorInvalid &&
@@ -64,8 +66,8 @@ static void TestAmbisonics(void)
               maudEncodeAmbisonic(1, &source, &source, nullptr, bed, 64) == maud_errorInvalid &&
               maudEncodeAmbisonic(1, &source, &source, in, nullptr, 64) == maud_errorInvalid &&
               maudEncodeAmbisonic(1, &source, &source, in, holed, 64) == maud_errorInvalid,
-          "an encode with an order out of range, no source, a source not finite, no input, "
-          "no bed or a bed channel missing");
+          "an encode with order 0, no source, a source not finite, no input, no bed or a "
+          "bed channel missing");
     maudQuaternion facing = {0.0f, 0.0f, 0.0f, 1.0f};
     maudQuaternion endless = {0.0f, NAN, 0.0f, 1.0f};
     CHECK(maudRotateAmbisonic(1, &facing, &facing, bed, 64) == maud_success, "a rotation");
@@ -76,7 +78,9 @@ static void TestAmbisonics(void)
               maudRotateAmbisonic(1, &facing, &endless, bed, 64) == maud_errorInvalid &&
               maudRotateAmbisonic(1, &facing, &facing, nullptr, 64) == maud_errorInvalid &&
               maudRotateAmbisonic(1, &facing, &facing, holed, 64) == maud_errorInvalid,
-          "a rotation with an order out of range, no turn or one not finite, or no bed");
+          "a rotation with order 0, no turn or one not finite, or no bed");
+    CHECK(maudRotateAmbisonic(4, &facing, &facing, bed, 64) == maud_errorLimit,
+          "a rotation past the largest order");
 }
 
 static void TestSpeakers(void)
@@ -141,11 +145,12 @@ static void TestSpeakers(void)
     {
         decoder = (maudSpeakerDecoder*)&decoder;
         refused = refused &&
-                  maudCreateSpeakerDecoder(&badDecoders[i], &decoder) == maud_errorInvalid &&
+                  maudCreateSpeakerDecoder(&badDecoders[i], &decoder) ==
+                      (i == 2 ? maud_errorLimit : maud_errorInvalid) &&
                   decoder == nullptr;
     }
-    CHECK(refused, "a decoder def without its cookie, an order in range, a layout or an "
-                   "allocator");
+    CHECK(refused, "a decoder def without its cookie, an order in range (past the largest as a "
+                   "limit), a layout or an allocator");
     decoderDef.order = 1;
     CHECK(maudCreateSpeakerDecoder(&decoderDef, &decoder) == maud_success, "a decoder");
     float matrix[6 * 4];
@@ -291,7 +296,8 @@ static void TestHrtfParts(void)
     for (int i = 0; i < 7; ++i)
     {
         decoder = (maudBinauralDecoder*)&decoder;
-        bool one = maudCreateBinauralDecoder(&badDecoders[i], &decoder) == maud_errorInvalid &&
+        bool one = maudCreateBinauralDecoder(&badDecoders[i], &decoder) ==
+                       (i == 3 ? maud_errorLimit : maud_errorInvalid) &&
                    decoder == nullptr;
         if (!one)
         {
@@ -300,7 +306,8 @@ static void TestHrtfParts(void)
         }
         refused = refused && one;
     }
-    CHECK(refused, "a decoder def without its cookie, a set, an order or frames in range");
+    CHECK(refused, "a decoder def without its cookie, a set, an order (past the largest as a "
+                   "limit) or frames in range");
     CHECK(maudCreateBinauralDecoder(&decoderDef, &decoder) == maud_success, "a decoder");
     const float* bed[4] = {s_buffers[8], s_buffers[9], s_buffers[10], s_buffers[11]};
     const float* holedBed[4] = {s_buffers[8], nullptr, s_buffers[10], s_buffers[11]};

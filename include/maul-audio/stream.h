@@ -331,7 +331,8 @@ extern "C"
     /// @param streamOut    Receives the stream's id; the null id on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL argument, a def
     ///         without its cookie or callback, or a value out of range;
-    ///         `maud_errorUnsupported` for what the backend cannot do (the
+    ///         `maud_errorLimit` for an objectCount past
+    ///         MAUD_MAX_STREAM_OBJECTS; `maud_errorUnsupported` for what the backend cannot do (the
     ///         offline backend has only pull mode and no converter; ALSA,
     ///         Core Audio, iOS and AAudio have no loopback, and no platform
     ///         an exclusive one);

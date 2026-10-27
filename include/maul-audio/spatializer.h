@@ -735,8 +735,9 @@ extern "C"
     /// @param bytes        The file.
     /// @param size         Its size in bytes.
     /// @param setOut       Receives the set; 0 on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a file
-    ///         not well formed; `maud_errorVersion` for another format
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer;
+    ///         `maud_errorFormat` for a file not well formed;
+    ///         `maud_errorVersion` for another format
     ///         version or a field only a later version writes;
     ///         `maud_errorUnsupported` for energy fields that do not match;
     ///         `maud_errorCapacity` past maxProbes or

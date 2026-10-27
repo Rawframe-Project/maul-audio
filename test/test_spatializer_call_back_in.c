@@ -312,7 +312,7 @@ static void TestCounts(void)
     maudProbeSetInfo info;
     maudDirectResult direct;
     CHECK(maudDestroySource(s_s, gone) == maud_errorStale &&
-              maudLoadProbeSet(s_s, junk, sizeof(junk), &set) == maud_errorInvalid &&
+              maudLoadProbeSet(s_s, junk, sizeof(junk), &set) == maud_errorFormat &&
               maudGetProbeSet(s_s, (maudProbeSetId){0, 0}, &info, 0, 0, nullptr) ==
                   maud_errorInvalid &&
               maudGetDirectResult(s_s, (maudSourceId){0, 0}, &direct) == maud_errorInvalid,

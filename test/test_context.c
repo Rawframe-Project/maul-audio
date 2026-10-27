@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Contexts: defaults, refusals of invalid defs (and the offline rate's
-// bounds taken), the native backend's absence in this build, audio
-// focus where the backend has none, memory through the def's allocator,
-// and the largest limits refused as capacity.
+// Contexts: defaults, refusals of invalid defs (a period limit past its
+// bound as a limit, and the offline rate's bounds taken), the native
+// backend's absence in this build, audio focus where the backend has
+// none, memory through the def's allocator, and the largest limits
+// refused as capacity.
 
 #include "test_harness.h"
 
@@ -130,7 +131,9 @@ static void TestInvalidDefsAreRefused(void)
     def.limits.periodFrames = 0;
     CheckRefused(&def, "no period frames");
     def.limits.periodFrames = MAUD_MAX_PERIOD_FRAMES + 1;
-    CheckRefused(&def, "period frames past the largest");
+    context = (maudContext*)&def;
+    CHECK(maudCreateContext(&def, &context) == maud_errorLimit && context == nullptr,
+          "period frames past the largest");
     maudContextDef largest = maudDefaultContextDef();
     largest.backend = maud_backendOffline;
     largest.limits.periodFrames = MAUD_MAX_PERIOD_FRAMES;

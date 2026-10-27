@@ -94,10 +94,10 @@ extern "C"
     /// @param hrtfOut  Receives the set; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
     ///         another binary interface than the library's, checked
-    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a def
-    ///         without its cookie or out of range, or bytes that are not a
-    ///         well-formed file (a wrong magic, field, size, ring layout,
-    ///         text or checksum); `maud_errorVersion` also for another format
+    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, or a def
+    ///         without its cookie or out of range; `maud_errorFormat` for
+    ///         bytes that are not a well-formed file (a wrong magic, field,
+    ///         size, ring layout, text or checksum); `maud_errorVersion` also for another format
     ///         version, or a field only a later version writes;
     ///         `maud_errorCapacity` when the set
     ///         passes the def's limits or the allocator fails.

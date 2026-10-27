@@ -46,7 +46,7 @@ maudResult maudReadFields(const uint8_t* data, size_t count, size_t first, const
     {
         if (count - at < MAUD_FIELD_FRAME)
         {
-            return maud_errorInvalid;
+            return maud_errorFormat;
         }
         uint32_t tag = U32(data + at);
         uint32_t length = U32(data + at + 4);
@@ -62,14 +62,14 @@ maudResult maudReadFields(const uint8_t* data, size_t count, size_t first, const
         uint64_t size = maudFieldSize(length);
         if (fields[known].present || size > count - at)
         {
-            return maud_errorInvalid;
+            return maud_errorFormat;
         }
         const uint8_t* payload = data + at + MAUD_FIELD_FRAME;
         for (uint64_t pad = length; pad < size - MAUD_FIELD_FRAME; ++pad)
         {
             if (payload[pad] != 0)
             {
-                return maud_errorInvalid;
+                return maud_errorFormat;
             }
         }
         fields[known] = (maudField){.bytes = payload, .length = length, .present = true};

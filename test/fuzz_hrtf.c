@@ -5,7 +5,9 @@
 // byte chooses whether the checksum is sealed afresh (so inputs reach the
 // checks past it) and the rate the set is loaded for; the rest is the
 // file. A load must succeed exactly when the reader calls the file
-// well-formed, and a loaded set must report what the file says.
+// well-formed, a refusal must name the file's fault (its format, its
+// version or the def's limits), and a loaded set must report what the
+// file says.
 
 #include "hrtf_file.h"
 
@@ -56,6 +58,8 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     bool wellFormed = maudReadHrtfFile(bytes, count, &file) == maud_success;
     Expect(result == maud_success ? wellFormed : hrtf == nullptr);
     Expect(result != maud_success || wellFormed);
+    Expect(result == maud_success || result == maud_errorFormat || result == maud_errorVersion ||
+           result == maud_errorCapacity);
     if (hrtf != nullptr)
     {
         maudHrtfInfo info;

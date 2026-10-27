@@ -109,7 +109,10 @@ static void TestRefusedDefs(void)
     CHECK(maudDefaultStreamDef().objectCount == 0, "no objects by default");
     maudStreamDef def = ObjectDef(&scene);
     def.objectCount = MAUD_MAX_STREAM_OBJECTS + 1;
-    CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "too many objects");
+    uint64_t misuse = maudGetContextMisuse(context);
+    CHECK(maudCreateStream(context, &def, &stream) == maud_errorLimit &&
+              maudGetContextMisuse(context) == misuse + 1,
+          "too many objects, counted as misuse");
     def = ObjectDef(&scene);
     def.direction = maud_directionInput;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "an input");

@@ -144,8 +144,8 @@ extern "C"
     ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL
     ///         argument, a def without its cookie, an allocator with one function, a limit
-    ///         of 0, a period limit past MAUD_MAX_PERIOD_FRAMES or an offline
-    ///         rate out of range; `maud_errorUnsupported`
+    ///         of 0 or an offline rate out of range; `maud_errorLimit` for a
+    ///         period limit past MAUD_MAX_PERIOD_FRAMES; `maud_errorUnsupported`
     ///         when this build or platform lacks the backend asked for, or
     ///         no audio service of it answers;
     ///         `maud_errorCapacity` when the allocator fails, or when the

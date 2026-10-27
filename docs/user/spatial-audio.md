@@ -31,7 +31,7 @@ def.bytes = bytes;          // the file's bytes, the host's to keep or free
 def.byteCount = byteCount;
 maudHrtf* hrtf = NULL;
 maudResult result = maudLoadHrtf(&def, &hrtf);
-// maud_errorInvalid: a damaged or foreign file; maud_errorVersion: another version.
+// maud_errorFormat: a damaged or foreign file; maud_errorVersion: another version.
 ```
 
 Set `def.sampleRate` to the rate the effects run at, and the loader resamples the set to it. One set serves every effect that uses it and must outlive them. `maudGetHrtfInfo` gives its name and license text, which a program that ships the set shows with its credits.

@@ -267,7 +267,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid && none == nullptr, "no set");
     def.hrtf = hrtf;
     def.order = 4;
-    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "order 4");
+    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorLimit, "order 4");
     def.order = 0;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "order 0");
     def.order = 1;

@@ -178,6 +178,11 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
     {
         return maud_errorVersion;
     }
+    if (def != nullptr && def->cookie == MAUD_CONTEXT_DEF_COOKIE &&
+        def->limits.periodFrames > MAUD_MAX_PERIOD_FRAMES)
+    {
+        return maud_errorLimit;
+    }
     if (def == nullptr || !DefValid(def))
     {
         return maud_errorInvalid;
