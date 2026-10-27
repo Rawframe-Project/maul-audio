@@ -3,8 +3,10 @@
 //
 // The backend tests' rate measure (test_clock.h) on clock reads written
 // here: a running clock holds its rate, a clock that stood still fails
-// at once as a rate of 0 rather than as starved, and a stalled or
-// unstamped window does not count as clean.
+// at once as a rate of 0 rather than as starved, a stalled or unstamped
+// window does not count as clean, and a window whose latency moved past
+// the measure's share of it counts as settling. A window is judged with
+// the window after it, whose graph count may carry its stall.
 
 #include "test_clock.h"
 
@@ -66,10 +68,73 @@ static void TestNotClean(void)
           "a window from an unstamped read counts as neither");
 }
 
+// A clock read whose heard time carries latency nanoseconds.
+static maudStreamClock ReadLate(uint64_t position, int window, int64_t latency)
+{
+    return (maudStreamClock){position, 1000000000LL * (1 + window) + latency, latency};
+}
+
+static void TestSettling(void)
+{
+    ClockRate measured = {.settleShare = 0.005};
+    // The latency of a steady stream, then a buffer filled again by 20 ms,
+    // which reads 2 % low, then steady at its new latency.
+    const int64_t latencies[5] = {13000000, 14000000, 34000000, 34500000, 35000000};
+    maudStreamClock first = ReadLate(0, 0, latencies[0]);
+    for (int i = 1; i < 5; ++i)
+    {
+        maudStreamClock second = ReadLate(48000 * (uint64_t)i, i, latencies[i]);
+        CountRateWindow(&measured, &first, &second, true);
+        first = second;
+    }
+    SettleRate(&measured);
+    CHECK(measured.settling == 1 && measured.stalled == 0 && measured.clean == RATE_CLEAN_WINDOWS,
+          "the window the buffer filled in is settling, the steady ones clean");
+    CHECK(measured.each[1].settling && measured.each[1].rate < 48000.0 * 0.981,
+          "the settling window read 2 % low");
+    CHECK(RateHolds(measured, 48000.0), "and the measure holds by the clean ones");
+    ClockRate unjudged = {0};
+    maudStreamClock before = ReadLate(0, 0, 14000000);
+    maudStreamClock after = ReadLate(48000, 1, 34000000);
+    CountRateWindow(&unjudged, &before, &after, true);
+    CHECK(unjudged.settling == 0 && unjudged.clean == 1,
+          "a measure without a share judges no window settling");
+}
+
+// A window that lost frames but whose stall was counted in the window
+// after: judged with that one, it is not clean, and the measure holds by
+// the others.
+static void TestJudgedWithTheNext(void)
+{
+    ClockRate measured = {0};
+    PendingWindow pending = {0};
+    // Each window's frames and its own verdict: the second lost 7,000
+    // frames, and its xruns came in the third.
+    const uint64_t frames[7] = {48000, 41000, 48000, 48000, 48000, 48000, 48000};
+    const bool verdicts[7] = {true, true, false, true, true, true, true};
+    maudStreamClock first = Read(0, 0);
+    uint64_t position = 0;
+    for (int i = 0; i < 7 && measured.clean < RATE_CLEAN_WINDOWS; ++i)
+    {
+        position += frames[i];
+        maudStreamClock second = Read(position, i + 1);
+        JudgeRateWindow(&measured, &pending, &first, &second, verdicts[i]);
+        first = second;
+    }
+    SettleRate(&measured);
+    CHECK(measured.windows == 5 && measured.stalled == 2 && measured.clean == RATE_CLEAN_WINDOWS,
+          "the window before a stalled one counts as stalled too");
+    CHECK(!measured.each[1].clean && measured.each[1].rate == 41000.0,
+          "the one whose frames the stall took among them");
+    CHECK(RateHolds(measured, 48000.0), "and the measure holds by the clean ones");
+}
+
 int main(void)
 {
     TestRunning();
     TestStoodStill();
     TestNotClean();
+    TestSettling();
+    TestJudgedWithTheNext();
     return s_failures == 0 ? 0 : 1;
 }

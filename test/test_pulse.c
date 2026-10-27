@@ -288,13 +288,22 @@ static int ThreadsAfterJoin(void)
     return count;
 }
 
+// The most the server's latency may move over a window, as a share of
+// its span: 0.5 %, a quarter of the rate's tolerance. A stalled PulseAudio
+// server drains the stream's buffer, then fills it again over the next
+// one or two seconds, raising its target after the underflow, and the
+// clock's heard times move later by as much (#73); a steady stream's
+// moves about 1 ms a second.
+#define PULSE_SETTLE_SHARE 0.005
+
 // The stream's rate by its own clock (test_clock.h), in windows of a
-// second judged by the graph's and the stream's xruns and the machine's
-// promptness (test_daemon.h), the context drained meanwhile.
+// second judged by the graph's and the stream's xruns, the machine's
+// promptness (test_daemon.h) and the server's latency holding, the
+// context drained meanwhile.
 static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
 {
     GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 1000};
-    return StreamClockRate(context, stream, GraphWindow, &watch);
+    return StreamClockRate(context, stream, GraphWindow, &watch, PULSE_SETTLE_SHARE);
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,

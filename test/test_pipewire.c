@@ -665,7 +665,7 @@ static bool WaitForLinkIntoPlugged(maudContext* context, Helper* helper)
 static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
 {
     GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 1000};
-    return StreamClockRate(context, stream, GraphWindow, &watch);
+    return StreamClockRate(context, stream, GraphWindow, &watch, 0.0);
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
