@@ -20,8 +20,6 @@
 // The floors a column finds at most, and the surfaces it crosses.
 #define MAUD_COLUMN_FLOORS 8u
 #define MAUD_COLUMN_HITS   32u
-// The most columns a generation walks.
-#define MAUD_MAX_COLUMNS 16777216u
 
 // What building a set uses: the host's queries and tasks, the
 // spatializer's allocator and limits.

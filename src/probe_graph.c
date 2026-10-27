@@ -207,7 +207,7 @@ static uint32_t Across(float low, float high, float spacing, float* first)
 {
     double count = fmax(1.0, floor(((double)high - (double)low) / (double)spacing));
     *first = (float)(((double)low + (double)high) * 0.5 - (count - 1.0) * 0.5 * (double)spacing);
-    return count > (double)MAUD_MAX_COLUMNS ? MAUD_MAX_COLUMNS + 1 : (uint32_t)count;
+    return count > (double)MAUD_MAX_PROBE_COLUMNS ? MAUD_MAX_PROBE_COLUMNS + 1 : (uint32_t)count;
 }
 
 // Generates the probes into *points (allocated here, *count of them).
@@ -217,9 +217,9 @@ static maudResult Generate(const maudProbeQueries* q, const maudProbeSetDef* def
     Columns c = {.queries = q, .def = def};
     c.across = Across(def->boxMin.x, def->boxMax.x, def->spacing, &c.x0);
     uint32_t along = Across(def->boxMin.z, def->boxMax.z, def->spacing, &c.z0);
-    if ((uint64_t)c.across * along > MAUD_MAX_COLUMNS)
+    if ((uint64_t)c.across * along > MAUD_MAX_PROBE_COLUMNS)
     {
-        return maud_errorCapacity;
+        return maud_errorLimit;
     }
     c.count = c.across * along;
     size_t bytes = (size_t)c.count * (sizeof(uint8_t) + sizeof(uint32_t));

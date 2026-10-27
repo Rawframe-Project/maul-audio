@@ -37,6 +37,9 @@ extern "C"
 {
 #endif
 
+// The most columns a probe set's generation walks: 4096 by 4096.
+#define MAUD_MAX_PROBE_COLUMNS 16777216u
+
     // A spatializer.
     typedef struct maudSpatializer maudSpatializer;
 
@@ -231,8 +234,9 @@ extern "C"
         // box's top by the closest-hit query; a probe goes at height
         // (0.1 to 10 m) above each horizontal surface (its normal within
         // 45 degrees of vertical) with that height free above it, at
-        // most 8 a column. y is up. A slab thicker than the height may
-        // hold a probe inside it; give such scenes points.
+        // most 8 a column, and at most MAUD_MAX_PROBE_COLUMNS columns.
+        // y is up. A slab thicker than the height may hold a probe inside
+        // it; give such scenes points.
         maudVector3 boxMin;
         maudVector3 boxMax;
         float spacing;
@@ -596,9 +600,10 @@ extern "C"
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def
     ///         without its cookie, a value out of range or not finite, or
     ///         neither points nor a box (one with height); `maud_errorState` to
-    ///         generate without a closest-hit query; `maud_errorCapacity` when
-    ///         the spatializer has its capacity of sets, past maxProbes or
-    ///         maxProbePairs, past 4,194,304 columns, or when memory runs out;
+    ///         generate without a closest-hit query; `maud_errorLimit` for a
+    ///         box of more than MAUD_MAX_PROBE_COLUMNS (16,777,216) columns;
+    ///         `maud_errorCapacity` when the spatializer has its capacity of
+    ///         sets, past maxProbes or maxProbePairs, or when memory runs out;
     ///         `maud_errorState` when host code the spatializer is running (its
     ///         hooks or allocator) makes the call, which counts as misuse.
     /// @par Thread safety
