@@ -191,8 +191,11 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
                                          sizeof(maudNotification), alignof(maudNotification));
     size_t textOffset =
         maudLayoutAdd(&layout, (size_t)def->limits.devices * 2u, def->limits.deviceTextBytes, 1);
-    MAUD_ASSERT(!layout.overflow);
-    unsigned char* block = maudAllocate(&def->allocator, layout.size, alignof(maudContext));
+    // The limits are the caller's: a block past the address space, as
+    // their largest values make where size_t has 32 bits, is refused.
+    unsigned char* block = layout.overflow
+                               ? nullptr
+                               : maudAllocate(&def->allocator, layout.size, alignof(maudContext));
     if (block == nullptr)
     {
         return maud_errorCapacity;

@@ -142,7 +142,8 @@ extern "C"
     ///         of 0 or an offline rate out of range; `maud_errorUnsupported`
     ///         when this build or platform lacks the backend asked for, or
     ///         no audio service of it answers;
-    ///         `maud_errorCapacity` when the allocator fails.
+    ///         `maud_errorCapacity` when the allocator fails, or when the
+    ///         limits need more memory than the address space holds.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_NODISCARD MAUD_API maudResult maudCreateContext(const maudContextDef* def,

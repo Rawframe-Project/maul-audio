@@ -3,8 +3,8 @@
 //
 // Contexts: defaults, refusals of invalid defs (and the offline rate's
 // bounds taken), the native backend's absence in this build, audio
-// focus where the backend has none, and memory through the def's
-// allocator.
+// focus where the backend has none, memory through the def's allocator,
+// and the largest limits refused as capacity.
 
 #include "test_harness.h"
 
@@ -19,6 +19,10 @@ typedef struct CountingAllocator
     int live;
     int calls;
     bool fail;
+    // Requests past this many bytes are refused when it is not 0, and the
+    // largest request is kept.
+    size_t refuseAbove;
+    size_t largest;
 } CountingAllocator;
 
 static void* CountedAlloc(size_t size, size_t alignment, void* context)
@@ -26,7 +30,8 @@ static void* CountedAlloc(size_t size, size_t alignment, void* context)
     (void)alignment;
     CountingAllocator* counter = context;
     counter->calls++;
-    if (counter->fail)
+    counter->largest = size > counter->largest ? size : counter->largest;
+    if (counter->fail || (counter->refuseAbove != 0 && size > counter->refuseAbove))
     {
         return nullptr;
     }
@@ -200,6 +205,24 @@ static void TestAllocatorFailureIsCapacity(void)
     CHECK(counter.calls == 1 && counter.live == 0, "nothing kept");
 }
 
+// The largest limits ask for more device text than a 32-bit address
+// space holds: refused as capacity, either before allocating or by the
+// allocator asked for all of it, never with a smaller block.
+static void TestLargestLimitsAreCapacity(void)
+{
+    CountingAllocator counter = {.refuseAbove = (size_t)1 << 28};
+    maudContextDef def = OfflineDef(&counter);
+    def.limits.streams = UINT16_MAX;
+    def.limits.devices = UINT16_MAX;
+    def.limits.notifications = UINT16_MAX;
+    def.limits.deviceTextBytes = UINT16_MAX;
+    maudContext* context = (maudContext*)&def;
+    CHECK(maudCreateContext(&def, &context) == maud_errorCapacity, "capacity");
+    CHECK(context == nullptr && counter.live == 0, "nothing kept");
+    uint64_t text = 2u * (uint64_t)UINT16_MAX * UINT16_MAX;
+    CHECK(counter.calls == 0 || counter.largest >= text, "no block smaller than the text");
+}
+
 // The offline backend has no audio focus: requests are unsupported,
 // the state stays none and no record comes; bad arguments are refused.
 static void TestFocusUnsupported(void)
@@ -246,5 +269,6 @@ int main(void)
     TestOtherVersionIsRefused();
     TestFocusUnsupported();
     TestAllocatorFailureIsCapacity();
+    TestLargestLimitsAreCapacity();
     return s_failures == 0 ? 0 : 1;
 }
