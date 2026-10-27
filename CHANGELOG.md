@@ -5,6 +5,20 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.1.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.4...v0.1.0) (2026-10-27)
+
+### Changed
+
+- **Breaking:** HRTF sets (`.maudhrtf`) are version 3, made of tagged fields that a later version can extend. `maudLoadHrtf` reads only version 3 and refuses an earlier file, a later version or an unknown field with `maud_errorVersion` (it was `maud_errorUnsupported`). Convert a SOFA source again with `tools/sofa_to_maudhrtf.py`. The shipped SADIE II set holds the same values, so every render is unchanged ([#87](https://github.com/Rawframe-Project/maul-audio/pull/87)).
+- **Breaking:** bakes (`.maudbake`) are version 3 tagged fields too. `maudLoadProbeSet` reads only version 3 and refuses an earlier file, a later version or an unknown field with `maud_errorVersion` (it was `maud_errorUnsupported`); bake the scene again. A bake's layers now follow from the fields it carries, and `maudSaveProbeSet` answers `maud_errorCapacity` for a set too large for the format rather than write a file no reader takes. Baking's results are unchanged ([#88](https://github.com/Rawframe-Project/maul-audio/pull/88)).
+
+### Fixed
+
+- After an input or loopback stream moves or reconnects, its first block on the new device no longer starts with up to one period of the old device's sound, on every backend that reconnects (PipeWire, PulseAudio, Core Audio, WASAPI, AAudio, iOS and the web). That block's `position` skips the frames dropped ([#75](https://github.com/Rawframe-Project/maul-audio/pull/75), [#92](https://github.com/Rawframe-Project/maul-audio/pull/92)).
+- PipeWire: when the session manager restarts and replaces its default metadata, the context binds the new one, so streams on the default keep following it and `maudGetDefaultDevice` stays current ([#83](https://github.com/Rawframe-Project/maul-audio/pull/83)).
+- PipeWire: an input or loopback stream reads each captured buffer's offset and size within the buffer, as PipeWire's own clients do ([#97](https://github.com/Rawframe-Project/maul-audio/pull/97)).
+- HRTF sets lay out their resampled responses through the checked layout, like every other part ([#99](https://github.com/Rawframe-Project/maul-audio/pull/99)).
+
 ## [0.0.4](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.4) (2026-10-25)
 
 ### Changed
