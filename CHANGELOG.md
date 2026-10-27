@@ -5,6 +5,31 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.1.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.4...v0.1.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **bake:** maudLoadProbeSet reads only version 3 .maudbake files and refuses earlier ones, and a later version or an unknown field, with maud_errorVersion instead of maud_errorUnsupported. Bake the scene again.
+* **hrtf:** maudLoadHrtf reads only version 3 .maudhrtf files and refuses earlier ones, and a later version or an unknown field, with maud_errorVersion. Convert a SOFA source again with tools/sofa_to_maudhrtf.py.
+
+### Added
+
+* **bake:** make bakes tagged fields ([#88](https://github.com/Rawframe-Project/maul-audio/issues/88)) ([0ed6aa7](https://github.com/Rawframe-Project/maul-audio/commit/0ed6aa7edc4ea46ea3574933c1d0e7910f72b25a))
+* **hrtf:** make HRTF sets tagged fields ([#87](https://github.com/Rawframe-Project/maul-audio/issues/87)) ([9f725cc](https://github.com/Rawframe-Project/maul-audio/commit/9f725cc4c30cd54d65586700522577f1b9822511))
+
+
+### Fixed
+
+* **build:** escape backslashes and quotes in javac's argument file ([#84](https://github.com/Rawframe-Project/maul-audio/issues/84)) ([ba251a6](https://github.com/Rawframe-Project/maul-audio/commit/ba251a6a64ddc05a367145fdba2702ae93f3685a))
+* close the CodeQL and pinned-dependency alerts ([#79](https://github.com/Rawframe-Project/maul-audio/issues/79)) ([e96bc6e](https://github.com/Rawframe-Project/maul-audio/commit/e96bc6e97d67e5bc2cd84f1b27492b6a6e0e3143))
+* **hrtf:** size the resampled filters through the checked layout ([#99](https://github.com/Rawframe-Project/maul-audio/issues/99)) ([074946f](https://github.com/Rawframe-Project/maul-audio/commit/074946f31a09041a94720645fbd1b121b1462a61)), closes [#98](https://github.com/Rawframe-Project/maul-audio/issues/98)
+* **pipewire:** read a capture chunk the way PipeWire's own clients do ([#97](https://github.com/Rawframe-Project/maul-audio/issues/97)) ([c2e8f46](https://github.com/Rawframe-Project/maul-audio/commit/c2e8f46031170ee4a29e6c9f4f011e466eebd763)), closes [#96](https://github.com/Rawframe-Project/maul-audio/issues/96)
+* **pipewire:** rebind the default metadata when it is replaced ([#83](https://github.com/Rawframe-Project/maul-audio/issues/83)) ([c5709e5](https://github.com/Rawframe-Project/maul-audio/commit/c5709e5fffb39e579578bce12bd09d2a8494e502)), closes [#80](https://github.com/Rawframe-Project/maul-audio/issues/80)
+* **stream:** drop a reconnected input's gathered frames on every backend ([#92](https://github.com/Rawframe-Project/maul-audio/issues/92)) ([7f39fa3](https://github.com/Rawframe-Project/maul-audio/commit/7f39fa3be5e48a7ac9f343be7dc6e3873410b12f)), closes [#76](https://github.com/Rawframe-Project/maul-audio/issues/76)
+* **stream:** keep a moved input's first block free of the old sound ([#75](https://github.com/Rawframe-Project/maul-audio/issues/75)) ([b84ad28](https://github.com/Rawframe-Project/maul-audio/commit/b84ad2833373e42ce38632833973575b1a89c40c)), closes [#50](https://github.com/Rawframe-Project/maul-audio/issues/50)
+* **voice:** parenthesize the silence floor's macro ([#66](https://github.com/Rawframe-Project/maul-audio/issues/66)) ([d46e4e4](https://github.com/Rawframe-Project/maul-audio/commit/d46e4e403f44613adb673daa6892b36eb9e65bda))
+
 ## [0.0.4](https://github.com/Rawframe-Project/maul-audio/releases/tag/v0.0.4) (2026-10-25)
 
 ### Changed
