@@ -385,6 +385,10 @@ if(MAUL_AUDIO_BUILD_TESTS)
             maul_add_test(${area} WHITEBOX)
             maul_audio_test_data(${area})
         endforeach()
+        # test_hrtf builds a set of 176 MB in memory.
+        if(EMSCRIPTEN AND TARGET test_hrtf)
+            target_link_options(test_hrtf PRIVATE -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB)
+        endif()
     endif()
 endif()
 

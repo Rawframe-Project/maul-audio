@@ -7,7 +7,9 @@
 // start 24 input samples early, a constant latency); crafted files
 // with a valid checksum are refused for each rule they break, a field
 // only a later version writes is refused as such and an absent name and
-// license read as empty, and one with the most taps, 1024, is taken; a seeded sweep of mutations
+// license read as empty, and one with the most taps, 1024, is taken; one
+// whose resampled responses pass a 32-bit address space is refused as
+// capacity without a smaller block; a seeded sweep of mutations
 // loads exactly the well-formed ones and never crashes; an allocator that fails is a capacity error
 // with nothing leaked.
 
@@ -192,6 +194,24 @@ enum
 };
 
 static const char* const s_tags[PART_PARTS] = {"head", "name", "lics", "ring", "dlay", "taps"};
+
+// The largest request BoundedAlloc saw.
+static size_t s_largest;
+
+// Refuses a request past a gigabyte and keeps the largest, so that a set
+// past the address space is never made where size_t has 64 bits.
+static void* BoundedAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    (void)context;
+    s_largest = size > s_largest ? size : s_largest;
+    if (size > ((size_t)1 << 30))
+    {
+        return nullptr;
+    }
+    s_live++;
+    return malloc(size);
+}
 
 // What a crafted file holds: two rings (-90 with one azimuth, 90 with
 // the rest) or one at the horizon, delays and taps from a byte pattern.
@@ -384,6 +404,44 @@ static void TestMostTaps(void)
               hrtf->taps == 1024,
           "1024 taps");
     maudDestroyHrtf(hrtf);
+    free(bytes);
+}
+
+// A set whose responses pass a 32-bit address space once resampled:
+// 43,000 directions of 1024 taps at 8 kHz, which at 384 kHz have 50,304
+// taps each, about 17 GB of responses. Refused as capacity, and never
+// made over a block smaller than its responses.
+static void TestResampledPastAddressSpace(void)
+{
+    Spec spec = {.rate = 8000,
+                 .taps = 1024,
+                 .directions = 43000,
+                 .horizon = true,
+                 .distance = 1.5f,
+                 .name = "T",
+                 .nameBytes = 1,
+                 .license = "L",
+                 .licenseBytes = 1};
+    size_t count = 0;
+    unsigned char* bytes = WriteSpec(&spec, &count);
+    CHECK(bytes != nullptr, "the set made");
+    if (bytes == nullptr)
+    {
+        return;
+    }
+    maudHrtfDef def = maudDefaultHrtfDef();
+    def.bytes = bytes;
+    def.byteCount = count;
+    def.sampleRate = 384000;
+    def.maxTaps = UINT32_MAX;
+    def.allocator = (maudAllocator){BoundedAlloc, CountedFree, nullptr};
+    s_largest = 0;
+    maudHrtf* hrtf = (maudHrtf*)&spec;
+    CHECK(maudLoadHrtf(&def, &hrtf) == maud_errorCapacity && hrtf == nullptr,
+          "refused as capacity");
+    uint64_t responses = 2u * (uint64_t)spec.directions * 50304u * sizeof(float);
+    CHECK(s_largest == 0 || s_largest >= responses, "no block smaller than the responses");
+    CHECK(s_live == 0, "nothing kept");
     free(bytes);
 }
 
@@ -731,6 +789,7 @@ int main(void)
     TestCraftedFiles();
     TestFields();
     TestMostTaps();
+    TestResampledPastAddressSpace();
     TestMutations();
     TestBounds();
     TestResampler();
