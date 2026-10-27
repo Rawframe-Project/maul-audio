@@ -34,17 +34,56 @@
 // therefore does no arithmetic of its own between entering and leaving:
 // it calls a worker marked MAUD_NOINLINE, whose body cannot move out of
 // the call.
+//
+// WebAssembly has one environment, the library's, and nothing to switch:
+// there the entries and the host pairs are empty inline functions that
+// keep no depth, and MAUD_NOINLINE is nothing, so a wrapper and its worker
+// compile to the worker alone.
 
 #ifndef MAUL_AUDIO_SRC_FPENV_H
 #define MAUL_AUDIO_SRC_FPENV_H
 
 #include <stdint.h>
 
-#if defined(_MSC_VER) && !defined(__clang__)
+#if defined(__wasm__)
+#define MAUD_NOINLINE
+#elif defined(_MSC_VER) && !defined(__clang__)
 #define MAUD_NOINLINE __declspec(noinline)
 #else
 #define MAUD_NOINLINE __attribute__((noinline))
 #endif
+
+// The thread's state outside a call into host code: the register the
+// outermost entry saved and the depth.
+typedef struct maudFloatHost
+{
+    uint64_t saved;
+    uint32_t depth;
+} maudFloatHost;
+
+#if defined(__wasm__)
+
+static inline uint64_t maudFloatEnvEnter(void)
+{
+    return 0;
+}
+
+static inline void maudFloatEnvLeave(uint64_t token)
+{
+    (void)token;
+}
+
+static inline maudFloatHost maudFloatHostEnter(void)
+{
+    return (maudFloatHost){0, 0};
+}
+
+static inline void maudFloatHostLeave(maudFloatHost host)
+{
+    (void)host;
+}
+
+#else
 
 // Enters the library's environment: the outermost entry on a thread (or
 // the first inside host code) saves the host's control register and sets
@@ -60,19 +99,6 @@ uint64_t maudFloatEnvEnter(void);
 // host's control register, writing it only when it differs.
 void maudFloatEnvLeave(uint64_t token);
 
-// Runs body(context) inside an entry: a task body the library hands the
-// host's task hooks, which may run it on a thread in any mode. body is a
-// worker that does the arithmetic, so none moves out of the entry.
-void maudFloatEnvRun(void (*body)(void* context), void* context);
-
-// The thread's state outside a call into host code: the register the
-// outermost entry saved and the depth.
-typedef struct maudFloatHost
-{
-    uint64_t saved;
-    uint32_t depth;
-} maudFloatHost;
-
 // Before host code: inside an entry, writes the host's saved register
 // back and leaves no entry open; outside any, does nothing. Returns what
 // maudFloatHostLeave takes. Each call site puts the pair around the one
@@ -84,6 +110,13 @@ maudFloatHost maudFloatHostEnter(void);
 // inside an entry, the library's environment again, from the host's saved
 // register, whatever host code set.
 void maudFloatHostLeave(maudFloatHost host);
+
+#endif
+
+// Runs body(context) inside an entry: a task body the library hands the
+// host's task hooks, which may run it on a thread in any mode. body is a
+// worker that does the arithmetic, so none moves out of the entry.
+void maudFloatEnvRun(void (*body)(void* context), void* context);
 
 // The thread's control register as it is: MXCSR on x86 (with the x87
 // control word in bits 32 to 47 on 32-bit x86), FPCR on AArch64, 0 on
