@@ -280,7 +280,7 @@ static void TestMisuse(void)
     def.sourceCapacity = 0;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid && none == nullptr, "no room");
     def.sourceCapacity = 70000;
-    CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "too many");
+    CHECK(maudCreateSpatializer(&def, &none) == maud_errorLimit, "too many");
     def = maudDefaultSpatializerDef();
     def.cookie = 0;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "no cookie");

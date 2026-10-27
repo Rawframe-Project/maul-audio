@@ -111,7 +111,7 @@ extern "C"
         // The order decoded, 1 to MAUD_MAX_AMBISONIC_ORDER; a bed's
         // higher channels are ignored.
         uint32_t order;
-        // The most frames one call decodes, 1 to 16,384.
+        // The most frames one call decodes, 1 to MAUD_MAX_BINAURAL_FRAMES.
         uint32_t maxFrames;
         maudAllocator allocator;
     } maudBinauralDecoderDef;
@@ -155,7 +155,8 @@ extern "C"
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
     ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorLimit` for an order
-    ///         past MAUD_MAX_AMBISONIC_ORDER; `maud_errorInvalid` for a NULL pointer, a
+    ///         past MAUD_MAX_AMBISONIC_ORDER or a maxFrames past
+    ///         MAUD_MAX_BINAURAL_FRAMES; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, without a set or out of range, or a
     ///         set whose directions cannot carry the order;
     ///         `maud_errorCapacity` when the allocator fails.

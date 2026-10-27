@@ -25,6 +25,11 @@ extern "C"
 {
 #endif
 
+// The bounds of a scene def's counts; a def past one is refused with
+// maud_errorLimit.
+#define MAUD_MAX_TRIANGLES 16777216u
+#define MAUD_MAX_INSTANCES 65536u
+
     // An acoustic scene.
     typedef struct maudAcousticScene maudAcousticScene;
 
@@ -73,10 +78,10 @@ extern "C"
         // copied and built at creation.
         const maudMesh* instanceMeshes;
         uint32_t instanceMeshCount;
-        // The most instances at once, 0 to 65,536.
+        // The most instances at once, 0 to MAUD_MAX_INSTANCES.
         uint32_t instanceCapacity;
         // The most triangles over all meshes, static and instancing, 1 to
-        // 16,777,216.
+        // MAUD_MAX_TRIANGLES.
         uint32_t maxTriangles;
         maudAllocator allocator;
     } maudAcousticSceneDef;
@@ -114,8 +119,10 @@ extern "C"
     /// @param sceneOut  Receives the scene; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
     ///         another binary interface than the library's, checked
-    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
-    ///         def without its cookie, a mesh with a NULL array it needs, a
+    ///         before anything else of it; `maud_errorLimit` for a
+    ///         maxTriangles past MAUD_MAX_TRIANGLES or an instanceCapacity
+    ///         past MAUD_MAX_INSTANCES; `maud_errorInvalid` for a NULL pointer, a
+    ///         def without its cookie, a maxTriangles of 0, a mesh with a NULL array it needs, a
     ///         vertex index past its vertices or a vertex that is not
     ///         finite; `maud_errorCapacity` for more triangles in all
     ///         than the def's maxTriangles or when the allocator fails.

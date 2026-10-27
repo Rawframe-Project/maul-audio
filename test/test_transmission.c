@@ -256,7 +256,7 @@ static void TestMaterials(void)
     maudSpatializerDef def = maudDefaultSpatializerDef();
     maudSpatializer* none = nullptr;
     def.maxSurfaces = 17;
-    CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "too many surfaces");
+    CHECK(maudCreateSpatializer(&def, &none) == maud_errorLimit, "too many surfaces");
     def = maudDefaultSpatializerDef();
     def.materialCapacity = 0;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "no material room");

@@ -238,8 +238,8 @@ static void TestHrtfParts(void)
     for (int i = 0; i < 7; ++i)
     {
         effect = (maudBinaural*)&effect;
-        bool one =
-            maudCreateBinaural(&badEffects[i], &effect) == maud_errorInvalid && effect == nullptr;
+        maudResult want = i == 3 ? maud_errorLimit : maud_errorInvalid;
+        bool one = maudCreateBinaural(&badEffects[i], &effect) == want && effect == nullptr;
         if (!one)
         {
             printf("binaural def %d not refused\n", i);
@@ -247,7 +247,8 @@ static void TestHrtfParts(void)
         }
         refused = refused && one;
     }
-    CHECK(refused, "an effect def without its cookie, a set, frames or a head in range");
+    CHECK(refused, "an effect def without its cookie, a set, frames (past the most as a limit) or "
+                   "a head in range");
     maudBinauralDef edge = effectDef;
     edge.headRadius = 0.05f;
     CHECK(maudCreateBinaural(&edge, &effect) == maud_success, "the smallest head taken");
@@ -297,7 +298,7 @@ static void TestHrtfParts(void)
     {
         decoder = (maudBinauralDecoder*)&decoder;
         bool one = maudCreateBinauralDecoder(&badDecoders[i], &decoder) ==
-                       (i == 3 ? maud_errorLimit : maud_errorInvalid) &&
+                       (i == 3 || i == 5 ? maud_errorLimit : maud_errorInvalid) &&
                    decoder == nullptr;
         if (!one)
         {
@@ -306,8 +307,8 @@ static void TestHrtfParts(void)
         }
         refused = refused && one;
     }
-    CHECK(refused, "a decoder def without its cookie, a set, an order (past the largest as a "
-                   "limit) or frames in range");
+    CHECK(refused, "a decoder def without its cookie, a set, an order or frames in range (past "
+                   "the most as a limit)");
     CHECK(maudCreateBinauralDecoder(&decoderDef, &decoder) == maud_success, "a decoder");
     const float* bed[4] = {s_buffers[8], s_buffers[9], s_buffers[10], s_buffers[11]};
     const float* holedBed[4] = {s_buffers[8], nullptr, s_buffers[10], s_buffers[11]};

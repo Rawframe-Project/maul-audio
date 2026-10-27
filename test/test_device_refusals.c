@@ -69,7 +69,8 @@ static void TestContextDefs(void)
     for (int i = 0; i < COUNT(bad); ++i)
     {
         context = (maudContext*)&context;
-        bool one = maudCreateContext(&bad[i], &context) == maud_errorInvalid && context == nullptr;
+        maudResult want = i == 5 ? maud_errorLimit : maud_errorInvalid;
+        bool one = maudCreateContext(&bad[i], &context) == want && context == nullptr;
         if (!one)
         {
             printf("context def %d not refused\n", i);

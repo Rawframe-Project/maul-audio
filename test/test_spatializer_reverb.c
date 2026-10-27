@@ -221,12 +221,12 @@ static void TestMisuse(void)
     maudDestroySpatializer(s);
     maudSpatializer* none = nullptr;
     def.reverbRays = 63;
-    CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid && none == nullptr, "63 rays");
+    CHECK(maudCreateSpatializer(&def, &none) == maud_errorLimit && none == nullptr, "63 rays");
     def.reverbRays = 16384;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "16,384 rays, the most");
     maudDestroySpatializer(s);
     def.reverbRays = 16385;
-    CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "16,385 rays");
+    CHECK(maudCreateSpatializer(&def, &none) == maud_errorLimit, "16,385 rays");
     def.reverbRays = 64;
     def.airAbsorption[1] = -0.001f;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "negative air");

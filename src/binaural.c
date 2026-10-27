@@ -23,7 +23,6 @@
 #include <math.h>
 #include <string.h>
 
-#define MAX_FRAMES         16384u
 #define DEFAULT_MAX_FRAMES 1024u
 // The fade: 128 frames at 48 kHz, in proportion at other rates.
 #define FADE_SECONDS (128.0 / 48000.0)
@@ -79,8 +78,8 @@ struct maudBinaural
 static bool DefValid(const maudBinauralDef* def)
 {
     return def->cookie == MAUD_BINAURAL_DEF_COOKIE && def->hrtf != nullptr && def->maxFrames >= 1 &&
-           def->maxFrames <= MAX_FRAMES && def->headRadius >= MIN_RADIUS &&
-           def->headRadius <= MAX_RADIUS && maudIsAllocatorValid(&def->allocator);
+           def->headRadius >= MIN_RADIUS && def->headRadius <= MAX_RADIUS &&
+           maudIsAllocatorValid(&def->allocator);
 }
 
 // The history the delays need: the set's largest delay, the base delay,
@@ -137,6 +136,11 @@ maudResult maudCreateBinaural(const maudBinauralDef* def, maudBinaural** effectO
         def->version != MAUD_ABI_VERSION)
     {
         return maud_errorVersion;
+    }
+    if (def != nullptr && effectOut != nullptr && def->cookie == MAUD_BINAURAL_DEF_COOKIE &&
+        def->maxFrames > MAUD_MAX_BINAURAL_FRAMES)
+    {
+        return maud_errorLimit;
     }
     if (def == nullptr || effectOut == nullptr || !DefValid(def))
     {
@@ -396,7 +400,7 @@ maudResult maudProcessBinaural(maudBinaural* effect, const maudBinauralParams* p
     {
         for (uint32_t n = 0; n < frames; ++n)
         {
-            // frames is at most MAX_FRAMES.
+            // frames is at most MAUD_MAX_BINAURAL_FRAMES.
             out[ear][n] *= from + step * maudFramePlace(n, true);
         }
     }

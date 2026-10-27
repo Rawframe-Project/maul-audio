@@ -274,7 +274,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     def.maxFrames = 0;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "no frames");
     def.maxFrames = 16385;
-    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "too many frames");
+    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorLimit, "too many frames");
     def.maxFrames = 16384;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_success, "the most frames");
     maudDestroyBinauralDecoder(none);

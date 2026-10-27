@@ -19,6 +19,10 @@ extern "C"
 {
 #endif
 
+// The most frames one call of a binaural effect or binaural decoder may
+// process; a def past it is refused with maud_errorLimit.
+#define MAUD_MAX_BINAURAL_FRAMES 16384u
+
     // A loaded HRTF set, at the rate it was loaded for.
     typedef struct maudHrtf maudHrtf;
 
