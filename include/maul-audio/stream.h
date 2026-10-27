@@ -99,7 +99,7 @@ extern "C"
     // maudGetStreamPosition, maudGetStreamClock, maudGetContextMisuse and
     // maudGetHostNanoseconds, and render or feed another offline stream
     // (maudRenderStream, maudFeedStream, maudRenderObjects). Any other
-    // call that changes the context is refused with maud_errorState and
+    // call that changes the context is refused with maud_errorBusy and
     // counted as misuse, rendering its own stream again included.
     typedef void (*maudStreamCallback)(const maudStreamBlock* block, void* user);
 
@@ -337,7 +337,7 @@ extern "C"
     ///         Core Audio, iOS and AAudio have no loopback, and no platform
     ///         an exclusive one);
     ///         `maud_errorCapacity` past the stream or period limit or when the
-    ///         allocator fails; `maud_errorState` on a thread rendering one of
+    ///         allocator fails; `maud_errorBusy` on a thread rendering one of
     ///         the context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
@@ -352,7 +352,7 @@ extern "C"
     /// @param stream   The stream.
     /// @return `maud_success`; `maud_errorStale` for an id that names no
     ///         stream; `maud_errorInvalid` for a NULL context;
-    ///         `maud_errorState` on a thread rendering one of the context's
+    ///         `maud_errorBusy` on a thread rendering one of the context's
     ///         streams or running its allocator, or, on the offline backend,
     ///         while another thread renders the stream.
     /// @par Thread safety
@@ -364,7 +364,7 @@ extern "C"
     /// @param context  The context.
     /// @param stream   The stream.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
-    ///         NULL context; `maud_errorState` on a thread rendering one of the
+    ///         NULL context; `maud_errorBusy` on a thread rendering one of the
     ///         context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
@@ -375,7 +375,7 @@ extern "C"
     /// @param context  The context.
     /// @param stream   The stream.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
-    ///         NULL context; `maud_errorState` on a thread rendering one of the
+    ///         NULL context; `maud_errorBusy` on a thread rendering one of the
     ///         context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
@@ -480,7 +480,8 @@ extern "C"
     ///         NULL pointer where frames are due, an input stream or a total
     ///         that does not fit in memory; `maud_errorUnsupported` on a
     ///         context that is not offline; `maud_errorState` for a stopped
-    ///         or suspended stream or one already rendering.
+    ///         or suspended stream; `maud_errorBusy` for one already rendering,
+    ///         or on a thread running the context's allocator.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. A stream renders on one
     /// thread at a time.
@@ -502,7 +503,8 @@ extern "C"
     ///         NULL pointer where frames are due, an output stream or a total
     ///         that does not fit in memory; `maud_errorUnsupported` on a
     ///         context that is not offline; `maud_errorState` for a stopped
-    ///         or suspended stream or one already rendering.
+    ///         or suspended stream; `maud_errorBusy` for one already rendering,
+    ///         or on a thread running the context's allocator.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. A stream renders on one
     /// thread at a time.

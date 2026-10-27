@@ -91,7 +91,7 @@ if (result == maud_success && maudGetStreamFormat(context, stream, &format) == m
 }
 ```
 
-The callback runs on an audio thread with a deadline. It must not allocate, lock, wait or call anything that might. Of the context it may only read the stream's format, position and clock, read the host clock and the misuse count, and render or feed another offline stream; any other call that changes the context is refused with `maud_errorState` and counted as misuse. `maudCreateStream` allocates everything the stream will use, so starting it allocates nothing.
+The callback runs on an audio thread with a deadline. It must not allocate, lock, wait or call anything that might. Of the context it may only read the stream's format, position and clock, read the host clock and the misuse count, and render or feed another offline stream; any other call that changes the context is refused with `maud_errorBusy` and counted as misuse. `maudCreateStream` allocates everything the stream will use, so starting it allocates nothing.
 
 `maudDestroyStream` returns after the callback has run for the last time, so the program may free what `user` points to as soon as it returns.
 

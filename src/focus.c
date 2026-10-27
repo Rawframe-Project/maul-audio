@@ -33,7 +33,7 @@ maudResult maudRequestFocus(maudContext* context, maudFocusRequest request, maud
     }
     if (maudRefuseControl(context))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (context->backend->requestFocus == nullptr)
     {

@@ -59,4 +59,4 @@ A probe set is a graph of points in the walkable space, two probes linked when o
 
 Every count is a limit in a def: sources, occlusion points, surfaces per walk, materials, rays, probes, probe pairs, paths, triangles, instances. The spatializer allocates for them when it is made and takes nothing more; going past one is `maud_errorCapacity`, never unbounded work.
 
-The ray hooks, the task hooks and the allocator run while the spatializer works. They may call its rendering side and `maudGetSpatializerMisuse`, nothing else: any other call that changes it is refused with `maud_errorState` and counted as misuse. The simulation side is used by one thread at a time; the rendering side by one thread at a time too, which may be another.
+The ray hooks, the task hooks and the allocator run while the spatializer works. They may call its rendering side and `maudGetSpatializerMisuse`, nothing else: any other call that changes it is refused with `maud_errorBusy` and counted as misuse. The simulation side is used by one thread at a time; the rendering side by one thread at a time too, which may be another.

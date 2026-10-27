@@ -5,7 +5,7 @@
 // (5 x 3 x 4 m): from the any-hit and closest-hit queries, from both
 // task hooks and from the allocator (making, baking, loading and
 // destroying a probe set, and destroying the spatializer), every call
-// that changes the spatializer is refused with maud_errorState and
+// that changes the spatializer is refused with maud_errorBusy and
 // counted as misuse, maudDestroySpatializer does nothing, and the outer
 // call goes on as if nothing happened. The calls the hooks may make (the
 // rendering side, the misuse count) work from them. Each invalid
@@ -71,26 +71,26 @@ static void TryAll(void)
     maudProbeSetDef setDef = SetDef();
     maudProbeSetId set = {0, 0};
     int refused = 0;
-    refused += maudCreateSource(s, &sourceDef, &source) == maud_errorState;
-    refused += maudDestroySource(s, s_source) == maud_errorState;
-    refused += maudSetSourcePose(s, s_source, &pose) == maud_errorState;
-    refused += maudSimulateDirect(s, &pose) == maud_errorState;
-    refused += maudSetMaterials(s, &material, 1) == maud_errorState;
-    refused += maudSimulateReverb(s, &pose) == maud_errorState;
-    refused += maudCreateProbeSet(s, &setDef, &set) == maud_errorState;
-    refused += maudDestroyProbeSet(s, s_set) == maud_errorState;
-    refused += maudSetPathing(s, s_set) == maud_errorState;
-    refused += maudBakeProbeSet(s, s_set) == maud_errorState;
-    refused += maudUseBakedReverb(s, s_set) == maud_errorState;
-    refused += maudLoadProbeSet(s, s_bytes, s_size, &set) == maud_errorState;
+    refused += maudCreateSource(s, &sourceDef, &source) == maud_errorBusy;
+    refused += maudDestroySource(s, s_source) == maud_errorBusy;
+    refused += maudSetSourcePose(s, s_source, &pose) == maud_errorBusy;
+    refused += maudSimulateDirect(s, &pose) == maud_errorBusy;
+    refused += maudSetMaterials(s, &material, 1) == maud_errorBusy;
+    refused += maudSimulateReverb(s, &pose) == maud_errorBusy;
+    refused += maudCreateProbeSet(s, &setDef, &set) == maud_errorBusy;
+    refused += maudDestroyProbeSet(s, s_set) == maud_errorBusy;
+    refused += maudSetPathing(s, s_set) == maud_errorBusy;
+    refused += maudBakeProbeSet(s, s_set) == maud_errorBusy;
+    refused += maudUseBakedReverb(s, s_set) == maud_errorBusy;
+    refused += maudLoadProbeSet(s, s_bytes, s_size, &set) == maud_errorBusy;
     maudDestroySpatializer(s);
     s_refused = refused;
     s_counted = maudGetSpatializerMisuse(s) - before;
     maudReverbResult reverb;
     maudDirectResult direct;
     (void)maudLatchResults(s);
-    s_allowed = maudGetReverbResult(s, &reverb) != maud_errorState &&
-                maudGetDirectResult(s, s_source, &direct) != maud_errorState &&
+    s_allowed = maudGetReverbResult(s, &reverb) != maud_errorBusy &&
+                maudGetDirectResult(s, s_source, &direct) != maud_errorBusy &&
                 maudGetSpatializerMisuse(s) == before + COUNTS;
 }
 

@@ -162,7 +162,7 @@ extern "C"
     /// Destroys a context and every stream it still holds.
     ///
     /// @param context  The context. NULL does nothing.
-    /// @return `maud_success`, or `maud_errorState` when called on a thread
+    /// @return `maud_success`, or `maud_errorBusy` when called on a thread
     ///         that is rendering one of its streams or running its allocator;
     ///         the context is then left as it was and the call counts as
     ///         misuse.
@@ -181,7 +181,7 @@ extern "C"
     ///
     /// @param context  The context.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL context;
-    ///         `maud_errorState` when called on a thread that is rendering one
+    ///         `maud_errorBusy` when called on a thread that is rendering one
     ///         of the context's streams or running its allocator, which counts
     ///         as misuse.
     /// @par Thread safety
@@ -201,7 +201,7 @@ extern "C"
     /// @param context    The context.
     /// @param suspended  Whether the host is suspended.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL context;
-    ///         `maud_errorState` when called on a thread that is rendering one
+    ///         `maud_errorBusy` when called on a thread that is rendering one
     ///         of the context's streams or running its allocator, which counts
     ///         as misuse.
     /// @par Thread safety

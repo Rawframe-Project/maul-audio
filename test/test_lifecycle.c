@@ -133,7 +133,7 @@ static void TestFromCallback(void)
     uint64_t before = maudGetContextMisuse(s_context);
     s_tryFromCallback = true;
     CHECK(Renders(stream), "render");
-    CHECK(s_fromCallback == maud_errorState, "the callback may not suspend the context");
+    CHECK(s_fromCallback == maud_errorBusy, "the callback may not suspend the context");
     CHECK(maudGetContextMisuse(s_context) == before + 1, "counted as misuse");
     CHECK(maudSetContextSuspended(nullptr, true) == maud_errorInvalid, "no context");
     CHECK(maudDestroyStream(s_context, stream) == maud_success, "destroy");

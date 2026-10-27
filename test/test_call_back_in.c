@@ -3,7 +3,7 @@
 //
 // Host code the context runs calling back into it, on the offline
 // backend: from a stream's callback and from the context's allocator,
-// every call that changes the context is refused with maud_errorState
+// every call that changes the context is refused with maud_errorBusy
 // and counted as misuse, rendering the stream again from its own
 // callback included, and the outer call goes on as if nothing happened.
 // The calls the callback may make (the stream queries, the misuse count,
@@ -48,26 +48,24 @@ static int TryAll(void)
     maudOfflineDeviceDef deviceDef = maudDefaultOfflineDeviceDef();
     maudDeviceId device = {0, 0};
     float frames[2 * PERIOD];
-    refused += maudCreateStream(s_context, &def, &stream) == maud_errorState;
-    refused += maudDestroyStream(s_context, s_self) == maud_errorState;
-    refused += maudStartStream(s_context, s_self) == maud_errorState;
-    refused += maudStopStream(s_context, s_self) == maud_errorState;
-    refused += maudRenderStream(s_context, s_self, frames, PERIOD) == maud_errorState;
-    refused += maudResumeContext(s_context) == maud_errorState;
-    refused += maudSetContextSuspended(s_context, true) == maud_errorState;
-    refused += maudNextNotification(s_context, &record) == maud_errorState;
-    refused += maudRequestFocus(s_context, maud_focusLasting, maud_roleGeneral) == maud_errorState;
-    refused += maudAddOfflineDevice(s_context, &deviceDef, &device) == maud_errorState;
-    refused += maudRemoveOfflineDevice(s_context, s_device) == maud_errorState;
+    refused += maudCreateStream(s_context, &def, &stream) == maud_errorBusy;
+    refused += maudDestroyStream(s_context, s_self) == maud_errorBusy;
+    refused += maudStartStream(s_context, s_self) == maud_errorBusy;
+    refused += maudStopStream(s_context, s_self) == maud_errorBusy;
+    refused += maudRenderStream(s_context, s_self, frames, PERIOD) == maud_errorBusy;
+    refused += maudResumeContext(s_context) == maud_errorBusy;
+    refused += maudSetContextSuspended(s_context, true) == maud_errorBusy;
+    refused += maudNextNotification(s_context, &record) == maud_errorBusy;
+    refused += maudRequestFocus(s_context, maud_focusLasting, maud_roleGeneral) == maud_errorBusy;
+    refused += maudAddOfflineDevice(s_context, &deviceDef, &device) == maud_errorBusy;
+    refused += maudRemoveOfflineDevice(s_context, s_device) == maud_errorBusy;
+    refused += maudSetOfflineDefaultDevice(s_context, maud_roleGeneral, s_device) == maud_errorBusy;
+    refused += maudSetOfflineDeviceForm(s_context, s_device, maud_formHeadphones) == maud_errorBusy;
     refused +=
-        maudSetOfflineDefaultDevice(s_context, maud_roleGeneral, s_device) == maud_errorState;
-    refused +=
-        maudSetOfflineDeviceForm(s_context, s_device, maud_formHeadphones) == maud_errorState;
-    refused +=
-        maudSetOfflineDeviceFormat(s_context, s_device, maud_layoutMono, 44100) == maud_errorState;
+        maudSetOfflineDeviceFormat(s_context, s_device, maud_layoutMono, 44100) == maud_errorBusy;
     refused += maudSetOfflineDeviceSpatializer(s_context, s_device, maud_spatializerUnknown, false,
-                                               0) == maud_errorState;
-    refused += maudDestroyContext(s_context) == maud_errorState;
+                                               0) == maud_errorBusy;
+    refused += maudDestroyContext(s_context) == maud_errorBusy;
     return refused;
 }
 

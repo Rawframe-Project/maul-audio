@@ -346,7 +346,7 @@ static MAUD_NOINLINE maudResult CreateSource(maudSpatializer* spatializer, const
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (def == nullptr || sourceOut == nullptr || def->cookie != SOURCE_DEF_COOKIE ||
         !PatternValid(&def->directivity) || def->occlusion > maud_occlusionVolumetric ||
@@ -395,7 +395,7 @@ static maudResult Find(maudSpatializer* spatializer, maudSourceId source, Slot**
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (source.index1 == 0 || source.index1 > spatializer->capacity || source.generation == 0)
     {
@@ -607,7 +607,7 @@ static MAUD_NOINLINE maudResult SetMaterials(maudSpatializer* spatializer,
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (count > 0 && materials == nullptr)
     {
@@ -650,7 +650,7 @@ static MAUD_NOINLINE maudResult SimulateDirect(maudSpatializer* spatializer,
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (listener == nullptr || !maudPoseValid(listener))
     {
@@ -746,7 +746,7 @@ static MAUD_NOINLINE maudResult SimulateReverb(maudSpatializer* spatializer,
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (listener == nullptr || !maudPoseValid(listener))
     {

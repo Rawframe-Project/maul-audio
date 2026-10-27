@@ -80,7 +80,7 @@ static MAUD_NOINLINE maudResult CreateProbeSet(maudSpatializer* spatializer,
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (def == nullptr || setOut == nullptr || def->cookie != PROBE_SET_DEF_COOKIE ||
         !maudProbeSetDefValid(def))
@@ -116,7 +116,7 @@ maudResult maudDestroyProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     maudSpatializerRunHost(spatializer, true);
     maudResult result = maudRemoveProbeSet(spatializer->probeSets, set);
@@ -146,7 +146,7 @@ maudResult maudSetPathing(maudSpatializer* spatializer, maudProbeSetId set)
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (set.index1 != 0 || set.generation != 0)
     {
@@ -248,7 +248,7 @@ static MAUD_NOINLINE maudResult BakeProbeSet(maudSpatializer* spatializer, maudP
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     maudSpatializer* s = spatializer;
     const maudProbeGraph* graph = nullptr;
@@ -288,7 +288,7 @@ maudResult maudUseBakedReverb(maudSpatializer* spatializer, maudProbeSetId set)
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (set.index1 != 0 || set.generation != 0)
     {
@@ -386,7 +386,7 @@ static MAUD_NOINLINE maudResult LoadProbeSet(maudSpatializer* spatializer, const
     }
     if (maudSpatializerBusy(spatializer))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (bytes == nullptr || setOut == nullptr)
     {

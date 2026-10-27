@@ -240,7 +240,7 @@ maudResult maudDestroyContext(maudContext* context)
     }
     if (maudRefuseControl(context))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {
@@ -414,7 +414,7 @@ maudResult maudResumeContext(maudContext* context)
     }
     if (maudRefuseControl(context))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (context->backend->resumeContext != nullptr)
     {

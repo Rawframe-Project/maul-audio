@@ -471,9 +471,11 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_add_test(xrun WHITEBOX)
         maul_add_test(retry WHITEBOX)
     endif()
-    # The stamp races a writer thread; Emscripten builds have none.
+    # The stamp races a writer thread, and render_busy renders from a
+    # second one; Emscripten builds have none.
     if(NOT EMSCRIPTEN)
         maul_add_test(stamp WHITEBOX POSIX)
+        maul_add_test(render_busy POSIX)
     endif()
     if(MAUL_AUDIO_PIPEWIRE)
         # The test's own client links libpipewire; the library does not.

@@ -449,10 +449,10 @@ static void TestControlCallsFromTheCallbackAreRefused(void)
     recorder.stream = stream;
     float frames[2 * 480];
     CHECK(maudRenderStream(context, stream, frames, 480) == maud_success, "render");
-    CHECK(recorder.controlResult == maud_errorState, "create refused on the audio thread");
-    CHECK(recorder.renderResult == maud_errorState, "re-entrant render refused");
-    CHECK(recorder.resumeResult == maud_errorState, "resume refused on the audio thread");
-    CHECK(recorder.destroyResult == maud_errorState, "the context's destruction refused there");
+    CHECK(recorder.controlResult == maud_errorBusy, "create refused on the audio thread");
+    CHECK(recorder.renderResult == maud_errorBusy, "re-entrant render refused");
+    CHECK(recorder.resumeResult == maud_errorBusy, "resume refused on the audio thread");
+    CHECK(recorder.destroyResult == maud_errorBusy, "the context's destruction refused there");
     CHECK(maudGetContextMisuse(context) == 4,
           "control calls and the re-entrant render counted as misuse");
     recorder.tryControl = false;

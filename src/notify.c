@@ -56,7 +56,7 @@ maudResult maudNextNotification(maudContext* context, maudNotification* notifica
     }
     if (maudRefuseControl(context))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (context->backend->pump != nullptr)
     {
