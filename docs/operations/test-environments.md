@@ -49,7 +49,7 @@ macOS runners have no audio hardware either. The Core Audio suite plays into Bla
 
 ## iOS
 
-`cmake/ios-simulator.cmake` builds for the simulator. Headless suites run through `simctl spawn` on the booted device or the one `MAUD_IOS_DEVICE` names; suites that need an application run through [tools/run_ios_app.sh](../../tools/run_ios_app.sh), which grants the microphone, installs and launches the bundle, and waits at most two minutes for its result line. The simulator's microphone and speaker are the host's default devices. A runner's own virtual device can stall capture, so `test/ios/default_device.c` sets both defaults to BlackHole before the suites run.
+`cmake/ios-simulator.cmake` builds for the simulator. Headless suites run through `simctl spawn` on the booted device or the one `MAUD_IOS_DEVICE` names; suites that need an application run through [tools/run_ios_app.sh](../../tools/run_ios_app.sh), which installs the bundle, grants the microphone and launches it within five minutes, and then waits at most two minutes for its result line. The two bounds are apart, so a simulator slow to take the bundle fails as that and never eats into the application's time. The simulator's microphone and speaker are the host's default devices. A runner's own virtual device can stall capture, so `test/ios/default_device.c` sets both defaults to BlackHole before the suites run.
 
 ## Android
 
