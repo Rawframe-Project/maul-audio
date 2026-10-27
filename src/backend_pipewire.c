@@ -299,6 +299,8 @@ static int OnSettingsProperty(void* data, uint32_t subject, const char* key, con
     {
         return 0;
     }
+    // A rate no stream runs at is taken as none set.
+    number = maudDeviceRate(number);
     if (spa_streq(key, "clock.rate"))
     {
         pipewire->clock.clockRate = number;
