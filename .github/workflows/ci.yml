@@ -40,7 +40,7 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@595e1c52a0fae00e49974c5152a7a6f3ed39753c # v0.0.28
     permissions:
       pull-requests: read
 
@@ -55,12 +55,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@595e1c52a0fae00e49974c5152a7a6f3ed39753c # v0.0.28
         with:
           exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@595e1c52a0fae00e49974c5152a7a6f3ed39753c # v0.0.28
     permissions:
       contents: read
 
@@ -149,7 +149,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@595e1c52a0fae00e49974c5152a7a6f3ed39753c # v0.0.28
     permissions:
       contents: read
     with:
@@ -173,7 +173,7 @@ jobs:
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@bf59dbcd696369b51a9831145fb3b60f3bc71280 # v0.0.26
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@595e1c52a0fae00e49974c5152a7a6f3ed39753c # v0.0.28
     permissions:
       contents: read
     with:
@@ -209,10 +209,11 @@ jobs:
           cmake --preset linux-quarantine
           cmake --build --preset linux-quarantine
       # The base test preset's options, which the runner's ctest call does
-      # not read: a hung suite times out as a known flake instead of
-      # running the job out of time, and a lost label fails the night.
+      # not read: the runner's own 300 s timeout matches the preset's, so a
+      # hung suite times out as a known flake instead of running the job out
+      # of time; a lost label fails the night.
       - name: Quarantined suites
-        run: tools/run_quarantine.sh out/linux-quarantine --timeout 300 -j 4 --no-tests=error
+        run: tools/run_quarantine.sh out/linux-quarantine -j 4 --no-tests=error
       - name: Test logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
