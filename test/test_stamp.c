@@ -9,6 +9,7 @@
 #include "test_harness.h"
 
 #include <pthread.h>
+#include <sched.h>
 
 static void InitCore(maudStreamCore* core)
 {
@@ -50,26 +51,44 @@ static void TestDirections(void)
 typedef struct Race
 {
     maudStreamCore core;
+    // The reader has started; it has finished.
+    atomic_bool started;
     atomic_bool done;
 } Race;
 
-// Stamps with the latency equal to the position, so a torn read shows.
+// The reads the race makes, the stamps they must see change, and how
+// long it may take: far above a loaded runner's need.
+#define RACE_READS   200000u
+#define RACE_CHANGES 100u
+#define RACE_SECONDS 30
+
+// Stamps with the latency equal to the position, so a torn read shows,
+// from when the reader starts until it finishes.
 static void* Write(void* user)
 {
     Race* race = user;
-    for (uint64_t i = 1; i <= 200000; ++i)
+    int64_t deadline = maudNowNanoseconds() + RACE_SECONDS * 1000000000LL;
+    while (!atomic_load(&race->started) && maudNowNanoseconds() < deadline)
+    {
+        sched_yield();
+    }
+    for (uint64_t i = 1; !atomic_load(&race->done) && maudNowNanoseconds() < deadline; ++i)
     {
         atomic_store_explicit(&race->core.position, i, memory_order_relaxed);
         maudStampOutputClock(&race->core, (int64_t)i);
     }
-    atomic_store(&race->done, true);
     return nullptr;
 }
 
+// The reader keeps reading until it has made RACE_READS reads and seen
+// the stamp change RACE_CHANGES times, so that the two always overlap:
+// on a loaded machine the writer could otherwise finish before the
+// reader ran at all.
 static void TestNoTornReads(void)
 {
     Race race;
     InitCore(&race.core);
+    atomic_init(&race.started, false);
     atomic_init(&race.done, false);
     pthread_t writer;
     if (pthread_create(&writer, nullptr, Write, &race) != 0)
@@ -77,19 +96,28 @@ static void TestNoTornReads(void)
         CHECK(false, "a writer thread");
         return;
     }
+    atomic_store(&race.started, true);
+    int64_t deadline = maudNowNanoseconds() + RACE_SECONDS * 1000000000LL;
     uint64_t torn = 0;
     uint64_t reads = 0;
-    while (!atomic_load(&race.done))
+    uint64_t changes = 0;
+    uint64_t last = 0;
+    while ((reads < RACE_READS || changes < RACE_CHANGES) && maudNowNanoseconds() < deadline)
     {
         uint64_t position = 0;
         int64_t host = 0;
         int64_t latency = 0;
         maudReadClock(&race.core, &position, &host, &latency);
         torn += (int64_t)position != latency ? 1u : 0u;
+        changes += position != last ? 1u : 0u;
+        last = position;
         reads++;
     }
+    atomic_store(&race.done, true);
     pthread_join(writer, nullptr);
-    CHECK(reads > 0 && torn == 0, "every read is one whole stamp");
+    CHECK(torn == 0, "every read is one whole stamp");
+    CHECK(reads >= RACE_READS && changes >= RACE_CHANGES,
+          "the reads overlapped the writer's stamps within 30 s");
 }
 
 int main(void)
