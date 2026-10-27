@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Core Audio's device forms and data source listeners, against a fake
-// HAL with the devices CI's runners lack: a form comes from the data
+// Core Audio's device channels, forms and data source listeners, against
+// a fake HAL with the devices CI's runners lack: a stream configuration's
+// channels are its buffers' sum, and none when the bytes read do not
+// hold every buffer it counts; a form comes from the data
 // source of the direction's scope, else from an HDMI or DisplayPort
 // transport; a listener is added once per scanned endpoint with a data
 // source, up to the capacity, and removed when the endpoint leaves the
@@ -11,6 +13,7 @@
 #include "coreaudio_form.h"
 #include "test_harness.h"
 
+#include <stddef.h>
 #include <string.h>
 
 #define FOUR(a, b, c, d)                                                                           \
@@ -348,8 +351,42 @@ static void TestWatch(void)
     CHECK(s_adds == 0 && context.coreaudio.watchedCount == 0, "not listening");
 }
 
+// A stream configuration of count buffers with the given channels, in
+// bytes laid out as the HAL writes it; returns the bytes it takes.
+static UInt32 Configuration(unsigned char* bytes, UInt32 count, const UInt32* channels,
+                            UInt32 written)
+{
+    size_t head = offsetof(AudioBufferList, mBuffers);
+    memcpy(bytes + offsetof(AudioBufferList, mNumberBuffers), &count, sizeof(count));
+    for (UInt32 i = 0; i < written; ++i)
+    {
+        AudioBuffer buffer = {.mNumberChannels = channels[i]};
+        memcpy(bytes + head + i * sizeof(AudioBuffer), &buffer, sizeof(buffer));
+    }
+    return (UInt32)(head + written * sizeof(AudioBuffer));
+}
+
+static void TestChannels(void)
+{
+    alignas(AudioBufferList) unsigned char
+        bytes[offsetof(AudioBufferList, mBuffers) + 4 * sizeof(AudioBuffer)] = {0};
+    const AudioBufferList* list = (const AudioBufferList*)(void*)bytes;
+    const UInt32 channels[3] = {2, 1, 4};
+    UInt32 size = Configuration(bytes, 3, channels, 3);
+    CHECK(maudCoreAudioChannelsOf(list, size) == 7, "three buffers' channels summed");
+    CHECK(maudCoreAudioChannelsOf(list, size - 1) == 0, "none when the last buffer is cut short");
+    size = Configuration(bytes, 4, channels, 3);
+    CHECK(maudCoreAudioChannelsOf(list, size) == 0, "none for a count past the bytes read");
+    size = Configuration(bytes, UINT32_MAX, channels, 3);
+    CHECK(maudCoreAudioChannelsOf(list, size) == 0, "none for the largest count");
+    size = Configuration(bytes, 0, channels, 0);
+    CHECK(maudCoreAudioChannelsOf(list, size) == 0, "none for no buffers");
+    CHECK(maudCoreAudioChannelsOf(list, 0) == 0, "none for nothing read");
+}
+
 int main(void)
 {
+    TestChannels();
     TestForms();
     TestWatch();
     return s_failures == 0 ? 0 : 1;
