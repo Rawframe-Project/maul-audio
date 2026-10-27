@@ -180,8 +180,9 @@ extern "C"
     ///                 frames each.
     /// @param out      Two channels of frames samples each.
     /// @param frames   0 to the def's maxFrames; 0 does nothing.
-    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer
-    ///         or too many frames; nothing is written then.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer;
+    ///         `maud_errorCapacity` for more frames than the def's
+    ///         maxFrames. Nothing is written on failure.
     /// @par Thread safety
     /// Safe from any thread; the decoder is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudDecodeBinaural(maudBinauralDecoder* decoder,

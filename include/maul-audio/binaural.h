@@ -123,9 +123,10 @@ extern "C"
     /// @param in      frames samples.
     /// @param out     Two channels of frames samples each, apart from in.
     /// @param frames  0 to the def's maxFrames; 0 does nothing.
-    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer,
-    ///         too many frames or a parameter that is not finite; nothing
-    ///         is written then.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a
+    ///         parameter that is not finite; `maud_errorCapacity` for more
+    ///         frames than the def's maxFrames. Nothing is written on
+    ///         failure.
     /// @par Thread safety
     /// Safe from any thread; the effect is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudProcessBinaural(maudBinaural* effect,

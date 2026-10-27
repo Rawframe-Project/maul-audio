@@ -152,10 +152,13 @@ static bool ChannelsValid(const maudBinauralDecoder* decoder, const float* const
 maudResult maudDecodeBinaural(maudBinauralDecoder* decoder, const float* const* bed,
                               float* const out[2], uint32_t frames)
 {
-    if (decoder == nullptr || frames > decoder->maxFrames ||
-        (frames > 0 && !ChannelsValid(decoder, bed, out)))
+    if (decoder == nullptr || (frames > 0 && !ChannelsValid(decoder, bed, out)))
     {
         return maud_errorInvalid;
+    }
+    if (frames > decoder->maxFrames)
+    {
+        return maud_errorCapacity;
     }
     if (frames == 0)
     {

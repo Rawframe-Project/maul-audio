@@ -291,7 +291,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     float* out[2] = {s_left, s_right};
     CHECK(maudDecodeBinaural(decoder, bed, out, 64) == maud_errorInvalid, "a missing channel");
     bed[3] = s_bed[3];
-    CHECK(maudDecodeBinaural(decoder, bed, out, 65) == maud_errorInvalid, "too many frames");
+    CHECK(maudDecodeBinaural(decoder, bed, out, 65) == maud_errorCapacity, "too many frames");
     CHECK(maudDecodeBinaural(decoder, nullptr, out, 64) == maud_errorInvalid, "no bed");
     float* noEar[2] = {s_left, nullptr};
     CHECK(maudDecodeBinaural(decoder, bed, noEar, 64) == maud_errorInvalid, "no right ear");

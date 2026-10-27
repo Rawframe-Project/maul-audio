@@ -372,11 +372,14 @@ static bool ParamsValid(const maudBinauralParams* params)
 maudResult maudProcessBinaural(maudBinaural* effect, const maudBinauralParams* params,
                                const float* in, float* const out[2], uint32_t frames)
 {
-    if (effect == nullptr || params == nullptr || out == nullptr || frames > effect->maxFrames ||
-        !ParamsValid(params) ||
+    if (effect == nullptr || params == nullptr || out == nullptr || !ParamsValid(params) ||
         (frames > 0 && (in == nullptr || out[0] == nullptr || out[1] == nullptr)))
     {
         return maud_errorInvalid;
+    }
+    if (frames > effect->maxFrames)
+    {
+        return maud_errorCapacity;
     }
     if (frames == 0)
     {

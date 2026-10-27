@@ -267,13 +267,13 @@ static void TestHrtfParts(void)
     CHECK(maudProcessBinaural(nullptr, &params, in, ears, 64) == maud_errorInvalid &&
               maudProcessBinaural(effect, nullptr, in, ears, 64) == maud_errorInvalid &&
               maudProcessBinaural(effect, &params, in, nullptr, 64) == maud_errorInvalid &&
-              maudProcessBinaural(effect, &params, in, ears, 65) == maud_errorInvalid &&
               maudProcessBinaural(effect, &params, nullptr, ears, 64) == maud_errorInvalid &&
               maudProcessBinaural(effect, &params, in, oneEar, 64) == maud_errorInvalid &&
               maudProcessBinaural(effect, &lost, in, ears, 64) == maud_errorInvalid &&
               maudProcessBinaural(effect, &loud, in, ears, 64) == maud_errorInvalid,
-          "a block without an effect, parameters, ears, input or within the frames, or with "
-          "a value not finite");
+          "a block without an effect, parameters, ears or input, or with a value not finite");
+    CHECK(maudProcessBinaural(effect, &params, in, ears, 65) == maud_errorCapacity,
+          "a block past the def's frames");
     maudDestroyBinaural(effect);
     maudBinauralDecoderDef decoderDef = maudDefaultBinauralDecoderDef();
     decoderDef.hrtf = hrtf;
@@ -314,14 +314,14 @@ static void TestHrtfParts(void)
     const float* holedBed[4] = {s_buffers[8], nullptr, s_buffers[10], s_buffers[11]};
     CHECK(maudDecodeBinaural(decoder, bed, ears, 64) == maud_success, "a decode");
     CHECK(maudDecodeBinaural(nullptr, bed, ears, 64) == maud_errorInvalid &&
-              maudDecodeBinaural(decoder, bed, ears, 65) == maud_errorInvalid &&
               maudDecodeBinaural(decoder, nullptr, ears, 64) == maud_errorInvalid &&
               maudDecodeBinaural(decoder, bed, nullptr, 64) == maud_errorInvalid &&
               maudDecodeBinaural(decoder, bed, oneEar, 64) == maud_errorInvalid &&
               maudDecodeBinaural(decoder, holedBed, ears, 64) == maud_errorInvalid &&
               maudDecodeBinaural(decoder, nullptr, nullptr, 0) == maud_success,
-          "a decode without a decoder, within the frames, a bed or both ears, and none of no "
-          "frames");
+          "a decode without a decoder, a bed or both ears, and none of no frames");
+    CHECK(maudDecodeBinaural(decoder, bed, ears, 65) == maud_errorCapacity,
+          "a decode past the def's frames");
     maudDestroyBinauralDecoder(decoder);
     maudDestroyHrtf(hrtf);
 #endif
