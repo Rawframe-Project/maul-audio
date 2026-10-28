@@ -166,6 +166,12 @@ EM_JS(void, SetFrame, (int frame), {
 // late.
 EM_JS(void, Late, (double ms), { globalThis.maudSim.once = ms; });
 
+// Sets the context's output latency, which Chrome gives in whole
+// milliseconds and updates apart from its timestamp.
+EM_JS(void, OutputLatency, (double seconds), {
+    globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0].context.outputLatency = seconds;
+});
+
 // The context runs `quanta` while the microphone's frames never reach
 // the capture node: frames the browser lost before the stream got them.
 EM_JS(void, Skip, (int quanta), { globalThis.maudSim.frame += 128 * quanta; });
@@ -533,6 +539,39 @@ static void FilterGranted(void* user)
         printf("61 ms later for 5.5 s: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
                lost - steady, (unsigned long long)status.overruns, (unsigned long long)overruns);
         CHECK(false, "61 ms later for good is frames lost: one overrun, and the clock follows");
+    }
+    // The output latency 2 ms higher in one delivery of five, as Chrome's
+    // whole-millisecond figure comes in apart from its timestamp: each
+    // such delivery places frame 0 2 ms earlier, a low the clock does not
+    // keep. Then 2 ms higher for good: the clock follows by the
+    // third delivery and not before.
+    NewRoute();
+    Pull(1);
+    double before = TakeAll();
+    for (int i = 0; i < 40; ++i)
+    {
+        OutputLatency(i % 5 == 2 ? 0.012 : 0.01);
+        Pull(1);
+        (void)TakeAll();
+    }
+    double jittered = Run(20);
+    if (jittered < before - 1000.0 || jittered > before + 1000.0)
+    {
+        printf("jitter: frame 0 %.0f ns from before\n", jittered - before);
+        CHECK(false, "the output latency's jitter leaves the clock where it was");
+    }
+    OutputLatency(0.012);
+    double moved[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        Pull(1);
+        moved[i] = TakeAll() - before;
+    }
+    OutputLatency(0.01);
+    if (moved[0] < -1000.0 || moved[1] < -1000.0 || moved[2] < -2001000.0 || moved[2] > -1999000.0)
+    {
+        printf("step: frame 0 %.0f, %.0f, %.0f ns from before\n", moved[0], moved[1], moved[2]);
+        CHECK(false, "a lasting 2 ms step reaches the clock by the third delivery");
     }
     Stamp(0);
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy the capture");

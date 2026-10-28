@@ -23,6 +23,29 @@ void maudWebResetClock(maudWebClock* clock)
         clock->span[i] = INT64_MIN;
     }
     clock->stepSince = INT64_MIN;
+    clock->recentCount = 0;
+    clock->recentNext = 0;
+}
+
+// Takes a capture's frame-0 time and returns the median of the last
+// MAUD_WEB_CLOCK_MEDIAN, the lower of the two middle ones while it holds
+// an even count.
+static int64_t Median(maudWebClock* clock, int64_t origin)
+{
+    clock->recent[clock->recentNext] = origin;
+    clock->recentNext = (clock->recentNext + 1) % MAUD_WEB_CLOCK_MEDIAN;
+    clock->recentCount += clock->recentCount < MAUD_WEB_CLOCK_MEDIAN ? 1 : 0;
+    int64_t sorted[MAUD_WEB_CLOCK_MEDIAN];
+    for (int i = 0; i < clock->recentCount; ++i)
+    {
+        int j = i;
+        for (; j > 0 && sorted[j - 1] > clock->recent[i]; --j)
+        {
+            sorted[j] = sorted[j - 1];
+        }
+        sorted[j] = clock->recent[i];
+    }
+    return sorted[(clock->recentCount - 1) / 2];
 }
 
 // Watches frame-0 times past the bound: true once they have all been
@@ -85,7 +108,7 @@ void maudWebStampClock(maudWebClock* clock, int* clockEpoch, maudStreamCore* cor
         }
         uint64_t position = atomic_load_explicit(&core->position, memory_order_relaxed);
         int64_t place = (int64_t)((double)position * 1e9 / rate);
-        int64_t origin = output ? now + latency - place : now - latency - place;
+        int64_t origin = output ? now + latency - place : Median(clock, now - latency - place);
         int64_t least = maudWebEarliest(clock, origin, now);
         int64_t earliest = 0;
         if (Lost(clock, origin, least, now, &earliest))
