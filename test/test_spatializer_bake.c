@@ -36,6 +36,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Rays for the checks that hold for any count (a bake against the live
+// estimate on a probe, a saved set against the loaded one) and for the
+// coupled rooms, whose bounds hold at a quarter too. The bake runs on one
+// thread here, so ThreadSanitizer only slows it: under it these take a
+// quarter of the rays, keeping the suite well inside the test timeout on
+// a slow runner. The office's interpolation and walking checks and the
+// golden bake keep theirs, since their bounds and bytes follow the count.
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define RAYS(n) ((n) / 4u)
+#endif
+#endif
+#ifndef RAYS
+#define RAYS(n) (n)
+#endif
+
 enum
 {
     FRAMES = 9600
@@ -77,13 +93,14 @@ static void Finish(void* userTask, void* userContext)
     (void)userContext;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene, bool reversed, uint32_t order)
+static maudSpatializer* Create(maudAcousticScene* scene, bool reversed, uint32_t order,
+                               uint32_t rays)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudSceneAnyHit;
     def.closestHit = maudSceneClosestHit;
     def.rayContext = scene;
-    def.reverbRays = 1024;
+    def.reverbRays = rays;
     def.probeSetCapacity = 1;
     def.reflectionOrder = order;
     def.reflectionDuration = 0.2f;
@@ -166,7 +183,7 @@ static void TestCoupled(void)
     def.anyHit = maudSceneAnyHit;
     def.closestHit = maudSceneClosestHit;
     def.rayContext = rooms;
-    def.reverbRays = 4096;
+    def.reverbRays = RAYS(4096u);
     def.probeSetCapacity = 1;
     maudSpatializer* baked = nullptr;
     maudSpatializer* live = nullptr;
@@ -224,9 +241,9 @@ static void TestCoupled(void)
 
 static void TestReverb(maudAcousticScene* scene)
 {
-    maudSpatializer* baked = Create(scene, false, 0);
-    maudSpatializer* live = Create(scene, false, 0);
-    maudSpatializer* reversed = Create(scene, true, 0);
+    maudSpatializer* baked = Create(scene, false, 0, 1024);
+    maudSpatializer* live = Create(scene, false, 0, 1024);
+    maudSpatializer* reversed = Create(scene, true, 0, 1024);
     maudProbeSetId set = Bake(baked);
     (void)Bake(reversed);
     maudReverbResult a = At(baked, 2.5f, 1.5f, 1.5f);
@@ -299,8 +316,8 @@ static void Render(maudSpatializer* s, int which)
 
 static void TestReflections(maudAcousticScene* scene)
 {
-    maudSpatializer* baked = Create(scene, false, 1);
-    maudSpatializer* live = Create(scene, false, 1);
+    maudSpatializer* baked = Create(scene, false, 1, RAYS(1024u));
+    maudSpatializer* live = Create(scene, false, 1, RAYS(1024u));
     (void)Bake(baked);
     maudReverbResult a = At(baked, 3.5f, 1.5f, 2.5f);
     maudReverbResult b = At(live, 3.5f, 1.5f, 2.5f);
@@ -396,11 +413,11 @@ static uint8_t* Save(const maudSpatializer* s, maudProbeSetId set, size_t* size)
 
 static void TestFile(maudAcousticScene* scene)
 {
-    maudSpatializer* baked = Create(scene, false, 1);
+    maudSpatializer* baked = Create(scene, false, 1, RAYS(1024u));
     maudProbeSetId set = Bake(baked);
     size_t size = 0;
     uint8_t* bytes = Save(baked, set, &size);
-    maudSpatializer* loaded = Create(scene, false, 1);
+    maudSpatializer* loaded = Create(scene, false, 1, RAYS(1024u));
     maudProbeSetId again = {0, 0};
     CHECK(maudLoadProbeSet(loaded, bytes, size, &again) == maud_success &&
               maudUseBakedReverb(loaded, again) == maud_success,
@@ -417,7 +434,7 @@ static void TestFile(maudAcousticScene* scene)
     size_t size2 = 0;
     uint8_t* bytes2 = Save(loaded, again, &size2);
     CHECK(size2 == size && memcmp(bytes, bytes2, size) == 0, "saving it again, the same bytes");
-    maudSpatializer* plain = Create(scene, false, 0);
+    maudSpatializer* plain = Create(scene, false, 0, RAYS(1024u));
     maudProbeSetId refused = {1, 1};
     CHECK(maudLoadProbeSet(plain, bytes, size, &refused) == maud_errorUnsupported &&
               refused.index1 == 0,

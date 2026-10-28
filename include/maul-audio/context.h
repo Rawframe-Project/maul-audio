@@ -25,6 +25,13 @@ extern "C"
 // The fewest records a context's notification queue may hold: one for a
 // change and one for the overflow that may follow it.
 #define MAUD_MIN_NOTIFICATIONS 2u
+// The most a context's limits may allow: streams that exist at once,
+// devices of both directions, queued notifications, and bytes of a
+// device's name or key. Each is far past what a program needs.
+#define MAUD_MAX_STREAMS           65535u
+#define MAUD_MAX_DEVICES           65535u
+#define MAUD_MAX_NOTIFICATIONS     65535u
+#define MAUD_MAX_DEVICE_TEXT_BYTES 65535u
 
     // Which backend a context talks to.
     typedef uint8_t maudBackendKind;
@@ -53,22 +60,27 @@ extern "C"
         maud_backendPrivate = 9,
     };
 
-    // The named limits of a context. A request past one is refused.
+    // The named limits of a context. A request past one is refused. A
+    // limit past its MAUD_MAX_* constant, or below MAUD_MIN_NOTIFICATIONS,
+    // is refused with maud_errorLimit; any other limit of 0 with
+    // maud_errorInvalid.
     typedef struct maudLimits
     {
-        // Streams that exist at once.
-        uint16_t streams;
+        // Streams that exist at once, from 1 to MAUD_MAX_STREAMS.
+        uint32_t streams;
         // The largest period a stream may ask for, in frames, from 1 to
         // MAUD_MAX_PERIOD_FRAMES.
         uint32_t periodFrames;
-        // Devices, of both directions, that exist at once.
-        uint16_t devices;
-        // Records the notification queue holds before it overflows; at
-        // least MAUD_MIN_NOTIFICATIONS. Fewer, 0 included, is refused with
-        // maud_errorLimit.
-        uint16_t notifications;
-        // Bytes of a device's name, and of its key.
-        uint16_t deviceTextBytes;
+        // Devices, of both directions, that exist at once, from 1 to
+        // MAUD_MAX_DEVICES.
+        uint32_t devices;
+        // Records the notification queue holds before it overflows, from
+        // MAUD_MIN_NOTIFICATIONS to MAUD_MAX_NOTIFICATIONS. Fewer, 0
+        // included, is refused with maud_errorLimit.
+        uint32_t notifications;
+        // Bytes of a device's name, and of its key, from 1 to
+        // MAUD_MAX_DEVICE_TEXT_BYTES.
+        uint32_t deviceTextBytes;
     } maudLimits;
 
     // How a context is made. Build it with maudDefaultContextDef.
@@ -149,8 +161,10 @@ extern "C"
     ///         before anything else of it; `maud_errorInvalid` for a NULL
     ///         argument, a def without its cookie, an allocator with one function, a limit
     ///         other than notifications of 0, or an offline rate out of range;
-    ///         `maud_errorLimit` for a period limit past MAUD_MAX_PERIOD_FRAMES or
-    ///         fewer notifications than MAUD_MIN_NOTIFICATIONS, 0 included; `maud_errorUnsupported`
+    ///         `maud_errorLimit` for a limit past its MAUD_MAX_* constant
+    ///         (streams, period frames, devices, notifications, device text
+    ///         bytes) or fewer notifications than MAUD_MIN_NOTIFICATIONS, 0
+    ///         included; `maud_errorUnsupported`
     ///         when this build or platform lacks the backend asked for, or
     ///         no audio service of it answers;
     ///         `maud_errorCapacity` when the allocator fails, or when the

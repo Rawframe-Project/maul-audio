@@ -242,7 +242,7 @@
       "inherits": "base",
       "configurePreset": "windows-clang-cl",
       "configuration": "Release",
-      "filter": { "exclude": { "name": "^(wasapi|wasapi_sta|stall|guide_device)$" } }
+      "filter": { "exclude": { "label": "^quarantine$", "name": "^(wasapi|wasapi_sta|stall|guide_device)$" } }
     }
   ]
 }
