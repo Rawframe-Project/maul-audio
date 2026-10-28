@@ -26,7 +26,10 @@
 #define MAUD_WEB_CLOCK_SPAN_SECONDS 5
 // The capture deliveries whose median frame-0 time the filter takes: a
 // move that lasts reaches it by the third, a low of one or two never.
-#define MAUD_WEB_CLOCK_MEDIAN 5
+// Until MAUD_WEB_CLOCK_SETTLED of them are in, after a start or a reset,
+// the clock follows their median and the filter takes none.
+#define MAUD_WEB_CLOCK_MEDIAN  5
+#define MAUD_WEB_CLOCK_SETTLED 3
 
 // The earliest frame-0 time of each of the last spans, by the span of
 // the host clock it was taken in; and a step under watch: the host time

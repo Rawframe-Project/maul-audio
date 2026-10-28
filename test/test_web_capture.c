@@ -336,6 +336,20 @@ static double Run(int quanta)
     return Taken();
 }
 
+// Three deliveries of a quantum each, the most a capture's clock takes
+// before its filter does, after a start or a reset; the frame-0 time
+// after the last.
+static double Settle(void)
+{
+    double taken = 0.0;
+    for (int i = 0; i < 3; ++i)
+    {
+        Pull(1);
+        taken = TakeAll();
+    }
+    return taken;
+}
+
 // After the grant: the frames, the clock three ways, and the ring's
 // overruns.
 static void Granted(void* user)
@@ -467,8 +481,7 @@ static void FilterGranted(void* user)
           "in the context's first quarter second no stamp counts");
     Skip(100);
     Stamp(3);
-    Pull(3);
-    double held = TakeAll();
+    double held = Settle();
     Pull(3);
     double still = TakeAll();
     if (still < held - 1000.0 || still > held + 1000.0)
@@ -509,8 +522,7 @@ static void FilterGranted(void* user)
     // 5 s, and the clock follows it.
     Stamp(4);
     NewRoute();
-    Pull(1);
-    double steady = TakeAll();
+    double steady = Settle();
     maudStreamStatus status = {0};
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
     uint64_t overruns = status.overruns;
@@ -545,9 +557,20 @@ static void FilterGranted(void* user)
     // such delivery places frame 0 2 ms earlier, a low the clock does not
     // keep. Then 2 ms higher for good: the clock follows by the
     // third delivery and not before.
+    // A new route whose first delivery comes with the output latency 2 ms
+    // higher, 2 ms early: the clock follows it until enough deliveries are
+    // in for a median, and does not hold it after.
     NewRoute();
+    OutputLatency(0.012);
     Pull(1);
-    double before = TakeAll();
+    double low = TakeAll();
+    OutputLatency(0.01);
+    double before = Run(20);
+    if (before < low + 1999000.0 || before > low + 2001000.0)
+    {
+        printf("first low: frame 0 %.0f ns from the low delivery\n", before - low);
+        CHECK(false, "a low first delivery after a new route is not held");
+    }
     for (int i = 0; i < 40; ++i)
     {
         OutputLatency(i % 5 == 2 ? 0.012 : 0.01);
