@@ -114,12 +114,14 @@ typedef bool RateWindowFn(void* user);
 // kept time (#38). A steady stream's latency moves about 1 ms a second.
 #define RATE_SETTLE_SHARE 0.005
 // One window as measured, for the report of a measure that fails: its
-// rate (0 without a span), whether it was clean, whether its latency was
-// settling, and the clock read that ends it.
+// rate (0 without a span), whether it was clean, whether its reads were
+// stamped a positive span apart, whether its latency was settling, and
+// the clock read that ends it.
 typedef struct RateWindow
 {
     double rate;
     bool clean;
+    bool timed;
     bool settling;
     maudStreamClock end;
 } RateWindow;
@@ -159,7 +161,7 @@ static inline void CountRateWindow(ClockRate* measured, const maudStreamClock* f
     double moved = (double)(second->latencyNanoseconds - first->latencyNanoseconds);
     bool settling = clean && timed && measured->settleShare > 0.0 &&
                     (moved < 0 ? -moved : moved) > measured->settleShare * span;
-    measured->each[measured->windows] = (RateWindow){rate, clean, settling, *second};
+    measured->each[measured->windows] = (RateWindow){rate, clean, timed, settling, *second};
     measured->windows += 1;
     measured->stalled += clean ? 0 : 1;
     measured->settling += settling ? 1 : 0;
@@ -291,7 +293,10 @@ static inline void PrintRateWindows(const ClockRate* measured)
     for (int i = 0; i < measured->windows; ++i)
     {
         const RateWindow* window = &measured->each[i];
-        const char* verdict = !window->clean ? "stalled" : window->settling ? "settling" : "clean";
+        const char* verdict = !window->clean     ? "stalled"
+                              : !window->timed   ? "untimed"
+                              : window->settling ? "settling"
+                                                 : "clean";
         fprintf(stderr,
                 "rate: window %d %s, %.0f frames/s, to frame %llu, host %lld ns, latency %lld ns "
                 "(%+lld)\n",
@@ -313,9 +318,21 @@ static inline void PrintRateWindows(const ClockRate* measured)
 // clean windows judges nothing: it prints why and its windows, counts
 // itself starved or settling and holds, so that a machine short of CPU
 // reads as such (RateSuiteResult) and never as a wrong rate, nor passes
-// on too few. A measure that fails prints its windows.
+// on too few. One short with neither a stall nor a settling window had a
+// clock that could not be read or gave its windows no time, which is
+// the clock's fault, never the machine's: it fails. A measure that fails
+// prints its windows.
 static inline bool RateHolds(ClockRate measured, double expected)
 {
+    if (measured.clean < RATE_CLEAN_WINDOWS && measured.stalled == 0 && measured.settling == 0)
+    {
+        fprintf(stderr,
+                "not enough clean windows: the stream clock could not be read, or %d of %d "
+                "windows had no time\n",
+                measured.windows - measured.clean, measured.windows);
+        PrintRateWindows(&measured);
+        return false;
+    }
     if (measured.clean < RATE_CLEAN_WINDOWS)
     {
         fprintf(stderr,
