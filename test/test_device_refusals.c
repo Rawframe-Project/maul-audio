@@ -49,7 +49,7 @@ static void TestContextDefs(void)
           "no def");
     CHECK(maudCreateContext(&def, nullptr) == maud_errorInvalid, "nowhere to put it");
     static int s_vm;
-    maudContextDef bad[11];
+    maudContextDef bad[15];
     for (int i = 0; i < COUNT(bad); ++i)
     {
         bad[i] = def;
@@ -65,11 +65,15 @@ static void TestContextDefs(void)
     bad[8].offlineSampleRate = 384001;
     bad[9].androidJavaVm = &s_vm;
     bad[10].backend = maud_backendPrivate + 1;
+    bad[11].limits.streams = MAUD_MAX_STREAMS + 1;
+    bad[12].limits.devices = MAUD_MAX_DEVICES + 1;
+    bad[13].limits.notifications = MAUD_MAX_NOTIFICATIONS + 1;
+    bad[14].limits.deviceTextBytes = MAUD_MAX_DEVICE_TEXT_BYTES + 1;
     bool refused = true;
     for (int i = 0; i < COUNT(bad); ++i)
     {
         context = (maudContext*)&context;
-        maudResult want = i == 5 ? maud_errorLimit : maud_errorInvalid;
+        maudResult want = i == 5 || i >= 11 ? maud_errorLimit : maud_errorInvalid;
         bool one = maudCreateContext(&bad[i], &context) == want && context == nullptr;
         if (!one)
         {
@@ -82,10 +86,14 @@ static void TestContextDefs(void)
         refused = refused && one;
     }
     CHECK(refused, "a context def field out of range");
-    maudContextDef bounds[3] = {def, def, def};
+    maudContextDef bounds[7] = {def, def, def, def, def, def, def};
     bounds[0].offlineSampleRate = 8000;
     bounds[1].offlineSampleRate = 384000;
     bounds[2].limits.notifications = 2;
+    bounds[3].limits.streams = MAUD_MAX_STREAMS;
+    bounds[4].limits.devices = MAUD_MAX_DEVICES;
+    bounds[5].limits.notifications = MAUD_MAX_NOTIFICATIONS;
+    bounds[6].limits.deviceTextBytes = MAUD_MAX_DEVICE_TEXT_BYTES;
     bool taken = true;
     for (int i = 0; i < COUNT(bounds); ++i)
     {
