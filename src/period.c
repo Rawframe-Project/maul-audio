@@ -99,7 +99,7 @@ void maudPullObjects(maudPeriod* period, float* bed, maudStreamObject* objectsOu
     for (uint32_t i = 0; i < period->objectCount; ++i)
     {
         const maudStreamObject* object = &period->objects[i];
-        memcpy(objectsOut[i].position, object->position, sizeof(object->position));
+        objectsOut[i].position = object->position;
         objectsOut[i].gain = object->gain;
         objectsOut[i].active = object->active;
     }

@@ -37,7 +37,7 @@ extern "C"
         float* samples;
         // Where it sounds from, relative to the listener: metres, +x
         // right, +y up, -z ahead. The listener's origin at first.
-        float position[3];
+        maudVector3 position;
         // Its linear gain, from 0; 1 at first.
         float gain;
         // Whether it sounds. Objects start inactive; the platform's object
