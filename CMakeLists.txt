@@ -624,7 +624,10 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         target_compile_options(test_ios_capture PRIVATE -fno-objc-arc)
         add_test(NAME ios_capture COMMAND ${PROJECT_SOURCE_DIR}/tools/run_ios_app.sh
                  $<TARGET_BUNDLE_DIR:test_ios_capture>)
-        set_tests_properties(ios_capture PROPERTIES TIMEOUT 240 RESOURCE_LOCK simulator)
+        # The runner bounds the install and launch (300 s) and the run (120
+        # s) apart, each failing with what it waited for; CTest's timeout
+        # only backs them up.
+        set_tests_properties(ios_capture PROPERTIES TIMEOUT 480 RESOURCE_LOCK simulator)
         set_tests_properties(ios PROPERTIES RESOURCE_LOCK simulator)
     endif()
     if(MAUL_AUDIO_AAUDIO)
