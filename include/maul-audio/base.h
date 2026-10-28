@@ -101,7 +101,8 @@ extern "C"
         maud_errorUnsupported = -4,
         // The platform failed a call the library made.
         maud_errorPlatform = -5,
-        // The call is not allowed in the object's current state.
+        // The call is not allowed in the object's current state, which only
+        // another call of the program changes.
         maud_errorState = -6,
         // A root def was built from headers of another binary interface
         // than the library's (MAUD_ABI_VERSION), or a file is of another
@@ -113,13 +114,17 @@ extern "C"
         // An argument passes a bound published as a named constant
         // (MAUD_MAX_PERIOD_FRAMES, for one). More room would not help.
         maud_errorLimit = -9,
+        // The object is running host code (a stream's callback, an
+        // allocator, a hook) or another thread is rendering the stream:
+        // the same call succeeds once that work ends.
+        maud_errorBusy = -10,
     };
 
     // The allocator an owner object takes in its def and keeps for its
     // lifetime. Alignment is a power of two. A zeroed allocator means the C
     // library's allocation functions. It calls no function of the object
     // it serves: the context and the spatializer refuse such a call with
-    // maud_errorState and count it as misuse, and every other object calls
+    // maud_errorBusy and count it as misuse, and every other object calls
     // its allocator only while it is made or destroyed, when no handle to
     // it is valid.
     typedef struct maudAllocator

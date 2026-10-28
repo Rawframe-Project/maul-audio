@@ -94,7 +94,7 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def, maud
     }
     if (maudRefuseControl(context))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     if (def != nullptr && streamOut != nullptr && def->cookie == STREAM_DEF_COOKIE &&
         def->objectCount > MAUD_MAX_STREAM_OBJECTS)
@@ -147,7 +147,7 @@ static maudResult FindForControl(maudContext* context, maudStreamId stream,
     }
     if (maudRefuseControl(context))
     {
-        return maud_errorState;
+        return maud_errorBusy;
     }
     *slotOut = maudFindStream(context, stream);
     return *slotOut != nullptr ? maud_success : maud_errorStale;
@@ -167,7 +167,7 @@ maudResult maudDestroyStream(maudContext* context, maudStreamId stream)
         atomic_load_explicit(&slot->core.renderingThread, memory_order_acquire) != 0)
     {
         maudCountMisuse(context);
-        return maud_errorState;
+        return maud_errorBusy;
     }
     maudReleaseStream(context, slot);
     return maud_success;
@@ -333,7 +333,7 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
     if (maudIsAllocatingThread(context))
     {
         maudCountMisuse(context);
-        return maud_errorState;
+        return maud_errorBusy;
     }
     maudStreamSlot* slot = maudFindStream(context, stream);
     if (slot == nullptr)
@@ -376,7 +376,7 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
         {
             maudCountMisuse(context);
         }
-        return maud_errorState;
+        return maud_errorBusy;
     }
     core->period.sampleRate = atomic_load_explicit(&core->blockRate, memory_order_acquire);
     *coreOut = core;

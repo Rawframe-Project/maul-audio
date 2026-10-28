@@ -582,7 +582,7 @@ static void TestScriptGuards(void)
     bool refused = true;
     for (int i = 0; i < 6; ++i)
     {
-        refused = refused && inside.results[i] == maud_errorState;
+        refused = refused && inside.results[i] == maud_errorBusy;
     }
     CHECK(refused, "every call refused inside the callback");
     CHECK(maudGetContextMisuse(context) == misuse + 6, "each counted");

@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Contexts: defaults, refusals of invalid defs (a period limit past its
-// bound as a limit, and the offline rate's bounds taken), the native
+// bound and notifications below their floor, 0 included, as limits, and
+// the offline rate's bounds taken), the native
 // backend's absence in this build, audio focus where the backend has
 // none, memory through the def's allocator, and the largest limits
 // refused as capacity.
@@ -140,6 +141,20 @@ static void TestInvalidDefsAreRefused(void)
     CHECK(maudCreateContext(&largest, &context) == maud_success &&
               maudDestroyContext(context) == maud_success,
           "the largest period frames taken");
+    for (uint16_t notifications = 0; notifications < MAUD_MIN_NOTIFICATIONS; ++notifications)
+    {
+        maudContextDef few = OfflineDef(&counter);
+        few.limits.notifications = notifications;
+        context = (maudContext*)&few;
+        CHECK(maudCreateContext(&few, &context) == maud_errorLimit && context == nullptr,
+              "fewer notifications than the least, 0 included");
+    }
+    maudContextDef least = maudDefaultContextDef();
+    least.backend = maud_backendOffline;
+    least.limits.notifications = MAUD_MIN_NOTIFICATIONS;
+    CHECK(maudCreateContext(&least, &context) == maud_success &&
+              maudDestroyContext(context) == maud_success,
+          "the least notifications taken");
     def = OfflineDef(&counter);
     def.offlineSampleRate = 7999;
     CheckRefused(&def, "rate below range");

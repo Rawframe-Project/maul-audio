@@ -812,7 +812,7 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 20), "callbacks on the data thread");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "every block is one period");
     CHECK(atomic_load(&blocks.lastRate) == 48000, "blocks carry the rate");
-    CHECK(atomic_load(&blocks.controlResult) == maud_errorState, "control refused there");
+    CHECK(atomic_load(&blocks.controlResult) == maud_errorBusy, "control refused there");
     CHECK(maudGetContextMisuse(context) >= 1, "and counted");
     CHECK(RateHolds(MeasureRate(context, stream), 48000.0),
           "the clock advances at the stream's rate");
