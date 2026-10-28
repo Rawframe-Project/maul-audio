@@ -331,14 +331,14 @@ static void TestRefused(maudAcousticScene* scene)
     pd.pointCount = 1;
     maudProbeSetId set = {0, 0};
     CHECK(maudCreateProbeSet(s, &pd, &set) == maud_success &&
-              maudBakeProbeSet(s, set) == maud_errorState,
+              maudBakeProbeSet(s, set) == maud_errorUnsupported,
           "baking without a closest-hit query");
     maudDestroySpatializer(s);
     def.closestHit = maudSceneClosestHit;
     def.reverbRays = 0;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success &&
               maudCreateProbeSet(s, &pd, &set) == maud_success &&
-              maudBakeProbeSet(s, set) == maud_errorState,
+              maudBakeProbeSet(s, set) == maud_errorUnsupported,
           "baking without rays");
     const maudProbeSetId none = {0, 0};
     CHECK(maudBakeProbeSet(s, none) == maud_errorInvalid &&

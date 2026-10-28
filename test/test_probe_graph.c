@@ -271,7 +271,7 @@ static void TestGeneration(void)
     maudReleaseProbeGraph(&s_allocator, &g);
     q.maxProbes = 4096;
     q.closestHit = nullptr;
-    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorState, "no closest-hit query");
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorUnsupported, "no closest-hit query");
     def.boxMax.y = def.boxMin.y;
     CHECK(!maudProbeSetDefValid(&def), "a flat box");
     maudDestroyAcousticScene(scene);

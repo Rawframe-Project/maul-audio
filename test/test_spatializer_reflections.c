@@ -275,7 +275,8 @@ static void TestMisuse(void)
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "no reflections");
     const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
     float* bed[1] = {s_bed[0]};
-    CHECK(maudRenderReflections(s, &upright, s_send, bed, 16) == maud_errorState, "none asked for");
+    CHECK(maudRenderReflections(s, &upright, s_send, bed, 16) == maud_errorUnsupported,
+          "none asked for");
     maudDestroySpatializer(s);
     // Short, to fit the web build's 16 MB heap: four responses of nine
     // channels at 1 s would take 14 MB.

@@ -515,7 +515,7 @@ maudResult maudBuildProbeGraph(const maudProbeQueries* queries, const maudProbeS
     {
         if (queries->closestHit == nullptr)
         {
-            return maud_errorState;
+            return maud_errorUnsupported;
         }
         maudResult result = Generate(queries, def, &generated, &count);
         if (result != maud_success)
