@@ -86,7 +86,7 @@ int main(int argc, char** argv)
         return 1;
     }
     maudReverbParams params = {0};
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         params.reverbTime[b] = (float)(argc + 1) * 0.5f;
     }

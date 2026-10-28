@@ -205,7 +205,7 @@ static uint32_t FieldFloats(const maudSpatializer* s)
         return 0;
     }
     uint32_t channels = (s->trace.fieldOrder + 1) * (s->trace.fieldOrder + 1);
-    return channels * MAUD_DIRECT_BANDS * s->trace.fieldBins;
+    return channels * MAUD_BANDS * s->trace.fieldBins;
 }
 
 // Bakes a set's estimates, and its fields with reflections, from each
@@ -222,13 +222,12 @@ static bool Bake(maudSpatializer* s, const maudProbeGraph* graph, maudProbeBake*
     {
         maudReverbResult estimate = {0};
         uint32_t batches = maudTraceFrom(s, graph->points[p], &estimate);
-        memcpy(bake->times + (size_t)p * MAUD_DIRECT_BANDS, estimate.reverbTime,
+        memcpy(bake->times + (size_t)p * MAUD_BANDS, estimate.reverbTime,
                sizeof(estimate.reverbTime));
-        memcpy(bake->levels + (size_t)p * MAUD_DIRECT_BANDS, estimate.level,
-               sizeof(estimate.level));
-        memcpy(bake->tailTimes + (size_t)p * MAUD_DIRECT_BANDS, estimate.tailTime,
+        memcpy(bake->levels + (size_t)p * MAUD_BANDS, estimate.level, sizeof(estimate.level));
+        memcpy(bake->tailTimes + (size_t)p * MAUD_BANDS, estimate.tailTime,
                sizeof(estimate.tailTime));
-        memcpy(bake->tailLevels + (size_t)p * MAUD_DIRECT_BANDS, estimate.tailLevel,
+        memcpy(bake->tailLevels + (size_t)p * MAUD_BANDS, estimate.tailLevel,
                sizeof(estimate.tailLevel));
         if (fieldFloats > 0)
         {

@@ -25,7 +25,7 @@
 
 typedef struct maudDiffraction
 {
-    float gain[MAUD_DIRECT_BANDS][MAUD_DIFFRACTION_STEPS];
+    float gain[MAUD_BANDS][MAUD_DIFFRACTION_STEPS];
 } maudDiffraction;
 
 void maudSetupDiffraction(maudDiffraction* diffraction);

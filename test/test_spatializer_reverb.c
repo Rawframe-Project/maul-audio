@@ -69,7 +69,7 @@ static maudSpatializer* Create(maudAcousticScene* scene, bool tasks, maudAnyHitF
     def.closestHit = maudSceneClosestHit;
     def.rayContext = scene;
     def.reverbRays = 1024;
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         def.airAbsorption[b] = 0.0f;
     }
@@ -106,7 +106,7 @@ static void TestEstimate(void)
     printf("office: %.3f / %.3f / %.3f s after %u estimate\n", (double)result.reverbTime[0],
            (double)result.reverbTime[1], (double)result.reverbTime[2], result.estimates);
     CHECK(result.estimates == 1, "one estimate");
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         CHECK(fabs((double)result.reverbTime[b] / 0.99 - 1.0) < 0.03, "the office's time");
     }
@@ -118,7 +118,7 @@ static void TestEstimate(void)
     CHECK(maudLatchResults(tasked) == 1 && maudGetReverbResult(tasked, &viaTasks) == maud_success,
           "latched");
     bool same = true;
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         same = same && viaTasks.reverbTime[b] == result.reverbTime[b];
     }

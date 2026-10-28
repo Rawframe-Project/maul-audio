@@ -50,12 +50,12 @@ extern "C"
         // The time to decay by 60 dB in each band, 0.1 to 20 s, met at
         // the bands' geometric centres (126 Hz, 2.5 kHz, 12.6 kHz) and
         // between them smoothly.
-        float reverbTime[MAUD_DIRECT_BANDS];
+        float reverbTime[MAUD_BANDS];
         // The send's level per band, -96 to 24 dB (0 leaves it as is):
         // a unit impulse sent gives W 10 ms bins of energy
         // 0.0144 exp(-13.8 t / T60) from 23 ms after the delay, times the
         // level's power.
-        float level[MAUD_DIRECT_BANDS];
+        float level[MAUD_BANDS];
         // The send's delay, 0 to the def's maxDelay seconds.
         float delay;
         // The slower slope per band, as maudReverbResult's tailTime and
@@ -63,8 +63,8 @@ extern "C"
         // ignored by others): its time, 0.1 to 20 s, or 0 for none in the
         // band; and its level, as level is the first's, -96 to 24 dB. A
         // tail that stops decays at its time and then stops running.
-        float tailTime[MAUD_DIRECT_BANDS];
-        float tailLevel[MAUD_DIRECT_BANDS];
+        float tailTime[MAUD_BANDS];
+        float tailLevel[MAUD_BANDS];
     } maudReverbParams;
 
 // The cookie of a reverb def, which its default sets and

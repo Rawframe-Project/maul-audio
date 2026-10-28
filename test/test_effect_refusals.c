@@ -26,7 +26,7 @@ static const maudAllocator s_half = {Alloc, nullptr, nullptr};
 static maudReverbParams ReverbParams(void)
 {
     maudReverbParams p = {0};
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         p.reverbTime[b] = 1.0f;
     }
@@ -103,7 +103,7 @@ static void TestReverb(void)
     }
     CHECK(refused, "each band's time, level, tail and the delay out of range");
     maudReverbParams bounds = good;
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         bounds.reverbTime[b] = b == 0 ? 0.1f : 20.0f;
         bounds.level[b] = b == 0 ? -96.0f : 24.0f;
@@ -197,7 +197,7 @@ static void TestDirect(void)
           "no frames need no buffers");
     maudDestroyDirectEffect(e);
     maudDirectivityPattern pattern = {{0.5f, 0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}};
-    float gains[MAUD_DIRECT_BANDS];
+    float gains[MAUD_BANDS];
     maudVector3 ahead = {0.0f, 0.0f, -1.0f};
     CHECK(maudGetDirectivity(&pattern, ahead, gains) == maud_success, "a pattern");
     maudDirectivityPattern patterns[4] = {pattern, pattern, pattern, pattern};

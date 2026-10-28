@@ -93,7 +93,7 @@ static maudSpatializer* Create(maudAcousticScene* scene)
     def.reverbRays = 4096;
     def.reflectionOrder = 1;
     def.reflectionDuration = 0.5f;
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         def.airAbsorption[b] = 0.0f;
     }
@@ -348,7 +348,7 @@ static maudSpatializer* InOffice(maudAcousticScene* scene, float duration, maudR
     def.reverbRays = 2048;
     def.reflectionOrder = duration > 0.0f ? 1 : 0;
     def.reflectionDuration = duration > 0.0f ? duration : 1.0f;
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         def.airAbsorption[b] = 0.0f;
     }

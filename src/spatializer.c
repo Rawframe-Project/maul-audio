@@ -114,7 +114,7 @@ static void Release(maudSpatializer* s)
 
 static bool ReverbValid(const maudSpatializerDef* def)
 {
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         if (!(def->airAbsorption[b] >= 0.0f) || !isfinite(def->airAbsorption[b]))
         {
@@ -329,7 +329,7 @@ void maudSpatializerRunHost(maudSpatializer* s, bool running)
 
 static bool PatternValid(const maudDirectivityPattern* pattern)
 {
-    float out[MAUD_DIRECT_BANDS];
+    float out[MAUD_BANDS];
     return maudGetDirectivity(pattern, (maudVector3){0.0f, 0.0f, -1.0f}, out) == maud_success;
 }
 
@@ -572,7 +572,7 @@ static void Transmit(maudSpatializer* s, const maudPose* listener, Entry* entrie
             s->walked[i] = 0.0f;
             continue;
         }
-        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        for (int b = 0; b < MAUD_BANDS; ++b)
         {
             r->transmission[b] = 0.0f;
         }
@@ -591,7 +591,7 @@ static bool Unit(float v)
 static bool MaterialValid(const maudAcousticMaterial* m)
 {
     bool valid = Unit(m->scattering);
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         valid = valid && Unit(m->absorption[b]) && Unit(m->transmission[b]);
     }
@@ -720,7 +720,7 @@ static void EstimateReverb(maudSpatializer* s, const maudPose* listener)
     }
     if (s->closestHit == nullptr)
     {
-        for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+        for (int b = 0; b < MAUD_BANDS; ++b)
         {
             s->reverb.reverbTime[b] = NO_REVERB;
             s->reverb.level[b] = SILENT;

@@ -114,12 +114,12 @@ extern "C"
     typedef struct maudAcousticMaterial
     {
         // The share of energy a reflection off the surface absorbs.
-        float absorption[MAUD_DIRECT_BANDS];
+        float absorption[MAUD_BANDS];
         // The share of a reflection scattered rather than mirrored.
         float scattering;
         // The share of amplitude a crossing of the surface lets through. A
         // closed wall has two surfaces, and its material each one's share.
-        float transmission[MAUD_DIRECT_BANDS];
+        float transmission[MAUD_BANDS];
     } maudAcousticMaterial;
 
     // What a closest-hit query found on a ray: the distance to the
@@ -186,7 +186,7 @@ extern "C"
         uint32_t reverbRays;
         // The air's amplitude exponent per metre and band, for the
         // estimate (as the direct effect's def).
-        float airAbsorption[MAUD_DIRECT_BANDS];
+        float airAbsorption[MAUD_BANDS];
         // Geometric reflections: the bed's order (0 for none, else 1 to
         // MAUD_MAX_REFLECTION_ORDER; they need reverbRays), the response's length in seconds
         // (0.05 to 4) and the rate rendering runs at (44,100 to
@@ -279,13 +279,13 @@ extern "C"
         // frame, unit length (straight ahead when the two coincide).
         maudVector3 direction;
         // The source's directivity towards the listener, per band.
-        float directivity[MAUD_DIRECT_BANDS];
+        float directivity[MAUD_BANDS];
         // How much of the source the path's obstacles hide, 0 to 1.
         float occlusion;
         // What passes through them, per band: the product of the crossed
         // surfaces' transmission. 1 for a clear path; 0 for an occluded
         // one without a walk.
-        float transmission[MAUD_DIRECT_BANDS];
+        float transmission[MAUD_BANDS];
         // The surfaces the walk crossed; the spatializer's maxSurfaces
         // when the limit stopped it, more surfaces perhaps uncounted.
         uint32_t surfaces;
@@ -304,7 +304,7 @@ extern "C"
     {
         // The time to decay by 60 dB per band, 0.1 to 20 s, for
         // maudReverbParams; 0.1 s before the first estimate.
-        float reverbTime[MAUD_DIRECT_BANDS];
+        float reverbTime[MAUD_BANDS];
         // The estimates made before the step; 0 for none.
         uint32_t estimates;
         // For maudReverbParams: the send's level per band (dB) and delay
@@ -314,7 +314,7 @@ extern "C"
         // reverb's first 23 ms are silent, so the delay is the duration
         // less 23 ms). 0 dB and no delay before an estimate, -96 dB with
         // nothing to reflect.
-        float level[MAUD_DIRECT_BANDS];
+        float level[MAUD_BANDS];
         float delay;
         // Where a band decays in two slopes, as a room fed through a door
         // by a livelier one does, the slower slope: its time (0.1 to 20 s;
@@ -322,8 +322,8 @@ extern "C"
         // (dB, -96 where there is none); reverbTime and level are then the
         // faster slope's. maudReverbParams' tailTime and tailLevel take
         // them, for a reverb made with a tail.
-        float tailTime[MAUD_DIRECT_BANDS];
-        float tailLevel[MAUD_DIRECT_BANDS];
+        float tailTime[MAUD_BANDS];
+        float tailLevel[MAUD_BANDS];
     } maudReverbResult;
 
 // The cookie of a spatializer def, which its default sets and
