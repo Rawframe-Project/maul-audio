@@ -792,6 +792,14 @@ if(MAUL_AUDIO_BUILD_TESTS)
             set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
         endif()
     endforeach()
+    # The suites whose rate measures can be starved (RateSuiteResult,
+    # test/test_clock.h): CI fails the skip as a test that did not run.
+    foreach(name pulse pulse_rate alsa)
+        if(TEST ${name})
+            # hygiene: an inconclusive line means the machine starved the stream
+            set_property(TEST ${name} PROPERTY SKIP_REGULAR_EXPRESSION "inconclusive: ")
+        endif()
+    endforeach()
 endif()
 
 # On Linux no test reaches the session's own sound server. The suites that

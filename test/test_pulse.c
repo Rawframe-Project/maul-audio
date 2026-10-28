@@ -1304,7 +1304,7 @@ int main(int argc, char** argv)
     {
         TestOutputRate(context);
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
-        return s_failures == 0 ? 0 : 1;
+        return RateSuiteResult();
     }
     TestDevices(context);
     TestHotplug(context);
@@ -1327,5 +1327,5 @@ int main(int argc, char** argv)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestLimits();
     TestNativeFallback();
-    return s_failures == 0 ? 0 : 1;
+    return RateSuiteResult();
 }
