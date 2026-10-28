@@ -28,6 +28,24 @@ static void* Alloc(size_t size, size_t alignment, void* context)
     return malloc(size);
 }
 
+// An allocator with no memory, so that a context at its largest limits
+// gets past the def's checks without taking the memory they would need.
+static void* Refuse(size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    return nullptr;
+}
+
+static void Release(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)memory;
+    (void)size;
+    (void)alignment;
+    (void)context;
+}
+
 static void Silence(const maudStreamBlock* block, void* user)
 {
     (void)block;
@@ -86,14 +104,26 @@ static void TestContextDefs(void)
         refused = refused && one;
     }
     CHECK(refused, "a context def field out of range");
-    maudContextDef bounds[7] = {def, def, def, def, def, def, def};
+    // Each limit at its largest is no limit refusal: it reaches the
+    // allocator, which here has no memory.
+    maudContextDef largest[4] = {def, def, def, def};
+    largest[0].limits.streams = MAUD_MAX_STREAMS;
+    largest[1].limits.devices = MAUD_MAX_DEVICES;
+    largest[2].limits.notifications = MAUD_MAX_NOTIFICATIONS;
+    largest[3].limits.deviceTextBytes = MAUD_MAX_DEVICE_TEXT_BYTES;
+    bool allowed = true;
+    for (int i = 0; i < COUNT(largest); ++i)
+    {
+        largest[i].allocator = (maudAllocator){Refuse, Release, nullptr};
+        context = (maudContext*)&context;
+        allowed = allowed && maudCreateContext(&largest[i], &context) == maud_errorCapacity &&
+                  context == nullptr;
+    }
+    CHECK(allowed, "each limit at its MAUD_MAX_* constant allowed");
+    maudContextDef bounds[3] = {def, def, def};
     bounds[0].offlineSampleRate = 8000;
     bounds[1].offlineSampleRate = 384000;
     bounds[2].limits.notifications = 2;
-    bounds[3].limits.streams = MAUD_MAX_STREAMS;
-    bounds[4].limits.devices = MAUD_MAX_DEVICES;
-    bounds[5].limits.notifications = MAUD_MAX_NOTIFICATIONS;
-    bounds[6].limits.deviceTextBytes = MAUD_MAX_DEVICE_TEXT_BYTES;
     bool taken = true;
     for (int i = 0; i < COUNT(bounds); ++i)
     {
