@@ -34,7 +34,7 @@ extern "C"
         // cookie and this stay the first two fields in every version.
         uint32_t version;
         // The rate the effect runs at, 32,000 to 384,000 Hz.
-        float sampleRate;
+        uint32_t sampleRate;
         // Air absorption per band: the amplitude falls as
         // exp(-airAbsorption[band] * distance in metres).
         float airAbsorption[MAUD_DIRECT_BANDS];
@@ -116,7 +116,7 @@ extern "C"
 #endif
         def.cookie = MAUD_DIRECT_EFFECT_DEF_COOKIE;
         def.version = MAUD_ABI_VERSION;
-        def.sampleRate = 48000.0f;
+        def.sampleRate = 48000;
         (void)maudGetAirAbsorption(20.0f, 50.0f, def.airAbsorption);
         return def;
     }

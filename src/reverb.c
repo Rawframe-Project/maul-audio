@@ -33,8 +33,8 @@
 // directional channels carry a sixth of its energy rather than the
 // diffuse third.
 #define SEND_SIGNS 0x5A3Cu
-#define MIN_RATE   44100.0f
-#define MAX_RATE   384000.0f
+#define MIN_RATE   44100u
+#define MAX_RATE   384000u
 #define MIN_TIME   0.1f
 #define MAX_TIME   20.0f
 #define MAX_DELAY  4.0f
@@ -174,9 +174,8 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
         return maud_errorVersion;
     }
     if (def == nullptr || reverbOut == nullptr || def->cookie != MAUD_REVERB_DEF_COOKIE ||
-        !(def->sampleRate >= MIN_RATE) || !(def->sampleRate <= MAX_RATE) ||
-        !(def->maxDelay >= 0.0f) || !(def->maxDelay <= MAX_DELAY) ||
-        !maudIsAllocatorValid(&def->allocator))
+        def->sampleRate < MIN_RATE || def->sampleRate > MAX_RATE || !(def->maxDelay >= 0.0f) ||
+        !(def->maxDelay <= MAX_DELAY) || !maudIsAllocatorValid(&def->allocator))
     {
         return maud_errorInvalid;
     }
@@ -218,7 +217,7 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     }
     r->delayLine = r->memory + offset;
     maudSetupOctaveEq(&r->setup, r->rate);
-    maudSetupBandEq(&r->eqSetup, def->sampleRate);
+    maudSetupBandEq(&r->eqSetup, (float)def->sampleRate);
     if (maudResetReverb(r) != maud_success)
     {
         maudDestroyReverb(r);

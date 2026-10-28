@@ -194,7 +194,7 @@ extern "C"
         // (order + 1)^2 channels.
         uint32_t reflectionOrder;
         float reflectionDuration;
-        float reflectionRate;
+        uint32_t reflectionRate;
         // Probe sets for pathing: how many at once (0 to
         // MAUD_MAX_PROBE_SETS), the most probes one holds (1 to
         // MAUD_MAX_PROBES) and the most probe pairs within range one tests
@@ -357,7 +357,7 @@ extern "C"
         def.materialCapacity = 64;
         def.reverbRays = 2048;
         def.reflectionDuration = 1.0f;
-        def.reflectionRate = 48000.0f;
+        def.reflectionRate = 48000;
         def.maxProbes = 4096;
         def.maxProbePairs = 1048576;
         def.maxPaths = 32;

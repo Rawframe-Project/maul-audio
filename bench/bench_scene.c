@@ -357,7 +357,7 @@ static void Reflections(maudAcousticScene* scene, uint32_t order)
     def.rayContext = scene;
     def.reflectionOrder = order;
     def.reflectionDuration = 1.0f;
-    def.reflectionRate = 48000.0f;
+    def.reflectionRate = 48000;
     maudSpatializer* s = nullptr;
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
     if (maudCreateSpatializer(&def, &s) != maud_success ||

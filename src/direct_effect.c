@@ -20,8 +20,8 @@
 #include <math.h>
 #include <string.h>
 
-#define MIN_RATE 32000.0f
-#define MAX_RATE 384000.0f
+#define MIN_RATE 32000u
+#define MAX_RATE 384000u
 #define FLOOR_DB (-24.0)
 #define REFIT_DB 0.05
 #define SILENT   1e-6f
@@ -85,8 +85,8 @@ maudResult maudGetDirectivity(const maudDirectivityPattern* pattern, maudVector3
 
 static bool DefValid(const maudDirectEffectDef* def)
 {
-    if (def->cookie != MAUD_DIRECT_EFFECT_DEF_COOKIE || !(def->sampleRate >= MIN_RATE) ||
-        !(def->sampleRate <= MAX_RATE) || !maudIsAllocatorValid(&def->allocator))
+    if (def->cookie != MAUD_DIRECT_EFFECT_DEF_COOKIE || def->sampleRate < MIN_RATE ||
+        def->sampleRate > MAX_RATE || !maudIsAllocatorValid(&def->allocator))
     {
         return false;
     }
@@ -135,7 +135,7 @@ maudResult maudCreateDirectEffect(const maudDirectEffectDef* def, maudDirectEffe
     }
     *effect = (maudDirectEffect){.allocator = def->allocator};
     memcpy(effect->absorption, def->airAbsorption, sizeof(effect->absorption));
-    maudSetupBandEq(&effect->setup, def->sampleRate);
+    maudSetupBandEq(&effect->setup, (float)def->sampleRate);
     Clear(effect);
     *effectOut = effect;
     return maud_success;

@@ -329,9 +329,9 @@ static void TestBehaviour(void)
     maudDestroyReverb(nullptr);
     maudReverbDef def = maudDefaultReverbDef();
     maudReverb* none = (maudReverb*)&def;
-    def.sampleRate = 32000.0f;
+    def.sampleRate = 32000;
     CHECK(maudCreateReverb(&def, &none) == maud_errorInvalid && none == nullptr, "32 kHz");
-    float ends[2] = {44100.0f, 384000.0f};
+    uint32_t ends[2] = {44100, 384000};
     for (int i = 0; i < 2; ++i)
     {
         def.sampleRate = ends[i];
