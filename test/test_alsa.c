@@ -149,16 +149,16 @@ static int ThreadsAfterJoin(void)
 }
 
 // The stream's rate by its own clock (test_clock.h), in windows of 2 s
-// judged by the graph's and the stream's xruns and the machine's
-// promptness (test_daemon.h), the context drained meanwhile. A window's
-// rate is off by where its two clock stamps fall: through the PulseAudio
-// plugin, clean windows of a second spread from -1.9 to +2.0 % on a
-// loaded machine, as wide as the 2 % a rate is judged by, and windows of
-// 2 s spread a third as much on the same machine.
+// judged by the graph's and the stream's xruns, the machine's promptness
+// (test_daemon.h) and the plugin's latency holding, the context drained
+// meanwhile. A window's rate is off by where its two clock stamps fall:
+// through the PulseAudio plugin, clean windows of a second spread from
+// -1.9 to +2.0 % on a loaded machine, as wide as the 2 % a rate is judged
+// by, and windows of 2 s spread a third as much on the same machine.
 static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
 {
     GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 2000};
-    return StreamClockRate(context, stream, GraphWindow, &watch, 0.0);
+    return StreamClockRate(context, stream, GraphWindow, &watch, RATE_SETTLE_SHARE);
 }
 
 static bool KeyIs(const maudContext* context, maudDeviceId device, const char* key)

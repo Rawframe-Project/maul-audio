@@ -680,12 +680,15 @@ static bool WaitForLinkIntoPlugged(maudContext* context, Helper* helper)
 }
 
 // The stream's rate by its own clock (test_clock.h), in windows of a
-// second judged by the graph's and the stream's xruns and the machine's
-// promptness (test_daemon.h), the context drained meanwhile.
+// second judged by the graph's and the stream's xruns, the machine's
+// promptness (test_daemon.h) and the latency holding, the context drained
+// meanwhile. The latency is the device's delay and the frames queued
+// ahead of the stream's buffer, which a stall can move; on the fixture's
+// null sink both stay at 0.
 static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
 {
     GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 1000};
-    return StreamClockRate(context, stream, GraphWindow, &watch, 0.0);
+    return StreamClockRate(context, stream, GraphWindow, &watch, RATE_SETTLE_SHARE);
 }
 
 static maudStreamId OpenStream(maudContext* context, maudDirection direction, maudDeviceId device,
