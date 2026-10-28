@@ -1378,6 +1378,7 @@ int main(int argc, char** argv)
 {
     s_moveOnly = argc > 1 && strcmp(argv[1], "move") == 0;
     s_defaultsOnly = argc > 1 && strcmp(argv[1], "defaults") == 0;
+    bool rateOnly = argc > 1 && strcmp(argv[1], "rate") == 0;
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
     maudResult result = maudCreateContext(&def, &context);
@@ -1397,6 +1398,14 @@ int main(int argc, char** argv)
     if (result != maud_success)
     {
         return 1;
+    }
+    // An output stream's rate check alone, which pipewire_starved runs with
+    // every measure starved to check the suite's inconclusive ending.
+    if (rateOnly)
+    {
+        TestOutputStream(context);
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        return RateSuiteResult();
     }
     if (s_moveOnly || s_defaultsOnly)
     {
@@ -1427,7 +1436,7 @@ int main(int argc, char** argv)
             CHECK(DriveDaemon("stop", "") && DriveDaemon("start", ""),
                   "a new server for the suites after");
         }
-        return s_failures == 0 ? 0 : 1;
+        return RateSuiteResult();
     }
     TestTheDaemonsDevices(context);
     Helper helper;
@@ -1453,5 +1462,5 @@ int main(int argc, char** argv)
     StopHelper(&helper);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestLimits();
-    return s_failures == 0 ? 0 : 1;
+    return RateSuiteResult();
 }
