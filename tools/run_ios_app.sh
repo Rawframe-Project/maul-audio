@@ -16,6 +16,16 @@ set -eu
 launch_limit=300
 run_limit=120
 
+# Ends a process this run started and every process under it, by PID,
+# deepest first, so nothing it started outlives it however its tools
+# start one another.
+kill_tree() { # pid
+    for below in $(pgrep -P "$1" 2>/dev/null); do
+        kill_tree "$below"
+    done
+    kill "$1" 2>/dev/null || true
+}
+
 # Runs a command in the background with its output in a file, ending it
 # past a bound in seconds; fails, naming what took too long.
 bounded() { # seconds, what, output file, command...
@@ -28,9 +38,7 @@ bounded() { # seconds, what, output file, command...
     waited=0
     while kill -0 "$child" 2>/dev/null; do
         if [ "$waited" -ge "$limit" ]; then
-            # The command's own processes first: they are this run's.
-            pkill -P "$child" 2>/dev/null || true
-            kill "$child" 2>/dev/null || true
+            kill_tree "$child"
             echo "$what took more than $limit s"
             return 1
         fi
