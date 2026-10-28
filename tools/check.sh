@@ -198,6 +198,8 @@ source_checks() {
     python3 tools/check_docs.py
     python3 tools/check_guide.py
     python3 tools/check_litmus.py
+    python3 tools/check_patch_results.py --self-test
+    python3 tools/check_patch_results.py
     python3 tools/cost_table.py --check
     python3 tools/check_test_hygiene.py --self-test
     python3 tools/check_test_hygiene.py
