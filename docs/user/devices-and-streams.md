@@ -23,7 +23,7 @@ A context connects to one backend and holds the streams opened through it. A str
 
 `maud_backendOffline` plays to no hardware; see [Offline rendering](offline-rendering.md).
 
-The context def's limits (streams, the longest period, devices, notifications, the bytes of a device's name) size everything the context will hold; it allocates them once, when it is made. A request past a limit is refused with `maud_errorCapacity`. `maudDestroyContext` stops and destroys every stream it still holds.
+The context def's limits (streams, the longest period, devices, notifications, the bytes of a device's name) size everything the context will hold; it allocates them once, when it is made. Each limit has a ceiling in `context.h` (`MAUD_MAX_STREAMS`, `MAUD_MAX_PERIOD_FRAMES`, `MAUD_MAX_DEVICES`, `MAUD_MAX_NOTIFICATIONS`, `MAUD_MAX_DEVICE_TEXT_BYTES`), and a def past one is refused with `maud_errorLimit`. A request past a limit is refused with `maud_errorCapacity`. `maudDestroyContext` stops and destroys every stream it still holds.
 
 ## Devices
 

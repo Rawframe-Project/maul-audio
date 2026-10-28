@@ -28,6 +28,24 @@ static void* Alloc(size_t size, size_t alignment, void* context)
     return malloc(size);
 }
 
+// An allocator with no memory, so that a context at its largest limits
+// gets past the def's checks without taking the memory they would need.
+static void* Refuse(size_t size, size_t alignment, void* context)
+{
+    (void)size;
+    (void)alignment;
+    (void)context;
+    return nullptr;
+}
+
+static void Release(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)memory;
+    (void)size;
+    (void)alignment;
+    (void)context;
+}
+
 static void Silence(const maudStreamBlock* block, void* user)
 {
     (void)block;
@@ -49,7 +67,7 @@ static void TestContextDefs(void)
           "no def");
     CHECK(maudCreateContext(&def, nullptr) == maud_errorInvalid, "nowhere to put it");
     static int s_vm;
-    maudContextDef bad[11];
+    maudContextDef bad[15];
     for (int i = 0; i < COUNT(bad); ++i)
     {
         bad[i] = def;
@@ -65,11 +83,15 @@ static void TestContextDefs(void)
     bad[8].offlineSampleRate = 384001;
     bad[9].androidJavaVm = &s_vm;
     bad[10].backend = maud_backendPrivate + 1;
+    bad[11].limits.streams = MAUD_MAX_STREAMS + 1;
+    bad[12].limits.devices = MAUD_MAX_DEVICES + 1;
+    bad[13].limits.notifications = MAUD_MAX_NOTIFICATIONS + 1;
+    bad[14].limits.deviceTextBytes = MAUD_MAX_DEVICE_TEXT_BYTES + 1;
     bool refused = true;
     for (int i = 0; i < COUNT(bad); ++i)
     {
         context = (maudContext*)&context;
-        maudResult want = i == 5 ? maud_errorLimit : maud_errorInvalid;
+        maudResult want = i == 5 || i >= 11 ? maud_errorLimit : maud_errorInvalid;
         bool one = maudCreateContext(&bad[i], &context) == want && context == nullptr;
         if (!one)
         {
@@ -82,6 +104,22 @@ static void TestContextDefs(void)
         refused = refused && one;
     }
     CHECK(refused, "a context def field out of range");
+    // Each limit at its largest is no limit refusal: it reaches the
+    // allocator, which here has no memory.
+    maudContextDef largest[4] = {def, def, def, def};
+    largest[0].limits.streams = MAUD_MAX_STREAMS;
+    largest[1].limits.devices = MAUD_MAX_DEVICES;
+    largest[2].limits.notifications = MAUD_MAX_NOTIFICATIONS;
+    largest[3].limits.deviceTextBytes = MAUD_MAX_DEVICE_TEXT_BYTES;
+    bool allowed = true;
+    for (int i = 0; i < COUNT(largest); ++i)
+    {
+        largest[i].allocator = (maudAllocator){Refuse, Release, nullptr};
+        context = (maudContext*)&context;
+        allowed = allowed && maudCreateContext(&largest[i], &context) == maud_errorCapacity &&
+                  context == nullptr;
+    }
+    CHECK(allowed, "each limit at its MAUD_MAX_* constant allowed");
     maudContextDef bounds[3] = {def, def, def};
     bounds[0].offlineSampleRate = 8000;
     bounds[1].offlineSampleRate = 384000;
