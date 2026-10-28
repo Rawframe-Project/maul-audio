@@ -75,6 +75,11 @@ static void TestNotClean(void)
     CountRateWindow(&unstamped, &before, &after, true);
     CHECK(unstamped.clean == 0 && unstamped.stalled == 0 && unstamped.windows == 1,
           "a window from an unstamped read counts as neither");
+    CHECK(!RateHolds(unstamped, 48000.0) && s_rateStarved == 0 && s_rateSettling == 0,
+          "short of clean windows with neither a stall nor a settling one: failed");
+    ClockRate unread = {0};
+    CHECK(!RateHolds(unread, 48000.0) && s_rateStarved == 0 && s_rateSettling == 0,
+          "a measure whose clock could not be read: failed");
 }
 
 // A clock read whose heard time carries latency nanoseconds.
