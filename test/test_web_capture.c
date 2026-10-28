@@ -166,6 +166,12 @@ EM_JS(void, SetFrame, (int frame), {
 // late.
 EM_JS(void, Late, (double ms), { globalThis.maudSim.once = ms; });
 
+// Sets the context's output latency, which Chrome gives in whole
+// milliseconds and updates apart from its timestamp.
+EM_JS(void, OutputLatency, (double seconds), {
+    globalThis.maudWeb.contexts.filter(function (e) { return e !== null; })[0].context.outputLatency = seconds;
+});
+
 // The context runs `quanta` while the microphone's frames never reach
 // the capture node: frames the browser lost before the stream got them.
 EM_JS(void, Skip, (int quanta), { globalThis.maudSim.frame += 128 * quanta; });
@@ -330,6 +336,20 @@ static double Run(int quanta)
     return Taken();
 }
 
+// Three deliveries of a quantum each, the most a capture's clock takes
+// before its filter does, after a start or a reset; the frame-0 time
+// after the last.
+static double Settle(void)
+{
+    double taken = 0.0;
+    for (int i = 0; i < 3; ++i)
+    {
+        Pull(1);
+        taken = TakeAll();
+    }
+    return taken;
+}
+
 // After the grant: the frames, the clock three ways, and the ring's
 // overruns.
 static void Granted(void* user)
@@ -461,8 +481,7 @@ static void FilterGranted(void* user)
           "in the context's first quarter second no stamp counts");
     Skip(100);
     Stamp(3);
-    Pull(3);
-    double held = TakeAll();
+    double held = Settle();
     Pull(3);
     double still = TakeAll();
     if (still < held - 1000.0 || still > held + 1000.0)
@@ -503,8 +522,7 @@ static void FilterGranted(void* user)
     // 5 s, and the clock follows it.
     Stamp(4);
     NewRoute();
-    Pull(1);
-    double steady = TakeAll();
+    double steady = Settle();
     maudStreamStatus status = {0};
     CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
     uint64_t overruns = status.overruns;
@@ -533,6 +551,50 @@ static void FilterGranted(void* user)
         printf("61 ms later for 5.5 s: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
                lost - steady, (unsigned long long)status.overruns, (unsigned long long)overruns);
         CHECK(false, "61 ms later for good is frames lost: one overrun, and the clock follows");
+    }
+    // The output latency 2 ms higher in one delivery of five, as Chrome's
+    // whole-millisecond figure comes in apart from its timestamp: each
+    // such delivery places frame 0 2 ms earlier, a low the clock does not
+    // keep. Then 2 ms higher for good: the clock follows by the
+    // third delivery and not before.
+    // A new route whose first delivery comes with the output latency 2 ms
+    // higher, 2 ms early: the clock follows it until enough deliveries are
+    // in for a median, and does not hold it after.
+    NewRoute();
+    OutputLatency(0.012);
+    Pull(1);
+    double low = TakeAll();
+    OutputLatency(0.01);
+    double before = Run(20);
+    if (before < low + 1999000.0 || before > low + 2001000.0)
+    {
+        printf("first low: frame 0 %.0f ns from the low delivery\n", before - low);
+        CHECK(false, "a low first delivery after a new route is not held");
+    }
+    for (int i = 0; i < 40; ++i)
+    {
+        OutputLatency(i % 5 == 2 ? 0.012 : 0.01);
+        Pull(1);
+        (void)TakeAll();
+    }
+    double jittered = Run(20);
+    if (jittered < before - 1000.0 || jittered > before + 1000.0)
+    {
+        printf("jitter: frame 0 %.0f ns from before\n", jittered - before);
+        CHECK(false, "the output latency's jitter leaves the clock where it was");
+    }
+    OutputLatency(0.012);
+    double moved[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        Pull(1);
+        moved[i] = TakeAll() - before;
+    }
+    OutputLatency(0.01);
+    if (moved[0] < -1000.0 || moved[1] < -1000.0 || moved[2] < -2001000.0 || moved[2] > -1999000.0)
+    {
+        printf("step: frame 0 %.0f, %.0f, %.0f ns from before\n", moved[0], moved[1], moved[2]);
+        CHECK(false, "a lasting 2 ms step reaches the clock by the third delivery");
     }
     Stamp(0);
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy the capture");
