@@ -158,7 +158,7 @@ static int ThreadsAfterJoin(void)
 static ClockRate MeasureRate(maudContext* context, maudStreamId stream)
 {
     GraphWatch watch = {.context = context, .stream = stream, .milliseconds = 2000};
-    return StreamClockRate(context, stream, GraphWindow, &watch);
+    return StreamClockRate(context, stream, GraphWindow, &watch, 0.0);
 }
 
 static bool KeyIs(const maudContext* context, maudDeviceId device, const char* key)

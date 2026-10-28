@@ -101,12 +101,13 @@ typedef bool RateWindowFn(void* user);
 #define RATE_MAX_WINDOWS   30
 #define RATE_MAX_SECONDS   45
 // One window as measured, for the report of a measure that fails: its
-// rate (0 without a span), whether it was clean, and the clock read that
-// ends it.
+// rate (0 without a span), whether it was clean, whether its latency was
+// settling, and the clock read that ends it.
 typedef struct RateWindow
 {
     double rate;
     bool clean;
+    bool settling;
     maudStreamClock end;
 } RateWindow;
 typedef struct ClockRate
@@ -114,7 +115,12 @@ typedef struct ClockRate
     double rate;
     int clean;
     int stalled;
+    int settling;
     int windows;
+    // The most the latency may move over a window, as a share of its
+    // span, before the window counts as settling; 0 judges windows by the
+    // platform's stalls alone.
+    double settleShare;
     // The clock read the first window starts at, every window, and the
     // clean windows' rates.
     maudStreamClock start;
@@ -126,20 +132,55 @@ typedef struct ClockRate
 // second; clean says whether the platform reported no stall in it. A
 // clean window between two stamped reads a positive span apart counts,
 // at the rate the positions show: 0 for a clock that stood still, which
-// then fails as a wrong rate, never as starved.
+// then fails as a wrong rate, never as starved. A clock's host time
+// carries its latency, so a window's rate is off by the latency's move
+// over its span: one that moved by more than the measure's settleShare
+// of the span counts as settling, not clean, as after a server's stall
+// while it fills its buffer again (#73).
 static inline void CountRateWindow(ClockRate* measured, const maudStreamClock* first,
                                    const maudStreamClock* second, bool clean)
 {
     double span = (double)(second->hostNanoseconds - first->hostNanoseconds);
     bool timed = first->hostNanoseconds != 0 && span > 0.0;
     double rate = timed ? (double)(second->position - first->position) * 1e9 / span : 0.0;
-    measured->each[measured->windows] = (RateWindow){rate, clean, *second};
+    double moved = (double)(second->latencyNanoseconds - first->latencyNanoseconds);
+    bool settling = clean && timed && measured->settleShare > 0.0 &&
+                    (moved < 0 ? -moved : moved) > measured->settleShare * span;
+    measured->each[measured->windows] = (RateWindow){rate, clean, settling, *second};
     measured->windows += 1;
     measured->stalled += clean ? 0 : 1;
-    if (clean && timed)
+    measured->settling += settling ? 1 : 0;
+    if (clean && timed && !settling)
     {
         measured->rates[measured->clean++] = rate;
     }
+}
+
+// A window waiting for the verdict of the one after it. The graph's xrun
+// count, as GraphWindow reads it through pw-top, lags its window by one
+// window: a stall's frames are lost in the window it falls in and its
+// xruns counted in the next (#73). So a window counts as clean only if
+// the window after it was clean too, which holds for a lag of 0 or 1.
+typedef struct PendingWindow
+{
+    maudStreamClock first;
+    maudStreamClock second;
+    bool clean;
+    bool waiting;
+} PendingWindow;
+
+// Takes the verdict of the window between first and second: counts the
+// window waiting before it, clean only if both were, and leaves this one
+// waiting for the next.
+static inline void JudgeRateWindow(ClockRate* measured, PendingWindow* pending,
+                                   const maudStreamClock* first, const maudStreamClock* second,
+                                   bool clean)
+{
+    if (pending->waiting)
+    {
+        CountRateWindow(measured, &pending->first, &pending->second, pending->clean && clean);
+    }
+    *pending = (PendingWindow){*first, *second, clean, true};
 }
 
 // Sets a measure's rate to the median of its clean windows' once it has
@@ -170,11 +211,14 @@ static inline void SettleRate(ClockRate* measured)
 // against the wall clock fall short in a stall or run over with its
 // backlog. A stall the platform reports (a graph that skipped cycles
 // really plays fewer frames) spoils the window: it measures the machine.
-// The window before the first only starts the referee's count.
+// The window before the first only starts the referee's count, and each
+// window is judged once the one after it is in (JudgeRateWindow). A
+// window whose latency moved by more than settleShare of its span is
+// settling (CountRateWindow); 0 leaves that judgement out.
 static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId stream,
-                                        RateWindowFn* window, void* user)
+                                        RateWindowFn* window, void* user, double settleShare)
 {
-    ClockRate measured = {0};
+    ClockRate measured = {.settleShare = settleShare};
     maudStreamClock first = {0};
     (void)window(user);
     if (maudGetStreamClock(context, stream, &first) != maud_success)
@@ -183,6 +227,7 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
     }
     measured.start = first;
     int64_t deadline = maudGetHostNanoseconds() + RATE_MAX_SECONDS * 1000000000LL;
+    PendingWindow pending = {0};
     while (measured.windows < RATE_MAX_WINDOWS && measured.clean < RATE_CLEAN_WINDOWS &&
            maudGetHostNanoseconds() < deadline)
     {
@@ -192,7 +237,7 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
         {
             return measured;
         }
-        CountRateWindow(&measured, &first, &second, clean);
+        JudgeRateWindow(&measured, &pending, &first, &second, clean);
         first = second;
     }
     SettleRate(&measured);
@@ -220,28 +265,35 @@ static inline void PrintRateWindows(const ClockRate* measured)
     fprintf(stderr, "rate: starts at frame %llu, host %lld ns, latency %lld ns\n",
             (unsigned long long)start->position, (long long)start->hostNanoseconds,
             (long long)start->latencyNanoseconds);
+    int64_t latency = start->latencyNanoseconds;
     for (int i = 0; i < measured->windows; ++i)
     {
         const RateWindow* window = &measured->each[i];
+        const char* verdict = !window->clean ? "stalled" : window->settling ? "settling" : "clean";
         fprintf(stderr,
-                "rate: window %d %s, %.0f frames/s, to frame %llu, host %lld ns, latency %lld ns\n",
-                i + 1, window->clean ? "clean" : "stalled", window->rate,
-                (unsigned long long)window->end.position, (long long)window->end.hostNanoseconds,
-                (long long)window->end.latencyNanoseconds);
+                "rate: window %d %s, %.0f frames/s, to frame %llu, host %lld ns, latency %lld ns "
+                "(%+lld)\n",
+                i + 1, verdict, window->rate, (unsigned long long)window->end.position,
+                (long long)window->end.hostNanoseconds, (long long)window->end.latencyNanoseconds,
+                (long long)(window->end.latencyNanoseconds - latency));
+        latency = window->end.latencyNanoseconds;
     }
 }
 
 // Whether a measure shows the expected rate. Without enough clean
-// windows it fails as starved, with the count, so that a machine short of
-// CPU reads as such and never as a wrong rate. A measure that fails
+// windows it fails as that, by name and with the counts, so that a
+// machine short of CPU reads as such and never as a wrong rate, nor
+// passes on too few. A measure that fails
 // prints its windows.
 static inline bool RateHolds(ClockRate measured, double expected)
 {
     bool holds = measured.clean == RATE_CLEAN_WINDOWS && RateIsNear(measured.rate, expected);
     if (measured.clean < RATE_CLEAN_WINDOWS)
     {
-        fprintf(stderr, "starved: %d of %d windows had xruns or a late wakeup\n", measured.stalled,
-                measured.windows);
+        fprintf(stderr,
+                "not enough clean windows: %d of %d had xruns or a late wakeup in them or the "
+                "window after, %d a settling latency\n",
+                measured.stalled, measured.windows, measured.settling);
     }
     if (!holds)
     {
