@@ -34,7 +34,7 @@ extern "C"
         // cookie and this stay the first two fields in every version.
         uint32_t version;
         // The rate it runs at, 44,100 to 384,000 Hz.
-        float sampleRate;
+        uint32_t sampleRate;
         // The longest input delay it will be asked for, 0 to 4 s.
         float maxDelay;
         // Whether it renders a slower second slope (the params' tail):
@@ -88,7 +88,7 @@ extern "C"
 #endif
         def.cookie = MAUD_REVERB_DEF_COOKIE;
         def.version = MAUD_ABI_VERSION;
-        def.sampleRate = 48000.0f;
+        def.sampleRate = 48000;
         return def;
     }
 

@@ -268,8 +268,7 @@ static void TestTurn(void)
 static void TestMisuse(void)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    CHECK(def.reflectionOrder == 0 && def.reflectionDuration == 1.0f &&
-              def.reflectionRate == 48000.0f,
+    CHECK(def.reflectionOrder == 0 && def.reflectionDuration == 1.0f && def.reflectionRate == 48000,
           "the default: none, 1 s at 48 kHz when asked for");
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "no reflections");
@@ -304,16 +303,16 @@ static void TestMisuse(void)
     def.reflectionDuration = 0.01f;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "too short");
     def.reflectionDuration = 1.0f;
-    def.reflectionRate = 8000.0f;
+    def.reflectionRate = 8000;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "8 kHz");
     // The longest responses at the highest rate are in range: with an
     // allocator that refuses, they fail for memory, not as invalid.
     maudSpatializerDef longest = def;
     longest.reflectionDuration = 4.0f;
-    longest.reflectionRate = 384000.0f;
+    longest.reflectionRate = 384000;
     longest.allocator = (maudAllocator){Refuse, Ignore, nullptr};
     CHECK(maudCreateSpatializer(&longest, &none) == maud_errorCapacity, "4 s at 384 kHz");
-    def.reflectionRate = 48000.0f;
+    def.reflectionRate = 48000;
     def.reverbRays = 0;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "reflections without rays");
 }

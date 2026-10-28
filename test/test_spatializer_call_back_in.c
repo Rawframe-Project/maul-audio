@@ -278,7 +278,7 @@ static void TestEachCounted(void)
     def.reverbRays = 64;
     def.reflectionOrder = 1;
     def.reflectionDuration = 0.05f;
-    def.reflectionRate = 48000.0f;
+    def.reflectionRate = 48000;
     maudSpatializer* r = nullptr;
     CHECK(maudCreateSpatializer(&def, &r) == maud_success, "a spatializer with reflections");
     const maudQuaternion none = {0.0f, 0.0f, 0.0f, 0.0f};

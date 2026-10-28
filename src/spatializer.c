@@ -123,8 +123,8 @@ static bool ReverbValid(const maudSpatializerDef* def)
     }
     bool reflections = def->reflectionOrder == 0 ||
                        (def->reverbRays > 0 && def->reflectionDuration >= 0.05f &&
-                        def->reflectionDuration <= 4.0f && def->reflectionRate >= 44100.0f &&
-                        def->reflectionRate <= 384000.0f);
+                        def->reflectionDuration <= 4.0f && def->reflectionRate >= 44100 &&
+                        def->reflectionRate <= 384000);
     return reflections;
 }
 
@@ -174,7 +174,7 @@ static bool Allocate(maudSpatializer* s, const maudSpatializerDef* def)
         uint32_t batches = maudReverbBatches(def->reverbRays);
         s->reflections =
             maudCreateReflections(&def->allocator, def->reflectionOrder, def->reflectionDuration,
-                                  def->reflectionRate, batches);
+                                  (float)def->reflectionRate, batches);
         all = s->reflections != nullptr;
         if (all)
         {

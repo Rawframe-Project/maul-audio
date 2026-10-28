@@ -163,13 +163,13 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what, maudResult* w
     case 19:
         d->reflectionOrder = 1;
         d->reflectionDuration = 0.1f;
-        d->reflectionRate = 44099.0f;
+        d->reflectionRate = 44099;
         *what = "reflections at 44,099 Hz";
         return true;
     case 20:
         d->reflectionOrder = 1;
         d->reflectionDuration = 0.1f;
-        d->reflectionRate = 384001.0f;
+        d->reflectionRate = 384001;
         *what = "reflections at 384,001 Hz";
         return true;
     case 21:
@@ -229,7 +229,7 @@ static bool Bound(maudSpatializerDef* d, int k, const char** what)
     case 3:
         d->reflectionOrder = 3;
         d->reflectionDuration = 0.05f;
-        d->reflectionRate = 44100.0f;
+        d->reflectionRate = 44100;
         *what = "order 3 over 0.05 s at 44.1 kHz";
         return true;
     case 4:
