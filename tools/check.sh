@@ -258,12 +258,18 @@ mapfile -t files < <(all_c_files)
 [ ${#files[@]} -gt 0 ] || { echo "no C files found" >&2; exit 1; }
 clang-format --dry-run -Werror "${files[@]}"
 
-step "clang-tidy over the Linux build's sources"
-configure tidy -DCMAKE_C_COMPILER=clang-20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DMAUL_AUDIO_BUILD_TESTS=OFF
-cmake --build "$out/check-tidy" -j "$jobs" >>"$out/check-tidy.log"
-mapfile -t tidy < <(python3 -c "import json; print('\n'.join(sorted({e['file'] for e in json.load(open('$out/check-tidy/compile_commands.json')) if '/src/' in e['file']})))")
-[ ${#tidy[@]} -gt 0 ] || { echo "no sources for clang-tidy" >&2; exit 1; }
-for f in "${tidy[@]}"; do clang-tidy-20 -p "$out/check-tidy" --quiet --warnings-as-errors='*' "$f" 2>/dev/null; done
+# As CI's checks job: on the Release preset, where the assertions compile
+# out, and with them live. Each hides findings the other shows.
+for build in Release Debug; do
+    step "clang-tidy over the Linux build's sources, $build"
+    tree=$out/check-tidy-$build
+    cmake --preset linux-clang-20 -B "$tree" -DCMAKE_BUILD_TYPE=$build \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DMAUL_AUDIO_BUILD_TESTS=OFF >"$tree.log"
+    mapfile -t tidy < <(python3 -c "import json; print('\n'.join(sorted({e['file'] for e in json.load(open('$tree/compile_commands.json')) if '/src/' in e['file']})))")
+    [ ${#tidy[@]} -gt 0 ] || { echo "no sources for clang-tidy" >&2; exit 1; }
+    printf '%s\n' "${tidy[@]}" | xargs -P "$jobs" -n 1 clang-tidy-20 -p "$tree" --quiet \
+        --warnings-as-errors='*' 2>/dev/null
+done
 
 preset linux-gcc-14
 preset linux-clang-20-asan
