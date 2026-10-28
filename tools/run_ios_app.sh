@@ -1,7 +1,7 @@
 #!/bin/sh
-# Runs a test application in the iOS simulator: grants it the
-# microphone, installs the bundle on the booted device (or the one
-# MAUD_IOS_DEVICE names), launches it with its output in a file, and
+# Runs a test application in the iOS simulator: installs the bundle on
+# the booted device (or the one MAUD_IOS_DEVICE names), grants it the
+# microphone, launches it with its output in a file, and
 # waits, two minutes at most, for the closing line the test prints,
 # "result: N failures". simctl launch returns once the application runs,
 # not when it ends, so the runner ends it. Passes when the line says 0
