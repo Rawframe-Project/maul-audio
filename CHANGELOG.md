@@ -5,6 +5,22 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.2.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.1.0...v0.2.0) (2026-10-28)
+
+### Changed
+
+- **Breaking:** malformed `.maudhrtf` and `.maudbake` bytes are refused with the new `maud_errorFormat` (-8) instead of `maud_errorInvalid`, by `maudLoadHrtf` and `maudLoadProbeSet`. A count past a published `MAUD_MAX_*` constant, or below a `MAUD_MIN_*` one, is refused with the new `maud_errorLimit` (-9) instead of `maud_errorInvalid`. This covers the context's `limits.periodFrames` and `limits.notifications`, a stream's `objectCount`, an ambisonic `order`, the spatializer's, acoustic scene's and binaural renderer's capacities, and a probe box's columns, which was `maud_errorCapacity`. Most of these bounds were private and are now public constants beside their API, such as `MAUD_MAX_SOURCES`, `MAUD_MAX_TRIANGLES` and `MAUD_MAX_PROBE_COLUMNS` (16,777,216 columns; the documentation used to say 4,194,304). `maudProcessBinaural` and `maudDecodeBinaural` refuse more frames than the def's `maxFrames` with `maud_errorCapacity` instead of `maud_errorInvalid`. A program that tests for `maud_errorInvalid` after these calls tests for the new results ([#121](https://github.com/Rawframe-Project/maul-audio/pull/121)).
+- **Breaking:** a call refused because the object is running host code (a stream's callback, an allocator, a spatializer's ray or task hook), or because another thread is rendering the stream, returns the new `maud_errorBusy` (-10) instead of `maud_errorState`. The same call succeeds once that work ends. `maud_errorState` now means only a state another call changes, such as a stopped stream ([#124](https://github.com/Rawframe-Project/maul-audio/pull/124)).
+- **Breaking:** `maudSimulateReverb`, `maudRenderReflections`, `maudCreateProbeSet` (generating probes) and `maudBakeProbeSet` return `maud_errorUnsupported` (-4) instead of `maud_errorState` when the spatializer was created without the estimates, reflections, closest-hit query or rays the call needs. No later call can add those, so retrying is pointless ([#126](https://github.com/Rawframe-Project/maul-audio/pull/126)).
+- **Breaking:** `maudCreateContext` refuses a `limits.periodFrames` past `MAUD_MAX_PERIOD_FRAMES` (1,048,576 frames, over 20 seconds at 48 kHz) with `maud_errorLimit`. A duplex stream created under a larger limit used to hang ([#112](https://github.com/Rawframe-Project/maul-audio/pull/112)).
+
+### Fixed
+
+- `maudCreateContext` refuses, with `maud_errorCapacity`, limits whose memory block the address space cannot hold. Where `size_t` has 32 bits, as on the web, the largest limits used to create a context over too small a block, and destroying it then crashed ([#108](https://github.com/Rawframe-Project/maul-audio/pull/108)).
+- A device rate the platform reports outside 8,000 to 384,000 frames per second, or not a number, reads as unknown (0) instead of reaching the device list. A native stream on such a device keeps its own rate. This covers WASAPI's device format, Core Audio's nominal rate and rate ranges, and PipeWire's `clock.rate` and `clock.force-rate`. Core Audio's rate used to be converted without a range check ([#120](https://github.com/Rawframe-Project/maul-audio/pull/120)).
+- Core Audio: a device's channel count reads only within the configuration the system returned, and counts none for a list claiming more buffers than its bytes hold ([#114](https://github.com/Rawframe-Project/maul-audio/pull/114)).
+- Web: a capture stream's block times no longer read early. In Chrome the output latency the capture clock subtracts jitters by about 2 ms, and the clock kept every low of that jitter, so captured frames were placed up to a few milliseconds early, more the longer the stream ran. A capture's frame times now follow the median of its last five deliveries, and a lasting change reaches them by the third. This changes the times of web capture blocks: a program that lines up captured sound with what it plays, such as an echo canceller or a latency measure, sees them a few milliseconds later and steadier. Output streams are unchanged ([#134](https://github.com/Rawframe-Project/maul-audio/pull/134)).
+
 ## [0.1.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.4...v0.1.0) (2026-10-27)
 
 ### Changed
