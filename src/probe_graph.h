@@ -57,10 +57,10 @@ typedef struct maudProbeGraph
 // Whether a def's values are in range (points finite, a valid box).
 bool maudProbeSetDefValid(const maudProbeSetDef* def);
 
-// Builds a set for a valid def. maud_errorState when it asks for
-// generation without a closest-hit query; maud_errorCapacity past the
-// limits or the columns' cap, or when memory runs out. The graph is
-// zeroed on failure.
+// Builds a set for a valid def. maud_errorUnsupported when it asks for
+// generation without a closest-hit query; maud_errorLimit past
+// MAUD_MAX_PROBE_COLUMNS; maud_errorCapacity past the limits or when
+// memory runs out. The graph is zeroed on failure.
 maudResult maudBuildProbeGraph(const maudProbeQueries* queries, const maudProbeSetDef* def,
                                maudProbeGraph* graph);
 

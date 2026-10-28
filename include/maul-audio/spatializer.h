@@ -519,8 +519,9 @@ extern "C"
     /// @param spatializer  The spatializer.
     /// @param listener     The listener's pose.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a value
-    ///         that is not finite or a zero orientation; `maud_errorState` when
-    ///         the def asked for no estimates; `maud_errorBusy` when host code
+    ///         that is not finite or a zero orientation;
+    ///         `maud_errorUnsupported` when the def asked for no estimates;
+    ///         `maud_errorBusy` when host code
     ///         the spatializer is running (its hooks or allocator) makes the
     ///         call, which counts as misuse.
     /// @par Thread safety
@@ -576,7 +577,7 @@ extern "C"
     /// @param frames       The frames; 0 does nothing.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or
     ///         an orientation of zero length or not finite;
-    ///         `maud_errorState` when the def asked for no reflections.
+    ///         `maud_errorUnsupported` when the def asked for no reflections.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The rendering side is
     /// used by one thread at a time.
@@ -616,8 +617,9 @@ extern "C"
     /// @param setOut       Receives the set; 0 on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def
     ///         without its cookie, a value out of range or not finite, or
-    ///         neither points nor a box (one with height); `maud_errorState` to
-    ///         generate without a closest-hit query; `maud_errorLimit` for a
+    ///         neither points nor a box (one with height);
+    ///         `maud_errorUnsupported` to generate on a spatializer without a
+    ///         closest-hit query; `maud_errorLimit` for a
     ///         box of more than MAUD_MAX_PROBE_COLUMNS (16,777,216) columns;
     ///         `maud_errorCapacity` when the spatializer has its capacity of
     ///         sets, past maxProbes or maxProbePairs, or when memory runs out;
@@ -692,8 +694,9 @@ extern "C"
     /// @param set          The set.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer or a
     ///         0 or unknown id; `maud_errorStale` for a destroyed set's id;
-    ///         `maud_errorState` without reverberation rays or a closest-hit
-    ///         query; `maud_errorCapacity` when memory runs out (an earlier
+    ///         `maud_errorUnsupported` on a spatializer without reverberation
+    ///         rays or a closest-hit query; `maud_errorCapacity` when memory
+    ///         runs out (an earlier
     ///         bake is then gone); `maud_errorBusy` when host code the
     ///         spatializer is running (its hooks or allocator) makes the call,
     ///         which counts as misuse.

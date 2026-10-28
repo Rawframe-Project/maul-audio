@@ -97,7 +97,8 @@ extern "C"
         // An id names an object that no longer exists.
         maud_errorStale = -3,
         // This platform, this device or this build cannot do what was
-        // asked.
+        // asked, or the object was made without the feature the call needs
+        // (a spatializer without reflections): no later call can add it.
         maud_errorUnsupported = -4,
         // The platform failed a call the library made.
         maud_errorPlatform = -5,

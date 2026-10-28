@@ -754,7 +754,7 @@ static MAUD_NOINLINE maudResult SimulateReverb(maudSpatializer* spatializer,
     }
     if (spatializer->trace.rays == 0)
     {
-        return maud_errorState;
+        return maud_errorUnsupported;
     }
     maudSpatializerRunHost(spatializer, true);
     EstimateReverb(spatializer, listener);
@@ -869,7 +869,7 @@ maudResult maudRenderReflections(maudSpatializer* spatializer, const maudQuatern
     }
     if (spatializer->reflections == nullptr)
     {
-        return maud_errorState;
+        return maud_errorUnsupported;
     }
     uint32_t channels = maudReflectionsOrder(spatializer->reflections) + 1;
     channels *= channels;

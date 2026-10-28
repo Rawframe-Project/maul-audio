@@ -178,7 +178,8 @@ static void TestMisuse(maudSpatializer* s)
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_success, "no queries");
     def = maudDefaultProbeSetDef();
     def.boxMax = (maudVector3){1.0f, 1.0f, 1.0f};
-    CHECK(maudCreateProbeSet(blind, &def, &set) == maud_errorState, "generation without hits");
+    CHECK(maudCreateProbeSet(blind, &def, &set) == maud_errorUnsupported,
+          "generation without hits");
     maudDestroySpatializer(blind);
     sd.probeSetCapacity = 0;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_success &&

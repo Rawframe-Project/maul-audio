@@ -264,7 +264,7 @@ static MAUD_NOINLINE maudResult BakeProbeSet(maudSpatializer* spatializer, maudP
     }
     if (s->trace.rays == 0 || s->closestHit == nullptr)
     {
-        return maud_errorState;
+        return maud_errorUnsupported;
     }
     maudSpatializerRunHost(s, true);
     bool baked = Bake(s, graph, bake);

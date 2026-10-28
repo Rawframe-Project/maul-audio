@@ -217,7 +217,7 @@ static void TestMisuse(void)
     maudDestroySpatializer(s);
     def.reverbRays = 0;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "no estimates");
-    CHECK(maudSimulateReverb(s, &s_listener) == maud_errorState, "estimates refused");
+    CHECK(maudSimulateReverb(s, &s_listener) == maud_errorUnsupported, "estimates refused");
     maudDestroySpatializer(s);
     maudSpatializer* none = nullptr;
     def.reverbRays = 63;
