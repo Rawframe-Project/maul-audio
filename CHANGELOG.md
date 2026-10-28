@@ -5,6 +5,27 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.2.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.1.0...v0.2.0) (2026-10-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **spatializer:** maudSimulateReverb, maudRenderReflections, maudCreateProbeSet and maudBakeProbeSet return maud_errorUnsupported (-4) instead of maud_errorState when the spatializer was created without the estimates, reflections, closest-hit query or rays the call needs.
+* a call refused because the object is running host code (a stream's callback, an allocator, a spatializer hook) or because another thread is rendering the stream returns maud_errorBusy (-10) instead of maud_errorState.
+* maudLoadHrtf and maudLoadProbeSet return maud_errorFormat (-8) instead of maud_errorInvalid for malformed bytes. maudCreateContext (limits.periodFrames), maudCreateStream (objectCount), maudCreateBinauralDecoder, maudCreateSpeakerDecoder, maudGetAmbisonicGains, maudEncodeAmbisonic and maudRotateAmbisonic (order) return maud_errorLimit (-9) instead of maud_errorInvalid for a value past its MAUD_MAX_* constant, maudCreateProbeSet returns maud_errorLimit instead of maud_errorCapacity for a box of more than MAUD_MAX_PROBE_COLUMNS columns, and maudCreateSpatializer, maudCreateAcousticScene, maudCreateBinaural, maudCreateBinauralDecoder and maudCreateContext return maud_errorLimit instead of maud_errorInvalid for a count past its new MAUD_MAX_* or below its MAUD_MIN_* constant. maudProcessBinaural and maudDecodeBinaural return maud_errorCapacity instead of maud_errorInvalid for more frames than the def's maxFrames.
+* **stream:** maudCreateContext refuses a def whose limits.periodFrames is past MAUD_MAX_PERIOD_FRAMES (1048576) with maud_errorInvalid.
+
+### Fixed
+
+* add maud_errorFormat and maud_errorLimit for files and bounds ([#121](https://github.com/Rawframe-Project/maul-audio/issues/121)) ([9fe5deb](https://github.com/Rawframe-Project/maul-audio/commit/9fe5deb20521cfaa6cddcd8f46fdf1784fbfa1a8))
+* **context:** refuse limits whose block the address space cannot hold ([#108](https://github.com/Rawframe-Project/maul-audio/issues/108)) ([f35864d](https://github.com/Rawframe-Project/maul-audio/commit/f35864d889418db1ae83aeb5322f087641635a0a)), closes [#103](https://github.com/Rawframe-Project/maul-audio/issues/103)
+* **coreaudio:** count a device's channels within the configuration read ([#114](https://github.com/Rawframe-Project/maul-audio/issues/114)) ([e5e5569](https://github.com/Rawframe-Project/maul-audio/commit/e5e5569bb557854ab65115e96276ac0c45463799)), closes [#106](https://github.com/Rawframe-Project/maul-audio/issues/106)
+* **device:** take a platform's rate only within the rates streams run at ([#120](https://github.com/Rawframe-Project/maul-audio/issues/120)) ([6564089](https://github.com/Rawframe-Project/maul-audio/commit/656408998f59ef815830eccd07285cec6a73f43f)), closes [#107](https://github.com/Rawframe-Project/maul-audio/issues/107)
+* refuse calls from an object's own host code as maud_errorBusy ([#124](https://github.com/Rawframe-Project/maul-audio/issues/124)) ([c6c2113](https://github.com/Rawframe-Project/maul-audio/commit/c6c211352d9b24ee59b854a5957fece7eab8b1b5))
+* **spatializer:** refuse calls needing a missing feature as unsupported ([#126](https://github.com/Rawframe-Project/maul-audio/issues/126)) ([cb6f984](https://github.com/Rawframe-Project/maul-audio/commit/cb6f984641258a16e9dd4955619fc07a268f75e8))
+* **stream:** bound the period limit by MAUD_MAX_PERIOD_FRAMES ([#112](https://github.com/Rawframe-Project/maul-audio/issues/112)) ([aff3ce3](https://github.com/Rawframe-Project/maul-audio/commit/aff3ce3e40538c61cf4705dbe75b8170016d5334))
+* **web:** place a capture's frame 0 by the median of its last deliveries ([#134](https://github.com/Rawframe-Project/maul-audio/issues/134)) ([64ddbc1](https://github.com/Rawframe-Project/maul-audio/commit/64ddbc126c00e537a058c8d7c0d953345f94d786)), closes [#132](https://github.com/Rawframe-Project/maul-audio/issues/132)
+
 ## [0.1.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.0.4...v0.1.0) (2026-10-27)
 
 ### Changed
