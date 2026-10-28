@@ -9,6 +9,11 @@
 // the measure's share of it counts as settling. A window is judged with
 // the window after it, whose graph count may carry its stall.
 
+// test_clock.h's getenv reads the test's switches; the C runtime's warning
+// that it is unsafe is about its result's lifetime, which the test does
+// not keep.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "test_clock.h"
 
 #include "test_harness.h"
