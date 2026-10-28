@@ -12,6 +12,7 @@
 #include "maul-audio/stream.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 // The most latency a sound clock reports, in nanoseconds; a test may set
 // it before including this header.
@@ -221,6 +222,15 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
                                         RateWindowFn* window, void* user, double settleShare)
 {
     ClockRate measured = {.settleShare = settleShare};
+    // MAUD_TEST_STARVE_RATE stands for a machine that starves every
+    // window, so that a suite's inconclusive ending can be checked
+    // (pipewire_starved) without loading the machine.
+    if (getenv("MAUD_TEST_STARVE_RATE") != nullptr)
+    {
+        measured.windows = 1;
+        measured.stalled = 1;
+        return measured;
+    }
     maudStreamClock first = {0};
     (void)window(user);
     if (maudGetStreamClock(context, stream, &first) != maud_success)
