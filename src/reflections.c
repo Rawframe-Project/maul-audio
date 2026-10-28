@@ -109,7 +109,7 @@ maudReflections* maudCreateReflections(const maudAllocator* allocator, uint32_t 
         .retiring = 3,
     };
     atomic_init(&r->shared, 1u);
-    r->fieldFloats = (size_t)r->channels * MAUD_DIRECT_BANDS * r->bins;
+    r->fieldFloats = (size_t)r->channels * MAUD_BANDS * r->bins;
     r->responseFloats = maudStagedResponseFloats(&r->plan, r->channels);
     r->field =
         maudAllocate(allocator, (size_t)batches * r->fieldFloats * sizeof(float), alignof(double));

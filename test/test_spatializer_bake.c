@@ -514,12 +514,12 @@ static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, c
         maudReverbResult b = At(kept, 0.7f + 1.1f * (float)i, 1.2f, 0.9f + 0.7f * (float)i);
         ok = Same(&a, &b);
         // The estimate's fields alone, as a later version may add fields.
-        float fields[4 * MAUD_DIRECT_BANDS + 1];
+        float fields[4 * MAUD_BANDS + 1];
         memcpy(fields, b.reverbTime, sizeof(b.reverbTime));
-        memcpy(fields + MAUD_DIRECT_BANDS, b.level, sizeof(b.level));
-        memcpy(fields + 2 * MAUD_DIRECT_BANDS, b.tailTime, sizeof(b.tailTime));
-        memcpy(fields + 3 * MAUD_DIRECT_BANDS, b.tailLevel, sizeof(b.tailLevel));
-        fields[4 * MAUD_DIRECT_BANDS] = b.delay;
+        memcpy(fields + MAUD_BANDS, b.level, sizeof(b.level));
+        memcpy(fields + 2 * MAUD_BANDS, b.tailTime, sizeof(b.tailTime));
+        memcpy(fields + 3 * MAUD_BANDS, b.tailLevel, sizeof(b.tailLevel));
+        fields[4 * MAUD_BANDS] = b.delay;
         const uint8_t* p = (const uint8_t*)fields;
         for (size_t k = 0; k < sizeof(fields); ++k)
         {

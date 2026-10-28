@@ -436,7 +436,7 @@ static void TestMisuse(void)
     def = maudDefaultDirectEffectDef();
     def.airAbsorption[1] = -1.0f;
     CHECK(maudCreateDirectEffect(&def, &none) == maud_errorInvalid, "negative absorption");
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         def.airAbsorption[b] = 0.0f;
     }

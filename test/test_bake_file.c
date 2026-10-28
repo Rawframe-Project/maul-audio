@@ -277,7 +277,7 @@ static bool SameGraph(const maudProbeGraph* a, const maudProbeGraph* b)
 // Whether two bakes hold the same results, array by array.
 static bool SameBake(const maudProbeBake* a, const maudProbeBake* b)
 {
-    size_t bands = (size_t)a->count * MAUD_DIRECT_BANDS * sizeof(float);
+    size_t bands = (size_t)a->count * MAUD_BANDS * sizeof(float);
     return a->count == b->count && a->fieldFloats == b->fieldFloats &&
            memcmp(a->times, b->times, bands) == 0 && memcmp(a->levels, b->levels, bands) == 0 &&
            memcmp(a->tailTimes, b->tailTimes, bands) == 0 &&

@@ -172,7 +172,7 @@ static void StepWalk(Render* r, uint32_t block)
     CHECK(maudGetDirectResult(r->spatializer, r->source, &result) == maud_success, "its result");
     r->params.distance = result.distance;
     r->params.occlusion = result.occlusion;
-    for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+    for (int b = 0; b < MAUD_BANDS; ++b)
     {
         r->params.transmission[b] = result.transmission[b];
         r->params.directivity[b] = result.directivity[b];

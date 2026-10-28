@@ -16,7 +16,7 @@ How the Spatial part's effects turn a mono source into what reaches the ears or 
 
 ## Three bands
 
-Every frequency-dependent quantity (air absorption, transmission, directivity, reverberation times, materials) has three bands: up to 800 Hz, 800 Hz to 8 kHz, above 8 kHz. Three bands are what material tables and game audio tools commonly carry, cheap enough to filter per source, and enough to make occlusion sound muffled and distance sound dull. Each effect that applies band gains turns them into smooth filters rather than a crossover, so no band edge is audible.
+Every frequency-dependent quantity (air absorption, transmission, directivity, reverberation times, materials) has three bands: up to 800 Hz, 800 Hz to 8 kHz, above 8 kHz. Three bands are what material tables and game audio tools commonly carry, cheap enough to filter per source, and enough to make occlusion sound muffled and distance sound dull. Each effect that applies band gains turns them into smooth filters rather than a crossover, so no band edge is audible. The count is `MAUD_BANDS` ([direct.h](../../include/maul-audio/direct.h)). It sizes public structs and the bake's fields, so from 1.0.0 it never changes.
 
 ## HRTF sets
 

@@ -20,7 +20,12 @@ extern "C"
 {
 #endif
 
-#define MAUD_DIRECT_BANDS 3
+// The bands of every frequency-dependent value of the Spatial part: air
+// absorption, transmission, directivity, materials, reverberation times
+// and levels, and a bake's energy fields. Low first: up to 800 Hz, 800 Hz
+// to 8 kHz, above 8 kHz. It sizes public structs and the bake format, so
+// from 1.0.0 it never changes.
+#define MAUD_BANDS 3
 
     // A source's direct effect.
     typedef struct maudDirectEffect maudDirectEffect;
@@ -37,7 +42,7 @@ extern "C"
         uint32_t sampleRate;
         // Air absorption per band: the amplitude falls as
         // exp(-airAbsorption[band] * distance in metres).
-        float airAbsorption[MAUD_DIRECT_BANDS];
+        float airAbsorption[MAUD_BANDS];
         maudAllocator allocator;
     } maudDirectEffectDef;
 
@@ -52,10 +57,10 @@ extern "C"
         // path, 1 fully blocked.
         float occlusion;
         // What passes through the obstacles, per band, 0 to 1.
-        float transmission[MAUD_DIRECT_BANDS];
+        float transmission[MAUD_BANDS];
         // The source's directivity towards the listener, per band, 0 to
         // 1 (maudGetDirectivity computes it).
-        float directivity[MAUD_DIRECT_BANDS];
+        float directivity[MAUD_BANDS];
     } maudDirectParams;
 
     // A directivity pattern: a weighted dipole per band, the gain
@@ -64,9 +69,9 @@ extern "C"
     typedef struct maudDirectivityPattern
     {
         // 0 omnidirectional, 0.5 cardioid, 1 dipole.
-        float weight[MAUD_DIRECT_BANDS];
+        float weight[MAUD_BANDS];
         // Sharpness; 1 for the plain pattern.
-        float power[MAUD_DIRECT_BANDS];
+        float power[MAUD_BANDS];
     } maudDirectivityPattern;
 
     /// Returns the default direct params: gain 1, no distance, a clear

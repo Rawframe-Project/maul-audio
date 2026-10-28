@@ -187,7 +187,7 @@ static World Build(bool reversed, float transmission)
         maudPose pose = {at[i], {0.0f, 0.0f, 0.0f, 1.0f}};
         if (s_cardioid && i == 0)
         {
-            for (int b = 0; b < MAUD_DIRECT_BANDS; ++b)
+            for (int b = 0; b < MAUD_BANDS; ++b)
             {
                 sd.directivity.weight[b] = 0.5f;
                 sd.directivity.power[b] = 1.0f;
