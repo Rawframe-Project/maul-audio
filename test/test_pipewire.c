@@ -23,6 +23,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// The global id of the default metadata the helper bound, for the report
+// of a default that never arrives; written on the helper's loop thread.
+static _Atomic uint32_t s_helperMetadataId = SPA_ID_INVALID;
+
 // The test's own client: a thread loop, a core, the default metadata.
 typedef struct Helper
 {
@@ -65,6 +69,7 @@ static void OnHelperGlobal(void* data, uint32_t id, uint32_t permissions, const 
     {
         helper->metadata = pw_registry_bind(helper->registry, id, PW_TYPE_INTERFACE_Metadata,
                                             PW_VERSION_METADATA, 0);
+        atomic_store(&s_helperMetadataId, id);
     }
     if (helper->settings == nullptr && strcmp(type, PW_TYPE_INTERFACE_Metadata) == 0 &&
         name != nullptr && strcmp(name, "settings") == 0)
@@ -270,7 +275,11 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, const char*
 static bool s_defaultsLost;
 
 // Prints what the context and the daemon say the output devices and the
-// defaults are, when a default never arrives.
+// defaults are, when a default never arrives: also the daemon's metadata
+// objects and the default one the test's helper writes to, and whether
+// the session manager, which owns the default metadata, is still the
+// process the fixture started. A restart replaces that metadata (#80);
+// which one the context is bound to cannot be read from outside it.
 static void PrintDefaults(const maudContext* context)
 {
     maudDeviceId ids[32];
@@ -294,11 +303,22 @@ static void PrintDefaults(const maudContext* context)
     fflush(stdout);
     int status =
         system("echo \"the daemon's test nodes:\"; pw-cli ls Node | grep 'node.name = .maud';"
-               " echo \"the daemon's default metadata:\"; pw-metadata -n default 0");
+               " echo \"the daemon's default metadata:\"; pw-metadata -n default 0;"
+               " echo \"the daemon's metadata objects:\";"
+               " pw-cli ls Metadata | grep -E '^[[:space:]]*id |metadata.name'");
     if (status != 0)
     {
         printf("the daemon's view could not be read (status %d)\n", status);
     }
+    printf("the helper writes to the default metadata with id %u\n",
+           atomic_load(&s_helperMetadataId));
+    if (HaveDaemon())
+    {
+        printf("the fixture's session manager is %s\n",
+               DriveDaemon("signal", "wireplumber 0") ? "still the process it started"
+                                                      : "gone: it exited or was started again");
+    }
+    fflush(stdout);
 }
 
 // Whether device is the default output for both roles.
