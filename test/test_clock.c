@@ -65,9 +65,10 @@ static void TestNotClean(void)
     ClockRate measured = Measure(48000, clean);
     CHECK(measured.clean == 2 && measured.stalled == 1 && measured.windows == 3,
           "a stalled window counts as stalled, not clean");
-    CHECK(measured.rate == 0.0 && RateHolds(measured, 48000.0) && s_rateUnjudged == 1,
-          "short of clean windows: unjudged, not failed");
-    s_rateUnjudged = 0;
+    CHECK(measured.rate == 0.0 && RateHolds(measured, 48000.0) && s_rateStarved == 1 &&
+              s_rateSettling == 0,
+          "short of clean windows with a stall: starved, not failed");
+    s_rateStarved = 0;
     ClockRate unstamped = {0};
     maudStreamClock before = {0};
     maudStreamClock after = Read(48000, 1);
@@ -107,6 +108,19 @@ static void TestSettling(void)
     CountRateWindow(&unjudged, &before, &after, true);
     CHECK(unjudged.settling == 0 && unjudged.clean == 1,
           "a measure without a share judges no window settling");
+    ClockRate moving = {.settleShare = RATE_SETTLE_SHARE};
+    maudStreamClock from = ReadLate(0, 0, 14000000);
+    for (int i = 1; i <= 2; ++i)
+    {
+        maudStreamClock to = ReadLate(48000 * (uint64_t)i, i, 14000000 + 20000000 * (int64_t)i);
+        CountRateWindow(&moving, &from, &to, true);
+        from = to;
+    }
+    SettleRate(&moving);
+    CHECK(moving.settling == 2 && moving.stalled == 0 && RateHolds(moving, 48000.0) &&
+              s_rateSettling == 1 && s_rateStarved == 0,
+          "short of clean windows with no stall, the latency moving: settling, not starved");
+    s_rateSettling = 0;
 }
 
 // A window that lost frames but whose stall was counted in the window

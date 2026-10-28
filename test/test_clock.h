@@ -303,15 +303,17 @@ static inline void PrintRateWindows(const ClockRate* measured)
 }
 
 // Measures that ended with fewer than RATE_CLEAN_WINDOWS clean windows,
-// within RATE_MAX_WINDOWS windows or RATE_MAX_SECONDS: they judged
-// nothing, since the machine starved the stream.
-[[maybe_unused]] static int s_rateUnjudged = 0;
+// within RATE_MAX_WINDOWS windows or RATE_MAX_SECONDS, and so judged
+// nothing: starved ones saw a stall, the machine's; settling ones saw
+// none, only a latency that kept moving, which a rate bug can do too.
+[[maybe_unused]] static int s_rateStarved = 0;
+[[maybe_unused]] static int s_rateSettling = 0;
 
 // Whether a measure shows the expected rate. A measure without enough
 // clean windows judges nothing: it prints why and its windows, counts
-// itself unjudged and holds, so that a machine short of CPU reads as such
-// (RateSuiteResult) and never as a wrong rate, nor passes on too few. A
-// measure that fails prints its windows.
+// itself starved or settling and holds, so that a machine short of CPU
+// reads as such (RateSuiteResult) and never as a wrong rate, nor passes
+// on too few. A measure that fails prints its windows.
 static inline bool RateHolds(ClockRate measured, double expected)
 {
     if (measured.clean < RATE_CLEAN_WINDOWS)
@@ -321,7 +323,14 @@ static inline bool RateHolds(ClockRate measured, double expected)
                 "window after, %d a settling latency\n",
                 measured.stalled, measured.windows, measured.settling);
         PrintRateWindows(&measured);
-        s_rateUnjudged += 1;
+        if (measured.stalled != 0)
+        {
+            s_rateStarved += 1;
+        }
+        else
+        {
+            s_rateSettling += 1;
+        }
         return true;
     }
     bool holds = RateIsNear(measured.rate, expected);
@@ -343,11 +352,18 @@ static inline int RateSuiteResult(void)
     {
         return 1;
     }
-    if (s_rateUnjudged != 0)
+    if (s_rateStarved != 0)
     {
         printf("inconclusive: %d rate measure(s) found fewer than %d clean windows in %d windows "
-               "or %d s; the machine starved the stream\n",
-               s_rateUnjudged, RATE_CLEAN_WINDOWS, RATE_MAX_WINDOWS, RATE_MAX_SECONDS);
+               "or %d s, with stalls; the machine starved the stream\n",
+               s_rateStarved, RATE_CLEAN_WINDOWS, RATE_MAX_WINDOWS, RATE_MAX_SECONDS);
+    }
+    if (s_rateSettling != 0)
+    {
+        printf("inconclusive: %d rate measure(s) found fewer than %d clean windows in %d windows "
+               "or %d s, with no stall; the clock's latency kept moving, which a rate bug can "
+               "do too\n",
+               s_rateSettling, RATE_CLEAN_WINDOWS, RATE_MAX_WINDOWS, RATE_MAX_SECONDS);
     }
     return 0;
 }
