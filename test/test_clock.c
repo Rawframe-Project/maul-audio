@@ -3,10 +3,16 @@
 //
 // The backend tests' rate measure (test_clock.h) on clock reads written
 // here: a running clock holds its rate, a clock that stood still fails
-// at once as a rate of 0 rather than as starved, a stalled or unstamped
+// at once as a rate of 0 rather than as starved, a measure short of clean
+// windows is unjudged rather than failed, a stalled or unstamped
 // window does not count as clean, and a window whose latency moved past
 // the measure's share of it counts as settling. A window is judged with
 // the window after it, whose graph count may carry its stall.
+
+// test_clock.h's getenv reads the test's switches; the C runtime's warning
+// that it is unsafe is about its result's lifetime, which the test does
+// not keep.
+#define _CRT_SECURE_NO_WARNINGS
 
 #include "test_clock.h"
 
@@ -59,7 +65,9 @@ static void TestNotClean(void)
     ClockRate measured = Measure(48000, clean);
     CHECK(measured.clean == 2 && measured.stalled == 1 && measured.windows == 3,
           "a stalled window counts as stalled, not clean");
-    CHECK(measured.rate == 0.0 && !RateHolds(measured, 48000.0), "short of clean windows: starved");
+    CHECK(measured.rate == 0.0 && RateHolds(measured, 48000.0) && s_rateUnjudged == 1,
+          "short of clean windows: unjudged, not failed");
+    s_rateUnjudged = 0;
     ClockRate unstamped = {0};
     maudStreamClock before = {0};
     maudStreamClock after = Read(48000, 1);

@@ -599,5 +599,5 @@ int main(void)
     CHECK(server || getenv("MAUD_REQUIRE_ALSA") == nullptr, "a server for the streams");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     TestRefusingAllocator(server);
-    return s_failures == 0 ? 0 : 1;
+    return RateSuiteResult();
 }

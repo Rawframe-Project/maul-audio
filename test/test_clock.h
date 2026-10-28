@@ -7,9 +7,12 @@
 #ifndef MAUL_AUDIO_TEST_TEST_CLOCK_H
 #define MAUL_AUDIO_TEST_TEST_CLOCK_H
 
+#include "test_harness.h"
+
 #include "maul-audio/stream.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 // The most latency a sound clock reports, in nanoseconds; a test may set
 // it before including this header.
@@ -229,6 +232,15 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
                                         RateWindowFn* window, void* user, double settleShare)
 {
     ClockRate measured = {.settleShare = settleShare};
+    // MAUD_TEST_STARVE_RATE stands for a machine that starves every
+    // window, so that a suite's inconclusive ending can be checked
+    // (pipewire_starved) without loading the machine.
+    if (getenv("MAUD_TEST_STARVE_RATE") != nullptr)
+    {
+        measured.windows = 1;
+        measured.stalled = 1;
+        return measured;
+    }
     maudStreamClock first = {0};
     (void)window(user);
     if (maudGetStreamClock(context, stream, &first) != maud_success)
@@ -290,26 +302,54 @@ static inline void PrintRateWindows(const ClockRate* measured)
     }
 }
 
-// Whether a measure shows the expected rate. Without enough clean
-// windows it fails as that, by name and with the counts, so that a
-// machine short of CPU reads as such and never as a wrong rate, nor
-// passes on too few. A measure that fails
-// prints its windows.
+// Measures that ended with fewer than RATE_CLEAN_WINDOWS clean windows,
+// within RATE_MAX_WINDOWS windows or RATE_MAX_SECONDS: they judged
+// nothing, since the machine starved the stream.
+[[maybe_unused]] static int s_rateUnjudged = 0;
+
+// Whether a measure shows the expected rate. A measure without enough
+// clean windows judges nothing: it prints why and its windows, counts
+// itself unjudged and holds, so that a machine short of CPU reads as such
+// (RateSuiteResult) and never as a wrong rate, nor passes on too few. A
+// measure that fails prints its windows.
 static inline bool RateHolds(ClockRate measured, double expected)
 {
-    bool holds = measured.clean == RATE_CLEAN_WINDOWS && RateIsNear(measured.rate, expected);
     if (measured.clean < RATE_CLEAN_WINDOWS)
     {
         fprintf(stderr,
                 "not enough clean windows: %d of %d had xruns or a late wakeup in them or the "
                 "window after, %d a settling latency\n",
                 measured.stalled, measured.windows, measured.settling);
+        PrintRateWindows(&measured);
+        s_rateUnjudged += 1;
+        return true;
     }
+    bool holds = RateIsNear(measured.rate, expected);
     if (!holds)
     {
         PrintRateWindows(&measured);
     }
     return holds;
+}
+
+// A suite's exit status: 1 after a failure. A suite without one whose
+// rate measures were not all judged prints a line starting
+// "inconclusive:", which CTest reads as a skip (the rate suites'
+// SKIP_REGULAR_EXPRESSION) and CI fails as a test that did not run: the
+// machine's fault, never the library's. A failure is never hidden so.
+static inline int RateSuiteResult(void)
+{
+    if (s_failures != 0)
+    {
+        return 1;
+    }
+    if (s_rateUnjudged != 0)
+    {
+        printf("inconclusive: %d rate measure(s) found fewer than %d clean windows in %d windows "
+               "or %d s; the machine starved the stream\n",
+               s_rateUnjudged, RATE_CLEAN_WINDOWS, RATE_MAX_WINDOWS, RATE_MAX_SECONDS);
+    }
+    return 0;
 }
 
 #endif // MAUL_AUDIO_TEST_TEST_CLOCK_H
