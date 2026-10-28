@@ -103,6 +103,16 @@ typedef bool RateWindowFn(void* user);
 #define RATE_CLEAN_WINDOWS 3
 #define RATE_MAX_WINDOWS   30
 #define RATE_MAX_SECONDS   45
+// The most a clock's latency may move over a window, as a share of its
+// span, before the window counts as settling: 0.5 %, a quarter of the
+// rate's tolerance. A clock's heard times carry its latency, and after a
+// stall the stream's queue moves for a second or two: a stalled
+// PulseAudio server drains the stream's buffer and fills it again,
+// raising its target after the underflow (#73), and a queue a stall
+// filled drains back. Through ALSA's PulseAudio plugin, 33 of 572 windows
+// otherwise clean read up to 4 % off by that move alone while the graph
+// kept time (#38). A steady stream's latency moves about 1 ms a second.
+#define RATE_SETTLE_SHARE 0.005
 // One window as measured, for the report of a measure that fails: its
 // rate (0 without a span), whether it was clean, whether its latency was
 // settling, and the clock read that ends it.

@@ -84,7 +84,7 @@ static maudStreamClock ReadLate(uint64_t position, int window, int64_t latency)
 
 static void TestSettling(void)
 {
-    ClockRate measured = {.settleShare = 0.005};
+    ClockRate measured = {.settleShare = RATE_SETTLE_SHARE};
     // The latency of a steady stream, then a buffer filled again by 20 ms,
     // which reads 2 % low, then steady at its new latency.
     const int64_t latencies[5] = {13000000, 14000000, 34000000, 34500000, 35000000};
