@@ -513,7 +513,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         # never green, and fail nothing.
         add_test(NAME pipewire_starved COMMAND test_pipewire rate)
         set_tests_properties(pipewire_starved PROPERTIES LABELS pipewire
-            ENVIRONMENT MAUD_TEST_STARVE_RATE=1 PASS_REGULAR_EXPRESSION "inconclusive: "
+            ENVIRONMENT MAUD_TEST_STARVE_RATE=1 PASS_REGULAR_EXPRESSION "inconclusive: .* with stalls; "
             FAIL_REGULAR_EXPRESSION "FAIL: ")
         # All five use the one test daemon, and pipewire_restart restarts it.
         set_tests_properties(pipewire pipewire_move pipewire_defaults pipewire_restart
@@ -804,7 +804,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     # test/test_clock.h): CI fails the skip as a test that did not run.
     foreach(name pipewire pipewire_move pipewire_defaults pulse pulse_rate alsa)
         if(TEST ${name})
-            # hygiene: an inconclusive line means the machine starved the stream
+            # hygiene: an inconclusive line means the rate measures judged nothing
             set_property(TEST ${name} PROPERTY SKIP_REGULAR_EXPRESSION "inconclusive: ")
         endif()
     endforeach()
