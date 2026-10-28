@@ -369,7 +369,7 @@ static void TestRefused(void)
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "maxTriangles met exactly");
     maudDestroyAcousticScene(scene);
     def.instanceCapacity = 65537;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid, "too many instances");
+    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorLimit, "too many instances");
 }
 
 // A static mesh with no triangles may leave its arrays out; every

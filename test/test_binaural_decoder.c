@@ -267,14 +267,14 @@ static void TestMisuse(const maudHrtf* hrtf)
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid && none == nullptr, "no set");
     def.hrtf = hrtf;
     def.order = 4;
-    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "order 4");
+    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorLimit, "order 4");
     def.order = 0;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "order 0");
     def.order = 1;
     def.maxFrames = 0;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "no frames");
     def.maxFrames = 16385;
-    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorInvalid, "too many frames");
+    CHECK(maudCreateBinauralDecoder(&def, &none) == maud_errorLimit, "too many frames");
     def.maxFrames = 16384;
     CHECK(maudCreateBinauralDecoder(&def, &none) == maud_success, "the most frames");
     maudDestroyBinauralDecoder(none);
@@ -291,7 +291,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     float* out[2] = {s_left, s_right};
     CHECK(maudDecodeBinaural(decoder, bed, out, 64) == maud_errorInvalid, "a missing channel");
     bed[3] = s_bed[3];
-    CHECK(maudDecodeBinaural(decoder, bed, out, 65) == maud_errorInvalid, "too many frames");
+    CHECK(maudDecodeBinaural(decoder, bed, out, 65) == maud_errorCapacity, "too many frames");
     CHECK(maudDecodeBinaural(decoder, nullptr, out, 64) == maud_errorInvalid, "no bed");
     float* noEar[2] = {s_left, nullptr};
     CHECK(maudDecodeBinaural(decoder, bed, noEar, 64) == maud_errorInvalid, "no right ear");

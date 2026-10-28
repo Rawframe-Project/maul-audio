@@ -244,7 +244,7 @@ static void TestNoQuery(void)
     CHECK(maudCreateSpatializer(&bad, &none) == maud_errorInvalid, "one task hook alone");
     bad = maudDefaultSpatializerDef();
     bad.maxOcclusionSamples = 2000;
-    CHECK(maudCreateSpatializer(&bad, &none) == maud_errorInvalid, "too many points");
+    CHECK(maudCreateSpatializer(&bad, &none) == maud_errorLimit, "too many points");
 }
 
 // Two volumetric sources side by side in the samples' buffer, one clear

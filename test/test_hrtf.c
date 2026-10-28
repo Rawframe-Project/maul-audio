@@ -484,7 +484,7 @@ static void TestFields(void)
     Crafted file = CraftWithField("zzzz", 4);
     CHECK(LoadCrafted(&file) == maud_errorVersion, "a field only a later version writes");
     file = CraftWithField("name", 4);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a field written twice");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a field written twice");
     Spec spec = SmallSpec();
     spec.name = nullptr;
     spec.license = nullptr;
@@ -500,20 +500,20 @@ static void TestFields(void)
     for (int i = 0; i < 4; ++i)
     {
         file = CraftWithout(required[i]);
-        CHECK(LoadCrafted(&file) == maud_errorInvalid, "a part with no default left out");
+        CHECK(LoadCrafted(&file) == maud_errorFormat, "a part with no default left out");
     }
     file = Craft();
     file.bytes[file.at[PART_NAME] + 4] = 1;
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "padding that is not zero");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "padding that is not zero");
     file = Craft();
     Put32(file.bytes + file.at[PART_HEAD] - 4, 20);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a head of another length");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a head of another length");
     file = Craft();
     Put32(file.bytes + file.at[PART_LICENSE] - 4, 0xFFFFFFF0u);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a field longer than the file");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a field longer than the file");
 }
 
 static void TestCraftedFiles(void)
@@ -523,17 +523,17 @@ static void TestCraftedFiles(void)
     file = Craft();
     file.count--;
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "one byte short");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "one byte short");
     file = Craft();
     file.count++;
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "one byte long");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "one byte long");
     file = Craft();
     file.bytes[file.at[PART_TAPS] + 20] ^= 1;
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a flipped bit the checksum catches");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a flipped bit the checksum catches");
     file = Craft();
     file.bytes[0] = 'X';
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a wrong magic");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a wrong magic");
     file = Craft();
     Put32(file.bytes + 8, 2);
     CHECK(LoadCrafted(&file) == maud_errorVersion, "version 2, the fixed layout before fields");
@@ -543,28 +543,28 @@ static void TestCraftedFiles(void)
     file = Craft();
     PutFloat(file.bytes + file.at[PART_RINGS] + 8, -90.0f);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "elevations that do not rise");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "elevations that do not rise");
     file = Craft();
     PutFloat(file.bytes + file.at[PART_RINGS] + 8, 91.0f);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "an elevation past 90");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "an elevation past 90");
     file = Craft();
     Put32(file.bytes + file.at[PART_RINGS] + 12, 2);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "azimuths not adding up to the directions");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "azimuths not adding up to the directions");
     file = Craft();
     Put32(file.bytes + file.at[PART_RINGS] + 12, 4);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "nor adding up to more");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "nor adding up to more");
     file = Craft();
     Put32(file.bytes + file.at[PART_RINGS] + 4, 0);
     Put32(file.bytes + file.at[PART_RINGS] + 12, 4);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a ring without an azimuth");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a ring without an azimuth");
     file = Craft();
     file.bytes[file.at[PART_NAME] + 1] = 0xC0;
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a name that is not UTF-8");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a name that is not UTF-8");
     // Well-shaped sequences whose values UTF-8 excludes, in the name.
     const char* excluded[3][2] = {{"\xC1\xBF", "an overlong character"},
                                   {"\xED\xA0\x80", "a surrogate"},
@@ -574,28 +574,28 @@ static void TestCraftedFiles(void)
         file = Craft();
         memcpy(file.bytes + file.at[PART_NAME], excluded[i][0], strlen(excluded[i][0]));
         Seal(file.bytes, file.count);
-        CHECK(LoadCrafted(&file) == maud_errorInvalid, excluded[i][1]);
+        CHECK(LoadCrafted(&file) == maud_errorFormat, excluded[i][1]);
     }
     file = Craft();
     file.bytes[file.at[PART_LICENSE] + 7] = 0xE2;
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a license cut inside a character");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a license cut inside a character");
     file = Craft();
     PutFloat(file.bytes + file.at[PART_HEAD] + 16, NAN);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a scale that is not a number");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a scale that is not a number");
     Spec fewer = SmallSpec();
     fewer.taps = 4;
     file = CraftSpec(&fewer);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "fewer taps than the format allows");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "fewer taps than the format allows");
     file = Craft();
     Put32(file.bytes + file.at[PART_HEAD] + 4, 4);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "a taps field longer than the head says");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "a taps field longer than the head says");
     file = Craft();
     PutFloat(file.bytes + file.at[PART_HEAD] + 16, INFINITY);
     Seal(file.bytes, file.count);
-    CHECK(LoadCrafted(&file) == maud_errorInvalid, "an infinite scale");
+    CHECK(LoadCrafted(&file) == maud_errorFormat, "an infinite scale");
     // Distances just outside the bounds, and not a number.
     float distances[3] = {0.049f, 100.5f, NAN};
     for (int i = 0; i < 3; ++i)
@@ -603,7 +603,7 @@ static void TestCraftedFiles(void)
         file = Craft();
         PutFloat(file.bytes + file.at[PART_HEAD] + 20, distances[i]);
         Seal(file.bytes, file.count);
-        CHECK(LoadCrafted(&file) == maud_errorInvalid, "a measurement distance out of bounds");
+        CHECK(LoadCrafted(&file) == maud_errorFormat, "a measurement distance out of bounds");
     }
     maudHrtf* hrtf = (maudHrtf*)&file;
     maudHrtfDef def = maudDefaultHrtfDef();
@@ -657,9 +657,9 @@ static void TestBounds(void)
     const char text[] = "T\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\xF4\x8F\xBF\xBF";
     CHECK(LoadBuilt(48000, 4, 1.5f, text, sizeof(text) - 1, 65536) == maud_success,
           "characters of two, three and four bytes, U+10FFFF the last");
-    CHECK(LoadBuilt(48000, 4, 1.5f, "T\x80", 2, 65536) == maud_errorInvalid,
+    CHECK(LoadBuilt(48000, 4, 1.5f, "T\x80", 2, 65536) == maud_errorFormat,
           "a continuation byte with no lead");
-    CHECK(LoadBuilt(48000, 4, 1.5f, "T\xE2\x82\x41", 4, 65536) == maud_errorInvalid,
+    CHECK(LoadBuilt(48000, 4, 1.5f, "T\xE2\x82\x41", 4, 65536) == maud_errorFormat,
           "a character whose last byte does not continue it");
     CHECK(LoadBuilt(384000, 4, 100.0f, "T", 1, 65536) == maud_success,
           "the highest rate and distance");
@@ -668,7 +668,7 @@ static void TestBounds(void)
     CHECK(LoadBuilt(48000, 4, 1.5f, name, 256, 65536) == maud_success, "the longest name");
     char longer[257];
     memset(longer, 'n', sizeof(longer));
-    CHECK(LoadBuilt(48000, 4, 1.5f, longer, 257, 65536) == maud_errorInvalid,
+    CHECK(LoadBuilt(48000, 4, 1.5f, longer, 257, 65536) == maud_errorFormat,
           "a name past 256 bytes");
     CHECK(LoadBuilt(48000, 1, 1.5f, "T", 1, 1) == maud_success, "one direction, the def's limit");
     CHECK(LoadBuilt(48000, 4, 1.5f, "T", 1, 4) == maud_success, "four, the def's limit");

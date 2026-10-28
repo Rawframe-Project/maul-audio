@@ -32,6 +32,10 @@ const char* maudResultName(maudResult result)
         return "maud_errorState";
     case maud_errorVersion:
         return "maud_errorVersion";
+    case maud_errorFormat:
+        return "maud_errorFormat";
+    case maud_errorLimit:
+        return "maud_errorLimit";
     default:
         return "unknown result";
     }

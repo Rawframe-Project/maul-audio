@@ -298,7 +298,7 @@ static void TestMisuse(void)
     maudDestroySpatializer(s);
     maudSpatializer* none = nullptr;
     def.reflectionOrder = 4;
-    CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid && none == nullptr, "order 4");
+    CHECK(maudCreateSpatializer(&def, &none) == maud_errorLimit && none == nullptr, "order 4");
     def.reflectionOrder = 1;
     def.reflectionDuration = 0.01f;
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "too short");

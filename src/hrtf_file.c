@@ -149,9 +149,13 @@ static bool RingsValid(const maudHrtfFile* file)
 maudResult maudReadHrtfFile(const void* bytes, size_t count, maudHrtfFile* fileOut)
 {
     const uint8_t* data = bytes;
-    if (data == nullptr || count < HEADER_BYTES || memcmp(data, "MAUDHRTF", 8) != 0)
+    if (data == nullptr)
     {
         return maud_errorInvalid;
+    }
+    if (count < HEADER_BYTES || memcmp(data, "MAUDHRTF", 8) != 0)
+    {
+        return maud_errorFormat;
     }
     if (U32(data + 8) != VERSION)
     {
@@ -159,7 +163,7 @@ maudResult maudReadHrtfFile(const void* bytes, size_t count, maudHrtfFile* fileO
     }
     if (maudCrc32(data + HEADER_BYTES, count - HEADER_BYTES) != U32(data + 12))
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     maudField fields[FIELD_COUNT];
     maudResult read = maudReadFields(data, count, HEADER_BYTES, s_tags, FIELD_COUNT, fields);
@@ -173,7 +177,7 @@ maudResult maudReadHrtfFile(const void* bytes, size_t count, maudHrtfFile* fileO
         !fields[FIELD_RINGS].present || !fields[FIELD_DELAYS].present ||
         !fields[FIELD_TAPS].present)
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     const uint8_t* head = fields[FIELD_HEAD].bytes;
     maudHrtfFile file = {
@@ -188,14 +192,14 @@ maudResult maudReadHrtfFile(const void* bytes, size_t count, maudHrtfFile* fileO
     uint32_t licenseBytes = fields[FIELD_LICENSE].length;
     if (!CountsValid(&file, nameBytes, licenseBytes))
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     // Bounded counts: every product here fits in 64 bits.
     if (fields[FIELD_RINGS].length != 8u * (uint64_t)file.ringCount ||
         fields[FIELD_DELAYS].length != 4u * (uint64_t)file.directionCount ||
         fields[FIELD_TAPS].length != 4u * (uint64_t)file.directionCount * file.taps)
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     file.name = fields[FIELD_NAME].present ? fields[FIELD_NAME].bytes : data;
     file.nameLength = nameBytes;
@@ -206,7 +210,7 @@ maudResult maudReadHrtfFile(const void* bytes, size_t count, maudHrtfFile* fileO
     file.samples = fields[FIELD_TAPS].bytes;
     if (!IsUtf8(file.name, nameBytes) || !IsUtf8(file.license, licenseBytes) || !RingsValid(&file))
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     *fileOut = file;
     return maud_success;

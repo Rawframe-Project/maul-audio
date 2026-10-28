@@ -259,7 +259,7 @@ static void TestMisuse(void)
     bed[3] = channel;
     maudPanSource bad = {{NAN, 0.0f, 0.0f}, 1.0f};
     CHECK(maudEncodeAmbisonic(1, &bad, &source, in, bed, 4) == maud_errorInvalid, "NaN");
-    CHECK(maudEncodeAmbisonic(4, &source, &source, in, bed, 4) == maud_errorInvalid, "order 4");
+    CHECK(maudEncodeAmbisonic(4, &source, &source, in, bed, 4) == maud_errorLimit, "order 4");
     CHECK(maudEncodeAmbisonic(1, &source, &source, nullptr, bed, 4) == maud_errorInvalid,
           "no input");
     CHECK(maudEncodeAmbisonic(1, &source, &source, in, nullptr, 4) == maud_errorInvalid, "no bed");

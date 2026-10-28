@@ -89,7 +89,7 @@ extern "C"
         // There is nothing to return: a queue is drained.
         maud_empty = 1,
         // An argument is invalid: a null pointer where one is required, a
-        // value out of range.
+        // value out of range that no status below names.
         maud_errorInvalid = -1,
         // A caller buffer, a named limit or the allocator is too small for
         // the result.
@@ -104,8 +104,15 @@ extern "C"
         // The call is not allowed in the object's current state.
         maud_errorState = -6,
         // A root def was built from headers of another binary interface
-        // than the library's (MAUD_ABI_VERSION).
+        // than the library's (MAUD_ABI_VERSION), or a file is of another
+        // version of its format.
         maud_errorVersion = -7,
+        // Stored bytes are malformed: an HRTF set or a bake that fails a
+        // check of its format.
+        maud_errorFormat = -8,
+        // An argument passes a bound published as a named constant
+        // (MAUD_MAX_PERIOD_FRAMES, for one). More room would not help.
+        maud_errorLimit = -9,
     };
 
     // The allocator an owner object takes in its def and keeps for its

@@ -22,6 +22,9 @@ extern "C"
 // The largest period a context's limit may allow, in frames: over
 // twenty seconds at 48 kHz.
 #define MAUD_MAX_PERIOD_FRAMES 1048576u
+// The fewest records a context's notification queue may hold: one for a
+// change and one for the overflow that may follow it.
+#define MAUD_MIN_NOTIFICATIONS 2u
 
     // Which backend a context talks to.
     typedef uint8_t maudBackendKind;
@@ -61,7 +64,7 @@ extern "C"
         // Devices, of both directions, that exist at once.
         uint16_t devices;
         // Records the notification queue holds before it overflows; at
-        // least 2.
+        // least MAUD_MIN_NOTIFICATIONS.
         uint16_t notifications;
         // Bytes of a device's name, and of its key.
         uint16_t deviceTextBytes;
@@ -144,8 +147,9 @@ extern "C"
     ///         another binary interface than the library's, checked
     ///         before anything else of it; `maud_errorInvalid` for a NULL
     ///         argument, a def without its cookie, an allocator with one function, a limit
-    ///         of 0, a period limit past MAUD_MAX_PERIOD_FRAMES or an offline
-    ///         rate out of range; `maud_errorUnsupported`
+    ///         of 0 or an offline rate out of range; `maud_errorLimit` for a
+    ///         period limit past MAUD_MAX_PERIOD_FRAMES or fewer
+    ///         notifications than MAUD_MIN_NOTIFICATIONS; `maud_errorUnsupported`
     ///         when this build or platform lacks the backend asked for, or
     ///         no audio service of it answers;
     ///         `maud_errorCapacity` when the allocator fails, or when the

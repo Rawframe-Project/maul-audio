@@ -96,6 +96,12 @@ maudResult maudCreateStream(maudContext* context, const maudStreamDef* def, maud
     {
         return maud_errorState;
     }
+    if (def != nullptr && streamOut != nullptr && def->cookie == STREAM_DEF_COOKIE &&
+        def->objectCount > MAUD_MAX_STREAM_OBJECTS)
+    {
+        maudCountMisuse(context);
+        return maud_errorLimit;
+    }
     if (def == nullptr || streamOut == nullptr || !DefValid(def))
     {
         maudCountMisuse(context);

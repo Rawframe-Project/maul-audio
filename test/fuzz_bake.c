@@ -5,7 +5,9 @@
 // byte chooses whether the checksum is sealed afresh (so inputs reach
 // the checks past it) and the fields' layout the reader accepts (order
 // 0 to 3, 6 bins, as the shipped bake has at order 1); the rest is the
-// file. A file the reader takes must write back to the same bytes.
+// file. A refusal must name the file's fault (its format, its version,
+// the limits or another fields' layout), and a file the reader takes must
+// write back to the same bytes.
 
 #include "bake_file.h"
 #include "crc32.h"
@@ -48,7 +50,10 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     const maudAllocator allocator = {nullptr, nullptr, nullptr};
     maudProbeGraph graph;
     maudProbeBake bake;
-    if (maudReadBakeFile(bytes, count, &limits, &allocator, &graph, &bake) == maud_success)
+    maudResult read = maudReadBakeFile(bytes, count, &limits, &allocator, &graph, &bake);
+    Expect(read == maud_success || read == maud_errorFormat || read == maud_errorVersion ||
+           read == maud_errorCapacity || read == maud_errorUnsupported);
+    if (read == maud_success)
     {
         size_t again = maudBakeFileBytes(&graph, &bake, order, limits.fieldBins);
         Expect(again == count);

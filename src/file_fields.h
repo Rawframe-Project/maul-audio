@@ -40,7 +40,7 @@ typedef struct maudField
 
 // Reads the fields of count bytes of data from first, a multiple of
 // MAUD_FIELD_ALIGN, to the end, into fields, one entry per tag of tags.
-// maud_errorVersion for a tag not among them; maud_errorInvalid for a
+// maud_errorVersion for a tag not among them; maud_errorFormat for a
 // field cut short, a tag found twice or padding that is not zero.
 maudResult maudReadFields(const uint8_t* data, size_t count, size_t first, const uint32_t* tags,
                           uint32_t tagCount, maudField* fields);

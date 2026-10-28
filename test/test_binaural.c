@@ -767,7 +767,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     bad.gain = INFINITY;
     CHECK(maudProcessBinaural(effect, &bad, s_in, out, 64) == maud_errorInvalid, "infinite gain");
     maudBinauralParams params = At(0.0f, 0.0f, -1.0f);
-    CHECK(maudProcessBinaural(effect, &params, s_in, out, 65) == maud_errorInvalid,
+    CHECK(maudProcessBinaural(effect, &params, s_in, out, 65) == maud_errorCapacity,
           "more frames than the def allows");
     CHECK(maudProcessBinaural(effect, &params, nullptr, out, 64) == maud_errorInvalid, "no input");
     float* half[2] = {s_left, nullptr};
@@ -795,7 +795,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     def.maxFrames = 0;
     CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "no frames");
     def.maxFrames = 16385;
-    CHECK(maudCreateBinaural(&def, &none) == maud_errorInvalid, "too many frames");
+    CHECK(maudCreateBinaural(&def, &none) == maud_errorLimit, "too many frames");
     def.maxFrames = 16384;
     CHECK(maudCreateBinaural(&def, &none) == maud_success, "the most frames");
     maudDestroyBinaural(none);

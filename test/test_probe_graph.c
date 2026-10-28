@@ -455,8 +455,9 @@ static void Lost(const maudRay* rays, uint32_t count, maudRayHit* hits, void* co
     CHECK(count == 0, "no column walked");
 }
 
-// A grid of 4096 x 4096 columns, the most, is laid out: its block is
-// asked for. One column more across is refused before asking.
+// A grid of 4096 x 4096 columns, MAUD_MAX_PROBE_COLUMNS, is laid out:
+// its block is asked for. One column more across is refused as a limit
+// before asking.
 static void TestMostColumns(void)
 {
     const maudAllocator counting = {Count, Ignore, nullptr};
@@ -470,7 +471,7 @@ static void TestMostColumns(void)
     CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorCapacity && s_asks == 1,
           "the most columns asked for");
     def.boxMax.x = 4097.0f;
-    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorCapacity && s_asks == 1,
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorLimit && s_asks == 1,
           "one column more refused before asking");
 }
 

@@ -6,7 +6,7 @@
 // and write again to the same bytes; one with reverberation alone reads
 // back; a range, times and levels at
 // either end of their bounds read; every malformed part is refused as
-// invalid (magic, size, checksum, a field twice, its padding, a part
+// a format error (magic, size, checksum, a field twice, its padding, a part
 // left out, the parts' combinations, a count its parts' lengths do not
 // hold, range, a neighbour out of range, a self link, a falling row, a
 // link listed twice, rows not spanning the links, a link listed from one
@@ -401,11 +401,11 @@ static File SelfLinked(const maudProbeGraph* g, const maudProbeBake* b)
 static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const File* f)
 {
     File self = SelfLinked(g, b);
-    CHECK(Read(&self, &s_limits) == maud_errorInvalid, "probes linked to themselves");
+    CHECK(Read(&self, &s_limits) == maud_errorFormat, "probes linked to themselves");
     free(self.bytes);
     File c = Changed(f);
     c.bytes[0] ^= 1;
-    Expect(&c, maud_errorInvalid, "magic");
+    Expect(&c, maud_errorFormat, "magic");
     c = Changed(f);
     Put(c.bytes + 8, 4);
     Expect(&c, maud_errorVersion, "a later version");
@@ -421,74 +421,74 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     c = With(f, "zzzz", 4);
     Expect(&c, maud_errorVersion, "a field only a later version writes");
     c = With(f, "head", 12);
-    Expect(&c, maud_errorInvalid, "a field written twice");
+    Expect(&c, maud_errorFormat, "a field written twice");
     c = Changed(f);
     c.bytes[Part(&c, "head") + 12] = 1;
-    Expect(&c, maud_errorInvalid, "padding that is not zero");
+    Expect(&c, maud_errorFormat, "padding that is not zero");
     const char* required[4] = {"head", "prob", "rows", "nbrs"};
     for (int i = 0; i < 4; ++i)
     {
         c = Without(f, required[i]);
-        Expect(&c, maud_errorInvalid, "a part with no default left out");
+        Expect(&c, maud_errorFormat, "a part with no default left out");
     }
     c = Without(f, "revb");
-    Expect(&c, maud_errorInvalid, "energy fields without the estimates");
+    Expect(&c, maud_errorFormat, "energy fields without the estimates");
     c = Without(f, "fhdr");
-    Expect(&c, maud_errorInvalid, "energy fields without their layout");
+    Expect(&c, maud_errorFormat, "energy fields without their layout");
     c = Without(f, "flds");
-    Expect(&c, maud_errorInvalid, "a layout without the energy fields");
+    Expect(&c, maud_errorFormat, "a layout without the energy fields");
     c = Changed(f);
     c.size -= 1;
-    Expect(&c, maud_errorInvalid, "a byte short");
+    Expect(&c, maud_errorFormat, "a byte short");
     c = Changed(f);
     c.bytes[c.size++] = 0;
-    Expect(&c, maud_errorInvalid, "a byte long");
+    Expect(&c, maud_errorFormat, "a byte long");
     c = Changed(f);
     Seal(&c);
     c.bytes[c.size - 1] ^= 0x40;
-    CHECK(Read(&c, &s_limits) == maud_errorInvalid, "the checksum");
+    CHECK(Read(&c, &s_limits) == maud_errorFormat, "the checksum");
     free(c.bytes);
     c = Changed(f);
     Put(c.bytes + Part(&c, "head"), f->probes + 1);
-    Expect(&c, maud_errorInvalid, "a probe count its parts do not hold");
+    Expect(&c, maud_errorFormat, "a probe count its parts do not hold");
     // The energy fields, last, two floats short of their probes: read by
     // the counts alone, the last probe's would run past the file.
     c = Changed(f);
     Put(c.bytes + Part(&c, "flds") - 4, Get(c.bytes + Part(&c, "flds") - 4) - 8);
     c.size -= 8;
-    Expect(&c, maud_errorInvalid, "energy fields shorter than their probes'");
+    Expect(&c, maud_errorFormat, "energy fields shorter than their probes'");
     c = Changed(f);
     PutFloat(c.bytes + Part(&c, "head") + 8, 0.05f);
-    Expect(&c, maud_errorInvalid, "the range");
+    Expect(&c, maud_errorFormat, "the range");
     c = Changed(f);
     Put(c.bytes + Part(&c, "fhdr"), 4);
-    Expect(&c, maud_errorInvalid, "an order past 3");
+    Expect(&c, maud_errorFormat, "an order past 3");
     c = Changed(f);
     Put(c.bytes + Neighbours(&c), f->probes);
-    Expect(&c, maud_errorInvalid, "a neighbour out of range");
+    Expect(&c, maud_errorFormat, "a neighbour out of range");
     c = Changed(f);
     Put(c.bytes + Neighbours(&c), 0);
-    Expect(&c, maud_errorInvalid, "a self link");
+    Expect(&c, maud_errorFormat, "a self link");
     c = Changed(f);
     uint32_t first = Get(c.bytes + Neighbours(&c));
     Put(c.bytes + Neighbours(&c), Get(c.bytes + Neighbours(&c) + 4));
     Put(c.bytes + Neighbours(&c) + 4, first);
-    Expect(&c, maud_errorInvalid, "a falling row");
+    Expect(&c, maud_errorFormat, "a falling row");
     c = Changed(f);
     Put(c.bytes + Rows(&c), 1);
-    Expect(&c, maud_errorInvalid, "rows not starting at 0");
+    Expect(&c, maud_errorFormat, "rows not starting at 0");
     c = Changed(f);
     Put(c.bytes + Rows(&c) + 4 * (size_t)f->probes, 2 * f->links - 1);
-    Expect(&c, maud_errorInvalid, "rows not ending at the links");
+    Expect(&c, maud_errorFormat, "rows not ending at the links");
     c = Changed(f);
     CHECK(OneEnded(&c, g), "a pair in range unlinked");
-    Expect(&c, maud_errorInvalid, "a link from one end");
+    Expect(&c, maud_errorFormat, "a link from one end");
     c = Changed(f);
     PutFloat(c.bytes + Part(&c, "prob"), -9.0f);
-    Expect(&c, maud_errorInvalid, "a link past the range");
+    Expect(&c, maud_errorFormat, "a link past the range");
     c = Changed(f);
     PutFloat(c.bytes + Part(&c, "prob") + 4, NAN);
-    Expect(&c, maud_errorInvalid, "a point not finite");
+    Expect(&c, maud_errorFormat, "a point not finite");
     // Times, levels, tails' times and tails' levels, each at both ends
     // of its bounds, read.
     c = Changed(f);
@@ -501,22 +501,22 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     Expect(&c, maud_success, "times and levels at their bounds");
     c = Changed(f);
     PutFloat(c.bytes + Times(&c), 0.05f);
-    Expect(&c, maud_errorInvalid, "a time");
+    Expect(&c, maud_errorFormat, "a time");
     c = Changed(f);
     PutFloat(c.bytes + Times(&c) + 12 * (size_t)f->probes, 30.0f);
-    Expect(&c, maud_errorInvalid, "a level");
+    Expect(&c, maud_errorFormat, "a level");
     c = Changed(f);
     PutFloat(c.bytes + Times(&c) + 24 * (size_t)f->probes, 0.05f);
-    Expect(&c, maud_errorInvalid, "a tail's time");
+    Expect(&c, maud_errorFormat, "a tail's time");
     c = Changed(f);
     PutFloat(c.bytes + Times(&c) + 36 * (size_t)f->probes, 30.0f);
-    Expect(&c, maud_errorInvalid, "a tail's level");
+    Expect(&c, maud_errorFormat, "a tail's level");
     c = Changed(f);
     PutFloat(c.bytes + Part(&c, "flds"), -1.0f);
-    Expect(&c, maud_errorInvalid, "a negative W");
+    Expect(&c, maud_errorFormat, "a negative W");
     c = Changed(f);
     PutFloat(c.bytes + Part(&c, "flds") + 4 * 3 * BINS, INFINITY);
-    Expect(&c, maud_errorInvalid, "a field not finite");
+    Expect(&c, maud_errorFormat, "a field not finite");
     const maudBakeLimits fewProbes = {f->probes - 1, 64, ORDER, BINS};
     const maudBakeLimits fewLinks = {64, f->links - 1, ORDER, BINS};
     const maudBakeLimits order = {64, 64, 2, BINS};
@@ -528,8 +528,7 @@ static void TestRefused(const maudProbeGraph* g, const maudProbeBake* b, const F
     maudProbeGraph rg;
     maudProbeBake rb;
     CHECK(maudReadBakeFile(nullptr, 0, &s_limits, &s_allocator, &rg, &rb) == maud_errorInvalid &&
-              maudReadBakeFile(f->bytes, 15, &s_limits, &s_allocator, &rg, &rb) ==
-                  maud_errorInvalid,
+              maudReadBakeFile(f->bytes, 15, &s_limits, &s_allocator, &rg, &rb) == maud_errorFormat,
           "no file, a short one");
 }
 
@@ -575,14 +574,14 @@ static void TestPairs(void)
     free(c.bytes);
     c = Changed(&apart);
     PutFloat(c.bytes + Part(&c, "prob") + 12 + 4, NAN);
-    Expect(&c, maud_errorInvalid, "an unlinked point not finite in y");
+    Expect(&c, maud_errorFormat, "an unlinked point not finite in y");
     c = Changed(&apart);
     PutFloat(c.bytes + Part(&c, "prob") + 12, NAN);
-    Expect(&c, maud_errorInvalid, "an unlinked point not finite in x");
+    Expect(&c, maud_errorFormat, "an unlinked point not finite in x");
     free(apart.bytes);
     const uint32_t twice[4] = {1, 1, 0, 0};
     File doubled = Pair(2, twice);
-    CHECK(Read(&doubled, &s_limits) == maud_errorInvalid, "a link listed twice");
+    CHECK(Read(&doubled, &s_limits) == maud_errorFormat, "a link listed twice");
     free(doubled.bytes);
 }
 

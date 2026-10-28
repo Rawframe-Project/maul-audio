@@ -57,7 +57,7 @@ The response is published to the rendering side through four buffers and convolv
 
 ## Probe sets and pathing
 
-A probe set ([probe_graph.h](../../src/probe_graph.h)) is points in walkable space and the links between pairs within range that one any-hit ray connects. Generated probes go down columns of a grid over a box, one at a set height above every horizontal surface with that height free above it; generation walks each column twice, once to count its floors and once to place them, so its memory is a byte and a word a column. Pairs within range come from a sweep along x, sorted by index, so the links fill compressed rows in a fixed order.
+A probe set ([probe_graph.h](../../src/probe_graph.h)) is points in walkable space and the links between pairs within range that one any-hit ray connects. Generated probes go down columns of a grid over a box, one at a set height above every horizontal surface with that height free above it; generation walks each column twice, once to count its floors and once to place them, so its memory is a byte and a word a column, and a box of more than `MAUD_MAX_PROBE_COLUMNS` columns is refused with `maud_errorLimit` before anything is allocated. Pairs within range come from a sweep along x, sorted by index, so the links fill compressed rows in a fixed order.
 
 Pathing ([pathing.h](../../src/pathing.h)) gives an occluded source a way around what hides it:
 

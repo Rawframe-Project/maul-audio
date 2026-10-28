@@ -16,9 +16,6 @@
 
 #include <math.h>
 
-#define MAX_TRIANGLES 16777216u
-#define MAX_INSTANCES 65536u
-
 static bool MeshValid(const maudMesh* mesh)
 {
     if (mesh->triangleCount == 0)
@@ -68,9 +65,13 @@ static bool MeshesValid(const maudMesh* meshes, uint32_t count, uint64_t* sum)
 static maudResult Check(const maudAcousticSceneDef* def)
 {
     uint64_t sum = 0;
+    if (def->cookie == MAUD_ACOUSTIC_SCENE_DEF_COOKIE &&
+        (def->instanceCapacity > MAUD_MAX_INSTANCES || def->maxTriangles > MAUD_MAX_TRIANGLES))
+    {
+        return maud_errorLimit;
+    }
     if (def->cookie != MAUD_ACOUSTIC_SCENE_DEF_COOKIE || !maudIsAllocatorValid(&def->allocator) ||
-        def->instanceCapacity > MAX_INSTANCES || def->maxTriangles == 0 ||
-        def->maxTriangles > MAX_TRIANGLES || !MeshesValid(def->meshes, def->meshCount, &sum) ||
+        def->maxTriangles == 0 || !MeshesValid(def->meshes, def->meshCount, &sum) ||
         !MeshesValid(def->instanceMeshes, def->instanceMeshCount, &sum))
     {
         return maud_errorInvalid;

@@ -191,7 +191,7 @@ static void TestMisuse(maudSpatializer* s)
               maudCreateProbeSet(nullptr, &def, nullptr) == maud_errorInvalid,
           "a refused set's id cleared; no id to write");
     sd.probeSetCapacity = 65;
-    CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "too many sets");
+    CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorLimit, "too many sets");
     sd.probeSetCapacity = 1;
     sd.maxProbes = 0;
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "no probes");
@@ -200,7 +200,7 @@ static void TestMisuse(maudSpatializer* s)
     CHECK(maudCreateSpatializer(&sd, &blind) == maud_success, "the most pairs");
     maudDestroySpatializer(blind);
     // The most sets, probes and materials are in range: with an
-    // allocator that refuses, they fail for memory, not as invalid.
+    // allocator that refuses, they fail for memory, not as past a bound.
     maudSpatializerDef most = sd;
     most.probeSetCapacity = 64;
     most.maxProbes = 65536;
@@ -209,7 +209,7 @@ static void TestMisuse(maudSpatializer* s)
     CHECK(maudCreateSpatializer(&most, &blind) == maud_errorCapacity,
           "the most sets, probes and materials");
     sd.maxProbePairs = (1u << 24) + 1;
-    CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorInvalid, "too many pairs");
+    CHECK(maudCreateSpatializer(&sd, &blind) == maud_errorLimit, "too many pairs");
 }
 
 int main(void)

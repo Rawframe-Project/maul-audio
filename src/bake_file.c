@@ -320,7 +320,7 @@ static bool Lists(const uint8_t* data, const Layout* l, uint32_t j, uint32_t i)
 }
 
 // Reads the header and the fields into h and l: maud_errorVersion for
-// another version or a field only a later one writes, maud_errorInvalid
+// another version or a field only a later one writes, maud_errorFormat
 // for anything malformed. The layers are the parts present: the
 // estimates alone, or with the energy fields' layout and values, or
 // neither.
@@ -328,7 +328,7 @@ static maudResult HeaderValid(const uint8_t* data, size_t size, Header* h, Layou
 {
     if (size < HEADER_BYTES || memcmp(data, MAGIC, sizeof(MAGIC)) != 0)
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     if (U32(data + 8) != VERSION)
     {
@@ -336,7 +336,7 @@ static maudResult HeaderValid(const uint8_t* data, size_t size, Header* h, Layou
     }
     if (maudCrc32(data + HEADER_BYTES, size - HEADER_BYTES) != U32(data + 12))
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     maudField parts[PART_COUNT];
     maudResult read = maudReadFields(data, size, HEADER_BYTES, s_tags, PART_COUNT, parts);
@@ -350,7 +350,7 @@ static maudResult HeaderValid(const uint8_t* data, size_t size, Header* h, Layou
         !parts[PART_NEIGHBOURS].present || parts[PART_LAYOUT].present != fields ||
         (fields && (!parts[PART_REVERB].present || parts[PART_LAYOUT].length != LAYOUT_BYTES)))
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     const uint8_t* head = parts[PART_HEAD].bytes;
     const uint8_t* layout = parts[PART_LAYOUT].bytes;
@@ -366,7 +366,7 @@ static maudResult HeaderValid(const uint8_t* data, size_t size, Header* h, Layou
     if (!(h->range >= MIN_RANGE && h->range <= MAX_RANGE) ||
         (fields && (h->order < 1 || h->order > MAX_ORDER || h->bins < 1 || h->bins > MAX_BINS)))
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     // Every length the counts give fits in 64 bits: the counts are 32.
     uint64_t bytes[PART_COUNT];
@@ -376,7 +376,7 @@ static maudResult HeaderValid(const uint8_t* data, size_t size, Header* h, Layou
     {
         if (parts[part].present && parts[part].length != bytes[part])
         {
-            return maud_errorInvalid;
+            return maud_errorFormat;
         }
         at[part] = parts[part].present ? (uint64_t)(parts[part].bytes - data) : 0;
     }
@@ -500,7 +500,7 @@ maudResult maudReadBakeFile(const uint8_t* data, size_t size, const maudBakeLimi
     }
     if (!LinksValid(data, &h, &l) || !ValuesValid(data, &h, &l))
     {
-        return maud_errorInvalid;
+        return maud_errorFormat;
     }
     if (h.probes > limits->maxProbes || h.links > limits->maxLinks)
     {

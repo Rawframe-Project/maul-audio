@@ -19,8 +19,8 @@ static bool DefValid(const maudContextDef* def)
     return def->cookie == MAUD_CONTEXT_DEF_COOKIE && maudIsAllocatorValid(&def->allocator) &&
            def->limits.streams != 0 && def->limits.periodFrames != 0 &&
            def->limits.periodFrames <= MAUD_MAX_PERIOD_FRAMES && def->limits.devices != 0 &&
-           def->limits.notifications >= 2 && def->limits.deviceTextBytes != 0 &&
-           def->offlineSampleRate >= MIN_RATE && def->offlineSampleRate <= MAX_RATE &&
+           def->limits.deviceTextBytes != 0 && def->offlineSampleRate >= MIN_RATE &&
+           def->offlineSampleRate <= MAX_RATE &&
            (def->androidJavaVm == nullptr) == (def->androidContext == nullptr) &&
            def->backend <= maud_backendPrivate;
 }
@@ -177,6 +177,12 @@ maudResult maudCreateContext(const maudContextDef* def, maudContext** contextOut
         def->version != MAUD_ABI_VERSION)
     {
         return maud_errorVersion;
+    }
+    if (def != nullptr && def->cookie == MAUD_CONTEXT_DEF_COOKIE &&
+        (def->limits.periodFrames > MAUD_MAX_PERIOD_FRAMES ||
+         def->limits.notifications < MAUD_MIN_NOTIFICATIONS))
+    {
+        return maud_errorLimit;
     }
     if (def == nullptr || !DefValid(def))
     {

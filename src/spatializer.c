@@ -31,25 +31,14 @@
 #include <string.h>
 
 #define SOURCE_DEF_COOKIE 0x6D61736Fu
-#define MAX_SOURCES       65536u
-#define MAX_SAMPLES       1024u
-#define MAX_SURFACES      16u
-#define MAX_MATERIALS     65536u
 // Rays per round of queries, and per query.
-#define ROUND           4096u
-#define BATCH           64u
-#define MIN_REVERB_RAYS 64u
-#define MAX_REVERB_RAYS 16384u
+#define ROUND 4096u
+#define BATCH 64u
 // A reverberation ray's bounces at most; past them the decay is filled
 // in at its rate.
-#define REVERB_BOUNCES       1024u
-#define NO_REVERB            0.1f
-#define MAX_REFLECTION_ORDER 3u
-#define MAX_PROBE_SETS       64u
-#define MAX_PROBES           65536u
-#define MAX_PROBE_PAIRS      16777216u
-#define MAX_PATHS            4096u
-#define SILENT               (-96.0f)
+#define REVERB_BOUNCES 1024u
+#define NO_REVERB      0.1f
+#define SILENT         (-96.0f)
 
 maudSourceDef maudDefaultSourceDef(void)
 {
@@ -133,18 +122,23 @@ static bool ReverbValid(const maudSpatializerDef* def)
         }
     }
     bool reflections = def->reflectionOrder == 0 ||
-                       (def->reflectionOrder <= MAX_REFLECTION_ORDER && def->reverbRays > 0 &&
-                        def->reflectionDuration >= 0.05f && def->reflectionDuration <= 4.0f &&
-                        def->reflectionRate >= 44100.0f && def->reflectionRate <= 384000.0f);
-    return reflections && (def->reverbRays == 0 || (def->reverbRays >= MIN_REVERB_RAYS &&
-                                                    def->reverbRays <= MAX_REVERB_RAYS));
+                       (def->reverbRays > 0 && def->reflectionDuration >= 0.05f &&
+                        def->reflectionDuration <= 4.0f && def->reflectionRate >= 44100.0f &&
+                        def->reflectionRate <= 384000.0f);
+    return reflections;
 }
 
-static bool ProbesValid(const maudSpatializerDef* def)
+// Whether a count passes one of the published bounds.
+static bool PastLimits(const maudSpatializerDef* def)
 {
-    return def->probeSetCapacity <= MAX_PROBE_SETS && def->maxProbes >= 1 &&
-           def->maxProbes <= MAX_PROBES && def->maxProbePairs >= 1 &&
-           def->maxProbePairs <= MAX_PROBE_PAIRS && def->maxPaths <= MAX_PATHS;
+    return def->sourceCapacity > MAUD_MAX_SOURCES ||
+           def->maxOcclusionSamples > MAUD_MAX_OCCLUSION_SAMPLES ||
+           def->maxSurfaces > MAUD_MAX_SURFACES || def->materialCapacity > MAUD_MAX_MATERIALS ||
+           (def->reverbRays != 0 &&
+            (def->reverbRays < MAUD_MIN_REVERB_RAYS || def->reverbRays > MAUD_MAX_REVERB_RAYS)) ||
+           def->reflectionOrder > MAUD_MAX_REFLECTION_ORDER ||
+           def->probeSetCapacity > MAUD_MAX_PROBE_SETS || def->maxProbes > MAUD_MAX_PROBES ||
+           def->maxProbePairs > MAUD_MAX_PROBE_PAIRS || def->maxPaths > MAUD_MAX_PATHS;
 }
 
 // Allocates everything a spatializer holds but itself; false if any
@@ -218,13 +212,16 @@ static MAUD_NOINLINE maudResult CreateSpatializer(const maudSpatializerDef* def,
     {
         return maud_errorVersion;
     }
+    if (def != nullptr && spatializerOut != nullptr && def->cookie == MAUD_SPATIALIZER_DEF_COOKIE &&
+        PastLimits(def))
+    {
+        return maud_errorLimit;
+    }
     if (def == nullptr || spatializerOut == nullptr || def->cookie != MAUD_SPATIALIZER_DEF_COOKIE ||
-        def->sourceCapacity == 0 || def->sourceCapacity > MAX_SOURCES ||
-        def->maxOcclusionSamples == 0 || def->maxOcclusionSamples > MAX_SAMPLES ||
-        def->maxSurfaces == 0 || def->maxSurfaces > MAX_SURFACES || def->materialCapacity == 0 ||
-        def->materialCapacity > MAX_MATERIALS ||
+        def->sourceCapacity == 0 || def->maxOcclusionSamples == 0 || def->maxSurfaces == 0 ||
+        def->materialCapacity == 0 ||
         (def->enqueueTask == nullptr) != (def->finishTask == nullptr) || !ReverbValid(def) ||
-        !ProbesValid(def) || !maudIsAllocatorValid(&def->allocator))
+        def->maxProbes == 0 || def->maxProbePairs == 0 || !maudIsAllocatorValid(&def->allocator))
     {
         return maud_errorInvalid;
     }

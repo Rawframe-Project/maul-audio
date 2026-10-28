@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Every refusal scene.h documents, each made on its own: a def with one
-// field or mesh out of range (and nothing else wrong) is maud_errorInvalid
-// with no scene made, triangles past the def's limit are
+// field or mesh out of range (and nothing else wrong) is maud_errorLimit
+// past a published bound and maud_errorInvalid otherwise, with no scene
+// made, triangles past the def's limit are
 // maud_errorCapacity, and the limits at their bounds are taken; an
 // instance's transform out of range, its ids out of range and the
 // pointers each function needs are refused.
@@ -48,8 +49,9 @@ static maudAcousticSceneDef Valid(maudMesh* mesh, maudMesh* instanced)
 
 // Puts case k out of range; false past the last case.
 static bool Spoil(maudAcousticSceneDef* d, maudMesh* mesh, maudMesh* instanced, int k,
-                  const char** what)
+                  const char** what, maudResult* want)
 {
+    *want = maud_errorInvalid;
     switch (k)
     {
     case 0:
@@ -63,6 +65,7 @@ static bool Spoil(maudAcousticSceneDef* d, maudMesh* mesh, maudMesh* instanced, 
     case 2:
         d->instanceCapacity = 65537;
         *what = "65,537 instances";
+        *want = maud_errorLimit;
         return true;
     case 3:
         d->maxTriangles = 0;
@@ -71,6 +74,7 @@ static bool Spoil(maudAcousticSceneDef* d, maudMesh* mesh, maudMesh* instanced, 
     case 4:
         d->maxTriangles = 16777217;
         *what = "16,777,217 triangles allowed";
+        *want = maud_errorLimit;
         return true;
     case 5:
         d->meshes = nullptr;
@@ -133,13 +137,13 @@ static void TestDefs(void)
     for (int k = 0;; ++k)
     {
         def = Valid(&mesh, &instanced);
-        if (!Spoil(&def, &mesh, &instanced, k, &what))
+        maudResult want = maud_errorInvalid;
+        if (!Spoil(&def, &mesh, &instanced, k, &what, &want))
         {
             break;
         }
         scene = (maudAcousticScene*)&scene;
-        bool refused =
-            maudCreateAcousticScene(&def, &scene) == maud_errorInvalid && scene == nullptr;
+        bool refused = maudCreateAcousticScene(&def, &scene) == want && scene == nullptr;
         if (!refused)
         {
             printf("not refused: %s\n", what);

@@ -3,7 +3,8 @@
 //
 // Every refusal spatializer.h documents, each made on its own: a def
 // with one field just past its range (and nothing else wrong) is
-// maud_errorInvalid with no spatializer made, and the field at its
+// maud_errorLimit past a published bound and maud_errorInvalid
+// otherwise, with no spatializer made, and the field at its
 // bound is taken where that costs little; each pointer a function needs
 // refused when NULL; ids and poses out of range; a source def's
 // volumetric occlusion out of range.
@@ -66,8 +67,9 @@ static maudSpatializerDef Valid(void)
 }
 
 // Puts case k's field just past its range; false past the last case.
-static bool Spoil(maudSpatializerDef* d, int k, const char** what)
+static bool Spoil(maudSpatializerDef* d, int k, const char** what, maudResult* want)
 {
+    *want = maud_errorInvalid;
     switch (k)
     {
     case 0:
@@ -81,6 +83,7 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 2:
         d->sourceCapacity = 65537;
         *what = "65,537 sources";
+        *want = maud_errorLimit;
         return true;
     case 3:
         d->maxOcclusionSamples = 0;
@@ -89,6 +92,7 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 4:
         d->maxOcclusionSamples = 1025;
         *what = "1,025 occlusion samples";
+        *want = maud_errorLimit;
         return true;
     case 5:
         d->maxSurfaces = 0;
@@ -97,6 +101,7 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 6:
         d->maxSurfaces = 17;
         *what = "17 surfaces";
+        *want = maud_errorLimit;
         return true;
     case 7:
         d->materialCapacity = 0;
@@ -105,6 +110,7 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 8:
         d->materialCapacity = 65537;
         *what = "65,537 materials";
+        *want = maud_errorLimit;
         return true;
     case 9:
         d->enqueueTask = Enqueue;
@@ -125,15 +131,18 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 13:
         d->reverbRays = 63;
         *what = "63 reverberation rays";
+        *want = maud_errorLimit;
         return true;
     case 14:
         d->reverbRays = 16385;
         *what = "16,385 reverberation rays";
+        *want = maud_errorLimit;
         return true;
     case 15:
         d->reflectionOrder = 4;
         d->reflectionDuration = 0.1f;
         *what = "reflections of order 4";
+        *want = maud_errorLimit;
         return true;
     case 16:
         d->reflectionOrder = 1;
@@ -166,6 +175,7 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 21:
         d->probeSetCapacity = 65;
         *what = "65 probe sets";
+        *want = maud_errorLimit;
         return true;
     case 22:
         d->maxProbes = 0;
@@ -174,6 +184,7 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 23:
         d->maxProbes = 65537;
         *what = "65,537 probes";
+        *want = maud_errorLimit;
         return true;
     case 24:
         d->maxProbePairs = 0;
@@ -182,10 +193,12 @@ static bool Spoil(maudSpatializerDef* d, int k, const char** what)
     case 25:
         d->maxProbePairs = 16777217;
         *what = "16,777,217 probe pairs";
+        *want = maud_errorLimit;
         return true;
     case 26:
         d->maxPaths = 4097;
         *what = "4,097 paths";
+        *want = maud_errorLimit;
         return true;
     case 27:
         d->allocator = (maudAllocator){Alloc, nullptr, nullptr};
@@ -245,12 +258,13 @@ static void TestDefs(void)
     for (int k = 0;; ++k)
     {
         def = Valid();
-        if (!Spoil(&def, k, &what))
+        maudResult want = maud_errorInvalid;
+        if (!Spoil(&def, k, &what, &want))
         {
             break;
         }
         s = (maudSpatializer*)&s;
-        bool refused = maudCreateSpatializer(&def, &s) == maud_errorInvalid && s == nullptr;
+        bool refused = maudCreateSpatializer(&def, &s) == want && s == nullptr;
         if (!refused)
         {
             printf("not refused: %s\n", what);

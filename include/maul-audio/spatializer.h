@@ -37,6 +37,22 @@ extern "C"
 {
 #endif
 
+// The bounds of a spatializer def's counts; a def past one is refused
+// with maud_errorLimit.
+#define MAUD_MAX_SOURCES           65536u
+#define MAUD_MAX_OCCLUSION_SAMPLES 1024u
+#define MAUD_MAX_SURFACES          16u
+#define MAUD_MAX_MATERIALS         65536u
+#define MAUD_MIN_REVERB_RAYS       64u
+#define MAUD_MAX_REVERB_RAYS       16384u
+#define MAUD_MAX_REFLECTION_ORDER  3u
+#define MAUD_MAX_PROBE_SETS        64u
+#define MAUD_MAX_PROBES            65536u
+#define MAUD_MAX_PROBE_PAIRS       16777216u
+#define MAUD_MAX_PATHS             4096u
+// The most columns a probe set's generation walks: 4096 by 4096.
+#define MAUD_MAX_PROBE_COLUMNS 16777216u
+
     // A spatializer.
     typedef struct maudSpatializer maudSpatializer;
 
@@ -148,10 +164,10 @@ extern "C"
         // MAUD_ABI_VERSION of the headers the program was built with; the
         // cookie and this stay the first two fields in every version.
         uint32_t version;
-        // The most sources at once, 1 to 65,536.
+        // The most sources at once, 1 to MAUD_MAX_SOURCES.
         uint32_t sourceCapacity;
         // The most occlusion points a volumetric source may have, 1 to
-        // 1,024.
+        // MAUD_MAX_OCCLUSION_SAMPLES.
         uint32_t maxOcclusionSamples;
         // The host's any-hit query; NULL leaves every path clear.
         maudAnyHitFn* anyHit;
@@ -159,35 +175,38 @@ extern "C"
         // pass nothing.
         maudClosestHitFn* closestHit;
         void* rayContext;
-        // The most surfaces a transmission path counts, 1 to 16.
+        // The most surfaces a transmission path counts, 1 to
+        // MAUD_MAX_SURFACES.
         uint32_t maxSurfaces;
-        // The material table's capacity, 1 to 65,536.
+        // The material table's capacity, 1 to MAUD_MAX_MATERIALS.
         uint32_t materialCapacity;
-        // The rays a reverberation estimate traces, 64 to 16,384, or 0
-        // for no estimates. Diffuse rooms are within 2 % at 1024; a
+        // The rays a reverberation estimate traces, MAUD_MIN_REVERB_RAYS
+        // to MAUD_MAX_REVERB_RAYS, or 0 for no estimates. Diffuse rooms are within 2 % at 1024; a
         // smooth room with one absorbent surface needs about 8000.
         uint32_t reverbRays;
         // The air's amplitude exponent per metre and band, for the
         // estimate (as the direct effect's def).
         float airAbsorption[MAUD_DIRECT_BANDS];
         // Geometric reflections: the bed's order (0 for none, else 1 to
-        // 3; they need reverbRays), the response's length in seconds
+        // MAUD_MAX_REFLECTION_ORDER; they need reverbRays), the response's length in seconds
         // (0.05 to 4) and the rate rendering runs at (44,100 to
         // 384,000 Hz). Memory grows with all three: four responses of
         // (order + 1)^2 channels.
         uint32_t reflectionOrder;
         float reflectionDuration;
         float reflectionRate;
-        // Probe sets for pathing: how many at once (0 to 64), the most
-        // probes one holds (1 to 65,536) and the most probe pairs within
-        // range one tests (1 to 16,777,216). A set takes its memory when
+        // Probe sets for pathing: how many at once (0 to
+        // MAUD_MAX_PROBE_SETS), the most probes one holds (1 to
+        // MAUD_MAX_PROBES) and the most probe pairs within range one tests
+        // (1 to MAUD_MAX_PROBE_PAIRS). A set takes its memory when
         // made: 12 bytes a probe and 16 a link, with 9 bytes a pair and
         // 5 a column while it is built.
         uint32_t probeSetCapacity;
         uint32_t maxProbes;
         uint32_t maxProbePairs;
         // The most occluded sources a direct step looks for paths for,
-        // in slot order (0 to 4,096; 0 for no pathing): 780 bytes each.
+        // in slot order (0 to MAUD_MAX_PATHS; 0 for no pathing): 780 bytes
+        // each.
         uint32_t maxPaths;
         // The task hooks; both NULL runs queries on the step's thread.
         maudEnqueueTaskFn* enqueueTask;
@@ -231,8 +250,9 @@ extern "C"
         // box's top by the closest-hit query; a probe goes at height
         // (0.1 to 10 m) above each horizontal surface (its normal within
         // 45 degrees of vertical) with that height free above it, at
-        // most 8 a column. y is up. A slab thicker than the height may
-        // hold a probe inside it; give such scenes points.
+        // most 8 a column, and at most MAUD_MAX_PROBE_COLUMNS columns.
+        // y is up. A slab thicker than the height may hold a probe inside
+        // it; give such scenes points.
         maudVector3 boxMin;
         maudVector3 boxMax;
         float spacing;
@@ -360,12 +380,13 @@ extern "C"
     /// @param spatializerOut  Receives the spatializer; NULL on failure.
     /// @return `maud_success`; `maud_errorVersion` for a def stamped with
     ///         another binary interface than the library's, checked
-    ///         before anything else of it; `maud_errorInvalid` for a NULL pointer, a
-    ///         def without its cookie, a capacity or ray count out of
-    ///         range, an air absorption below 0 or not finite, a
-    ///         reflection order, duration or rate out of range (or
-    ///         reflections without reverberation rays), or one task hook
-    ///         without the other; `maud_errorCapacity` when the
+    ///         before anything else of it; `maud_errorLimit` for a count
+    ///         past its MAUD_MAX_* bound or a ray count below
+    ///         MAUD_MIN_REVERB_RAYS; `maud_errorInvalid` for a NULL pointer, a
+    ///         def without its cookie, a capacity or limit of 0, an air
+    ///         absorption below 0 or not finite, a reflection duration or
+    ///         rate out of range (or reflections without reverberation
+    ///         rays), or one task hook without the other; `maud_errorCapacity` when the
     ///         allocator fails.
     /// @par Thread safety
     /// Safe from any thread.
@@ -596,9 +617,10 @@ extern "C"
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a def
     ///         without its cookie, a value out of range or not finite, or
     ///         neither points nor a box (one with height); `maud_errorState` to
-    ///         generate without a closest-hit query; `maud_errorCapacity` when
-    ///         the spatializer has its capacity of sets, past maxProbes or
-    ///         maxProbePairs, past 4,194,304 columns, or when memory runs out;
+    ///         generate without a closest-hit query; `maud_errorLimit` for a
+    ///         box of more than MAUD_MAX_PROBE_COLUMNS (16,777,216) columns;
+    ///         `maud_errorCapacity` when the spatializer has its capacity of
+    ///         sets, past maxProbes or maxProbePairs, or when memory runs out;
     ///         `maud_errorState` when host code the spatializer is running (its
     ///         hooks or allocator) makes the call, which counts as misuse.
     /// @par Thread safety
@@ -735,8 +757,9 @@ extern "C"
     /// @param bytes        The file.
     /// @param size         Its size in bytes.
     /// @param setOut       Receives the set; 0 on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a file
-    ///         not well formed; `maud_errorVersion` for another format
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer;
+    ///         `maud_errorFormat` for a file not well formed;
+    ///         `maud_errorVersion` for another format
     ///         version or a field only a later version writes;
     ///         `maud_errorUnsupported` for energy fields that do not match;
     ///         `maud_errorCapacity` past maxProbes or

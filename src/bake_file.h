@@ -37,7 +37,7 @@ void maudWriteBakeFile(const maudProbeGraph* graph, const maudProbeBake* bake, u
                        uint32_t fieldBins, uint8_t* out);
 
 // Reads a file into a graph and a bake (empty for probes and links
-// alone): maud_errorInvalid for a file not well formed;
+// alone): maud_errorFormat for a file not well formed;
 // maud_errorVersion for another version or a field only a later one
 // writes; maud_errorUnsupported for energy fields that do not match the
 // limits' layout; maud_errorCapacity past the limits or when memory
