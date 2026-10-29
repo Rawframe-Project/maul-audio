@@ -257,7 +257,7 @@ static void UndoEchoCanceller(void* made)
 }
 
 // A closed 5 by 4 by 3 m office.
-static maudResult MakeOffice(const maudAllocator* allocator, maudAcousticScene** sceneOut)
+static maudResult MakeOffice(const maudAllocator* allocator, maudScene** sceneOut)
 {
     static maudVector3 v[8];
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
@@ -268,11 +268,11 @@ static maudResult MakeOffice(const maudAllocator* allocator, maudAcousticScene**
         v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 4.0f : 0.0f, (i & 4) ? 3.0f : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
     def.allocator = *allocator;
-    return maudCreateAcousticScene(&def, sceneOut);
+    return maudCreateScene(&def, sceneOut);
 }
 
 static maudResult MakeScene(const maudAllocator* allocator, void* made)
@@ -282,12 +282,12 @@ static maudResult MakeScene(const maudAllocator* allocator, void* made)
 
 static void UndoScene(void* made)
 {
-    maudDestroyAcousticScene(*(maudAcousticScene**)made);
+    maudDestroyScene(*(maudScene**)made);
 }
 
 // The scene the spatializer's rays are cast against, made with the C
 // allocator: only the spatializer's blocks are refused.
-static maudAcousticScene* s_office;
+static maudScene* s_office;
 static unsigned char s_bake[1 << 20];
 
 // A spatializer with reverb, reflections, paths and two probe sets: one
@@ -424,7 +424,7 @@ int main(void)
     maudAllocator c = {0};
     CHECK(MakeOffice(&c, &s_office) == maud_success, "the office");
     Sweep("spatializer", MakeSpatializer, UndoSpatializer);
-    maudDestroyAcousticScene(s_office);
+    maudDestroyScene(s_office);
     Sweep("context", MakeContext, UndoContext);
     return s_failures == 0 ? 0 : 1;
 }

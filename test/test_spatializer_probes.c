@@ -31,7 +31,7 @@ static void Ignore(void* memory, size_t size, size_t alignment, void* context)
     (void)context;
 }
 
-static maudAcousticScene* Room(void)
+static maudScene* Room(void)
 {
     // A floor slab, 10 x 10 m, its top at y = 0, and a wall across x = 5
     // standing 3 m.
@@ -56,15 +56,15 @@ static maudAcousticScene* Room(void)
         }
     }
     maudMesh mesh = {v, 16, faces, materials, 24};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a room");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a room");
     return scene;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene, uint32_t sets)
+static maudSpatializer* Create(maudScene* scene, uint32_t sets)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
@@ -215,12 +215,12 @@ static void TestMisuse(maudSpatializer* s)
 
 int main(void)
 {
-    maudAcousticScene* scene = Room();
+    maudScene* scene = Room();
     maudSpatializer* s = Create(scene, 2);
     TestPoints(s);
     TestGenerated(s);
     TestMisuse(s);
     maudDestroySpatializer(s);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     return s_failures == 0 ? 0 : 1;
 }

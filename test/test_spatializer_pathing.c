@@ -28,7 +28,7 @@
 #include <string.h>
 
 // The scene the rays see, switched under a spatializer by the tests.
-static maudAcousticScene* s_current;
+static maudScene* s_current;
 
 // When set, every ray from a probe (a point at half metres in x and z)
 // is blocked: each link of every path found, a source's and the
@@ -79,7 +79,7 @@ enum
     PILLAR,
 };
 
-static maudAcousticScene* Corridor(int extra)
+static maudScene* Corridor(int extra)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
@@ -103,11 +103,11 @@ static maudAcousticScene* Corridor(int extra)
     }
     bool two = extra != OPEN;
     maudMesh mesh = {v, two ? 16u : 8u, indices, materials, two ? 24u : 12u};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a corridor");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a corridor");
     return scene;
 }
 
@@ -292,9 +292,9 @@ static void CheckThrough(const maudDirectResult* opaque)
 
 int main(void)
 {
-    maudAcousticScene* scene = Corridor(OPEN);
-    maudAcousticScene* closed = Corridor(CLOSED);
-    maudAcousticScene* pillar = Corridor(PILLAR);
+    maudScene* scene = Corridor(OPEN);
+    maudScene* closed = Corridor(CLOSED);
+    maudScene* pillar = Corridor(PILLAR);
     s_current = scene;
     World w = Build(false, 0.0f);
     maudDirectResult r[4];
@@ -378,8 +378,8 @@ int main(void)
               maudProbeSet_UseForPathing(nullptr, none) == maud_errorInvalid,
           "pathing off; NULL");
     maudDestroySpatializer(w.s);
-    maudDestroyAcousticScene(closed);
-    maudDestroyAcousticScene(pillar);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(closed);
+    maudDestroyScene(pillar);
+    maudDestroyScene(scene);
     return s_failures == 0 ? 0 : 1;
 }

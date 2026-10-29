@@ -162,7 +162,7 @@ static void CountClosest(const maudRay* rays, uint32_t count, maudRayHit* hits, 
     maudFindClosestHit(rays, count, hits, scene);
 }
 
-static void Steps(maudAcousticScene* scene)
+static void Steps(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = CountAny;
@@ -278,7 +278,7 @@ static void Pathing(maudSpatializer* s, maudProbeSetId set)
     Against("pathing.step.ms", best * 1e3, false);
 }
 
-static void Probes(maudAcousticScene* scene)
+static void Probes(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = CountAny;
@@ -352,7 +352,7 @@ static float s_out[16][480];
 // Geometric reflections at an order: a reverberation estimate with its
 // response (2048 rays, a second at 48 kHz), then the response rendered
 // into the bed, 10 ms at a time.
-static void Reflections(maudAcousticScene* scene, uint32_t order)
+static void Reflections(maudScene* scene, uint32_t order)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
@@ -444,15 +444,15 @@ static maudMesh Object(void)
 }
 
 // Where the object stands in room (x, z) at a time: turning on the spot.
-static maudInstanceTransform Placed(uint32_t x, uint32_t z, float time)
+static maudSceneInstanceTransform Placed(uint32_t x, uint32_t z, float time)
 {
     float angle = 0.5f * (time + (float)(x * GRID + z));
-    return (maudInstanceTransform){{((float)x + 0.5f) * ROOM, 1.0f, ((float)z + 0.5f) * ROOM},
-                                   {0.0f, sinf(angle), 0.0f, cosf(angle)},
-                                   1.0f};
+    return (maudSceneInstanceTransform){{((float)x + 0.5f) * ROOM, 1.0f, ((float)z + 0.5f) * ROOM},
+                                        {0.0f, sinf(angle), 0.0f, cosf(angle)},
+                                        1.0f};
 }
 
-static double BestClosest(maudAcousticScene* scene, maudRayHit* hits)
+static double BestClosest(maudScene* scene, maudRayHit* hits)
 {
     double best = 1e9;
     for (int run = 0; run < 3; ++run)
@@ -468,29 +468,29 @@ static double BestClosest(maudAcousticScene* scene, maudRayHit* hits)
 static void Instanced(const maudMesh* level, maudRayHit* hits)
 {
     maudMesh object = Object();
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = level;
     def.meshCount = 1;
     def.instanceMeshes = &object;
     def.instanceMeshCount = 1;
     def.instanceCapacity = GRID * GRID;
-    maudAcousticScene* scene = nullptr;
-    if (maudCreateAcousticScene(&def, &scene) != maud_success)
+    maudScene* scene = nullptr;
+    if (maudCreateScene(&def, &scene) != maud_success)
     {
         return;
     }
     static maudSceneInstanceId ids[GRID * GRID];
     for (uint32_t i = 0; i < GRID * GRID; ++i)
     {
-        maudInstanceTransform t = Placed(i / GRID, i % GRID, 0.0f);
+        maudSceneInstanceTransform t = Placed(i / GRID, i % GRID, 0.0f);
         if (maudCreateSceneInstance(scene, 0, &t, &ids[i]) != maud_success)
         {
-            maudDestroyAcousticScene(scene);
+            maudDestroyScene(scene);
             return;
         }
     }
     double start = Seconds();
-    (void)maudAcousticScene_Commit(scene);
+    (void)maudScene_Commit(scene);
     double commit = Seconds() - start;
     printf("instanced:   %u instances of %u triangles, committed in %.3f ms\n", GRID * GRID,
            object.triangleCount, commit * 1e3);
@@ -504,16 +504,16 @@ static void Instanced(const maudMesh* level, maudRayHit* hits)
         start = Seconds();
         for (uint32_t i = 0; i < GRID * GRID; ++i)
         {
-            maudInstanceTransform t = Placed(i / GRID, i % GRID, (float)frame);
+            maudSceneInstanceTransform t = Placed(i / GRID, i % GRID, (float)frame);
             (void)maudSceneInstance_Move(scene, ids[i], &t);
         }
-        (void)maudAcousticScene_Commit(scene);
+        (void)maudScene_Commit(scene);
         moving += Seconds() - start;
     }
     printf("moving:      all %u moved and committed in %.3f ms a frame\n", GRID * GRID,
            moving / 10.0 * 1e3);
     Against("instanced.moving.ms", moving / 10.0 * 1e3, false);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 int main(void)
@@ -521,12 +521,12 @@ int main(void)
     Level();
     static uint32_t materials[1 << 16];
     maudMesh mesh = {s_vertices, s_vertexCount, s_indices, materials, s_triangleCount};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
+    maudScene* scene = nullptr;
     double start = Seconds();
-    if (maudCreateAcousticScene(&def, &scene) != maud_success)
+    if (maudCreateScene(&def, &scene) != maud_success)
     {
         return 1;
     }
@@ -566,7 +566,7 @@ int main(void)
     Reflections(scene, 1);
     Reflections(scene, 3);
     Instanced(&mesh, hits);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     free(s_vertices);
     free(s_indices);
     return 0;

@@ -26,7 +26,7 @@ Positions on the simulation side are in metres in the program's world, right-han
 
 The spatializer does not own the level's geometry. It asks two questions through hooks in its def: `anyHit` (does each of these rays hit anything within its distances?) and `closestHit` (where is each ray's nearest hit, its normal and its material?). A program with its own physics or ray tracer answers them there, so level geometry is never copied. An answer must depend only on the ray and the geometry.
 
-A program without a ray tracer, or one that needs results that match on every platform, uses an acoustic scene (`maul-audio/scene.h`): the library's own geometry and tracer. Static meshes are fixed when the scene is made; instances of its instancing meshes are made, moved and destroyed at any time and take effect at `maudAcousticScene_Commit`. `maudFindAnyHit` and `maudFindClosestHit` have the hooks' signatures, with the scene as their context. Between commits any number of threads may query a scene; changes and commits must not overlap queries.
+A program without a ray tracer, or one that needs results that match on every platform, uses an acoustic scene (`maul-audio/scene.h`): the library's own geometry and tracer. Static meshes are fixed when the scene is made; instances of its instancing meshes are made, moved and destroyed at any time and take effect at `maudScene_Commit`. `maudFindAnyHit` and `maudFindClosestHit` have the hooks' signatures, with the scene as their context. Between commits any number of threads may query a scene; changes and commits must not overlap queries.
 
 Each triangle names a material in the spatializer's table (`maudSpatializer_SetMaterials`): what it absorbs and lets through per band, and how much it scatters.
 

@@ -36,7 +36,7 @@ typedef enum Hook
     hookAllocator,
 } Hook;
 
-static maudAcousticScene* s_scene;
+static maudScene* s_scene;
 static maudSpatializer* s_s;
 static maudSourceId s_source;
 static maudProbeSetId s_set;
@@ -159,7 +159,7 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
     free(raw);
 }
 
-static maudAcousticScene* Office(void)
+static maudScene* Office(void)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
@@ -170,11 +170,11 @@ static maudAcousticScene* Office(void)
         v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 4.0f : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an office");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "an office");
     return scene;
 }
 
@@ -365,6 +365,6 @@ int main(void)
     TestCounts();
     TestDestroy();
     free(s_bytes);
-    maudDestroyAcousticScene(s_scene);
+    maudDestroyScene(s_scene);
     return s_failures == 0 ? 0 : 1;
 }

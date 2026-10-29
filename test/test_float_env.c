@@ -180,7 +180,7 @@ static void Finish(void* userTask, void* userContext)
 
 // A room 8 x 3 x 6 m from z = -3, a wall across it from z = -3 to 1 at
 // x = 4.
-static maudAcousticScene* Room(void)
+static maudScene* Room(void)
 {
     TestFloatSetting before = TestFloatGet();
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
@@ -205,12 +205,12 @@ static maudAcousticScene* Room(void)
         }
     }
     maudMesh mesh = {v, 16, indices, materials, 24};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
     def.allocator = (maudAllocator){HostAlloc, HostFree, nullptr};
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a room");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a room");
     Left(before);
     return scene;
 }
@@ -287,7 +287,7 @@ static uint64_t Step(maudSpatializer* s, const maudSourceId* sources, maudPose l
 static uint64_t Simulate(bool spread)
 {
     s_host = TestFloatGet();
-    maudAcousticScene* scene = Room();
+    maudScene* scene = Room();
     maudRayHit hits[16];
     uint8_t occluded[16];
     TestFloatSetting before = TestFloatGet();
@@ -353,7 +353,7 @@ static uint64_t Simulate(bool spread)
     listener.position = (maudVector3){1.5f, 1.5f, 0.0f};
     hash = Step(s, sources, listener, hash);
     maudDestroySpatializer(s);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     return hash;
 }
 
@@ -388,19 +388,19 @@ static uint32_t Accepted(void)
     static const uint32_t materials[1] = {0};
     maudVector3 v[3] = {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
     maudMesh mesh = {v, 3, faces, materials, 1};
-    maudAcousticSceneDef sceneDef = maudDefaultAcousticSceneDef();
+    maudSceneDef sceneDef = maudDefaultSceneDef();
     sceneDef.instanceMeshes = &mesh;
     sceneDef.instanceMeshCount = 1;
     sceneDef.instanceCapacity = 2;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&sceneDef, &scene) == maud_success, "an instancing scene");
-    maudInstanceTransform plain = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
-    maudInstanceTransform tiny = {{0.0f, 0.0f, 0.0f}, {1e-20f, 0.0f, 0.0f, 0.0f}, 1.0f};
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&sceneDef, &scene) == maud_success, "an instancing scene");
+    maudSceneInstanceTransform plain = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
+    maudSceneInstanceTransform tiny = {{0.0f, 0.0f, 0.0f}, {1e-20f, 0.0f, 0.0f, 0.0f}, 1.0f};
     maudSceneInstanceId instance = {0, 0};
     bits |= maudCreateSceneInstance(scene, 0, &tiny, &instance) == maud_success ? 8u : 0u;
     CHECK(maudCreateSceneInstance(scene, 0, &plain, &instance) == maud_success, "an instance");
     bits |= maudSceneInstance_Move(scene, instance, &tiny) == maud_success ? 16u : 0u;
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     Left(before);
     return bits;
 }

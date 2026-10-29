@@ -30,7 +30,7 @@ static void* Alloc(size_t size, size_t alignment, void* context)
 }
 
 // A def of one 12-triangle box and room for one instance of it.
-static maudAcousticSceneDef Valid(maudMesh* mesh, maudMesh* instanced)
+static maudSceneDef Valid(maudMesh* mesh, maudMesh* instanced)
 {
     for (int i = 0; i < 8; ++i)
     {
@@ -38,7 +38,7 @@ static maudAcousticSceneDef Valid(maudMesh* mesh, maudMesh* instanced)
     }
     *mesh = (maudMesh){s_v, 8, s_faces, s_materials, 12};
     *instanced = *mesh;
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = mesh;
     def.meshCount = 1;
     def.instanceMeshes = instanced;
@@ -48,8 +48,8 @@ static maudAcousticSceneDef Valid(maudMesh* mesh, maudMesh* instanced)
 }
 
 // Puts case k out of range; false past the last case.
-static bool Spoil(maudAcousticSceneDef* d, maudMesh* mesh, maudMesh* instanced, int k,
-                  const char** what, maudResult* want)
+static bool Spoil(maudSceneDef* d, maudMesh* mesh, maudMesh* instanced, int k, const char** what,
+                  maudResult* want)
 {
     *want = maud_errorInvalid;
     switch (k)
@@ -126,13 +126,12 @@ static void TestDefs(void)
 {
     maudMesh mesh;
     maudMesh instanced;
-    maudAcousticSceneDef def = Valid(&mesh, &instanced);
-    maudAcousticScene* scene = (maudAcousticScene*)&scene;
-    CHECK(maudCreateAcousticScene(nullptr, &scene) == maud_errorInvalid && scene == nullptr,
-          "no def");
-    CHECK(maudCreateAcousticScene(&def, nullptr) == maud_errorInvalid, "nowhere to put it");
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "the valid def");
-    maudDestroyAcousticScene(scene);
+    maudSceneDef def = Valid(&mesh, &instanced);
+    maudScene* scene = (maudScene*)&scene;
+    CHECK(maudCreateScene(nullptr, &scene) == maud_errorInvalid && scene == nullptr, "no def");
+    CHECK(maudCreateScene(&def, nullptr) == maud_errorInvalid, "nowhere to put it");
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "the valid def");
+    maudDestroyScene(scene);
     const char* what = "";
     for (int k = 0;; ++k)
     {
@@ -142,47 +141,46 @@ static void TestDefs(void)
         {
             break;
         }
-        scene = (maudAcousticScene*)&scene;
-        bool refused = maudCreateAcousticScene(&def, &scene) == want && scene == nullptr;
+        scene = (maudScene*)&scene;
+        bool refused = maudCreateScene(&def, &scene) == want && scene == nullptr;
         if (!refused)
         {
             printf("not refused: %s\n", what);
-            maudDestroyAcousticScene(scene);
+            maudDestroyScene(scene);
         }
         CHECK(refused, "a def out of range refused");
     }
     def = Valid(&mesh, &instanced);
     def.maxTriangles = 23;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorCapacity && scene == nullptr,
+    CHECK(maudCreateScene(&def, &scene) == maud_errorCapacity && scene == nullptr,
           "24 triangles past a limit of 23");
     def.maxTriangles = 24;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "24 at a limit of 24");
-    maudDestroyAcousticScene(scene);
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "24 at a limit of 24");
+    maudDestroyScene(scene);
     def = Valid(&mesh, &instanced);
     mesh.vertices = nullptr;
     mesh.indices = nullptr;
     mesh.materials = nullptr;
     mesh.triangleCount = 0;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success,
-          "a mesh of no triangles needs no arrays");
-    maudDestroyAcousticScene(scene);
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a mesh of no triangles needs no arrays");
+    maudDestroyScene(scene);
 }
 
 static void TestInstances(void)
 {
     maudMesh mesh;
     maudMesh instanced;
-    maudAcousticSceneDef def = Valid(&mesh, &instanced);
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a scene");
-    maudInstanceTransform t = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
+    maudSceneDef def = Valid(&mesh, &instanced);
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    maudSceneInstanceTransform t = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
     maudSceneInstanceId id = {7, 7};
     CHECK(maudCreateSceneInstance(nullptr, 0, &t, &id) == maud_errorInvalid && id.index1 == 0,
           "an instance without a scene");
     CHECK(maudCreateSceneInstance(scene, 0, nullptr, &id) == maud_errorInvalid,
           "without a transform");
     CHECK(maudCreateSceneInstance(scene, 0, &t, nullptr) == maud_errorInvalid, "nowhere to put it");
-    maudInstanceTransform bad[6] = {t, t, t, t, t, t};
+    maudSceneInstanceTransform bad[6] = {t, t, t, t, t, t};
     bad[0].position.x = NAN;
     bad[1].position.z = INFINITY;
     bad[2].orientation = (maudQuaternion){0.0f, 0.0f, 0.0f, 0.0f};
@@ -195,7 +193,7 @@ static void TestInstances(void)
         refused = refused && maudCreateSceneInstance(scene, 0, &bad[i], &id) == maud_errorInvalid;
     }
     CHECK(refused, "a transform not finite, without a turn, or scaled out of range");
-    maudInstanceTransform bounds[2] = {t, t};
+    maudSceneInstanceTransform bounds[2] = {t, t};
     bounds[0].scale = 0.001f;
     bounds[1].scale = 1000.0f;
     maudSceneInstanceId small = {0, 0};
@@ -218,8 +216,8 @@ static void TestInstances(void)
     CHECK(maudDestroySceneInstance(nullptr, id) == maud_errorInvalid &&
               maudDestroySceneInstance(scene, zero) == maud_errorInvalid,
           "destroying none");
-    CHECK(maudAcousticScene_Commit(nullptr) == maud_errorInvalid, "a commit without a scene");
-    maudDestroyAcousticScene(scene);
+    CHECK(maudScene_Commit(nullptr) == maud_errorInvalid, "a commit without a scene");
+    maudDestroyScene(scene);
 }
 
 int main(void)

@@ -42,14 +42,14 @@ static void Box(maudVector3 low, maudVector3 high)
     s_boxes += 1;
 }
 
-static maudAcousticScene* Scene(void)
+static maudScene* Scene(void)
 {
     maudMesh mesh = {s_vertices, s_boxes * 8, s_indices, s_materials, s_boxes * 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a scene");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
     s_boxes = 0;
     return scene;
 }
@@ -77,7 +77,7 @@ static void TestCorner(void)
     // The L's inside corner is a block over x < 17, z > 3; its edge runs
     // up through (17, y, 3).
     Box((maudVector3){0.0f, 0.0f, 3.0f}, (maudVector3){17.0f, 3.0f, 20.0f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     const maudVector3 listener = {18.5f, 1.5f, 12.0f};
     const maudVector3 source = {6.0f, 1.5f, 1.5f};
     maudVector3 v[4] = {listener, {19.5f, 1.5f, 2.5f}, {16.5f, 1.5f, 0.5f}, source};
@@ -100,7 +100,7 @@ static void TestCorner(void)
           "no query, no change");
     maudVector3 clear[3] = {listener, {18.0f, 1.5f, 8.0f}, {18.5f, 1.5f, 4.0f}};
     CHECK(maudRefinePath(maudFindAnyHit, scene, clear, 3) == 2, "a clear line, no vertex");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 // The point on the plane at x within the doorway (y0 to y1, z0 to z1)
@@ -162,7 +162,7 @@ static void TestDoor(void)
     Box((maudVector3){4.9f, 0.0f, 0.0f}, (maudVector3){5.1f, 3.0f, 2.0f});
     Box((maudVector3){4.9f, 0.0f, 3.0f}, (maudVector3){5.1f, 3.0f, 6.0f});
     Box((maudVector3){4.9f, 2.1f, 2.0f}, (maudVector3){5.1f, 3.0f, 3.0f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     const maudVector3 ends[2][2] = {{{8.0f, 2.6f, 5.0f}, {1.0f, 0.4f, 0.5f}},
                                     {{7.0f, 2.8f, 0.5f}, {1.0f, 2.8f, 0.5f}}};
     const double within[2] = {1e-3, 1e-2};
@@ -176,7 +176,7 @@ static void TestDoor(void)
                100.0 * (got / exact - 1.0));
         CHECK(got >= exact - 1e-4 && got < exact * (1.0 + within[c]), "through the door");
     }
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 // The length of a to (x1, 2, 4.9) to (10 - x1, 2, 5.1) to b, over a
@@ -217,7 +217,7 @@ static double OverLedge(maudVector3 a, maudVector3 b)
 static void TestLedge(void)
 {
     Box((maudVector3){0.0f, 0.0f, 4.9f}, (maudVector3){10.0f, 2.0f, 5.1f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     const float from[2] = {2.0f, 8.0f};
     for (int c = 0; c < 2; ++c)
     {
@@ -231,7 +231,7 @@ static void TestLedge(void)
                100.0 * (got / exact - 1.0));
         CHECK(got >= exact - 1e-4 && got < exact * 1.001, "over the ledge");
     }
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestDiffraction(void)

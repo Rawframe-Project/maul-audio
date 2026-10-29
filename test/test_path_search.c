@@ -20,7 +20,7 @@
 
 static const maudAllocator s_allocator = {nullptr, nullptr, nullptr};
 
-static maudAcousticScene* Corridor(void)
+static maudScene* Corridor(void)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
@@ -31,11 +31,11 @@ static maudAcousticScene* Corridor(void)
         v[i] = (maudVector3){(i & 1) ? 17.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 20.0f : 3.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a corridor");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a corridor");
     return scene;
 }
 
@@ -89,7 +89,7 @@ static bool Linked(const maudProbeGraph* g, uint32_t a, uint32_t b)
 
 static void TestCorridor(void)
 {
-    maudAcousticScene* scene = Corridor();
+    maudScene* scene = Corridor();
     static maudVector3 points[400];
     uint32_t count = 0;
     for (int x = 0; x < 20; ++x)
@@ -202,7 +202,7 @@ static void TestCorridor(void)
           "an end seeing nothing");
     maudDestroyPathSearch(&s_allocator, &search);
     maudReleaseProbeGraph(&s_allocator, &g);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestTooLong(void)

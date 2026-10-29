@@ -19,7 +19,7 @@ returns a constant, a default def, a name, a count or a table entry:
     maudResultName
 
 copies stored values, or stores an id, a flag or bytes, and computes no floats:
-    maudAcousticScene_GetMisuse
+    maudScene_GetMisuse
     maudSource_GetDirectResult
     maudHrtf_GetInfo
     maudProbeSet_GetInfo
@@ -32,7 +32,7 @@ copies stored values, or stores an id, a flag or bytes, and computes no floats:
     maudProbeSet_UseBakedReverb
 
 destroys an object or a slot, computing no floats:
-    maudDestroyAcousticScene
+    maudDestroyScene
     maudDestroyBinaural
     maudDestroyBinauralDecoder
     maudDestroyDirectEffect

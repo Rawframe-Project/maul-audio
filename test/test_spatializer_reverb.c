@@ -21,7 +21,7 @@
 #include <math.h>
 #include <string.h>
 
-static maudAcousticScene* Office(void)
+static maudScene* Office(void)
 {
     static maudVector3 v[8];
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
@@ -32,11 +32,11 @@ static maudAcousticScene* Office(void)
         v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 4.0f : 0.0f, (i & 4) ? 3.0f : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an office");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "an office");
     return scene;
 }
 
@@ -62,7 +62,7 @@ static void Finish(void* userTask, void* userContext)
     (void)userContext;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene, bool tasks, maudAnyHitFunction* anyHit)
+static maudSpatializer* Create(maudScene* scene, bool tasks, maudAnyHitFunction* anyHit)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = anyHit;
@@ -86,7 +86,7 @@ static const maudPose s_listener = {{1.85f, 1.64f, 1.35f}, {0.0f, 0.0f, 0.0f, 1.
 
 static void TestEstimate(void)
 {
-    maudAcousticScene* scene = Office();
+    maudScene* scene = Office();
     maudSpatializer* plain = Create(scene, false, maudFindAnyHit);
     maudSpatializer* tasked = Create(scene, true, maudFindAnyHit);
     maudReverbResult result;
@@ -140,7 +140,7 @@ static void TestEstimate(void)
     CHECK(result.reverbTime[1] < 0.2f, "outside the room, no reverberation");
     maudDestroySpatializer(plain);
     maudDestroySpatializer(tasked);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void Block(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
@@ -155,7 +155,7 @@ static void Block(const maudRay* rays, uint32_t count, uint8_t* occluded, void* 
 
 static void TestBlocked(void)
 {
-    maudAcousticScene* scene = Office();
+    maudScene* scene = Office();
     maudSpatializer* s = nullptr;
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = Block;
@@ -173,7 +173,7 @@ static void TestBlocked(void)
           "an estimate");
     CHECK(result.reverbTime[1] == 0.1f, "every path blocked: nothing lit");
     maudDestroySpatializer(s);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 // The office is convex: from inside, nothing stands between a wall's
@@ -181,7 +181,7 @@ static void TestBlocked(void)
 // the scene's own.
 static void TestNoAnyHit(void)
 {
-    maudAcousticScene* scene = Office();
+    maudScene* scene = Office();
     maudSpatializer* queried = Create(scene, false, maudFindAnyHit);
     maudSpatializer* clear = Create(scene, false, nullptr);
     maudReverbResult a;
@@ -201,7 +201,7 @@ static void TestNoAnyHit(void)
           "every path clear: the scene's times and levels");
     maudDestroySpatializer(queried);
     maudDestroySpatializer(clear);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestMisuse(void)

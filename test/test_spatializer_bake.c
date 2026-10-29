@@ -57,7 +57,7 @@ enum
     FRAMES = 9600
 };
 
-static maudAcousticScene* Office(void)
+static maudScene* Office(void)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
@@ -68,11 +68,11 @@ static maudAcousticScene* Office(void)
         v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 4.0f : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an office");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "an office");
     return scene;
 }
 
@@ -93,8 +93,7 @@ static void Finish(void* userTask, void* userContext)
     (void)userContext;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene, bool reversed, uint32_t order,
-                               uint32_t rays)
+static maudSpatializer* Create(maudScene* scene, bool reversed, uint32_t order, uint32_t rays)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
@@ -178,7 +177,7 @@ static bool Same(const maudReverbResult* a, const maudReverbResult* b)
 // that have it.
 static void TestCoupled(void)
 {
-    maudAcousticScene* rooms = CoupledRooms();
+    maudScene* rooms = CoupledRooms();
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
     def.closestHit = maudFindClosestHit;
@@ -236,10 +235,10 @@ static void TestCoupled(void)
           "and its level faded");
     maudDestroySpatializer(baked);
     maudDestroySpatializer(live);
-    maudDestroyAcousticScene(rooms);
+    maudDestroyScene(rooms);
 }
 
-static void TestReverb(maudAcousticScene* scene)
+static void TestReverb(maudScene* scene)
 {
     maudSpatializer* baked = Create(scene, false, 0, 1024);
     maudSpatializer* live = Create(scene, false, 0, 1024);
@@ -315,7 +314,7 @@ static void Render(maudSpatializer* s, int which)
     }
 }
 
-static void TestReflections(maudAcousticScene* scene)
+static void TestReflections(maudScene* scene)
 {
     maudSpatializer* baked = Create(scene, false, 1, RAYS(1024u));
     maudSpatializer* live = Create(scene, false, 1, RAYS(1024u));
@@ -335,7 +334,7 @@ static void TestReflections(maudAcousticScene* scene)
     maudDestroySpatializer(baked);
 }
 
-static void TestRefused(maudAcousticScene* scene)
+static void TestRefused(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
@@ -375,7 +374,7 @@ static void Counted(const maudRay* rays, uint32_t count, maudRayHit* hits, void*
 }
 
 // A baked estimate traces nothing; without the set in use it traces.
-static void TestTraces(maudAcousticScene* scene)
+static void TestTraces(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
@@ -412,7 +411,7 @@ static uint8_t* Save(const maudSpatializer* s, maudProbeSetId set, size_t* size)
     return bytes;
 }
 
-static void TestFile(maudAcousticScene* scene)
+static void TestFile(maudScene* scene)
 {
     maudSpatializer* baked = Create(scene, false, 1, RAYS(1024u));
     maudProbeSetId set = Bake(baked);
@@ -534,7 +533,7 @@ static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, c
 }
 #endif
 
-static void TestGolden(maudAcousticScene* scene)
+static void TestGolden(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
@@ -599,13 +598,13 @@ static void TestGolden(maudAcousticScene* scene)
 int main(void)
 {
     TestCoupled();
-    maudAcousticScene* scene = Office();
+    maudScene* scene = Office();
     TestReverb(scene);
     TestReflections(scene);
     TestRefused(scene);
     TestTraces(scene);
     TestFile(scene);
     TestGolden(scene);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     return s_failures == 0 ? 0 : 1;
 }

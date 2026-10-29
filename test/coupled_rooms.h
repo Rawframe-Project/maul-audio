@@ -18,7 +18,7 @@
 static const maudAcousticMaterial CoupledMaterials[2] = {{{0.05f, 0.05f, 0.08f}, 0.3f, {0, 0, 0}},
                                                          {{0.4f, 0.5f, 0.6f}, 0.3f, {0, 0, 0}}};
 
-static inline maudAcousticScene* CoupledRooms(void)
+static inline maudScene* CoupledRooms(void)
 {
     static maudVector3 v[8 * 13];
     static uint32_t indices[36 * 13];
@@ -58,11 +58,11 @@ static inline maudAcousticScene* CoupledRooms(void)
         }
     }
     maudMesh mesh = {v, 8 * 13, indices, materials, 12 * 13};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "the two rooms");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "the two rooms");
     return scene;
 }
 

@@ -72,7 +72,7 @@ struct Render
     maudBinauralDecoder* decoder;
     maudDirectEffect* direct;
     maudReverb* reverb;
-    maudAcousticScene* scene;
+    maudScene* scene;
     maudSpatializer* spatializer;
     maudSourceId source;
     maudDirectParams params;
@@ -224,10 +224,10 @@ static const uint32_t s_wallMaterials[12] = {0};
 static void OpenWalk(Render* r)
 {
     const maudMesh wall = {s_wallVertices, 8, s_boxFaces, s_wallMaterials, 12};
-    maudAcousticSceneDef sceneDef = maudDefaultAcousticSceneDef();
+    maudSceneDef sceneDef = maudDefaultSceneDef();
     sceneDef.meshes = &wall;
     sceneDef.meshCount = 1;
-    CHECK(maudCreateAcousticScene(&sceneDef, &r->scene) == maud_success, "the wall");
+    CHECK(maudCreateScene(&sceneDef, &r->scene) == maud_success, "the wall");
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.sourceCapacity = 1;
     def.anyHit = maudFindAnyHit;
@@ -297,7 +297,7 @@ static void Close(Render* r)
     maudDestroyDirectEffect(r->direct);
     maudDestroyReverb(r->reverb);
     maudDestroySpatializer(r->spatializer);
-    maudDestroyAcousticScene(r->scene);
+    maudDestroyScene(r->scene);
 }
 
 // The stream's callback: the render's next block into the stream's

@@ -36,7 +36,7 @@
 
 // A closed box from the origin to size, a material per face: x low and
 // high, y low and high, z low and high.
-static maudAcousticScene* Box(float x, float y, float z)
+static maudScene* Box(float x, float y, float z)
 {
     static maudVector3 v[8];
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
@@ -47,11 +47,11 @@ static maudAcousticScene* Box(float x, float y, float z)
         v[i] = (maudVector3){(i & 1) ? x : 0.0f, (i & 2) ? y : 0.0f, (i & 4) ? z : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a box");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a box");
     return scene;
 }
 
@@ -65,8 +65,8 @@ static void FitTimes(maudReverbHistogram* histograms, uint32_t count, float* tim
     memcpy(times, fit.times, sizeof(fit.times));
 }
 
-static void Estimate(maudAcousticScene* scene, const maudAcousticMaterial* materials,
-                     maudVector3 listener, const float* air, uint32_t rays, float* times)
+static void Estimate(maudScene* scene, const maudAcousticMaterial* materials, maudVector3 listener,
+                     const float* air, uint32_t rays, float* times)
 {
     maudReverbTrace trace = {
         maudFindClosestHit, maudFindAnyHit, scene, materials, 6, {air[0], air[1], air[2]},
@@ -110,7 +110,7 @@ static void TestRooms(void)
     for (size_t r = 0; r < sizeof(rooms) / sizeof(rooms[0]); ++r)
     {
         const Room* room = &rooms[r];
-        maudAcousticScene* scene = Box(room->size[0], room->size[1], room->size[2]);
+        maudScene* scene = Box(room->size[0], room->size[1], room->size[2]);
         maudAcousticMaterial materials[6];
         for (int f = 0; f < 6; ++f)
         {
@@ -123,7 +123,7 @@ static void TestRooms(void)
         printf("%s: %.3f s (reference %.2f)\n", room->name, (double)times[1], room->reference);
         CHECK(fabs((double)times[1] / room->reference - 1.0) < 0.06, "the reference's time");
         CHECK(times[0] == times[1] && times[1] == times[2], "equal bands, equal times");
-        maudDestroyAcousticScene(scene);
+        maudDestroyScene(scene);
     }
 }
 
@@ -134,7 +134,7 @@ static double Eyring(double volume, double area, double absorption, double air)
 
 static void TestBandsAndAir(void)
 {
-    maudAcousticScene* office = Box(5, 4, 3);
+    maudScene* office = Box(5, 4, 3);
     maudAcousticMaterial banded[6];
     for (int f = 0; f < 6; ++f)
     {
@@ -150,10 +150,10 @@ static void TestBandsAndAir(void)
         printf("office band %d: %.3f s (Eyring %.3f)\n", b, (double)times[b], eyring);
         CHECK(fabs((double)times[b] / eyring - 1.0) < 0.08, "each band its own time");
     }
-    maudDestroyAcousticScene(office);
+    maudDestroyScene(office);
     // The air (amplitude 0.003 per metre, energy twice that) in a diffuse
     // hall: Eyring's 4 m V term with m the energy exponent.
-    maudAcousticScene* hall = Box(30, 20, 12);
+    maudScene* hall = Box(30, 20, 12);
     maudAcousticMaterial even[6];
     for (int f = 0; f < 6; ++f)
     {
@@ -167,7 +167,7 @@ static void TestBandsAndAir(void)
            (double)times[0], ratio);
     CHECK(fabs((double)times[1] / (still * ratio) - 1.0) < 0.06, "the air shortens the time");
     CHECK(fabs((double)times[0] / still - 1.0) < 0.06, "only in its band");
-    maudDestroyAcousticScene(hall);
+    maudDestroyScene(hall);
 }
 
 // The ray hook for an open field: nothing anywhere.
@@ -203,7 +203,7 @@ static void TestLimits(void)
     }
     FitTimes(s_histograms, 2, times);
     CHECK(times[0] == 0.1f && times[2] == 0.1f, "an open field: the floor");
-    maudAcousticScene* box = Box(5, 4, 3);
+    maudScene* box = Box(5, 4, 3);
     maudAcousticMaterial lossless[6];
     for (int f = 0; f < 6; ++f)
     {
@@ -231,14 +231,14 @@ static void TestLimits(void)
         total += (double)s_histograms[0].energy[1][i];
     }
     CHECK(total == 0.0, "unknown materials reflect nothing");
-    maudDestroyAcousticScene(box);
+    maudDestroyScene(box);
 }
 
 // Batches traced in any order, then summed in order, give the same
 // times; a batch's histogram does not depend on the others.
 static void TestOrder(void)
 {
-    maudAcousticScene* box = Box(5, 4, 3);
+    maudScene* box = Box(5, 4, 3);
     maudAcousticMaterial m[6];
     for (int f = 0; f < 6; ++f)
     {
@@ -270,7 +270,7 @@ static void TestOrder(void)
     CHECK(forward[1] == backward[1], "the same times in any order");
     CHECK(maudReverbBatches(256) == 4 && maudReverbBatches(257) == 5 && maudReverbBatches(0) == 0,
           "batches of 64");
-    maudDestroyAcousticScene(box);
+    maudDestroyScene(box);
 }
 
 // A floor (y = 0) as two triangles 2 km wide, facing down (away from
@@ -287,11 +287,11 @@ static void TestSingleBounce(void)
     static const uint32_t faces[6] = {0, 1, 2, 1, 3, 2};
     static const uint32_t materials[2] = {0, 0};
     maudMesh mesh = {v, 4, faces, materials, 2};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* floor = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &floor) == maud_success, "a floor");
+    maudScene* floor = nullptr;
+    CHECK(maudCreateScene(&def, &floor) == maud_success, "a floor");
     maudAcousticMaterial lossless = Material(0.0f, 1.0f);
     static float field[4 * 3 * 100];
     const double heights[2] = {0.5, 2.0};
@@ -337,7 +337,7 @@ static void TestSingleBounce(void)
         // The straight path down and back: 2h at 343 m/s.
         CHECK(first == (uint32_t)(2.0 * h / 343.0 / 0.01), "the first bin");
     }
-    maudDestroyAcousticScene(floor);
+    maudDestroyScene(floor);
 }
 
 // Every shadow blocked: nothing reaches the listener.
@@ -353,7 +353,7 @@ static void Always(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
 
 static void TestBlocked(void)
 {
-    maudAcousticScene* box = Box(5, 4, 3);
+    maudScene* box = Box(5, 4, 3);
     maudAcousticMaterial m[6];
     for (int f = 0; f < 6; ++f)
     {
@@ -368,7 +368,7 @@ static void TestBlocked(void)
         total += (double)s_histograms[0].energy[0][i];
     }
     CHECK(total == 0.0, "blocked shadows bring nothing");
-    maudDestroyAcousticScene(box);
+    maudDestroyScene(box);
 }
 
 // Rays cut at 64 bounces (0.4 s into a 1 s office): the bins past the
@@ -376,7 +376,7 @@ static void TestBlocked(void)
 // 1.007 s; 0.83 s with nothing filled in).
 static void TestTruncated(void)
 {
-    maudAcousticScene* box = Box(5, 4, 3);
+    maudScene* box = Box(5, 4, 3);
     maudAcousticMaterial m[6];
     for (int f = 0; f < 6; ++f)
     {
@@ -393,7 +393,7 @@ static void TestTruncated(void)
     FitTimes(s_histograms, 16, times);
     printf("office cut at 64 bounces: %.3f s\n", (double)times[1]);
     CHECK(fabs((double)times[1] / 0.99 - 1.0) < 0.05, "the truncated decay's time");
-    maudDestroyAcousticScene(box);
+    maudDestroyScene(box);
 }
 
 // A histogram cut short at 0.5 s whose bins do not fall: nothing to
@@ -669,7 +669,7 @@ static double MissOf(const float* energy, float time, float tailTime, float shar
 // stays.
 static void TestCoupledRooms(void)
 {
-    maudAcousticScene* rooms = CoupledRooms();
+    maudScene* rooms = CoupledRooms();
     const maudVector3 at[2] = {{8.1f, 1.5f, 2.0f}, {2.0f, 1.5f, 2.0f}};
     for (int room = 0; room < 2; ++room)
     {
@@ -710,7 +710,7 @@ static void TestCoupledRooms(void)
             CHECK(fit.tailTimes[1] == 0.0f, "the live room keeps one slope");
         }
     }
-    maudDestroyAcousticScene(rooms);
+    maudDestroyScene(rooms);
 }
 
 static uint64_t Hash(uint64_t hash, const void* bytes, size_t size)
@@ -725,7 +725,7 @@ static uint64_t Hash(uint64_t hash, const void* bytes, size_t size)
 
 static void TestSealed(void)
 {
-    maudAcousticScene* scene = Box(5.0f, 3.0f, 4.0f);
+    maudScene* scene = Box(5.0f, 3.0f, 4.0f);
     maudAcousticMaterial materials[6];
     for (int m = 0; m < 6; ++m)
     {
@@ -776,7 +776,7 @@ static void TestSealed(void)
     {
         s_histograms[b].field = nullptr;
     }
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static float s_wall = 1.0f;
