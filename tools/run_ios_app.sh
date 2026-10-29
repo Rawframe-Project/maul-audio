@@ -6,7 +6,7 @@
 # "result: N failures". simctl launch returns once the application runs,
 # not when it ends, so the runner ends it. Passes when the line says 0
 # failures; otherwise shows the application's errors and, if it ended,
-# its crash report.
+# its crash report and the simulator's audio log.
 #
 # Installing and launching have a bound of their own, five minutes, apart
 # from the application's two: a simulator that is slow to take the bundle
@@ -105,6 +105,17 @@ for frame in thread.get("frames", [])[:40]:
           frame.get("sourceFile", ""), frame.get("sourceLine", ""))
 PY
         fi
+        # An abort in a call to the simulator's audio server (an RPC
+        # timeout in AURemoteIO) says nothing of why the server did not
+        # answer; its own log does.
+        echo "the simulator's audio log, last 3 minutes:"
+        log=$(mktemp -t maud-ios-log)
+        bounded 60 "reading the simulator's audio log" "$log" xcrun simctl spawn "$device" log show \
+            --last 3m --style compact \
+            --predicate 'process IN {"audiomxd", "mediaserverd"} OR subsystem BEGINSWITH "com.apple.coreaudio"' ||
+            true
+        tail -n 200 "$log"
+        rm -f "$log"
     fi
 fi
 xcrun simctl terminate "$device" "$id" >/dev/null 2>&1 || true
