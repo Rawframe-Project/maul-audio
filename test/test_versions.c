@@ -5,14 +5,14 @@
 // its default stamps MAUD_ABI_VERSION, and the object's creation
 // refuses a def of another interface (another release before 1.0,
 // another major, a zeroed version) with maud_errorVersion before
-// it reads anything else of it (here the HRTF set those that need one
-// are never given), leaving nothing made; a def without its cookie is
-// maud_errorInvalid whatever its version says.
+// it reads anything else of it, leaving nothing made; a def without its
+// cookie is maud_errorInvalid whatever its version says. The binaural
+// effect and decoder take an HRTF set, which a program loads first, so
+// their defs are not roots and carry no stamp.
 
 #include "test_harness.h"
 
 #include "maul-audio/ambisonics.h"
-#include "maul-audio/binaural.h"
 #include "maul-audio/direct.h"
 #include "maul-audio/hrtf.h"
 #include "maul-audio/reverb.h"
@@ -37,16 +37,6 @@
 static maudResult Hrtf(const maudHrtfDef* def, void* out)
 {
     return maudLoadHrtf(def, out);
-}
-
-static maudResult Binaural(const maudBinauralDef* def, void* out)
-{
-    return maudCreateBinaural(def, out);
-}
-
-static maudResult BinauralDecoder(const maudBinauralDecoderDef* def, void* out)
-{
-    return maudCreateBinauralDecoder(def, out);
 }
 
 static maudResult SpeakerDecoder(const maudSpeakerDecoderDef* def, void* out)
@@ -130,8 +120,6 @@ int main(void)
     bool ok = true;
     bool all = true;
     ALL(maudHrtfDef, maudDefaultHrtfDef(), Hrtf);
-    ALL(maudBinauralDef, maudDefaultBinauralDef(), Binaural);
-    ALL(maudBinauralDecoderDef, maudDefaultBinauralDecoderDef(), BinauralDecoder);
     ALL(maudSpeakerDecoderDef, maudDefaultSpeakerDecoderDef(), SpeakerDecoder);
     ALL(maudSpeakerPannerDef, maudDefaultSpeakerPannerDef(), SpeakerPanner);
     ALL(maudDirectEffectDef, maudDefaultDirectEffectDef(), DirectEffect);

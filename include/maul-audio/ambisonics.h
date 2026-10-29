@@ -103,9 +103,6 @@ extern "C"
     typedef struct maudBinauralDecoderDef
     {
         uint32_t cookie;
-        // MAUD_ABI_VERSION of the headers the program was built with; the
-        // cookie and this stay the first two fields in every version.
-        uint32_t version;
         // The set the decoder is fitted to, at the rate it runs at. The
         // decoder keeps its own filters: the set may go once it exists.
         const maudHrtf* hrtf;
@@ -117,32 +114,13 @@ extern "C"
         maudAllocator allocator;
     } maudBinauralDecoderDef;
 
-// The cookie of a binaural decoder def, which its default sets and
-// maudCreateBinauralDecoder checks.
-#define MAUD_BINAURAL_DECODER_DEF_COOKIE 0x6D616264u
-
     /// Returns the default binaural decoder def: no set, order 3, at most
     /// 1,024 frames per call.
     ///
-    /// The default is built in the program from the headers it includes,
-    /// so the version it stamps is the program's.
-    ///
-    /// @return The def, with a valid cookie and version.
+    /// @return The def, with a valid cookie.
     /// @par Thread safety
     /// Safe from any thread.
-    static inline maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void)
-    {
-#ifdef __cplusplus
-        maudBinauralDecoderDef def = {};
-#else
-    maudBinauralDecoderDef def = {0};
-#endif
-        def.cookie = MAUD_BINAURAL_DECODER_DEF_COOKIE;
-        def.version = MAUD_ABI_VERSION;
-        def.order = MAUD_MAX_AMBISONIC_ORDER;
-        def.maxFrames = 1024;
-        return def;
-    }
+    MAUD_API maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void);
 
     /// Creates a binaural decoder: fits filters to the set by magnitude
     /// least squares (least squares below 1.5 kHz, magnitudes above), each
@@ -153,9 +131,7 @@ extern "C"
     /// @param def         The def, from maudDefaultBinauralDecoderDef,
     ///                    with a set.
     /// @param decoderOut  Receives the decoder; NULL on failure.
-    /// @return `maud_success`; `maud_errorVersion` for a def stamped with
-    ///         another binary interface than the library's, checked
-    ///         before anything else of it; `maud_errorLimit` for an order
+    /// @return `maud_success`; `maud_errorLimit` for an order
     ///         past MAUD_MAX_AMBISONIC_ORDER or a maxFrames past
     ///         MAUD_MAX_BINAURAL_FRAMES; `maud_errorInvalid` for a NULL pointer, a
     ///         def without its cookie, without a set or out of range, or a
