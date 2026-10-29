@@ -20,9 +20,14 @@
 // is skipped, unless MAUD_REQUIRE_PIPEWIRE or MAUD_REQUIRE_COREAUDIO is
 // set, and then the native backend must be the one it names.
 //
-// The check that no block took 5 ms or more, a tenth of the stall, runs
-// only as `test_stall blocks` (stall_blocks, quarantined): a block on a
-// loaded sanitizer runner can take longer without waiting for the host.
+// That no block waited for the host is judged by what a wait would do: a
+// block that waits for the stalled step cannot finish before the step
+// returns. So when a block started at least two periods before the stall
+// ended, some block that started during the stall must have finished
+// during it. How long a block took says nothing either way: a slow
+// runner stretches a block that never waited. The check runs as
+// `test_stall blocks` (stall_blocks), quarantined until it has passed
+// fourteen nights.
 
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
@@ -131,10 +136,15 @@ typedef struct Shared
     atomic_uint blocks;
     atomic_uint latched;
     atomic_uint torn;
-    // The blocks that started during the stall, and the longest of them
-    // in nanoseconds, timed to its end.
+    // The blocks that started during the stall, how many of them finished
+    // before it ended, when the first of them started (0 for none), and
+    // the longest of them in nanoseconds, timed to its end.
     atomic_uint startedInStall;
+    atomic_uint finishedInStall;
+    atomic_llong firstInStall;
     atomic_llong longestInStall;
+    // When the stalled step returned, by the host clock.
+    int64_t stallEnd;
     // Read inside the stall, by the host.
     unsigned blocksBefore;
     unsigned blocksAfter;
@@ -156,6 +166,8 @@ static void Render(const maudStreamBlock* block, void* user)
     if (inStall)
     {
         atomic_fetch_add(&shared->startedInStall, 1);
+        long long none = 0;
+        atomic_compare_exchange_strong(&shared->firstInStall, &none, start);
     }
     uint64_t step = maudLatchResults(shared->spatializer);
     float gain = 0.0f;
@@ -179,6 +191,10 @@ static void Render(const maudStreamBlock* block, void* user)
     atomic_fetch_add(&shared->blocks, 1);
     if (inStall)
     {
+        if (atomic_load(&shared->stalling))
+        {
+            atomic_fetch_add(&shared->finishedInStall, 1);
+        }
         long long took = maudGetHostNanoseconds() - start;
         long long longest = atomic_load(&shared->longestInStall);
         while (took > longest &&
@@ -213,6 +229,7 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
     // hygiene: the stall itself, a host thread stuck in its physics
     int64_t late = PauseLate(STALL_MS);
     shared->latestWakeup = late > shared->latestWakeup ? late : shared->latestWakeup;
+    shared->stallEnd = maudGetHostNanoseconds();
     atomic_store(&shared->stalling, false);
     shared->blocksAfter = atomic_load(&shared->blocks);
     shared->latchedInStall = atomic_load(&shared->latched);
@@ -331,9 +348,18 @@ int main(int argc, char** argv)
            "before, %llu after\n",
            during, periodMs, (double)longest / 1e6, shared->latchedInStall,
            (unsigned long long)shared->underrunsBefore, (unsigned long long)status.underruns);
-    if (blocks)
+    // A block that waited would finish only after the stall: with a block
+    // started two periods before its end, one must have finished inside.
+    long long firstStart = atomic_load(&shared->firstInStall);
+    bool room = firstStart != 0 && (double)(shared->stallEnd - firstStart) >= 2.0 * periodMs * 1e6;
+    unsigned finished = atomic_load(&shared->finishedInStall);
+    printf("stall: %u of %u blocks started in the stall finished in it, the first %.1f ms "
+           "before its end\n",
+           finished, atomic_load(&shared->startedInStall),
+           firstStart != 0 ? (double)(shared->stallEnd - firstStart) / 1e6 : 0.0);
+    if (blocks && room)
     {
-        CHECK(longest < 5000000, "no block waited for the stalled host");
+        CHECK(finished > 0, "no block waited for the stalled host");
     }
     CHECK(atomic_load(&shared->torn) == 0, "every step read whole");
     // With no block started during the stall, the behavior checks above

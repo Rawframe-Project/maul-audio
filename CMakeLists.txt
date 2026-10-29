@@ -464,8 +464,8 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     # whose callback runs on the stalled thread itself.
     if(MAUL_AUDIO_SPATIAL AND NOT EMSCRIPTEN)
         maul_add_test(stall)
-        # The longest block's bound, which a loaded sanitizer runner can
-        # pass without a wait: quarantined, so it runs at night.
+        # Whether a block waited for the stalled host: quarantined, so it
+        # runs at night, until the check has passed fourteen nights.
         add_test(NAME stall_blocks COMMAND test_stall blocks)
         set_tests_properties(stall_blocks PROPERTIES LABELS "stall;quarantine")
         set_tests_properties(stall stall_blocks PROPERTIES RESOURCE_LOCK pipewire-daemon)
