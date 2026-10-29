@@ -171,7 +171,7 @@ static World Build(bool reversed, float transmission)
     pd.pointCount = count;
     pd.range = 3.0f;
     CHECK(maudCreateProbeSet(w.s, &pd, &w.set) == maud_success &&
-              maudProbeSet_UseForPathing(w.s, w.set) == maud_success,
+              maudSpatializer_SetPathingProbeSet(w.s, w.set) == maud_success,
           "a set in use");
     const maudVector3 at[4] = {
         {6.0f, 1.5f, 1.5f}, {6.0f, 1.5f, 1.5f}, {18.5f, 1.5f, 5.0f}, {8.0f, 1.5f, 1.0f}};
@@ -367,15 +367,22 @@ int main(void)
     CHECK(maudSource_SetPose(w.s, w.sources[0], &around) == maud_success &&
               maudSource_SetPose(w.s, w.sources[3], &past) == maud_success,
           "moved back");
+    // 0 takes a live set out of use, and setting it again puts it back.
+    const maudProbeSetId none = {0, 0};
+    CHECK(maudSpatializer_SetPathingProbeSet(w.s, none) == maud_success, "pathing off");
+    Step(&w, r);
+    CHECK(!r[0].pathed && r[0].occlusion == 1.0f, "0, no path");
+    CHECK(maudSpatializer_SetPathingProbeSet(w.s, w.set) == maud_success, "pathing on again");
+    Step(&w, r);
+    CHECK(r[0].pathed, "the set again, a path");
     // A destroyed set: its id stale, its paths gone.
     CHECK(maudDestroyProbeSet(w.s, w.set) == maud_success, "destroyed");
-    CHECK(maudProbeSet_UseForPathing(w.s, w.set) == maud_errorStale,
+    CHECK(maudSpatializer_SetPathingProbeSet(w.s, w.set) == maud_errorStale,
           "a destroyed set's id is stale");
     Step(&w, r);
     CHECK(!r[0].pathed, "no set, no path");
-    const maudProbeSetId none = {0, 0};
-    CHECK(maudProbeSet_UseForPathing(w.s, none) == maud_success &&
-              maudProbeSet_UseForPathing(nullptr, none) == maud_errorInvalid,
+    CHECK(maudSpatializer_SetPathingProbeSet(w.s, none) == maud_success &&
+              maudSpatializer_SetPathingProbeSet(nullptr, none) == maud_errorInvalid,
           "pathing off; NULL");
     maudDestroySpatializer(w.s);
     maudDestroyScene(closed);

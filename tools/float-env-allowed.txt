@@ -28,8 +28,8 @@ copies stored values, or stores an id, a flag or bytes, and computes no floats:
     maudSpeakerDecoder_GetMatrix
     maudSpatializer_LatchResults
     maudProbeSet_Save
-    maudProbeSet_UseForPathing
-    maudProbeSet_UseBakedReverb
+    maudSpatializer_SetPathingProbeSet
+    maudSpatializer_SetReverbProbeSet
 
 destroys an object or a slot, computing no floats:
     maudDestroyScene

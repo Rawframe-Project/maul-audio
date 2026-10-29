@@ -79,9 +79,9 @@ static void TryAll(void)
     refused += maudSpatializer_SimulateReverb(s, &pose) == maud_errorBusy;
     refused += maudCreateProbeSet(s, &setDef, &set) == maud_errorBusy;
     refused += maudDestroyProbeSet(s, s_set) == maud_errorBusy;
-    refused += maudProbeSet_UseForPathing(s, s_set) == maud_errorBusy;
+    refused += maudSpatializer_SetPathingProbeSet(s, s_set) == maud_errorBusy;
     refused += maudProbeSet_Bake(s, s_set) == maud_errorBusy;
-    refused += maudProbeSet_UseBakedReverb(s, s_set) == maud_errorBusy;
+    refused += maudSpatializer_SetReverbProbeSet(s, s_set) == maud_errorBusy;
     refused += maudLoadProbeSet(s, s_bytes, s_size, &set) == maud_errorBusy;
     maudDestroySpatializer(s);
     s_refused = refused;
@@ -272,9 +272,9 @@ static void TestEachCounted(void)
     COUNTED(s_s, maudSpatializer_SimulateReverb(s_s, nullptr), "a reverberation step without one");
     COUNTED(s_s, maudCreateProbeSet(s_s, nullptr, &set), "a set without a def");
     COUNTED(s_s, maudDestroyProbeSet(s_s, unknown), "destroying an unknown set");
-    COUNTED(s_s, maudProbeSet_UseForPathing(s_s, unknown), "pathing over one");
+    COUNTED(s_s, maudSpatializer_SetPathingProbeSet(s_s, unknown), "pathing over one");
     COUNTED(s_s, maudProbeSet_Bake(s_s, unknown), "baking one");
-    COUNTED(s_s, maudProbeSet_UseBakedReverb(s_s, unknown), "using one's bake");
+    COUNTED(s_s, maudSpatializer_SetReverbProbeSet(s_s, unknown), "using one's bake");
     COUNTED(s_s, maudLoadProbeSet(s_s, nullptr, 0, &set), "loading no bytes");
     // The rendering side counts its invalid arguments too.
     maudSpatializerDef def = maudDefaultSpatializerDef();

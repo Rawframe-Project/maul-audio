@@ -319,7 +319,7 @@ static uint64_t Simulate(bool spread)
     maudProbeSetId set = {0, 0};
     CHECK(maudCreateProbeSet(s, &pd, &set) == maud_success, "a set");
     Left(before);
-    CHECK(maudProbeSet_UseForPathing(s, set) == maud_success, "pathing");
+    CHECK(maudSpatializer_SetPathingProbeSet(s, set) == maud_success, "pathing");
     Left(before);
     CHECK(maudProbeSet_Bake(s, set) == maud_success, "a bake");
     Left(before);
@@ -348,7 +348,7 @@ static uint64_t Simulate(bool spread)
     // Traced, then baked: where it traced, and on z = 0.
     maudPose listener = {{2.0f, 1.5f, -2.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     hash = Step(s, sources, listener, hash);
-    CHECK(maudProbeSet_UseBakedReverb(s, set) == maud_success, "the bake in use");
+    CHECK(maudSpatializer_SetReverbProbeSet(s, set) == maud_success, "the bake in use");
     hash = Step(s, sources, listener, hash);
     listener.position = (maudVector3){1.5f, 1.5f, 0.0f};
     hash = Step(s, sources, listener, hash);

@@ -247,7 +247,7 @@ static void Pathing(maudSpatializer* s, maudProbeSetId set)
         }
     }
     maudPose listener = {{2.0f, 1.6f, 2.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    if (maudProbeSet_UseForPathing(s, set) != maud_success ||
+    if (maudSpatializer_SetPathingProbeSet(s, set) != maud_success ||
         maudSpatializer_SimulateDirect(s, &listener) != maud_success)
     {
         return;

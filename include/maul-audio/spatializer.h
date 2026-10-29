@@ -231,7 +231,7 @@ extern "C"
         // closest-hit query.
         bool enableTransmission;
         // Whether an occluded source looks for a path around what hides
-        // it, over the probe set in use (maudProbeSet_UseForPathing).
+        // it, over the probe set in use (maudSpatializer_SetPathingProbeSet).
         bool enablePathing;
     } maudSourceDef;
 
@@ -676,8 +676,8 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the simulation side is used by one thread at
     /// a time.
-    MAUD_NODISCARD MAUD_API maudResult maudProbeSet_UseForPathing(maudSpatializer* spatializer,
-                                                                  maudProbeSetId set);
+    MAUD_NODISCARD MAUD_API maudResult
+    maudSpatializer_SetPathingProbeSet(maudSpatializer* spatializer, maudProbeSetId set);
 
     /// Bakes a probe set: a reverberation estimate at every probe, as
     /// maudSpatializer_SimulateReverb makes one there, with the energy field when the
@@ -721,8 +721,8 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the simulation side is used by one thread at
     /// a time.
-    MAUD_NODISCARD MAUD_API maudResult maudProbeSet_UseBakedReverb(maudSpatializer* spatializer,
-                                                                   maudProbeSetId set);
+    MAUD_NODISCARD MAUD_API maudResult
+    maudSpatializer_SetReverbProbeSet(maudSpatializer* spatializer, maudProbeSetId set);
 
     /// Saves a probe set as a `.maudbake` file (docs/internals/file-formats.md):
     /// its probes, links and bake. A set saves to the same bytes on every

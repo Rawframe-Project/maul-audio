@@ -140,10 +140,10 @@ static maudProbeSetId Bake(maudSpatializer* s)
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_success &&
               maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) == maud_success && !info.baked,
           "a set, not yet baked");
-    CHECK(maudProbeSet_UseBakedReverb(s, set) == maud_errorState, "no bake to use");
+    CHECK(maudSpatializer_SetReverbProbeSet(s, set) == maud_errorState, "no bake to use");
     CHECK(maudProbeSet_Bake(s, set) == maud_success &&
               maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) == maud_success && info.baked &&
-              maudProbeSet_UseBakedReverb(s, set) == maud_success,
+              maudSpatializer_SetReverbProbeSet(s, set) == maud_success,
           "baked and in use");
     return set;
 }
@@ -204,7 +204,7 @@ static void TestCoupled(void)
     maudProbeSetId id = {0, 0};
     CHECK(maudCreateProbeSet(baked, &set, &id) == maud_success &&
               maudProbeSet_Bake(baked, id) == maud_success &&
-              maudProbeSet_UseBakedReverb(baked, id) == maud_success,
+              maudSpatializer_SetReverbProbeSet(baked, id) == maud_success,
           "probes through the door, baked");
     maudReverbResult a = At(baked, 8.5f, 1.5f, 2.0f);
     maudReverbResult b = At(live, 8.5f, 1.5f, 2.0f);
@@ -289,7 +289,7 @@ static void TestReverb(maudScene* scene)
     b = At(live, 7.0f, 1.5f, 2.0f);
     CHECK(Same(&a, &b), "with no probe in sight, a trace");
     CHECK(maudDestroyProbeSet(baked, set) == maud_success &&
-              maudProbeSet_UseBakedReverb(baked, set) == maud_errorStale,
+              maudSpatializer_SetReverbProbeSet(baked, set) == maud_errorStale,
           "a destroyed set's id");
     maudDestroySpatializer(reversed);
     maudDestroySpatializer(live);
@@ -360,7 +360,7 @@ static void TestRefused(maudScene* scene)
     const maudProbeSetId none = {0, 0};
     CHECK(maudProbeSet_Bake(s, none) == maud_errorInvalid &&
               maudProbeSet_Bake(nullptr, set) == maud_errorInvalid &&
-              maudProbeSet_UseBakedReverb(s, none) == maud_success,
+              maudSpatializer_SetReverbProbeSet(s, none) == maud_success,
           "0, NULL, and none in use");
     maudDestroySpatializer(s);
 }
@@ -389,11 +389,14 @@ static void TestTraces(maudScene* scene)
     (void)At(s, 2.2f, 1.6f, 2.7f);
     uint32_t baked = s_closest;
     const maudProbeSetId none = {0, 0};
-    CHECK(maudProbeSet_UseBakedReverb(s, none) == maud_success, "the set out of use");
+    CHECK(maudSpatializer_SetReverbProbeSet(s, none) == maud_success, "the set out of use");
     (void)At(s, 2.2f, 1.6f, 2.7f);
     printf("closest-hit rays: %u baked, %u traced\n", baked, s_closest - baked);
     CHECK(baked == 0 && s_closest > 0, "a baked estimate traces nothing");
-    (void)set;
+    CHECK(maudSpatializer_SetReverbProbeSet(s, set) == maud_success, "the set in use again");
+    s_closest = 0;
+    (void)At(s, 2.2f, 1.6f, 2.7f);
+    CHECK(s_closest == 0, "back in use, nothing traced");
     maudDestroySpatializer(s);
 }
 
@@ -450,7 +453,7 @@ static void TestFile(maudScene* scene)
     maudSpatializer* loaded = Create(scene, false, 1, RAYS(1024u));
     maudProbeSetId again = {0, 0};
     CHECK(maudLoadProbeSet(loaded, bytes, size, &again) == maud_success &&
-              maudProbeSet_UseBakedReverb(loaded, again) == maud_success,
+              maudSpatializer_SetReverbProbeSet(loaded, again) == maud_success,
           "loaded and in use");
     bool same = true;
     const float at[3][3] = {{1.0f, 1.5f, 1.0f}, {2.5f, 1.5f, 1.5f}, {3.7f, 1.4f, 1.9f}};
@@ -536,7 +539,7 @@ static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, c
     bool ok = maudCreateSpatializer(def, &kept) == maud_success &&
               maudSpatializer_SetMaterials(kept, m, 6) == maud_success &&
               maudLoadProbeSet(kept, bytes, size, &loaded) == maud_success &&
-              maudProbeSet_UseBakedReverb(kept, loaded) == maud_success;
+              maudSpatializer_SetReverbProbeSet(kept, loaded) == maud_success;
     uint64_t hash = 1469598103934665603u;
     for (int i = 0; ok && i < 4; ++i)
     {
