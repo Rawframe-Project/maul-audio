@@ -149,7 +149,7 @@ static void MakeRotation(Render* r, uint32_t block, float* left, float* right)
     CHECK(maudEncodeAmbisonic(3, &source, &source, r->mono, bed, BLOCK) == maud_success, "encoded");
     maudQuaternion from = Yaw(2.0f * PI * (float)block / (float)r->blocks);
     maudQuaternion to = Yaw(2.0f * PI * ((float)block + 1.0f) / (float)r->blocks);
-    CHECK(maudRotateAmbisonic(3, &from, &to, bed, BLOCK) == maud_success, "turned");
+    CHECK(maudRotateAmbisonic(bed, BLOCK, 3, &from, &to) == maud_success, "turned");
     float* out[2] = {left, right};
     CHECK(maudBinauralDecoder_Decode(r->decoder, (const float* const*)bed, out, BLOCK) ==
               maud_success,

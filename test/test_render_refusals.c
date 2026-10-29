@@ -70,16 +70,16 @@ static void TestAmbisonics(void)
           "bed channel missing");
     maudQuaternion facing = {0.0f, 0.0f, 0.0f, 1.0f};
     maudQuaternion endless = {0.0f, NAN, 0.0f, 1.0f};
-    CHECK(maudRotateAmbisonic(1, &facing, &facing, bed, 64) == maud_success, "a rotation");
-    CHECK(maudRotateAmbisonic(0, &facing, &facing, bed, 64) == maud_errorInvalid &&
-              maudRotateAmbisonic(1, nullptr, &facing, bed, 64) == maud_errorInvalid &&
-              maudRotateAmbisonic(1, &facing, nullptr, bed, 64) == maud_errorInvalid &&
-              maudRotateAmbisonic(1, &endless, &facing, bed, 64) == maud_errorInvalid &&
-              maudRotateAmbisonic(1, &facing, &endless, bed, 64) == maud_errorInvalid &&
-              maudRotateAmbisonic(1, &facing, &facing, nullptr, 64) == maud_errorInvalid &&
-              maudRotateAmbisonic(1, &facing, &facing, holed, 64) == maud_errorInvalid,
+    CHECK(maudRotateAmbisonic(bed, 64, 1, &facing, &facing) == maud_success, "a rotation");
+    CHECK(maudRotateAmbisonic(bed, 64, 0, &facing, &facing) == maud_errorInvalid &&
+              maudRotateAmbisonic(bed, 64, 1, nullptr, &facing) == maud_errorInvalid &&
+              maudRotateAmbisonic(bed, 64, 1, &facing, nullptr) == maud_errorInvalid &&
+              maudRotateAmbisonic(bed, 64, 1, &endless, &facing) == maud_errorInvalid &&
+              maudRotateAmbisonic(bed, 64, 1, &facing, &endless) == maud_errorInvalid &&
+              maudRotateAmbisonic(nullptr, 64, 1, &facing, &facing) == maud_errorInvalid &&
+              maudRotateAmbisonic(holed, 64, 1, &facing, &facing) == maud_errorInvalid,
           "a rotation with order 0, no turn or one not finite, or no bed");
-    CHECK(maudRotateAmbisonic(4, &facing, &facing, bed, 64) == maud_errorLimit,
+    CHECK(maudRotateAmbisonic(bed, 64, 4, &facing, &facing) == maud_errorLimit,
           "a rotation past the largest order");
 }
 

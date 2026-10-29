@@ -379,7 +379,7 @@ static void GuideBed(const maudHrtf* hrtf)
     maudQuaternion head = {0.0f, 0.0f, 0.0f, 1.0f};   // the listener's turn, from its pose
     if (result == maud_success)
     {
-        result = maudRotateAmbisonic(order, &head, &head, bed, 480);
+        result = maudRotateAmbisonic(bed, 480, order, &head, &head);
     }
     maudBinauralDecoderDef def = maudDefaultBinauralDecoderDef();
     def.hrtf = hrtf;

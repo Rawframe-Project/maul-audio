@@ -78,21 +78,21 @@ extern "C"
     /// turns the field in the listener's frame: a sound from direction d
     /// comes out from the rotated d.
     ///
+    /// @param bed     The order's channel count of channels, frames each.
+    /// @param frames  The frames.
     /// @param order   The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER.
     /// @param from    The rotation at the previous call's end.
     /// @param to      The rotation at this call's end.
-    /// @param bed     The order's channel count of channels, frames each.
-    /// @param frames  The frames.
     /// @return `maud_success`; `maud_errorLimit` for an order past
     ///         MAUD_MAX_AMBISONIC_ORDER; `maud_errorInvalid` for an order
     ///         of 0, a NULL pointer, or a quaternion of zero length or not
     ///         finite; nothing is written on failure.
     /// @par Thread safety
     /// Safe from any thread; the bed is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudRotateAmbisonic(uint32_t order,
+    MAUD_NODISCARD MAUD_API maudResult maudRotateAmbisonic(float* const* bed, uint32_t frames,
+                                                           uint32_t order,
                                                            const maudQuaternion* from,
-                                                           const maudQuaternion* to,
-                                                           float* const* bed, uint32_t frames);
+                                                           const maudQuaternion* to);
 
     // A binaural decoder: a bed's channels to both ears.
     typedef struct maudBinauralDecoder maudBinauralDecoder;
