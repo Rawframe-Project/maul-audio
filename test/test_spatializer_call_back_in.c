@@ -36,7 +36,7 @@ typedef enum Hook
     hookAllocator,
 } Hook;
 
-static maudAcousticScene* s_scene;
+static maudScene* s_scene;
 static maudSpatializer* s_s;
 static maudSourceId s_source;
 static maudProbeSetId s_set;
@@ -63,7 +63,7 @@ static maudProbeSetDef SetDef(void)
 static void TryAll(void)
 {
     maudSpatializer* s = s_s;
-    uint64_t before = maudGetSpatializerMisuse(s);
+    uint64_t before = maudSpatializer_GetMisuse(s);
     maudSourceDef sourceDef = maudDefaultSourceDef();
     maudSourceId source = {0, 0};
     maudPose pose = {{1.0f, 1.5f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
@@ -73,25 +73,25 @@ static void TryAll(void)
     int refused = 0;
     refused += maudCreateSource(s, &sourceDef, &source) == maud_errorBusy;
     refused += maudDestroySource(s, s_source) == maud_errorBusy;
-    refused += maudSetSourcePose(s, s_source, &pose) == maud_errorBusy;
-    refused += maudSimulateDirect(s, &pose) == maud_errorBusy;
-    refused += maudSetMaterials(s, &material, 1) == maud_errorBusy;
-    refused += maudSimulateReverb(s, &pose) == maud_errorBusy;
+    refused += maudSource_SetPose(s, s_source, &pose) == maud_errorBusy;
+    refused += maudSpatializer_SimulateDirect(s, &pose) == maud_errorBusy;
+    refused += maudSpatializer_SetMaterials(s, &material, 1) == maud_errorBusy;
+    refused += maudSpatializer_SimulateReverb(s, &pose) == maud_errorBusy;
     refused += maudCreateProbeSet(s, &setDef, &set) == maud_errorBusy;
     refused += maudDestroyProbeSet(s, s_set) == maud_errorBusy;
-    refused += maudSetPathing(s, s_set) == maud_errorBusy;
-    refused += maudBakeProbeSet(s, s_set) == maud_errorBusy;
-    refused += maudUseBakedReverb(s, s_set) == maud_errorBusy;
+    refused += maudProbeSet_UseForPathing(s, s_set) == maud_errorBusy;
+    refused += maudProbeSet_Bake(s, s_set) == maud_errorBusy;
+    refused += maudProbeSet_UseBakedReverb(s, s_set) == maud_errorBusy;
     refused += maudLoadProbeSet(s, s_bytes, s_size, &set) == maud_errorBusy;
     maudDestroySpatializer(s);
     s_refused = refused;
-    s_counted = maudGetSpatializerMisuse(s) - before;
+    s_counted = maudSpatializer_GetMisuse(s) - before;
     maudReverbResult reverb;
     maudDirectResult direct;
-    (void)maudLatchResults(s);
-    s_allowed = maudGetReverbResult(s, &reverb) != maud_errorBusy &&
-                maudGetDirectResult(s, s_source, &direct) != maud_errorBusy &&
-                maudGetSpatializerMisuse(s) == before + COUNTS;
+    (void)maudSpatializer_LatchResults(s);
+    s_allowed = maudSpatializer_GetReverbResult(s, &reverb) != maud_errorBusy &&
+                maudSource_GetDirectResult(s, s_source, &direct) != maud_errorBusy &&
+                maudSpatializer_GetMisuse(s) == before + COUNTS;
 }
 
 static void Fire(Hook hook)
@@ -106,17 +106,17 @@ static void Fire(Hook hook)
 static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
 {
     Fire(hookAnyHit);
-    maudSceneAnyHit(rays, count, occluded, context);
+    maudFindAnyHit(rays, count, occluded, context);
 }
 
 static void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
 {
     Fire(hookClosestHit);
-    maudSceneClosestHit(rays, count, hits, context);
+    maudFindClosestHit(rays, count, hits, context);
 }
 
-static void* Enqueue(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Enqueue(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     Fire(hookEnqueue);
@@ -159,7 +159,7 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
     free(raw);
 }
 
-static maudAcousticScene* Office(void)
+static maudScene* Office(void)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
@@ -170,11 +170,11 @@ static maudAcousticScene* Office(void)
         v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 4.0f : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an office");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "an office");
     return scene;
 }
 
@@ -192,7 +192,7 @@ static maudSpatializer* Create(void)
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     maudAcousticMaterial material = {{0.1f, 0.1f, 0.1f}, 0.3f, {0.0f, 0.0f, 0.0f}};
-    CHECK(maudSetMaterials(s, &material, 1) == maud_success, "a material");
+    CHECK(maudSpatializer_SetMaterials(s, &material, 1) == maud_success, "a material");
     return s;
 }
 
@@ -214,17 +214,20 @@ static void Arm(Hook hook)
 static void TestHooks(void)
 {
     Arm(hookAnyHit);
-    CHECK(maudSimulateDirect(s_s, &s_listener) == maud_success && Fired(),
+    CHECK(maudSpatializer_SimulateDirect(s_s, &s_listener) == maud_success && Fired(),
           "from the any-hit query: every call refused and counted, the step goes on");
     Arm(hookClosestHit);
-    CHECK(maudSimulateReverb(s_s, &s_listener) == maud_success && Fired(),
+    CHECK(maudSpatializer_SimulateReverb(s_s, &s_listener) == maud_success && Fired(),
           "from the closest-hit query");
     Arm(hookEnqueue);
-    CHECK(maudSimulateReverb(s_s, &s_listener) == maud_success && Fired(), "from enqueueTask");
+    CHECK(maudSpatializer_SimulateReverb(s_s, &s_listener) == maud_success && Fired(),
+          "from enqueueTask");
     Arm(hookFinish);
-    CHECK(maudSimulateReverb(s_s, &s_listener) == maud_success && Fired(), "from finishTask");
+    CHECK(maudSpatializer_SimulateReverb(s_s, &s_listener) == maud_success && Fired(),
+          "from finishTask");
     maudDirectResult direct;
-    CHECK(maudLatchResults(s_s) > 0 && maudGetDirectResult(s_s, s_source, &direct) == maud_success,
+    CHECK(maudSpatializer_LatchResults(s_s) > 0 &&
+              maudSource_GetDirectResult(s_s, s_source, &direct) == maud_success,
           "the steps published");
 }
 
@@ -236,7 +239,7 @@ static void TestAllocator(void)
     CHECK(maudCreateProbeSet(s_s, &def, &set) == maud_success && Fired(),
           "from the allocator making a set");
     Arm(hookAllocator);
-    CHECK(maudBakeProbeSet(s_s, set) == maud_success && Fired(), "baking it");
+    CHECK(maudProbeSet_Bake(s_s, set) == maud_success && Fired(), "baking it");
     Arm(hookAllocator);
     CHECK(maudDestroyProbeSet(s_s, set) == maud_success && Fired(), "destroying it");
     Arm(hookAllocator);
@@ -250,8 +253,8 @@ static void TestAllocator(void)
 #define COUNTED(s, call, msg)                                                                      \
     do                                                                                             \
     {                                                                                              \
-        uint64_t before_ = maudGetSpatializerMisuse(s);                                            \
-        CHECK((call) == maud_errorInvalid && maudGetSpatializerMisuse(s) == before_ + 1, msg);     \
+        uint64_t before_ = maudSpatializer_GetMisuse(s);                                           \
+        CHECK((call) == maud_errorInvalid && maudSpatializer_GetMisuse(s) == before_ + 1, msg);    \
     } while (0)
 
 static void TestEachCounted(void)
@@ -262,16 +265,16 @@ static void TestEachCounted(void)
     const maudProbeSetId unknown = {99, 1};
     COUNTED(s_s, maudCreateSource(s_s, nullptr, &source), "a source without a def");
     COUNTED(s_s, maudDestroySource(s_s, (maudSourceId){0, 0}), "a 0 source id");
-    COUNTED(s_s, maudSetSourcePose(s_s, s_source, nullptr), "no pose");
-    COUNTED(s_s, maudSetMaterials(s_s, nullptr, 1), "no materials");
-    COUNTED(s_s, maudSetMaterials(s_s, &wrong, 1), "an absorption past 1");
-    COUNTED(s_s, maudSimulateDirect(s_s, nullptr), "a direct step without a listener");
-    COUNTED(s_s, maudSimulateReverb(s_s, nullptr), "a reverberation step without one");
+    COUNTED(s_s, maudSource_SetPose(s_s, s_source, nullptr), "no pose");
+    COUNTED(s_s, maudSpatializer_SetMaterials(s_s, nullptr, 1), "no materials");
+    COUNTED(s_s, maudSpatializer_SetMaterials(s_s, &wrong, 1), "an absorption past 1");
+    COUNTED(s_s, maudSpatializer_SimulateDirect(s_s, nullptr), "a direct step without a listener");
+    COUNTED(s_s, maudSpatializer_SimulateReverb(s_s, nullptr), "a reverberation step without one");
     COUNTED(s_s, maudCreateProbeSet(s_s, nullptr, &set), "a set without a def");
     COUNTED(s_s, maudDestroyProbeSet(s_s, unknown), "destroying an unknown set");
-    COUNTED(s_s, maudSetPathing(s_s, unknown), "pathing over one");
-    COUNTED(s_s, maudBakeProbeSet(s_s, unknown), "baking one");
-    COUNTED(s_s, maudUseBakedReverb(s_s, unknown), "using one's bake");
+    COUNTED(s_s, maudProbeSet_UseForPathing(s_s, unknown), "pathing over one");
+    COUNTED(s_s, maudProbeSet_Bake(s_s, unknown), "baking one");
+    COUNTED(s_s, maudProbeSet_UseBakedReverb(s_s, unknown), "using one's bake");
     COUNTED(s_s, maudLoadProbeSet(s_s, nullptr, 0, &set), "loading no bytes");
     // The rendering side counts its invalid arguments too.
     maudSpatializerDef def = maudDefaultSpatializerDef();
@@ -287,23 +290,24 @@ static void TestEachCounted(void)
     float channel[4][4] = {{0}};
     float* bed[4] = {channel[0], channel[1], channel[2], channel[3]};
     float* gap[4] = {channel[0], nullptr, channel[2], channel[3]};
-    COUNTED(r, maudRenderReflections(r, &none, send, bed, 4), "a zero orientation");
-    COUNTED(r, maudRenderReflections(r, &facing, nullptr, bed, 4), "no send");
-    COUNTED(r, maudRenderReflections(r, &facing, send, gap, 4), "a bed channel missing");
+    COUNTED(r, maudSpatializer_RenderReflections(r, &none, send, bed, 4), "a zero orientation");
+    COUNTED(r, maudSpatializer_RenderReflections(r, &facing, nullptr, bed, 4), "no send");
+    COUNTED(r, maudSpatializer_RenderReflections(r, &facing, send, gap, 4),
+            "a bed channel missing");
     maudDestroySpatializer(r);
 }
 
 static void TestCounts(void)
 {
-    uint64_t before = maudGetSpatializerMisuse(s_s);
+    uint64_t before = maudSpatializer_GetMisuse(s_s);
     maudPose bad = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     maudProbeSetId set = {0, 0};
     uint8_t junk[16] = {0};
-    CHECK(maudSimulateDirect(s_s, &bad) == maud_errorInvalid &&
-              maudSetSourcePose(s_s, (maudSourceId){0, 0}, &s_listener) == maud_errorInvalid &&
+    CHECK(maudSpatializer_SimulateDirect(s_s, &bad) == maud_errorInvalid &&
+              maudSource_SetPose(s_s, (maudSourceId){0, 0}, &s_listener) == maud_errorInvalid &&
               maudDestroyProbeSet(s_s, (maudProbeSetId){0, 0}) == maud_errorInvalid,
           "invalid arguments refused");
-    CHECK(maudGetSpatializerMisuse(s_s) == before + 3, "each counted");
+    CHECK(maudSpatializer_GetMisuse(s_s) == before + 3, "each counted");
     maudSourceDef sourceDef = maudDefaultSourceDef();
     maudSourceId gone = {0, 0};
     CHECK(maudCreateSource(s_s, &sourceDef, &gone) == maud_success &&
@@ -313,11 +317,11 @@ static void TestCounts(void)
     maudDirectResult direct;
     CHECK(maudDestroySource(s_s, gone) == maud_errorStale &&
               maudLoadProbeSet(s_s, junk, sizeof(junk), &set) == maud_errorFormat &&
-              maudGetProbeSet(s_s, (maudProbeSetId){0, 0}, &info, 0, 0, nullptr) ==
+              maudProbeSet_GetInfo(s_s, (maudProbeSetId){0, 0}, 0, &info, nullptr, 0) ==
                   maud_errorInvalid &&
-              maudGetDirectResult(s_s, (maudSourceId){0, 0}, &direct) == maud_errorInvalid,
+              maudSource_GetDirectResult(s_s, (maudSourceId){0, 0}, &direct) == maud_errorInvalid,
           "a stale id, a malformed bake and the queries refused");
-    CHECK(maudGetSpatializerMisuse(s_s) == before + 3, "none of them counted");
+    CHECK(maudSpatializer_GetMisuse(s_s) == before + 3, "none of them counted");
 }
 
 static void TestDestroy(void)
@@ -339,7 +343,7 @@ int main(void)
     sourceDef.occlusion = maud_occlusionRay;
     maudPose pose = {{1.0f, 1.5f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     CHECK(maudCreateSource(s_s, &sourceDef, &s_source) == maud_success &&
-              maudSetSourcePose(s_s, s_source, &pose) == maud_success,
+              maudSource_SetPose(s_s, s_source, &pose) == maud_success,
           "an occluded-ray source");
     for (int i = 0; i < 4; ++i)
     {
@@ -347,20 +351,20 @@ int main(void)
     }
     maudProbeSetDef def = SetDef();
     CHECK(maudCreateProbeSet(s_s, &def, &s_set) == maud_success &&
-              maudBakeProbeSet(s_s, s_set) == maud_success &&
-              maudSaveProbeSet(s_s, s_set, nullptr, 0, &s_size) == maud_success,
+              maudProbeSet_Bake(s_s, s_set) == maud_success &&
+              maudProbeSet_Save(s_s, s_set, nullptr, 0, &s_size) == maud_success,
           "a baked set");
     s_bytes = malloc(s_size);
     CHECK(s_bytes != nullptr &&
-              maudSaveProbeSet(s_s, s_set, s_bytes, s_size, &s_size) == maud_success,
+              maudProbeSet_Save(s_s, s_set, s_bytes, s_size, &s_size) == maud_success,
           "saved");
-    CHECK(maudGetSpatializerMisuse(s_s) == 0, "no misuse yet");
+    CHECK(maudSpatializer_GetMisuse(s_s) == 0, "no misuse yet");
     TestHooks();
     TestAllocator();
     TestEachCounted();
     TestCounts();
     TestDestroy();
     free(s_bytes);
-    maudDestroyAcousticScene(s_scene);
+    maudDestroyScene(s_scene);
     return s_failures == 0 ? 0 : 1;
 }

@@ -29,22 +29,24 @@ static void TestFamilyValues(void)
 
 static void TestResultNames(void)
 {
-    CHECK(strcmp(maudResultName(maud_success), "maud_success") == 0, "success name");
-    CHECK(strcmp(maudResultName(maud_empty), "maud_empty") == 0, "empty name");
-    CHECK(strcmp(maudResultName(maud_errorInvalid), "maud_errorInvalid") == 0, "errorInvalid name");
-    CHECK(strcmp(maudResultName(maud_errorCapacity), "maud_errorCapacity") == 0,
+    CHECK(strcmp(maudGetResultName(maud_success), "maud_success") == 0, "success name");
+    CHECK(strcmp(maudGetResultName(maud_empty), "maud_empty") == 0, "empty name");
+    CHECK(strcmp(maudGetResultName(maud_errorInvalid), "maud_errorInvalid") == 0,
+          "errorInvalid name");
+    CHECK(strcmp(maudGetResultName(maud_errorCapacity), "maud_errorCapacity") == 0,
           "errorCapacity name");
-    CHECK(strcmp(maudResultName(maud_errorStale), "maud_errorStale") == 0, "errorStale name");
-    CHECK(strcmp(maudResultName(maud_errorUnsupported), "maud_errorUnsupported") == 0,
+    CHECK(strcmp(maudGetResultName(maud_errorStale), "maud_errorStale") == 0, "errorStale name");
+    CHECK(strcmp(maudGetResultName(maud_errorUnsupported), "maud_errorUnsupported") == 0,
           "errorUnsupported name");
-    CHECK(strcmp(maudResultName(maud_errorPlatform), "maud_errorPlatform") == 0,
+    CHECK(strcmp(maudGetResultName(maud_errorPlatform), "maud_errorPlatform") == 0,
           "errorPlatform name");
-    CHECK(strcmp(maudResultName(maud_errorState), "maud_errorState") == 0, "errorState name");
-    CHECK(strcmp(maudResultName(maud_errorVersion), "maud_errorVersion") == 0, "errorVersion name");
-    CHECK(strcmp(maudResultName(maud_errorFormat), "maud_errorFormat") == 0, "errorFormat name");
-    CHECK(strcmp(maudResultName(maud_errorLimit), "maud_errorLimit") == 0, "errorLimit name");
-    CHECK(strcmp(maudResultName(maud_errorBusy), "maud_errorBusy") == 0, "errorBusy name");
-    CHECK(strcmp(maudResultName(12345), "unknown result") == 0, "unknown name");
+    CHECK(strcmp(maudGetResultName(maud_errorState), "maud_errorState") == 0, "errorState name");
+    CHECK(strcmp(maudGetResultName(maud_errorVersion), "maud_errorVersion") == 0,
+          "errorVersion name");
+    CHECK(strcmp(maudGetResultName(maud_errorFormat), "maud_errorFormat") == 0, "errorFormat name");
+    CHECK(strcmp(maudGetResultName(maud_errorLimit), "maud_errorLimit") == 0, "errorLimit name");
+    CHECK(strcmp(maudGetResultName(maud_errorBusy), "maud_errorBusy") == 0, "errorBusy name");
+    CHECK(strcmp(maudGetResultName(12345), "unknown result") == 0, "unknown name");
 }
 
 int main(void)

@@ -4,7 +4,7 @@
 // The web backend in a browser, as test/web/run_page.js runs it. The
 // page holds audio until a gesture: the test makes a stream, finds it
 // held by the policy, logs that it waits, and the driver's click calls
-// maudResumeContext. The stream then plays a ramp, which a probe
+// maudContext_Unlock. The stream then plays a ramp, which a probe
 // worklet behind it checks for continuity; its rate, short quanta,
 // stopping, refilling after a restart, the fill target's growth by a
 // quantum per short quantum (after a short and a long stall of the main
@@ -351,13 +351,13 @@ EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 void TestGesture(void)
 {
     s_gestured = true;
-    CHECK(maudResumeContext(s_context) == maud_success, "resume from the gesture");
+    CHECK(maudContext_Unlock(s_context) == maud_success, "resume from the gesture");
 }
 
 static uint64_t Position(void)
 {
     uint64_t position = 0;
-    CHECK(maudGetStreamPosition(s_context, s_stream, &position) == maud_success, "position");
+    CHECK(maudStream_GetPosition(s_context, s_stream, &position) == maud_success, "position");
     return position;
 }
 
@@ -375,7 +375,7 @@ static void Finish(void)
     maudStreamId duplex = {0, 0};
     maudStreamStatus status = {0};
     CHECK(maudCreateStream(s_context, &def, &duplex) == maud_success, "a duplex stream");
-    CHECK(maudGetStreamStatus(s_context, duplex, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, duplex, &status) == maud_success &&
               status.drift == maud_driftNone,
           "one AudioContext, one clock");
     CHECK(maudDestroyStream(s_context, duplex) == maud_success, "destroy the duplex");
@@ -391,9 +391,9 @@ static void Finish(void)
 static void CheckCapture(uint32_t rate)
 {
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_capture, &status) == maud_success, "capture status");
+    CHECK(maudStream_GetStatus(s_context, s_capture, &status) == maud_success, "capture status");
     maudStreamStatus voiced = {0};
-    CHECK(maudGetStreamStatus(s_context, s_voiced, &voiced) == maud_success, "voiced status");
+    CHECK(maudStream_GetStatus(s_context, s_voiced, &voiced) == maud_success, "voiced status");
     if (s_denied)
     {
         CHECK(status.suspension == maud_suspendPermission && s_captured == 0,
@@ -409,7 +409,7 @@ static void CheckCapture(uint32_t rate)
                   (maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl),
           "and the browser's voice processing on, as asked");
     maudStreamClock capture = {0};
-    CHECK(maudGetStreamClock(s_context, s_capture, &capture) == maud_success, "capture clock");
+    CHECK(maudStream_GetClock(s_context, s_capture, &capture) == maud_success, "capture clock");
     CHECK(ClockIsSound(&s_captureClock, &capture, false, true, (double)rate,
                        maudGetHostNanoseconds()),
           "the capture clock maps frames to host time");
@@ -445,9 +445,9 @@ static void Measure(double now)
     // The clock over the same window; one sound window is enough, as
     // for the rate.
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(s_context, s_stream, &clock) == maud_success, "clock");
+    CHECK(maudStream_GetClock(s_context, s_stream, &clock) == maud_success, "clock");
     maudStreamFormat current = {0};
-    CHECK(maudGetStreamFormat(s_context, s_stream, &current) == maud_success, "format");
+    CHECK(maudStream_GetFormat(s_context, s_stream, &current) == maud_success, "format");
     s_clockSound =
         s_clockSound || ClockIsSound(&s_clock, &clock, true, true, (double)current.sampleRate,
                                      maudGetHostNanoseconds());
@@ -457,7 +457,7 @@ static void Measure(double now)
         return;
     }
     maudStreamFormat format;
-    CHECK(maudGetStreamFormat(s_context, s_stream, &format) == maud_success, "format");
+    CHECK(maudStream_GetFormat(s_context, s_stream, &format) == maud_success, "format");
     // What the docs quote for each transport, isolated or not.
     printf("output latency %.1f ms, fill target %d frames\n",
            (double)clock.latencyNanoseconds / 1e6, Target());
@@ -509,8 +509,8 @@ static void CheckBreaks(void)
                s_unexcused[i].aheadBefore);
     }
     CHECK(Shorts() - s_excused <= 4, "few short quanta from the start");
-    CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
-    CHECK(maudStopStream(s_context, s_capture) == maud_success, "stop the capture");
+    CHECK(maudStream_Stop(s_context, s_stream) == maud_success, "stop");
+    CHECK(maudStream_Stop(s_context, s_capture) == maud_success, "stop the capture");
     s_capturedAtStop = s_captured;
     s_blocks = 0;
     s_since = emscripten_get_now();
@@ -530,7 +530,7 @@ static void Restarted(double now)
     CHECK(Shorts() - s_shortsAtRestart - (s_excused - s_excusedAtRestart) <= 2,
           "refilled after a restart");
     maudStreamFormat format;
-    CHECK(maudGetStreamFormat(s_context, s_stream, &format) == maud_success, "format");
+    CHECK(maudStream_GetFormat(s_context, s_stream, &format) == maud_success, "format");
     s_targetBeforeStall = Target();
     s_shortsBeforeStall = Shorts();
     Stall((int)(s_targetBeforeStall * 1000.0 / format.sampleRate) + 30);
@@ -560,10 +560,10 @@ static void CheckXruns(void)
 {
     maudStreamStatus played = {0};
     maudStreamStatus heard = {0};
-    CHECK(maudGetStreamStatus(s_context, s_stream, &played) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &played) == maud_success &&
               played.underruns == (uint64_t)Shorts() && played.underruns >= 1,
           "every short quantum is an underrun");
-    CHECK(maudGetStreamStatus(s_context, s_capture, &heard) == maud_success, "capture status");
+    CHECK(maudStream_GetStatus(s_context, s_capture, &heard) == maud_success, "capture status");
     if (s_denied)
     {
         CHECK(heard.overruns == 0, "a refused capture loses nothing");
@@ -577,9 +577,9 @@ static void CheckXruns(void)
 // AudioContext suspends.
 static void SuspendForHost(void)
 {
-    CHECK(maudSetContextSuspended(s_context, true) == maud_success, "suspend for the host");
+    CHECK(maudContext_SetSuspended(s_context, true) == maud_success, "suspend for the host");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendHost,
           "the stream waits for the host");
     s_blocksAtSuspend = s_blocks;
@@ -598,7 +598,8 @@ static void CountChosen(const maudStreamBlock* block, void* user)
 static uint32_t Listed(maudDirection direction)
 {
     uint32_t count = 0;
-    CHECK(maudGetDevices(s_context, direction, nullptr, 0, &count) == maud_success, "count");
+    CHECK(maudContext_GetDevices(s_context, direction, nullptr, 0, &count) == maud_success,
+          "count");
     return count;
 }
 
@@ -607,12 +608,13 @@ static maudDeviceId Named(maudDirection direction, const char* name)
 {
     maudDeviceId ids[8];
     uint32_t count = 0;
-    CHECK(maudGetDevices(s_context, direction, ids, 8, &count) == maud_success, "list");
+    CHECK(maudContext_GetDevices(s_context, direction, ids, 8, &count) == maud_success, "list");
     for (uint32_t i = 0; i < count && i < 8; ++i)
     {
         char text[128];
         size_t length = 0;
-        if (maudGetDeviceName(s_context, ids[i], text, sizeof(text) - 1, &length) == maud_success &&
+        if (maudDevice_GetName(s_context, ids[i], text, sizeof(text) - 1, &length) ==
+                maud_success &&
             length == strlen(name) && memcmp(text, name, length) == 0)
         {
             return ids[i];
@@ -624,7 +626,7 @@ static maudDeviceId Named(maudDirection direction, const char* name)
 static bool KeyOf(maudDeviceId device, char* key, size_t capacity)
 {
     size_t length = 0;
-    bool ok = maudGetDeviceKey(s_context, device, key, capacity - 1, &length) == maud_success;
+    bool ok = maudDevice_GetKey(s_context, device, key, capacity - 1, &length) == maud_success;
     key[ok ? length : 0] = '\0';
     return ok;
 }
@@ -653,11 +655,11 @@ static void CheckLayouts(void)
     {
         maudDeviceId ids[8];
         uint32_t count = 0;
-        CHECK(maudGetDevices(s_context, direction, ids, 8, &count) == maud_success, "list");
+        CHECK(maudContext_GetDevices(s_context, direction, ids, 8, &count) == maud_success, "list");
         for (uint32_t i = 0; i < count && i < 8; ++i)
         {
             maudDeviceInfo info = {0};
-            CHECK(maudGetDeviceInfo(s_context, ids[i], &info) == maud_success &&
+            CHECK(maudDevice_GetInfo(s_context, ids[i], &info) == maud_success &&
                       info.nativeLayout ==
                           (direction == maud_directionOutput ? maud_layoutStereo : maud_layoutMono),
                   "stereo outputs and mono inputs");
@@ -676,7 +678,7 @@ static void ChooseDevices(void)
     (void)OpenOn(maud_directionOutput, output, &result);
     CHECK(result == maud_errorUnsupported, "another output while Default plays is refused");
     s_chosen = OpenOn(maud_directionInput, input, &result);
-    CHECK(result == maud_success && maudStartStream(s_context, s_chosen) == maud_success,
+    CHECK(result == maud_success && maudStream_Start(s_context, s_chosen) == maud_success,
           "a capture on a chosen microphone");
 }
 
@@ -691,7 +693,7 @@ static void StartSink(void)
     maudDeviceId second = Named(maud_directionOutput, "Fake Audio Output 2");
     maudResult result = maud_success;
     s_sinkStream = OpenOn(maud_directionOutput, first, &result);
-    CHECK(result == maud_success && maudStartStream(s_context, s_sinkStream) == maud_success,
+    CHECK(result == maud_success && maudStream_Start(s_context, s_sinkStream) == maud_success,
           "an output on a chosen device");
     (void)OpenOn(maud_directionOutput, second, &result);
     CHECK(result == maud_errorUnsupported, "a second device is refused");
@@ -716,7 +718,7 @@ static void Watch(double now)
 {
     maudStreamFormat format;
     if (s_step == stepWaitForGesture ||
-        maudGetStreamFormat(s_context, s_stream, &format) != maud_success)
+        maudStream_GetFormat(s_context, s_stream, &format) != maud_success)
     {
         return;
     }
@@ -798,7 +800,7 @@ static void Step_(void* user)
     Watch(now);
     maudNotification record;
     bool resumed = false;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
         resumed = resumed || record.kind == maud_notifyStreamResumed;
     }
@@ -809,7 +811,7 @@ static void Step_(void* user)
         if (resumed)
         {
             maudStreamStatus status;
-            CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+            CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
                       status.suspension == maud_suspendNone,
                   "the stream runs after the gesture");
             CHECK(RingMatchesPage() == 1, "a ring exactly on an isolated page");
@@ -823,12 +825,12 @@ static void Step_(void* user)
         if (s_blocks >= 20 && ProbeReady() == 1 && (s_denied || s_captured > 0))
         {
             ProbeCount(1);
-            CHECK(maudGetStreamClock(s_context, s_capture, &s_captureClock) == maud_success,
+            CHECK(maudStream_GetClock(s_context, s_capture, &s_captureClock) == maud_success,
                   "capture clock");
             s_shortsAtMeasure = Shorts();
             s_since = now;
             s_position = Position();
-            CHECK(maudGetStreamClock(s_context, s_stream, &s_clock) == maud_success, "clock");
+            CHECK(maudStream_GetClock(s_context, s_stream, &s_clock) == maud_success, "clock");
             s_step = stepMeasure;
         }
         break;
@@ -843,8 +845,8 @@ static void Step_(void* user)
         {
             CHECK(s_blocks == 0, "no callbacks once stopped");
             CHECK(s_captured == s_capturedAtStop, "nor captured blocks");
-            CHECK(maudStartStream(s_context, s_stream) == maud_success, "start again");
-            CHECK(maudStartStream(s_context, s_capture) == maud_success, "capture again");
+            CHECK(maudStream_Start(s_context, s_stream) == maud_success, "start again");
+            CHECK(maudStream_Start(s_context, s_capture) == maud_success, "capture again");
             s_shortsAtRestart = Shorts();
             s_excusedAtRestart = s_excused;
             s_since = now;
@@ -873,7 +875,7 @@ static void Step_(void* user)
         {
             CHECK(ContextSuspended() == 1, "the AudioContext suspends with the host");
             CHECK(s_blocks == s_blocksAtSuspend, "and nothing plays");
-            CHECK(maudSetContextSuspended(s_context, false) == maud_success, "resume the host");
+            CHECK(maudContext_SetSuspended(s_context, false) == maud_success, "resume the host");
             s_since = now;
             s_step = stepHostResumed;
         }
@@ -883,7 +885,7 @@ static void Step_(void* user)
         {
             maudStreamStatus status = {0};
             CHECK(ContextSuspended() == 0, "the AudioContext runs again");
-            CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+            CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
                       status.suspension == maud_suspendNone && s_blocks > s_blocksAtSuspend,
                   "and the stream with it");
             s_since = now;
@@ -962,12 +964,12 @@ int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
     CHECK(maudCreateContext(&def, &s_context) == maud_success, "a context on the page");
-    CHECK(maudGetContextBackend(s_context) == maud_backendWeb, "Web Audio");
+    CHECK(maudContext_GetBackend(s_context) == maud_backendWeb, "Web Audio");
     maudDeviceId device = {0, 0};
     maudDeviceInfo info = {0};
-    CHECK(maudGetDefaultDevice(s_context, maud_directionOutput, maud_roleGeneral, &device) ==
-                  maud_success &&
-              maudGetDeviceInfo(s_context, device, &info) == maud_success &&
+    CHECK(maudContext_GetDefaultDevice(s_context, maud_directionOutput, maud_roleGeneral,
+                                       &device) == maud_success &&
+              maudDevice_GetInfo(s_context, device, &info) == maud_success &&
               info.nativeSampleRate >= 8000,
           "one output at the context's rate");
     TestRefusals();
@@ -975,33 +977,33 @@ int main(void)
     streamDef.periodFrames = 256;
     streamDef.callback = CountBlocks;
     CHECK(maudCreateStream(s_context, &streamDef, &s_stream) == maud_success, "create");
-    CHECK(maudStartStream(s_context, s_stream) == maud_success, "start");
+    CHECK(maudStream_Start(s_context, s_stream) == maud_success, "start");
     s_denied = MicrophoneDenied() != 0;
     maudStreamDef captureDef = maudDefaultStreamDef();
     captureDef.direction = maud_directionInput;
     captureDef.callback = CaptureBlocks;
     CHECK(maudCreateStream(s_context, &captureDef, &s_capture) == maud_success, "create a capture");
-    CHECK(maudStartStream(s_context, s_capture) == maud_success, "start it");
+    CHECK(maudStream_Start(s_context, s_capture) == maud_success, "start it");
     captureDef.callback = IgnoreBlocks;
     captureDef.voice =
         maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
     CHECK(maudCreateStream(s_context, &captureDef, &s_voiced) == maud_success,
           "a capture with voice processing");
     maudStreamStatus captureStatus;
-    CHECK(maudGetStreamStatus(s_context, s_capture, &captureStatus) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_capture, &captureStatus) == maud_success &&
               captureStatus.suspension == maud_suspendPolicy,
           "the capture waits for the policy too");
     maudStreamStatus status;
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendPolicy,
           "held by the autoplay policy");
     // The drain reads the browser's hold and keeps the stream waiting.
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
         CHECK(record.kind != maud_notifyStreamResumed, "no resume before the gesture");
     }
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendPolicy,
           "still held after a drain");
     ListenForGesture();

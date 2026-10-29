@@ -10,6 +10,7 @@
 
 #include "maul-audio/voice.h"
 
+#include <math.h>
 #include <stdlib.h>
 
 static void* Alloc(size_t size, size_t alignment, void* context)
@@ -29,14 +30,16 @@ static void TestVoiceDetector(void)
     maudVoiceDetector* d = (maudVoiceDetector*)&d;
     CHECK(maudCreateVoiceDetector(nullptr, &d) == maud_errorInvalid && d == nullptr, "no def");
     CHECK(maudCreateVoiceDetector(&def, nullptr) == maud_errorInvalid, "nowhere to put it");
-    maudVoiceDetectorDef bad[7] = {def, def, def, def, def, def, def};
+    maudVoiceDetectorDef bad[9] = {def, def, def, def, def, def, def, def, def};
     bad[0].cookie = 0;
     bad[1].sampleRate = 7999;
     bad[2].sampleRate = 384001;
     bad[3].layout = maud_layoutNone;
     bad[4].aggressiveness = 4;
-    bad[5].hangoverMilliseconds = 10001;
+    bad[5].hangover = 10.01f;
     bad[6].allocator = s_half;
+    bad[7].hangover = -0.01f;
+    bad[8].hangover = NAN;
     bool refused = true;
     for (int i = 0; i < COUNT(bad); ++i)
     {
@@ -54,7 +57,7 @@ static void TestVoiceDetector(void)
     bounds[0].sampleRate = 8000;
     bounds[1].sampleRate = 384000;
     bounds[2].aggressiveness = 3;
-    bounds[3].hangoverMilliseconds = 10000;
+    bounds[3].hangover = 10.0f;
     bool taken = true;
     for (int i = 0; i < COUNT(bounds); ++i)
     {
@@ -212,8 +215,8 @@ static void TestEchoCanceller(void)
     bad[0].cookie = 0;
     bad[1].sampleRate = 7999;
     bad[2].sampleRate = 384001;
-    bad[3].tailSeconds = 0.049f;
-    bad[4].tailSeconds = 1.01f;
+    bad[3].tailTime = 0.049f;
+    bad[4].tailTime = 1.01f;
     bad[5].floorDb = -40.5f;
     bad[6].floorDb = -5.5f;
     bad[7].allocator = s_half;
@@ -232,10 +235,10 @@ static void TestEchoCanceller(void)
     CHECK(refused, "an echo canceller def field past its range");
     maudEchoCancellerDef bounds[4] = {def, def, def, def};
     bounds[0].sampleRate = 8000;
-    bounds[0].tailSeconds = 0.05f;
+    bounds[0].tailTime = 0.05f;
     bounds[1].sampleRate = 384000;
-    bounds[1].tailSeconds = 0.05f;
-    bounds[2].tailSeconds = 1.0f;
+    bounds[1].tailTime = 0.05f;
+    bounds[2].tailTime = 1.0f;
     bounds[2].floorDb = -40.0f;
     bounds[3].floorDb = -6.0f;
     bool taken = true;

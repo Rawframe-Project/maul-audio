@@ -57,7 +57,7 @@ static void Poses(void)
             for (int i = 0; i < SOURCES; ++i)
             {
                 maudPose pose = {{(float)i, 1.5f, (float)frame * 1e-3f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-                if (maudSetSourcePose(s, ids[i], &pose) != maud_success)
+                if (maudSource_SetPose(s, ids[i], &pose) != maud_success)
                 {
                     return;
                 }
@@ -87,7 +87,7 @@ static void Drain(void)
         double start = Seconds();
         for (int i = 0; i < DRAINS; ++i)
         {
-            (void)maudNextNotification(context, &notification);
+            (void)maudContext_NextNotification(context, &notification);
         }
         double elapsed = Seconds() - start;
         best = elapsed < best ? elapsed : best;

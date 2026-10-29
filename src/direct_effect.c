@@ -151,7 +151,7 @@ void maudDestroyDirectEffect(maudDirectEffect* effect)
     maudRelease(&allocator, effect, sizeof(maudDirectEffect), alignof(maudDirectEffect));
 }
 
-maudResult maudResetDirectEffect(maudDirectEffect* effect)
+maudResult maudDirectEffect_Reset(maudDirectEffect* effect)
 {
     if (effect == nullptr)
     {
@@ -238,8 +238,8 @@ static inline void ScaleRamped(float* out, float start, float step, uint32_t fra
     }
 }
 
-maudResult maudProcessDirect(maudDirectEffect* effect, const maudDirectParams* params,
-                             const float* in, float* out, uint32_t frames)
+maudResult maudDirectEffect_Process(maudDirectEffect* effect, const maudDirectParams* params,
+                                    const float* in, float* out, uint32_t frames)
 {
     if (effect == nullptr || params == nullptr || !ParamsValid(params) ||
         (frames > 0 && (in == nullptr || out == nullptr)))

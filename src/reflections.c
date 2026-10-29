@@ -229,7 +229,7 @@ void maudConvolveReflections(maudReflections* reflections, const maudQuaternion*
         maudRunStaged(&r->convolver, send + done, chunk, n);
         maudQuaternion from = Toward(r->last, *orientation, (float)done / (float)frames);
         maudQuaternion to = Toward(r->last, *orientation, (float)(done + n) / (float)frames);
-        if (maudRotateAmbisonic(r->order, &from, &to, chunk, n) == maud_success)
+        if (maudRotateAmbisonic(chunk, n, r->order, &from, &to) == maud_success)
         {
             for (uint32_t c = 0; c < r->channels; ++c)
             {

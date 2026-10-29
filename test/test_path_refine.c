@@ -42,14 +42,14 @@ static void Box(maudVector3 low, maudVector3 high)
     s_boxes += 1;
 }
 
-static maudAcousticScene* Scene(void)
+static maudScene* Scene(void)
 {
     maudMesh mesh = {s_vertices, s_boxes * 8, s_indices, s_materials, s_boxes * 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a scene");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
     s_boxes = 0;
     return scene;
 }
@@ -77,11 +77,11 @@ static void TestCorner(void)
     // The L's inside corner is a block over x < 17, z > 3; its edge runs
     // up through (17, y, 3).
     Box((maudVector3){0.0f, 0.0f, 3.0f}, (maudVector3){17.0f, 3.0f, 20.0f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     const maudVector3 listener = {18.5f, 1.5f, 12.0f};
     const maudVector3 source = {6.0f, 1.5f, 1.5f};
     maudVector3 v[4] = {listener, {19.5f, 1.5f, 2.5f}, {16.5f, 1.5f, 0.5f}, source};
-    uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+    uint32_t n = maudRefinePath(maudFindAnyHit, scene, v, 4);
     const maudVector3 corner = {17.0f, 1.5f, 3.0f};
     double exact = Length(listener, corner) + Length(corner, source);
     printf("corner: %u vertices, %.5f m against %.5f, the vertex %.4f m off the edge\n", n,
@@ -92,15 +92,15 @@ static void TestCorner(void)
     // A path as long as its array, its one vertex needed: refined in
     // place, nothing past it read.
     maudVector3 exactly[3] = {listener, {18.0f, 1.5f, 2.0f}, source};
-    CHECK(maudRefinePath(maudSceneAnyHit, scene, exactly, 3) == 3 &&
+    CHECK(maudRefinePath(maudFindAnyHit, scene, exactly, 3) == 3 &&
               fabs(PathLength(exactly, 3) / exact - 1.0) < 1e-4,
           "a path as long as its array");
     maudVector3 same[3] = {listener, {19.5f, 1.5f, 2.5f}, source};
     CHECK(maudRefinePath(nullptr, nullptr, same, 3) == 3 && same[1].x == 19.5f,
           "no query, no change");
     maudVector3 clear[3] = {listener, {18.0f, 1.5f, 8.0f}, {18.5f, 1.5f, 4.0f}};
-    CHECK(maudRefinePath(maudSceneAnyHit, scene, clear, 3) == 2, "a clear line, no vertex");
-    maudDestroyAcousticScene(scene);
+    CHECK(maudRefinePath(maudFindAnyHit, scene, clear, 3) == 2, "a clear line, no vertex");
+    maudDestroyScene(scene);
 }
 
 // The point on the plane at x within the doorway (y0 to y1, z0 to z1)
@@ -162,21 +162,21 @@ static void TestDoor(void)
     Box((maudVector3){4.9f, 0.0f, 0.0f}, (maudVector3){5.1f, 3.0f, 2.0f});
     Box((maudVector3){4.9f, 0.0f, 3.0f}, (maudVector3){5.1f, 3.0f, 6.0f});
     Box((maudVector3){4.9f, 2.1f, 2.0f}, (maudVector3){5.1f, 3.0f, 3.0f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     const maudVector3 ends[2][2] = {{{8.0f, 2.6f, 5.0f}, {1.0f, 0.4f, 0.5f}},
                                     {{7.0f, 2.8f, 0.5f}, {1.0f, 2.8f, 0.5f}}};
     const double within[2] = {1e-3, 1e-2};
     for (int c = 0; c < 2; ++c)
     {
         maudVector3 v[4] = {ends[c][0], {6.0f, 1.5f, 2.5f}, {4.0f, 1.5f, 2.5f}, ends[c][1]};
-        uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+        uint32_t n = maudRefinePath(maudFindAnyHit, scene, v, 4);
         double exact = ThroughThickDoor(ends[c][0], ends[c][1]);
         double got = PathLength(v, n);
         printf("door %d: %u vertices, %.5f m, the shortest %.5f (+%.3f %%)\n", c, n, got, exact,
                100.0 * (got / exact - 1.0));
         CHECK(got >= exact - 1e-4 && got < exact * (1.0 + within[c]), "through the door");
     }
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 // The length of a to (x1, 2, 4.9) to (10 - x1, 2, 5.1) to b, over a
@@ -217,21 +217,21 @@ static double OverLedge(maudVector3 a, maudVector3 b)
 static void TestLedge(void)
 {
     Box((maudVector3){0.0f, 0.0f, 4.9f}, (maudVector3){10.0f, 2.0f, 5.1f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     const float from[2] = {2.0f, 8.0f};
     for (int c = 0; c < 2; ++c)
     {
         maudVector3 a = {from[c], 1.0f, 0.0f};
         maudVector3 b = {10.0f - from[c], 1.0f, 10.0f};
         maudVector3 v[4] = {a, {from[c], 2.5f, 4.7f}, {10.0f - from[c], 2.5f, 5.3f}, b};
-        uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+        uint32_t n = maudRefinePath(maudFindAnyHit, scene, v, 4);
         double exact = OverLedge(a, b);
         double got = PathLength(v, n);
         printf("ledge %d: %u vertices, %.5f m, the shortest %.5f (+%.4f %%)\n", c, n, got, exact,
                100.0 * (got / exact - 1.0));
         CHECK(got >= exact - 1e-4 && got < exact * 1.001, "over the ledge");
     }
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestDiffraction(void)

@@ -123,7 +123,7 @@ static float Length(maudVector3 a, maudVector3 b)
 
 typedef struct Rays
 {
-    maudAnyHitFn* anyHit;
+    maudAnyHitFunction* anyHit;
     void* context;
 } Rays;
 
@@ -240,7 +240,8 @@ static void Search(const Rays* r, const maudVector3* d, maudVector3* v, uint32_t
     }
 }
 
-uint32_t maudRefinePath(maudAnyHitFn* anyHit, void* context, maudVector3* vertices, uint32_t count)
+uint32_t maudRefinePath(maudAnyHitFunction* anyHit, void* context, maudVector3* vertices,
+                        uint32_t count)
 {
     if (anyHit == nullptr)
     {

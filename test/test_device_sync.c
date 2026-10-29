@@ -62,18 +62,18 @@ int main(void)
     }
     CHECK(count >= 2, "an output and an input");
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
     }
     CHECK(maudSyncDevices(context, specs, count, nullptr) == maud_success, "synced");
     bool told = false;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         told = told || (record.kind == maud_notifyStreamFormatChanged &&
                         record.stream.index1 == stream.index1 && record.sampleRate == 44100);
     }
     maudStreamFormat format = {0};
-    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+    CHECK(maudStream_GetFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 44100 && told,
           "the stream takes the device's new rate and says so");
     // Every device's rate changed at once: the stream follows as well.
@@ -83,10 +83,10 @@ int main(void)
         specs[i].info.minSampleRate = 32000;
     }
     CHECK(maudSyncDevices(context, specs, count, nullptr) == maud_success &&
-              maudGetStreamFormat(context, stream, &format) == maud_success &&
+              maudStream_GetFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 32000,
           "every rate changed, the stream's too");
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
     }
     // A platform's rate is taken within the rates a stream runs at;
@@ -109,11 +109,11 @@ int main(void)
     }
     bool changed = false;
     CHECK(maudSyncDevices(context, specs, count, nullptr) == maud_success, "synced again");
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         changed = changed || record.kind == maud_notifyStreamFormatChanged;
     }
-    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+    CHECK(maudStream_GetFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 32000 && !changed,
           "a rate the device cannot tell leaves the stream's");
     // Two devices, an output and an input, under one key (as Core Audio
@@ -148,8 +148,8 @@ int main(void)
               again.index1 == ids[0].index1,
           "the slot taken again");
     maudDeviceInfo info;
-    CHECK(maudGetDeviceInfo(context, ids[0], &info) == maud_errorStale &&
-              maudGetDeviceInfo(context, again, &info) == maud_success,
+    CHECK(maudDevice_GetInfo(context, ids[0], &info) == maud_errorStale &&
+              maudDevice_GetInfo(context, again, &info) == maud_success,
           "the old id stale, the new one not");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stream");
     CHECK(maudDestroyContext(context) == maud_success, "destroy the context");

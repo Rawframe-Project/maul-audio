@@ -15,7 +15,7 @@ The words the code, the headers and these pages use, in the sense they use them.
 - **Callback mode.** The platform's audio thread, or the library's, runs the stream. **Pull mode**: the host's thread renders through the library; only the offline backend has it.
 - **Following.** A stream made on the null device follows the default of its direction and role: a default change **moves** it.
 - **Suspension.** A started stream that cannot run, with a reason (`maudSuspendReason`). It renders nothing until it **resumes**.
-- **Drain.** `maudNextNotification`: reading the queue, and on some backends taking in the platform's reports and retrying failed reopens first.
+- **Drain.** `maudContext_NextNotification`: reading the queue, and on some backends taking in the platform's reports and retrying failed reopens first.
 - **Notification.** A typed record of a change in the queue. **Overflow**: records the full queue dropped, counted in one record.
 - **Underrun** and **overrun** (together **xruns**). An output played without the stream's frames; an input lost frames before the stream got them.
 - **Slip.** A duplex stream on two clocks dropping input frames or filling silence to keep its ring near two periods.

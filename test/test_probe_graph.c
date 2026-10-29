@@ -53,32 +53,32 @@ static void Box(maudVector3 low, maudVector3 high)
     s_boxes += 1;
 }
 
-static maudAcousticScene* Scene(void)
+static maudScene* Scene(void)
 {
     maudMesh mesh = {s_vertices, s_boxes * 8, s_indices, s_materials, s_boxes * 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a scene");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
     s_boxes = 0;
     return scene;
 }
 
 static const maudAllocator s_allocator = {nullptr, nullptr, nullptr};
 
-static maudProbeQueries Queries(maudAcousticScene* scene)
+static maudProbeQueries Queries(maudScene* scene)
 {
-    return (maudProbeQueries){.anyHit = maudSceneAnyHit,
-                              .closestHit = maudSceneClosestHit,
+    return (maudProbeQueries){.anyHit = maudFindAnyHit,
+                              .closestHit = maudFindClosestHit,
                               .rayContext = scene,
                               .allocator = &s_allocator,
                               .maxProbes = 4096,
                               .maxPairs = 1u << 20};
 }
 
-static void* Reverse(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Reverse(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     for (uint32_t i = itemCount; i-- > 0;)
@@ -113,7 +113,7 @@ static float Distance(maudVector3 a, maudVector3 b)
 
 // Every pair within range against one ray of its own; rows ascending
 // and measured.
-static void CheckLinks(maudAcousticScene* scene, const maudProbeGraph* g, float range)
+static void CheckLinks(maudScene* scene, const maudProbeGraph* g, float range)
 {
     uint32_t wrong = 0;
     uint32_t links = 0;
@@ -138,7 +138,7 @@ static void CheckLinks(maudAcousticScene* scene, const maudProbeGraph* g, float 
             maudRay ray = {
                 from, {(to.x - from.x) / d, (to.y - from.y) / d, (to.z - from.z) / d}, 0.0f, d};
             uint8_t occluded = 0;
-            maudSceneAnyHit(&ray, 1, &occluded, scene);
+            maudFindAnyHit(&ray, 1, &occluded, scene);
             links += occluded == 0 && j > i ? 1 : 0;
             wrong += (occluded == 0) == Linked(g, i, j) ? 0 : 1;
         }
@@ -162,7 +162,7 @@ static void TestCorridor(void)
 {
     // The L's inside corner: a solid block, the corridor around it.
     Box((maudVector3){0.0f, 0.0f, 3.0f}, (maudVector3){17.0f, 3.0f, 20.0f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     static maudVector3 points[400];
     uint32_t count = 0;
     for (int x = 0; x < 20; ++x)
@@ -225,7 +225,7 @@ static void TestCorridor(void)
     CHECK(maudBuildProbeGraph(&q, &def, &refused) == maud_errorCapacity, "past maxProbes");
     maudReleaseProbeGraph(&s_allocator, &clear);
     maudReleaseProbeGraph(&s_allocator, &plain);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestGeneration(void)
@@ -235,7 +235,7 @@ static void TestGeneration(void)
     Box((maudVector3){0.0f, -0.2f, 0.0f}, (maudVector3){4.0f, 0.0f, 4.0f});
     Box((maudVector3){0.0f, 3.0f, 0.0f}, (maudVector3){2.0f, 3.2f, 4.0f});
     Box((maudVector3){2.0f, 1.0f, 0.0f}, (maudVector3){4.0f, 1.1f, 2.0f});
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     maudProbeSetDef def = {.boxMin = {0.0f, -1.0f, 0.0f},
                            .boxMax = {4.0f, 6.0f, 4.0f},
                            .spacing = 1.0f,
@@ -274,7 +274,7 @@ static void TestGeneration(void)
     CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_errorUnsupported, "no closest-hit query");
     def.boxMax.y = def.boxMin.y;
     CHECK(!maudProbeSetDefValid(&def), "a flat box");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static uint32_t s_badRays = 0;
@@ -348,7 +348,7 @@ static void TestTower(void)
         float y = 3.0f * (float)f;
         Box((maudVector3){0.0f, y - 0.2f, 0.0f}, (maudVector3){1.0f, y, 1.0f});
     }
-    maudAcousticScene* scene = Scene();
+    maudScene* scene = Scene();
     maudProbeSetDef def = {.boxMin = {0.0f, -1.0f, 0.5f},
                            .boxMax = {1.0f, 30.0f, 0.5f},
                            .spacing = 1.0f,
@@ -366,7 +366,7 @@ static void TestTower(void)
     printf("tower: %u probes, the lowest at %.1f m\n", g.count, (double)lowest);
     CHECK(g.count == 8 && fabsf(lowest - 7.5f) < 1e-4f, "the top eight storeys");
     maudReleaseProbeGraph(&s_allocator, &g);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static uint32_t s_stackCalls = 0;

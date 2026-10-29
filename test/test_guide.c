@@ -83,7 +83,7 @@ static maudContext* OfflineContext(void)
         device.name = names[i];
         device.nameLength = i == 0 ? 8 : 10;
         maudDeviceId id = {0, 0};
-        CHECK(maudAddOfflineDevice(context, &device, &id) == maud_success, "a device");
+        CHECK(maudCreateOfflineDevice(context, &device, &id) == maud_success, "a device");
     }
     return context;
 }
@@ -94,15 +94,15 @@ static void GuideDevices(void)
     // clang-format off
     maudDeviceId ids[16];
     uint32_t count = 0;
-    if (maudGetDevices(context, maud_directionOutput, ids, 16, &count) == maud_success)
+    if (maudContext_GetDevices(context, maud_directionOutput, ids, 16, &count) == maud_success)
     {
         for (uint32_t i = 0; i < count && i < 16; ++i)
         {
             char name[256];
             size_t length = 0;
             maudDeviceInfo info;
-            if (maudGetDeviceName(context, ids[i], name, sizeof(name), &length) == maud_success &&
-                maudGetDeviceInfo(context, ids[i], &info) == maud_success)
+            if (maudDevice_GetName(context, ids[i], name, sizeof(name), &length) == maud_success &&
+                maudDevice_GetInfo(context, ids[i], &info) == maud_success)
             {
                 // name holds length bytes, not terminated; info has the native
                 // rate and layout, the form (speakers, headphones, ...), and
@@ -120,7 +120,7 @@ static void GuideNotifications(void)
     maudContext* context = OfflineContext();
     // clang-format off
     maudNotification note;
-    while (maudNextNotification(context, &note) == maud_success)
+    while (maudContext_NextNotification(context, &note) == maud_success)
     {
         switch (note.kind)
         {
@@ -140,7 +140,7 @@ static void GuideNotifications(void)
     }
     // clang-format on
     maudNotification left;
-    CHECK(maudNextNotification(context, &left) == maud_empty,
+    CHECK(maudContext_NextNotification(context, &left) == maud_empty,
           "the drain snippet empties the queue");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
@@ -178,7 +178,7 @@ static void GuideOffline(void)
     deviceDef.nameLength = 8;
     if (result == maud_success)
     {
-        result = maudAddOfflineDevice(context, &deviceDef, &speakers);
+        result = maudCreateOfflineDevice(context, &deviceDef, &speakers);
     }
     maudStreamDef streamDef = maudDefaultStreamDef();
     streamDef.mode = maud_modePull;   // the host's thread renders
@@ -191,12 +191,12 @@ static void GuideOffline(void)
     }
     if (result == maud_success)
     {
-        result = maudStartStream(context, stream);
+        result = maudStream_Start(context, stream);
     }
     float frames[2 * 480];
     if (result == maud_success)
     {
-        result = maudRenderStream(context, stream, frames, 480);   // 10 ms
+        result = maudStream_Render(context, stream, frames, 480);   // 10 ms
     }
     // clang-format on
     CHECK(result == maud_success && atomic_load(&synth.samples) == 480,
@@ -222,11 +222,11 @@ static void GuideOffline(void)
     }
     if (result == maud_success)
     {
-        result = maudStartStream(context, loopback);
+        result = maudStream_Start(context, loopback);
     }
     if (result == maud_success)
     {
-        result = maudFeedStream(context, loopback, frames, 480);   // what they played
+        result = maudStream_Feed(context, loopback, frames, 480);   // what they played
     }
     // clang-format on
     CHECK(result == maud_success && reference.frames == 480 &&
@@ -253,7 +253,7 @@ static void GuideNoise(void)
     maudNoiseState state;
     if (result == maud_success)
     {
-        result = maudSuppressNoise(suppressor, frames, frameCount, &state);   // in place
+        result = maudNoiseSuppressor_Suppress(suppressor, frames, frameCount, &state);   // in place
     }
     // state.speechProbability; the output lags the input by 10 ms.
     maudDestroyNoiseSuppressor(suppressor);
@@ -278,7 +278,7 @@ static void GuideEcho(void)
     maudResult result = maudCreateEchoCanceller(&def, &canceller);
     if (result == maud_success)
     {
-        result = maudCancelEcho(canceller, capture, played, frameCount, NULL);   // in place
+        result = maudEchoCanceller_Cancel(canceller, capture, played, frameCount, NULL);   // in place
     }
     maudDestroyEchoCanceller(canceller);
     // clang-format on
@@ -349,7 +349,7 @@ static void GuideBinaural(const maudHrtf* hrtf)
     float* ears[2] = {left, right};
     if (result == maud_success)
     {
-        result = maudProcessBinaural(effect, &params, mono, ears, 480);
+        result = maudBinaural_Process(effect, &params, mono, ears, 480);
     }
     // clang-format on
     CHECK(result == maud_success && Loudest(right, 480) > Loudest(left, 480),
@@ -379,7 +379,7 @@ static void GuideBed(const maudHrtf* hrtf)
     maudQuaternion head = {0.0f, 0.0f, 0.0f, 1.0f};   // the listener's turn, from its pose
     if (result == maud_success)
     {
-        result = maudRotateAmbisonic(order, &head, &head, bed, 480);
+        result = maudRotateAmbisonic(bed, 480, order, &head, &head);
     }
     maudBinauralDecoderDef def = maudDefaultBinauralDecoderDef();
     def.hrtf = hrtf;
@@ -392,7 +392,7 @@ static void GuideBed(const maudHrtf* hrtf)
     float* ears[2] = {left, right};
     if (result == maud_success)
     {
-        result = maudDecodeBinaural(decoder, (const float* const*)bed, ears, 480);
+        result = maudBinauralDecoder_Decode(decoder, (const float* const*)bed, ears, 480);
     }
     maudDestroyBinauralDecoder(decoder);
     // clang-format on
@@ -417,7 +417,7 @@ static void GuideDirect(void)
     params.transmission[2] = 0.02f;
     if (result == maud_success)
     {
-        result = maudProcessDirect(effect, &params, mono, filtered, 480);
+        result = maudDirectEffect_Process(effect, &params, mono, filtered, 480);
     }
     maudDestroyDirectEffect(effect);
     // clang-format on
@@ -448,7 +448,7 @@ static void GuideReverb(void)
     };
     if (result == maud_success)
     {
-        result = maudProcessReverb(reverb, &params, mono, bed, 480);   // four channels
+        result = maudReverb_Process(reverb, &params, mono, bed, 480);   // four channels
     }
     maudDestroyReverb(reverb);
     // clang-format on

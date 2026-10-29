@@ -187,7 +187,7 @@ extern "C"
     /// @return A static, NUL-terminated string such as "maud_errorCapacity".
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API const char* maudResultName(maudResult result);
+    MAUD_API const char* maudGetResultName(maudResult result);
 
 #ifdef __cplusplus
 }

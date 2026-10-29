@@ -59,8 +59,8 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
 // A task system that runs ranges of one item, last first.
 static long s_enqueued;
 
-static void* Enqueue(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Enqueue(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     (void)userContext;
@@ -106,9 +106,10 @@ static float Occlusion(maudSpatializer* s, maudSourceId id, maudVector3 at, maud
     maudPose pose = {at, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudPose from = {listener, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudDirectResult r = {0};
-    CHECK(maudSetSourcePose(s, id, &pose) == maud_success &&
-              maudSimulateDirect(s, &from) == maud_success && maudLatchResults(s) > 0 &&
-              maudGetDirectResult(s, id, &r) == maud_success,
+    CHECK(maudSource_SetPose(s, id, &pose) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &from) == maud_success &&
+              maudSpatializer_LatchResults(s) > 0 &&
+              maudSource_GetDirectResult(s, id, &r) == maud_success,
           "a result");
     return r.occlusion;
 }
@@ -173,13 +174,15 @@ static void Step(maudSpatializer* s, const maudSourceId* ids, int count, maudDir
         float a = (float)i * 0.7f;
         maudPose pose = {{6.0f * cosf(a), 0.3f * (float)i, -10.0f + 6.0f * sinf(a)},
                          {0.0f, 0.0f, 0.0f, 1.0f}};
-        CHECK(maudSetSourcePose(s, ids[i], &pose) == maud_success, "pose");
+        CHECK(maudSource_SetPose(s, ids[i], &pose) == maud_success, "pose");
     }
     maudPose listener = {{0.5f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) > 0, "step");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) > 0,
+          "step");
     for (int i = 0; i < count; ++i)
     {
-        CHECK(maudGetDirectResult(s, ids[i], &out[i]) == maud_success, "result");
+        CHECK(maudSource_GetDirectResult(s, ids[i], &out[i]) == maud_success, "result");
     }
 }
 
@@ -258,13 +261,13 @@ static void TestNeighbours(void)
     maudVector3 origin = {0.0f, 0.0f, 0.0f};
     maudPose behind = {{-5.0f, 0.0f, -10.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudDirectResult r = {0};
-    CHECK(maudSetSourcePose(s, second, &behind) == maud_success &&
+    CHECK(maudSource_SetPose(s, second, &behind) == maud_success &&
               Occlusion(s, first, (maudVector3){5.0f, 0.0f, -10.0f}, origin) == 0.0f &&
-              maudGetDirectResult(s, second, &r) == maud_success && r.occlusion == 1.0f,
+              maudSource_GetDirectResult(s, second, &r) == maud_success && r.occlusion == 1.0f,
           "the first clear, the second occluded");
-    CHECK(maudSetSourcePose(s, first, &behind) == maud_success &&
+    CHECK(maudSource_SetPose(s, first, &behind) == maud_success &&
               Occlusion(s, second, (maudVector3){5.0f, 0.0f, -10.0f}, origin) == 0.0f &&
-              maudGetDirectResult(s, first, &r) == maud_success && r.occlusion == 1.0f,
+              maudSource_GetDirectResult(s, first, &r) == maud_success && r.occlusion == 1.0f,
           "and the other way round");
     s_buried = true;
     CHECK(Occlusion(s, second, (maudVector3){5.0f, 0.0f, -10.0f}, origin) == 1.0f,

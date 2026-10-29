@@ -63,7 +63,7 @@ static void TestOnSpeakers(void)
             }
             maudSpeakerPosition at = maudGetLayoutSpeakerPosition(layout, c);
             float gains[12];
-            CHECK(maudGetSpeakerGains(
+            CHECK(maudSpeakerPanner_GetGains(
                       panner, Towards((double)at.azimuthDegrees, (double)at.elevationDegrees),
                       gains) == maud_success,
                   "gains");
@@ -90,8 +90,9 @@ static void TestEnergy(void)
         {
             double z = 2.0 * Random() - 1.0;
             float gains[12];
-            CHECK(maudGetSpeakerGains(panner, Towards(360.0 * Random(), asin(z) * 180.0 / PI),
-                                      gains) == maud_success,
+            CHECK(maudSpeakerPanner_GetGains(panner,
+                                             Towards(360.0 * Random(), asin(z) * 180.0 / PI),
+                                             gains) == maud_success,
                   "gains");
             float energy = 0.0f;
             for (uint32_t c = 0; c < channels; ++c)
@@ -111,9 +112,9 @@ static void TestEnergy(void)
             for (int step = 1; step < 40; ++step)
             {
                 float gains[12];
-                CHECK(maudGetSpeakerGains(panner,
-                                          Towards((double)at.azimuthDegrees + 0.37 * step, 0.0),
-                                          gains) == maud_success,
+                CHECK(maudSpeakerPanner_GetGains(
+                          panner, Towards((double)at.azimuthDegrees + 0.37 * step, 0.0), gains) ==
+                          maud_success,
                       "gains");
                 for (uint32_t k = 0; k < channels; ++k)
                 {
@@ -141,7 +142,7 @@ static void TestVelocity(void)
         double elevation = 3.0 + 24.0 * Random();
         maudVector3 u = Towards(azimuth, elevation);
         float gains[12];
-        CHECK(maudGetSpeakerGains(panner, u, gains) == maud_success, "gains");
+        CHECK(maudSpeakerPanner_GetGains(panner, u, gains) == maud_success, "gains");
         double v[3] = {0.0, 0.0, 0.0};
         for (uint32_t c = 0; c < 12; ++c)
         {
@@ -175,8 +176,9 @@ static void TestMirror(void)
             double elevation = 160.0 * Random() - 80.0;
             float gains[12];
             float other[12];
-            CHECK(maudGetSpeakerGains(panner, Towards(azimuth, elevation), gains) == maud_success &&
-                      maudGetSpeakerGains(panner, Towards(-azimuth, elevation), other) ==
+            CHECK(maudSpeakerPanner_GetGains(panner, Towards(azimuth, elevation), gains) ==
+                          maud_success &&
+                      maudSpeakerPanner_GetGains(panner, Towards(-azimuth, elevation), other) ==
                           maud_success,
                   "gains");
             for (uint32_t c = 0; c < channels; ++c)
@@ -203,8 +205,8 @@ static void TestMirror(void)
             for (int behind = 0; behind < 2; ++behind)
             {
                 float gains[12];
-                CHECK(maudGetSpeakerGains(panner, Towards(180.0 * behind, 5.0 * step), gains) ==
-                          maud_success,
+                CHECK(maudSpeakerPanner_GetGains(panner, Towards(180.0 * behind, 5.0 * step),
+                                                 gains) == maud_success,
                       "gains");
                 for (uint32_t c = 0; c < channels; ++c)
                 {
@@ -234,7 +236,7 @@ static void TestPoles(void)
 {
     maudSpeakerPanner* tall = Create(maud_layout7Point1Point4);
     float gains[12];
-    CHECK(maudGetSpeakerGains(tall, (maudVector3){0.0f, 1.0f, 0.0f}, gains) == maud_success,
+    CHECK(maudSpeakerPanner_GetGains(tall, (maudVector3){0.0f, 1.0f, 0.0f}, gains) == maud_success,
           "gains");
     bool top = true;
     for (uint32_t c = 0; c < 12; ++c)
@@ -243,7 +245,7 @@ static void TestPoles(void)
         top = top && fabsf(gains[c] - (high ? 0.5f : 0.0f)) < 1e-5f;
     }
     CHECK(top, "the zenith shared by the four top speakers");
-    CHECK(maudGetSpeakerGains(tall, (maudVector3){0.0f, -1.0f, 0.0f}, gains) == maud_success,
+    CHECK(maudSpeakerPanner_GetGains(tall, (maudVector3){0.0f, -1.0f, 0.0f}, gains) == maud_success,
           "gains");
     bool bottom = true;
     for (uint32_t c = 0; c < 12; ++c)
@@ -299,7 +301,7 @@ static void TestPoles(void)
         }
         energy += expected[c] * expected[c];
     }
-    CHECK(maudGetSpeakerGains(tall, source, gains) == maud_success, "gains");
+    CHECK(maudSpeakerPanner_GetGains(tall, source, gains) == maud_success, "gains");
     bool shared = true;
     for (uint32_t c = 0; c < 12; ++c)
     {
@@ -308,7 +310,7 @@ static void TestPoles(void)
     CHECK(shared, "an imaginary corner's share goes equally to its neighbours");
     maudDestroySpeakerPanner(tall);
     maudSpeakerPanner* flat = Create(maud_layout5Point1);
-    CHECK(maudGetSpeakerGains(flat, (maudVector3){0.0f, 1.0f, 0.0f}, gains) == maud_success,
+    CHECK(maudSpeakerPanner_GetGains(flat, (maudVector3){0.0f, 1.0f, 0.0f}, gains) == maud_success,
           "gains");
     bool all = true;
     for (uint32_t c = 0; c < 6; ++c)
@@ -325,22 +327,25 @@ static void TestStereoAndMono(void)
     maudSpeakerPanner* stereo = Create(maud_layoutStereo);
     float gains[2];
     float behind[2];
-    CHECK(maudGetSpeakerGains(stereo, (maudVector3){-1.0f, 0.0f, 0.0f}, gains) == maud_success &&
+    CHECK(maudSpeakerPanner_GetGains(stereo, (maudVector3){-1.0f, 0.0f, 0.0f}, gains) ==
+                  maud_success &&
               fabsf(gains[0] - 1.0f) < 1e-6f && gains[1] == 0.0f,
           "the left side: the left speaker");
-    CHECK(maudGetSpeakerGains(stereo, (maudVector3){0.0f, 0.0f, -1.0f}, gains) == maud_success &&
+    CHECK(maudSpeakerPanner_GetGains(stereo, (maudVector3){0.0f, 0.0f, -1.0f}, gains) ==
+                  maud_success &&
               fabsf(gains[0] - gains[1]) < 1e-6f && fabsf(gains[0] - sqrtf(0.5f)) < 1e-6f,
           "ahead: both alike");
-    CHECK(maudGetSpeakerGains(stereo, Towards(15.0, 0.0), gains) == maud_success &&
-              maudGetSpeakerGains(stereo, Towards(165.0, 0.0), behind) == maud_success &&
+    CHECK(maudSpeakerPanner_GetGains(stereo, Towards(15.0, 0.0), gains) == maud_success &&
+              maudSpeakerPanner_GetGains(stereo, Towards(165.0, 0.0), behind) == maud_success &&
               fabsf(gains[0] - behind[0]) < 1e-6f && fabsf(gains[1] - behind[1]) < 1e-6f,
           "the rear folds to the front");
-    CHECK(maudGetSpeakerGains(stereo, (maudVector3){0.0f, 0.0f, 0.0f}, gains) == maud_success &&
+    CHECK(maudSpeakerPanner_GetGains(stereo, (maudVector3){0.0f, 0.0f, 0.0f}, gains) ==
+                  maud_success &&
               fabsf(gains[0] - gains[1]) < 1e-6f,
           "a zero direction is ahead");
     maudDestroySpeakerPanner(stereo);
     maudSpeakerPanner* mono = Create(maud_layoutMono);
-    CHECK(maudGetSpeakerGains(mono, Towards(123.0, 45.0), gains) == maud_success &&
+    CHECK(maudSpeakerPanner_GetGains(mono, Towards(123.0, 45.0), gains) == maud_success &&
               gains[0] == 1.0f,
           "mono passes through");
     maudDestroySpeakerPanner(mono);
@@ -364,11 +369,11 @@ static void TestPan(void)
     float in[8] = {1.0f, -1.0f, 0.5f, 2.0f, 1.0f, 0.0f, -2.0f, 1.0f};
     maudPanSource from = {Towards(10.0, 0.0), 1.0f};
     maudPanSource to = {Towards(-60.0, 0.0), 0.5f};
-    CHECK(maudPanToSpeakers(panner, &from, &to, in, out, 8) == maud_success, "pan");
+    CHECK(maudSpeakerPanner_Pan(panner, &from, &to, in, out, 8) == maud_success, "pan");
     float a[6];
     float b[6];
-    CHECK(maudGetSpeakerGains(panner, from.direction, a) == maud_success &&
-              maudGetSpeakerGains(panner, to.direction, b) == maud_success,
+    CHECK(maudSpeakerPanner_GetGains(panner, from.direction, a) == maud_success &&
+              maudSpeakerPanner_GetGains(panner, to.direction, b) == maud_success,
           "gains");
     bool ramped = true;
     for (int c = 0; c < 6; ++c)
@@ -383,14 +388,15 @@ static void TestPan(void)
     CHECK(ramped, "panning ramps and adds");
     float* missing[6] = {out[0], out[1], out[2], out[3], out[4], nullptr};
     channels[0][0] = 7.0f;
-    CHECK(maudPanToSpeakers(panner, &from, &to, in, missing, 8) == maud_errorInvalid,
+    CHECK(maudSpeakerPanner_Pan(panner, &from, &to, in, missing, 8) == maud_errorInvalid,
           "a missing channel");
-    CHECK(maudPanToSpeakers(panner, &from, &to, in, nullptr, 8) == maud_errorInvalid,
+    CHECK(maudSpeakerPanner_Pan(panner, &from, &to, in, nullptr, 8) == maud_errorInvalid,
           "no channels");
     maudPanSource bad = {{NAN, 0.0f, 0.0f}, 1.0f};
-    CHECK(maudPanToSpeakers(panner, &bad, &to, in, out, 8) == maud_errorInvalid, "NaN");
+    CHECK(maudSpeakerPanner_Pan(panner, &bad, &to, in, out, 8) == maud_errorInvalid, "NaN");
     CHECK(channels[0][0] == 7.0f, "nothing written by a bad call");
-    CHECK(maudGetSpeakerGains(panner, from.direction, nullptr) == maud_errorInvalid, "no gains");
+    CHECK(maudSpeakerPanner_GetGains(panner, from.direction, nullptr) == maud_errorInvalid,
+          "no gains");
     maudDestroySpeakerPanner(panner);
     // The largest layout, its twelve channels in an array of twelve.
     maudSpeakerPanner* wide = Create(maud_layout7Point1Point4);
@@ -402,9 +408,9 @@ static void TestPan(void)
     }
     float wa[12];
     float wb[12];
-    CHECK(maudPanToSpeakers(wide, &from, &to, in, wideOut, 8) == maud_success &&
-              maudGetSpeakerGains(wide, from.direction, wa) == maud_success &&
-              maudGetSpeakerGains(wide, to.direction, wb) == maud_success,
+    CHECK(maudSpeakerPanner_Pan(wide, &from, &to, in, wideOut, 8) == maud_success &&
+              maudSpeakerPanner_GetGains(wide, from.direction, wa) == maud_success &&
+              maudSpeakerPanner_GetGains(wide, to.direction, wb) == maud_success,
           "pan on 7.1.4");
     bool wideRamped = true;
     for (int c = 0; c < 12; ++c)

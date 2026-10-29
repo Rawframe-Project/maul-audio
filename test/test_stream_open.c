@@ -38,8 +38,8 @@ int main(void)
     sd.mode = maud_modePull;
     sd.callback = Ignore;
     sd.share = maud_shareExclusive;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &sd.device) ==
-              maud_success,
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                       &sd.device) == maud_success,
           "the device");
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &sd, &stream) == maud_success, "exclusive at the native rate");

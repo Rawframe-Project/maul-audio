@@ -51,7 +51,7 @@ static Trace Control(Signal* signal, const maudGainControlDef* base)
     uint32_t chunk = signal->rate / 100;
     for (uint32_t at = 0; at + chunk <= signal->count; at += chunk)
     {
-        CHECK(maudApplyGainControl(gain, &signal->samples[at], chunk, &trace.last) == maud_success,
+        CHECK(maudGainControl_Apply(gain, &signal->samples[at], chunk, &trace.last) == maud_success,
               "apply");
         trace.gainDb[trace.frames++] = trace.last.gainDb;
     }
@@ -313,7 +313,7 @@ static void TestLayoutAndChunks(void)
     CHECK(maudCreateGainControl(&def, &mono) == maud_success, "a mono gain control");
     for (uint32_t i = 0; i < signal.count; ++i)
     {
-        CHECK(maudApplyGainControl(mono, &signal.samples[i], 1, nullptr) == maud_success,
+        CHECK(maudGainControl_Apply(mono, &signal.samples[i], 1, nullptr) == maud_success,
               "apply sample by sample");
     }
     maudDestroyGainControl(mono);
@@ -324,7 +324,7 @@ static void TestLayoutAndChunks(void)
     for (uint32_t at = 0; at < signal.count; at += 997)
     {
         uint32_t count = signal.count - at < 997 ? signal.count - at : 997;
-        CHECK(maudApplyGainControl(gain, stereo + 2 * (size_t)at, count, nullptr) == maud_success,
+        CHECK(maudGainControl_Apply(gain, stereo + 2 * (size_t)at, count, nullptr) == maud_success,
               "apply in chunks");
     }
     CHECK(s_live == 1, "nothing allocated while applying");
@@ -382,9 +382,9 @@ static void TestDefs(void)
     CHECK(maudCreateGainControl(nullptr, &gain) == maud_errorInvalid, "no def");
     def = maudDefaultGainControlDef();
     CHECK(maudCreateGainControl(&def, &gain) == maud_success, "a good def");
-    CHECK(maudApplyGainControl(gain, nullptr, 1, nullptr) == maud_errorInvalid, "frames missing");
-    CHECK(maudApplyGainControl(gain, nullptr, 0, nullptr) == maud_success, "none needed for 0");
-    CHECK(maudApplyGainControl(nullptr, nullptr, 0, nullptr) == maud_errorInvalid, "no gain");
+    CHECK(maudGainControl_Apply(gain, nullptr, 1, nullptr) == maud_errorInvalid, "frames missing");
+    CHECK(maudGainControl_Apply(gain, nullptr, 0, nullptr) == maud_success, "none needed for 0");
+    CHECK(maudGainControl_Apply(nullptr, nullptr, 0, nullptr) == maud_errorInvalid, "no gain");
     maudDestroyGainControl(gain);
     maudDestroyGainControl(nullptr);
 }

@@ -69,9 +69,9 @@ static maudResult Reverb(const maudReverbDef* def, void* out)
     return maudCreateReverb(def, out);
 }
 
-static maudResult Scene(const maudAcousticSceneDef* def, void* out)
+static maudResult Scene(const maudSceneDef* def, void* out)
 {
-    return maudCreateAcousticScene(def, out);
+    return maudCreateScene(def, out);
 }
 
 static maudResult Spatializer(const maudSpatializerDef* def, void* out)
@@ -136,7 +136,7 @@ int main(void)
     ALL(maudSpeakerPannerDef, maudDefaultSpeakerPannerDef(), SpeakerPanner);
     ALL(maudDirectEffectDef, maudDefaultDirectEffectDef(), DirectEffect);
     ALL(maudReverbDef, maudDefaultReverbDef(), Reverb);
-    ALL(maudAcousticSceneDef, maudDefaultAcousticSceneDef(), Scene);
+    ALL(maudSceneDef, maudDefaultSceneDef(), Scene);
     ALL(maudSpatializerDef, maudDefaultSpatializerDef(), Spatializer);
     ALL(maudVoiceDetectorDef, maudDefaultVoiceDetectorDef(), VoiceDetector);
     ALL(maudGainControlDef, maudDefaultGainControlDef(), GainControl);

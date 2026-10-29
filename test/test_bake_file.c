@@ -76,18 +76,18 @@ static maudProbeGraph Graph(void)
         v[i] = (maudVector3){(i & 1) ? 1.5f : -1.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 1.1f : 0.9f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef sd = maudDefaultAcousticSceneDef();
+    maudSceneDef sd = maudDefaultSceneDef();
     sd.meshes = &mesh;
     sd.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&sd, &scene) == maud_success, "a wall");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&sd, &scene) == maud_success, "a wall");
     maudVector3 points[8];
     for (int i = 0; i < 4; ++i)
     {
         points[i] = (maudVector3){(float)i, 1.5f, 0.0f};
         points[4 + i] = (maudVector3){(float)i, 1.5f, 2.0f};
     }
-    maudProbeQueries q = {.anyHit = maudSceneAnyHit,
+    maudProbeQueries q = {.anyHit = maudFindAnyHit,
                           .rayContext = scene,
                           .allocator = &s_allocator,
                           .maxProbes = 8,
@@ -95,7 +95,7 @@ static maudProbeGraph Graph(void)
     maudProbeSetDef def = {.points = points, .pointCount = 8, .range = 2.5f};
     maudProbeGraph g;
     CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "a graph");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     return g;
 }
 

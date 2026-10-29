@@ -53,7 +53,8 @@ static Run Detect(const Signal* signal, uint8_t aggressiveness, uint32_t chunk)
     {
         uint32_t count = signal->count - at < chunk ? signal->count - at : chunk;
         maudVoiceState state = {0};
-        CHECK(maudDetectVoice(detector, &signal->samples[at], count, &state) == maud_success,
+        CHECK(maudVoiceDetector_Detect(detector, &signal->samples[at], count, &state) ==
+                  maud_success,
               "detect");
         if (state.frames > run.frames)
         {
@@ -288,7 +289,7 @@ static void TestDefs(void)
     def.aggressiveness = 4;
     CHECK(maudCreateVoiceDetector(&def, &detector) == maud_errorInvalid, "aggressiveness past 3");
     def = maudDefaultVoiceDetectorDef();
-    def.hangoverMilliseconds = 10001;
+    def.hangover = 10.01f;
     CHECK(maudCreateVoiceDetector(&def, &detector) == maud_errorInvalid, "a hangover too long");
     def = maudDefaultVoiceDetectorDef();
     def.layout = maud_layoutNone;
@@ -299,9 +300,12 @@ static void TestDefs(void)
     CHECK(maudCreateVoiceDetector(nullptr, &detector) == maud_errorInvalid, "no def");
     def = maudDefaultVoiceDetectorDef();
     CHECK(maudCreateVoiceDetector(&def, &detector) == maud_success, "a good def");
-    CHECK(maudDetectVoice(detector, nullptr, 1, nullptr) == maud_errorInvalid, "frames missing");
-    CHECK(maudDetectVoice(detector, nullptr, 0, nullptr) == maud_success, "none needed for 0");
-    CHECK(maudDetectVoice(nullptr, nullptr, 0, nullptr) == maud_errorInvalid, "no detector");
+    CHECK(maudVoiceDetector_Detect(detector, nullptr, 1, nullptr) == maud_errorInvalid,
+          "frames missing");
+    CHECK(maudVoiceDetector_Detect(detector, nullptr, 0, nullptr) == maud_success,
+          "none needed for 0");
+    CHECK(maudVoiceDetector_Detect(nullptr, nullptr, 0, nullptr) == maud_errorInvalid,
+          "no detector");
     maudDestroyVoiceDetector(detector);
     maudDestroyVoiceDetector(nullptr);
 }
@@ -345,7 +349,8 @@ static void TestLayoutAndChunks(void)
     {
         uint32_t count = signal.count - at < 997 ? signal.count - at : 997;
         maudVoiceState state = {0};
-        CHECK(maudDetectVoice(detector, stereo + 2 * (size_t)at, count, &state) == maud_success,
+        CHECK(maudVoiceDetector_Detect(detector, stereo + 2 * (size_t)at, count, &state) ==
+                  maud_success,
               "detect stereo");
         if (state.frames > 0 && (state.active != mono.active[state.frames - 1] ||
                                  state.probability != mono.probability[state.frames - 1]))

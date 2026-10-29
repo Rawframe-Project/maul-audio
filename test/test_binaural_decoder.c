@@ -123,8 +123,8 @@ static void DecodeImpulse(maudBinauralDecoder* decoder, uint32_t order, maudVect
         bed[c] = s_bed[c];
     }
     float* out[2] = {s_left, s_right};
-    CHECK(maudResetBinauralDecoder(decoder) == maud_success, "reset");
-    CHECK(maudDecodeBinaural(decoder, bed, out, FRAMES) == maud_success, "decode");
+    CHECK(maudBinauralDecoder_Reset(decoder) == maud_success, "reset");
+    CHECK(maudBinauralDecoder_Decode(decoder, bed, out, FRAMES) == maud_success, "decode");
 }
 
 static void TestAccuracy(const maudHrtf* hrtf)
@@ -239,7 +239,7 @@ static void TestBlocks(const maudHrtf* hrtf)
     }
     float* out[2] = {s_left, s_right};
     long before = s_allocations;
-    CHECK(maudDecodeBinaural(whole, bed, out, FRAMES) == maud_success, "decode");
+    CHECK(maudBinauralDecoder_Decode(whole, bed, out, FRAMES) == maud_success, "decode");
     uint32_t sizes[3] = {1, 100, 155};
     uint32_t done = 0;
     for (int i = 0; i < 3; ++i)
@@ -250,7 +250,7 @@ static void TestBlocks(const maudHrtf* hrtf)
             at[c] = s_bed[c] + done;
         }
         float* to[2] = {left + done, right + done};
-        CHECK(maudDecodeBinaural(parts, at, to, sizes[i]) == maud_success, "decode");
+        CHECK(maudBinauralDecoder_Decode(parts, at, to, sizes[i]) == maud_success, "decode");
         done += sizes[i];
     }
     CHECK(memcmp(s_left, left, sizeof(left)) == 0 && memcmp(s_right, right, sizeof(right)) == 0,
@@ -289,15 +289,17 @@ static void TestMisuse(const maudHrtf* hrtf)
     }
     const float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], nullptr};
     float* out[2] = {s_left, s_right};
-    CHECK(maudDecodeBinaural(decoder, bed, out, 64) == maud_errorInvalid, "a missing channel");
+    CHECK(maudBinauralDecoder_Decode(decoder, bed, out, 64) == maud_errorInvalid,
+          "a missing channel");
     bed[3] = s_bed[3];
-    CHECK(maudDecodeBinaural(decoder, bed, out, 65) == maud_errorCapacity, "too many frames");
-    CHECK(maudDecodeBinaural(decoder, nullptr, out, 64) == maud_errorInvalid, "no bed");
+    CHECK(maudBinauralDecoder_Decode(decoder, bed, out, 65) == maud_errorCapacity,
+          "too many frames");
+    CHECK(maudBinauralDecoder_Decode(decoder, nullptr, out, 64) == maud_errorInvalid, "no bed");
     float* noEar[2] = {s_left, nullptr};
-    CHECK(maudDecodeBinaural(decoder, bed, noEar, 64) == maud_errorInvalid, "no right ear");
+    CHECK(maudBinauralDecoder_Decode(decoder, bed, noEar, 64) == maud_errorInvalid, "no right ear");
     CHECK(s_left[0] == 7.0f, "nothing written by a bad call");
-    CHECK(maudDecodeBinaural(decoder, nullptr, out, 0) == maud_success, "no frames");
-    CHECK(maudResetBinauralDecoder(nullptr) == maud_errorInvalid, "reset nothing");
+    CHECK(maudBinauralDecoder_Decode(decoder, nullptr, out, 0) == maud_success, "no frames");
+    CHECK(maudBinauralDecoder_Reset(nullptr) == maud_errorInvalid, "reset nothing");
     maudDestroyBinauralDecoder(decoder);
     maudDestroyBinauralDecoder(nullptr);
 }

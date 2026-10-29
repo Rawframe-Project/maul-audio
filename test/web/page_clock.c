@@ -74,7 +74,7 @@ EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 
 void TestGesture(void)
 {
-    CHECK(maudResumeContext(s_context) == maud_success, "resume from the gesture");
+    CHECK(maudContext_Unlock(s_context) == maud_success, "resume from the gesture");
     s_since = emscripten_get_now();
 }
 
@@ -117,11 +117,11 @@ static void Sample(Watch* watch)
     maudStreamClock clock = {0};
     maudStreamStatus status = {0};
     maudStreamFormat format = {0};
-    if (maudGetStreamFormat(s_context, watch->stream, &format) != maud_success ||
+    if (maudStream_GetFormat(s_context, watch->stream, &format) != maud_success ||
         format.sampleRate == 0 ||
-        maudGetStreamClock(s_context, watch->stream, &clock) != maud_success ||
+        maudStream_GetClock(s_context, watch->stream, &clock) != maud_success ||
         clock.hostNanoseconds == 0 ||
-        maudGetStreamStatus(s_context, watch->stream, &status) != maud_success)
+        maudStream_GetStatus(s_context, watch->stream, &status) != maud_success)
     {
         return;
     }
@@ -194,7 +194,7 @@ static void Step_(void* user)
 {
     (void)user;
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
     }
     if (s_since == 0.0)
@@ -224,7 +224,7 @@ static void Open(Watch* watch, maudDirection direction, const char* name)
     Restart(watch);
     watch->restarts = 0;
     CHECK(maudCreateStream(s_context, &def, &watch->stream) == maud_success &&
-              maudStartStream(s_context, watch->stream) == maud_success,
+              maudStream_Start(s_context, watch->stream) == maud_success,
           "a stream");
 }
 

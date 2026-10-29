@@ -125,8 +125,8 @@ static void TestShippedSet(void)
     maudHrtf* hrtf = nullptr;
     CHECK(Load(bytes, count, 0, &hrtf) == maud_success, "loads");
     maudHrtfInfo info = {0};
-    CHECK(maudGetHrtfInfo(hrtf, &info) == maud_success && info.sampleRate == 48000 &&
-              info.taps == 128 && info.directionCount == 1652 && info.ringCount == 37 &&
+    CHECK(maudHrtf_GetInfo(hrtf, &info) == maud_success && info.sampleRate == 48000 &&
+              info.tapCount == 128 && info.directionCount == 1652 && info.ringCount == 37 &&
               info.distance == 1.2f,
           "at 48 kHz, 128 taps, 1,652 directions on 37 rings, measured at 1.2 m");
     CHECK(info.nameLength > 8 && memcmp(info.name, "SADIE II", 8) == 0, "named");
@@ -492,7 +492,7 @@ static void TestFields(void)
     maudHrtf* hrtf = nullptr;
     maudHrtfInfo info = {0};
     CHECK(Load(file.bytes, file.count, 0, &hrtf) == maud_success &&
-              maudGetHrtfInfo(hrtf, &info) == maud_success && info.nameLength == 0 &&
+              maudHrtf_GetInfo(hrtf, &info) == maud_success && info.nameLength == 0 &&
               info.licenseLength == 0,
           "no name and no license field: both empty, their default");
     maudDestroyHrtf(hrtf);
@@ -612,7 +612,7 @@ static void TestCraftedFiles(void)
     def.cookie = 0;
     CHECK(maudLoadHrtf(&def, &hrtf) == maud_errorInvalid, "no cookie");
     CHECK(maudLoadHrtf(nullptr, &hrtf) == maud_errorInvalid, "no def");
-    CHECK(maudGetHrtfInfo(nullptr, &(maudHrtfInfo){0}) == maud_errorInvalid, "no set");
+    CHECK(maudHrtf_GetInfo(nullptr, &(maudHrtfInfo){0}) == maud_errorInvalid, "no set");
 }
 
 // A file of one ring at the horizon with directions azimuths, 8 taps, a

@@ -73,8 +73,8 @@ static void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, vo
     }
 }
 
-static void* Enqueue(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Enqueue(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     (void)userContext;
@@ -106,7 +106,7 @@ static maudSpatializer* Create(uint32_t maxSurfaces, bool tasks, bool closest)
     def.finishTask = tasks ? Finish : nullptr;
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
-    CHECK(maudSetMaterials(s, s_materials, 2) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(s, s_materials, 2) == maud_success, "materials");
     return s;
 }
 
@@ -115,9 +115,10 @@ static maudDirectResult Result(maudSpatializer* s, maudSourceId id, float x, flo
     maudPose pose = {{x, 0.0f, z}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudDirectResult r = {0};
-    CHECK(maudSetSourcePose(s, id, &pose) == maud_success &&
-              maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) > 0 &&
-              maudGetDirectResult(s, id, &r) == maud_success,
+    CHECK(maudSource_SetPose(s, id, &pose) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) > 0 &&
+              maudSource_GetDirectResult(s, id, &r) == maud_success,
           "a result");
     return r;
 }
@@ -125,7 +126,7 @@ static maudDirectResult Result(maudSpatializer* s, maudSourceId id, float x, flo
 static maudSourceId Source(maudSpatializer* s, bool transmission)
 {
     maudSourceDef def = maudDefaultSourceDef();
-    def.transmission = transmission;
+    def.enableTransmission = transmission;
     maudSourceId id = {0, 0};
     CHECK(maudCreateSource(s, &def, &id) == maud_success, "a source");
     return id;
@@ -142,10 +143,10 @@ static void TestWalk(void)
     maudSpatializer* s = Create(4, false, true);
     maudSourceId id = Source(s, true);
     maudDirectResult r = Result(s, id, -2.0f, -10.0f);
-    CHECK(r.occlusion == 1.0f && r.surfaces == 2 && Bands(&r, 0.45f, 0.32f, 0.21f),
+    CHECK(r.occlusion == 1.0f && r.surfaceCount == 2 && Bands(&r, 0.45f, 0.32f, 0.21f),
           "two walls: the product of both");
     r = Result(s, id, 2.0f, -10.0f);
-    CHECK(r.surfaces == 1 && Bands(&r, 0.9f, 0.8f, 0.7f), "beside the half-wall: one wall");
+    CHECK(r.surfaceCount == 1 && Bands(&r, 0.9f, 0.8f, 0.7f), "beside the half-wall: one wall");
     s_closest = 0;
     r = Result(s, id, 2.0f, -6.0f);
     CHECK(r.occlusion == 0.0f && Bands(&r, 1.0f, 1.0f, 1.0f) && s_closest == 0,
@@ -167,7 +168,8 @@ static void TestWalk(void)
     s = Create(1, false, true);
     id = Source(s, true);
     r = Result(s, id, -2.0f, -10.0f);
-    CHECK(r.surfaces == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "the limit stops the walk, and says so");
+    CHECK(r.surfaceCount == 1 && Bands(&r, 0.5f, 0.4f, 0.3f),
+          "the limit stops the walk, and says so");
     maudDestroySpatializer(s);
     // A hit before the ray's minimum distance is no hit: a careless host
     // returning the first wall again ends the walk rather than counting
@@ -177,7 +179,7 @@ static void TestWalk(void)
     s_careless = true;
     r = Result(s, id, -2.0f, -10.0f);
     s_careless = false;
-    CHECK(r.surfaces == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "a surface is not crossed twice");
+    CHECK(r.surfaceCount == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "a surface is not crossed twice");
     maudDestroySpatializer(s);
     s = Create(4, false, false);
     id = Source(s, true);
@@ -209,17 +211,19 @@ static void TestSplit(void)
         float angle = (float)i * 0.37f;
         maudPose pose = {{8.0f * sinf(angle), 0.1f * (float)i, -6.0f - 6.0f * cosf(angle)},
                          {0.0f, 0.0f, 0.0f, 1.0f}};
-        CHECK(maudSetSourcePose(a, ia[i], &pose) == maud_success &&
-                  maudSetSourcePose(b, ib[i], &pose) == maud_success,
+        CHECK(maudSource_SetPose(a, ia[i], &pose) == maud_success &&
+                  maudSource_SetPose(b, ib[i], &pose) == maud_success,
               "pose");
     }
-    CHECK(maudSimulateDirect(a, &listener) == maud_success && maudLatchResults(a) > 0 &&
-              maudSimulateDirect(b, &listener) == maud_success && maudLatchResults(b) > 0,
+    CHECK(maudSpatializer_SimulateDirect(a, &listener) == maud_success &&
+              maudSpatializer_LatchResults(a) > 0 &&
+              maudSpatializer_SimulateDirect(b, &listener) == maud_success &&
+              maudSpatializer_LatchResults(b) > 0,
           "steps");
     for (int i = 0; i < COUNT; ++i)
     {
-        CHECK(maudGetDirectResult(a, ia[i], &x[i]) == maud_success &&
-                  maudGetDirectResult(b, ib[i], &y[i]) == maud_success,
+        CHECK(maudSource_GetDirectResult(a, ia[i], &x[i]) == maud_success &&
+                  maudSource_GetDirectResult(b, ib[i], &y[i]) == maud_success,
               "results");
     }
     CHECK(memcmp(x, y, sizeof(x)) == 0, "a split step gives the same bytes");
@@ -233,25 +237,25 @@ static void TestMaterials(void)
     maudAcousticMaterial bad = s_materials[0];
     bad.transmission[1] = 1.5f;
     maudAcousticMaterial table[2] = {s_materials[0], bad};
-    CHECK(maudSetMaterials(s, table, 2) == maud_errorInvalid, "a transmission above 1");
+    CHECK(maudSpatializer_SetMaterials(s, table, 2) == maud_errorInvalid, "a transmission above 1");
     bad = s_materials[0];
     bad.scattering = NAN;
     table[1] = bad;
-    CHECK(maudSetMaterials(s, table, 2) == maud_errorInvalid, "NaN scattering");
+    CHECK(maudSpatializer_SetMaterials(s, table, 2) == maud_errorInvalid, "NaN scattering");
     static maudAcousticMaterial many[65];
     for (int i = 0; i < 65; ++i)
     {
         many[i] = s_materials[0];
     }
-    CHECK(maudSetMaterials(s, many, 65) == maud_errorCapacity, "past the capacity");
+    CHECK(maudSpatializer_SetMaterials(s, many, 65) == maud_errorCapacity, "past the capacity");
     maudSourceId id = Source(s, true);
     maudDirectResult r = Result(s, id, -2.0f, -10.0f);
     CHECK(Bands(&r, 0.45f, 0.32f, 0.21f), "a refused table changes nothing");
-    CHECK(maudSetMaterials(s, nullptr, 0) == maud_success, "an empty table");
+    CHECK(maudSpatializer_SetMaterials(s, nullptr, 0) == maud_success, "an empty table");
     r = Result(s, id, -2.0f, -10.0f);
     CHECK(Bands(&r, 0.0f, 0.0f, 0.0f), "and every material is unknown");
-    CHECK(maudSetMaterials(s, nullptr, 1) == maud_errorInvalid, "no materials");
-    CHECK(maudSetMaterials(s, many, 64) == maud_success, "a table at the capacity");
+    CHECK(maudSpatializer_SetMaterials(s, nullptr, 1) == maud_errorInvalid, "no materials");
+    CHECK(maudSpatializer_SetMaterials(s, many, 64) == maud_success, "a table at the capacity");
     maudDestroySpatializer(s);
     maudSpatializerDef def = maudDefaultSpatializerDef();
     maudSpatializer* none = nullptr;

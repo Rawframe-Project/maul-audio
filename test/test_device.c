@@ -60,7 +60,7 @@ static maudDeviceId AddDevice(maudContext* context, maudDirection direction, uin
     def.key = name;
     def.keyLength = strlen(name);
     maudDeviceId id = {0, 0};
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_success, "add device");
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_success, "add device");
     return id;
 }
 
@@ -75,7 +75,7 @@ static maudStreamId OpenOutput(maudContext* context, maudDeviceId device, maudDe
     def.user = blocks;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create stream");
-    CHECK(maudStartStream(context, stream) == maud_success, "start stream");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start stream");
     return stream;
 }
 
@@ -83,7 +83,7 @@ static maudStreamId OpenOutput(maudContext* context, maudDeviceId device, maudDe
 static maudNotification Expect(maudContext* context, maudNotificationKind kind, const char* what)
 {
     maudNotification record = {0};
-    CHECK(maudNextNotification(context, &record) == maud_success, what);
+    CHECK(maudContext_NextNotification(context, &record) == maud_success, what);
     CHECK(record.kind == kind, what);
     return record;
 }
@@ -91,7 +91,7 @@ static maudNotification Expect(maudContext* context, maudNotificationKind kind, 
 static void ExpectDrained(maudContext* context, const char* what)
 {
     maudNotification record;
-    CHECK(maudNextNotification(context, &record) == maud_empty, what);
+    CHECK(maudContext_NextNotification(context, &record) == maud_empty, what);
 }
 
 static void TestStartingDevices(void)
@@ -100,30 +100,31 @@ static void TestStartingDevices(void)
     ExpectDrained(context, "a new context reports nothing");
     maudDeviceId ids[4];
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &count) == maud_success, "list");
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, ids, 4, &count) == maud_success,
+          "list");
     CHECK(count == 1, "one output");
     maudDeviceInfo info;
-    CHECK(maudGetDeviceInfo(context, ids[0], &info) == maud_success, "info");
+    CHECK(maudDevice_GetInfo(context, ids[0], &info) == maud_success, "info");
     CHECK(info.direction == maud_directionOutput && info.nativeSampleRate == 48000, "48 kHz out");
     CHECK(info.nativeLayout == maud_layoutStereo, "stereo");
     CHECK(info.defaultGeneral && info.defaultCommunications, "default for both roles");
     CHECK(info.minSampleRate == 8000 && info.maxSampleRate == 384000, "rate range");
     char name[32];
     size_t length = 0;
-    CHECK(maudGetDeviceName(context, ids[0], name, sizeof(name), &length) == maud_success, "name");
+    CHECK(maudDevice_GetName(context, ids[0], name, sizeof(name), &length) == maud_success, "name");
     CHECK(length == 14 && memcmp(name, "Offline output", 14) == 0, "output name");
-    CHECK(maudGetDeviceKey(context, ids[0], name, sizeof(name), &length) == maud_success, "key");
+    CHECK(maudDevice_GetKey(context, ids[0], name, sizeof(name), &length) == maud_success, "key");
     CHECK(length == 14 && memcmp(name, "offline-output", 14) == 0, "output key");
-    CHECK(maudGetDevices(context, maud_directionInput, nullptr, 0, &count) == maud_success,
+    CHECK(maudContext_GetDevices(context, maud_directionInput, nullptr, 0, &count) == maud_success,
           "count inputs");
     CHECK(count == 1, "one input");
     maudDeviceId input;
-    CHECK(maudGetDefaultDevice(context, maud_directionInput, maud_roleCommunications, &input) ==
-              maud_success,
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionInput, maud_roleCommunications,
+                                       &input) == maud_success,
           "default input");
-    CHECK(maudGetDeviceName(context, input, name, 12, &length) == maud_errorCapacity, "too small");
+    CHECK(maudDevice_GetName(context, input, name, 12, &length) == maud_errorCapacity, "too small");
     CHECK(length == 13, "needed length");
-    CHECK(maudGetDeviceName(context, input, name, 13, &length) == maud_success, "exact fit");
+    CHECK(maudDevice_GetName(context, input, name, 13, &length) == maud_success, "exact fit");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -131,7 +132,7 @@ static void TestDefaultChangeMovesFollowingStreams(void)
 {
     maudContext* context = Offline(32);
     maudDeviceId first;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &first) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &first) ==
               maud_success,
           "first output");
     Blocks following = {0};
@@ -142,7 +143,7 @@ static void TestDefaultChangeMovesFollowingStreams(void)
     maudNotification record = Expect(context, maud_notifyDeviceAdded, "added");
     CHECK(Same(record.device, second) && record.direction == maud_directionOutput, "added id");
     ExpectDrained(context, "a second device changes no default");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, second) == maud_success, "set");
+    CHECK(maudDevice_SetOfflineDefault(context, second, maud_roleGeneral) == maud_success, "set");
     record = Expect(context, maud_notifyDefaultChanged, "default changed");
     CHECK(Same(record.device, second) && record.role == maud_roleGeneral, "new default");
     record = Expect(context, maud_notifyStreamMoved, "follower moved");
@@ -151,15 +152,15 @@ static void TestDefaultChangeMovesFollowingStreams(void)
     CHECK(record.sampleRate == 44100, "to the new device's rate");
     ExpectDrained(context, "the pinned stream stays");
     maudStreamStatus status;
-    CHECK(maudGetStreamStatus(context, fixed, &status) == maud_success, "pinned status");
+    CHECK(maudStream_GetStatus(context, fixed, &status) == maud_success, "pinned status");
     CHECK(Same(status.device, first) && status.suspension == maud_suspendNone, "still on first");
     float frames[2 * 480];
-    CHECK(maudRenderStream(context, follower, frames, 480) == maud_success, "render follower");
+    CHECK(maudStream_Render(context, follower, frames, 480) == maud_success, "render follower");
     CHECK(following.lastRate == 44100, "blocks carry the new rate");
     maudStreamFormat format;
-    CHECK(maudGetStreamFormat(context, follower, &format) == maud_success, "format");
+    CHECK(maudStream_GetFormat(context, follower, &format) == maud_success, "format");
     CHECK(format.sampleRate == 44100, "format follows");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, second) == maud_success, "again");
+    CHECK(maudDevice_SetOfflineDefault(context, second, maud_roleGeneral) == maud_success, "again");
     ExpectDrained(context, "setting the same default reports nothing");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
@@ -172,10 +173,10 @@ static void TestRolesAreFollowedSeparately(void)
         OpenOutput(context, (maudDeviceId){0, 0}, maud_roleCommunications, &blocks);
     maudDeviceId headset = AddDevice(context, maud_directionOutput, 48000, "Headset");
     Expect(context, maud_notifyDeviceAdded, "added");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, headset) == maud_success, "set");
+    CHECK(maudDevice_SetOfflineDefault(context, headset, maud_roleGeneral) == maud_success, "set");
     Expect(context, maud_notifyDefaultChanged, "general default");
     ExpectDrained(context, "the voice stream follows communications");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleCommunications, headset) == maud_success,
+    CHECK(maudDevice_SetOfflineDefault(context, headset, maud_roleCommunications) == maud_success,
           "set communications");
     Expect(context, maud_notifyDefaultChanged, "communications default");
     maudNotification record = Expect(context, maud_notifyStreamMoved, "voice moved");
@@ -189,14 +190,14 @@ static void TestLossSuspendsPinnedStreamsAndMovesFollowers(void)
     maudContext* context = Offline(32);
     maudDeviceId speakers = AddDevice(context, maud_directionOutput, 48000, "Speakers");
     maudDeviceId first;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &first) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &first) ==
               maud_success,
           "first");
     Blocks blocks = {0};
     maudStreamId follower = OpenOutput(context, (maudDeviceId){0, 0}, maud_roleGeneral, &blocks);
     maudStreamId pinned = OpenOutput(context, first, maud_roleGeneral, &blocks);
     Expect(context, maud_notifyDeviceAdded, "added");
-    CHECK(maudRemoveOfflineDevice(context, first) == maud_success, "unplug the default");
+    CHECK(maudDestroyOfflineDevice(context, first) == maud_success, "unplug the default");
     maudNotification record = Expect(context, maud_notifyDeviceRemoved, "removed");
     CHECK(Same(record.device, first), "removed id");
     record = Expect(context, maud_notifyStreamSuspended, "pinned suspended");
@@ -209,15 +210,15 @@ static void TestLossSuspendsPinnedStreamsAndMovesFollowers(void)
     CHECK(record.role == maud_roleCommunications, "communications");
     ExpectDrained(context, "nothing else");
     float frames[2 * 16];
-    CHECK(maudRenderStream(context, pinned, frames, 16) == maud_errorState, "lost renders not");
-    CHECK(maudRenderStream(context, follower, frames, 16) == maud_success, "follower renders");
+    CHECK(maudStream_Render(context, pinned, frames, 16) == maud_errorState, "lost renders not");
+    CHECK(maudStream_Render(context, follower, frames, 16) == maud_success, "follower renders");
     maudStreamStatus status;
-    CHECK(maudGetStreamStatus(context, pinned, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(context, pinned, &status) == maud_success, "status");
     CHECK(status.started && status.suspension == maud_suspendDeviceLost, "started but lost");
     CHECK(status.device.index1 == 0, "on no device");
     maudDeviceInfo info;
-    CHECK(maudGetDeviceInfo(context, first, &info) == maud_errorStale, "removed id is stale");
-    CHECK(maudRemoveOfflineDevice(context, first) == maud_errorStale, "remove twice");
+    CHECK(maudDevice_GetInfo(context, first, &info) == maud_errorStale, "removed id is stale");
+    CHECK(maudDestroyOfflineDevice(context, first) == maud_errorStale, "remove twice");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -225,12 +226,12 @@ static void TestFollowersWaitForADevice(void)
 {
     maudContext* context = Offline(32);
     maudDeviceId only;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &only) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &only) ==
               maud_success,
           "only output");
     Blocks blocks = {0};
     maudStreamId follower = OpenOutput(context, (maudDeviceId){0, 0}, maud_roleGeneral, &blocks);
-    CHECK(maudRemoveOfflineDevice(context, only) == maud_success, "unplug the last output");
+    CHECK(maudDestroyOfflineDevice(context, only) == maud_success, "unplug the last output");
     Expect(context, maud_notifyDeviceRemoved, "removed");
     maudNotification record = Expect(context, maud_notifyDefaultChanged, "no general default");
     CHECK(record.device.index1 == 0, "null default");
@@ -239,15 +240,15 @@ static void TestFollowersWaitForADevice(void)
     Expect(context, maud_notifyDefaultChanged, "no communications default");
     ExpectDrained(context, "nothing else");
     maudDeviceId none;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &none) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &none) ==
               maud_empty,
           "no default");
     float frames[2 * 16];
-    CHECK(maudRenderStream(context, follower, frames, 16) == maud_errorState, "waiting");
+    CHECK(maudStream_Render(context, follower, frames, 16) == maud_errorState, "waiting");
     Blocks late = {0};
     maudStreamId opened = OpenOutput(context, (maudDeviceId){0, 0}, maud_roleGeneral, &late);
     maudStreamStatus status;
-    CHECK(maudGetStreamStatus(context, opened, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(context, opened, &status) == maud_success, "status");
     CHECK(status.suspension == maud_suspendNoDevice, "opened waiting");
     maudDeviceId back = AddDevice(context, maud_directionOutput, 48000, "Back");
     Expect(context, maud_notifyDeviceAdded, "added");
@@ -261,7 +262,7 @@ static void TestFollowersWaitForADevice(void)
     Expect(context, maud_notifyStreamResumed, "late stream resumed");
     Expect(context, maud_notifyDefaultChanged, "communications default");
     ExpectDrained(context, "nothing else");
-    CHECK(maudRenderStream(context, follower, frames, 16) == maud_success, "renders again");
+    CHECK(maudStream_Render(context, follower, frames, 16) == maud_success, "renders again");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -271,8 +272,8 @@ static void TestOverflowRecordCountsDropped(void)
     maudDeviceId devices[2];
     devices[0] = AddDevice(context, maud_directionInput, 48000, "A");
     devices[1] = AddDevice(context, maud_directionInput, 48000, "B");
-    CHECK(maudRemoveOfflineDevice(context, devices[0]) == maud_success, "remove A");
-    CHECK(maudRemoveOfflineDevice(context, devices[1]) == maud_success, "remove B");
+    CHECK(maudDestroyOfflineDevice(context, devices[0]) == maud_success, "remove A");
+    CHECK(maudDestroyOfflineDevice(context, devices[1]) == maud_success, "remove B");
     AddDevice(context, maud_directionInput, 48000, "C");
     Expect(context, maud_notifyDeviceAdded, "first record");
     Expect(context, maud_notifyDeviceAdded, "second record");
@@ -291,39 +292,39 @@ static void TestRefusals(void)
     maudOfflineDeviceDef def = maudDefaultOfflineDeviceDef();
     maudDeviceId id = {7, 7};
     def.cookie = 0;
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_errorInvalid, "no cookie");
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_errorInvalid, "no cookie");
     CHECK(id.index1 == 0, "null id on failure");
     def = maudDefaultOfflineDeviceDef();
     def.sampleRate = 400000;
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_errorInvalid, "rate out of range");
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_errorInvalid, "rate out of range");
     // On a context of its own, the room here being counted.
     maudContext* spare = Offline(16);
     def.sampleRate = 384000;
     def.direction = maud_directionInput;
     maudDeviceInfo highest = {0};
-    CHECK(maudAddOfflineDevice(spare, &def, &id) == maud_success &&
-              maudGetDeviceInfo(spare, id, &highest) == maud_success &&
+    CHECK(maudCreateOfflineDevice(spare, &def, &id) == maud_success &&
+              maudDevice_GetInfo(spare, id, &highest) == maud_success &&
               highest.nativeSampleRate == 384000 && highest.spatializer == maud_spatializerUnknown,
           "the highest rate taken; an input's spatializer unknown");
     CHECK(maudDestroyContext(spare) == maud_success, "destroy the spare");
     def = maudDefaultOfflineDeviceDef();
     def.nameLength = 3;
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_errorInvalid, "length without name");
-    CHECK(maudGetContextMisuse(context) == 3, "each counted");
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_errorInvalid, "length without name");
+    CHECK(maudContext_GetMisuse(context) == 3, "each counted");
     def = maudDefaultOfflineDeviceDef();
     def.name = "A name longer than thirty-two bytes";
     def.nameLength = strlen(def.name);
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_errorCapacity, "name too long");
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_errorCapacity, "name too long");
     AddDevice(context, maud_directionOutput, 48000, "Third");
     AddDevice(context, maud_directionOutput, 48000, "Fourth");
     def = maudDefaultOfflineDeviceDef();
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_errorCapacity, "device limit");
-    CHECK(maudSetOfflineDefaultDevice(context, 2, id) == maud_errorInvalid, "unknown role");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, (maudDeviceId){1, 9}) ==
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_errorCapacity, "device limit");
+    CHECK(maudDevice_SetOfflineDefault(context, id, 2) == maud_errorInvalid, "unknown role");
+    CHECK(maudDevice_SetOfflineDefault(context, (maudDeviceId){1, 9}, maud_roleGeneral) ==
               maud_errorStale,
           "stale default");
     maudDeviceId input;
-    CHECK(maudGetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &input) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &input) ==
               maud_success,
           "input");
     Blocks blocks = {0};
@@ -333,19 +334,22 @@ static void TestRefusals(void)
     stream.user = &blocks;
     stream.device = input;
     maudStreamId streamId;
-    uint64_t misuse = maudGetContextMisuse(context);
+    uint64_t misuse = maudContext_GetMisuse(context);
     CHECK(maudCreateStream(context, &stream, &streamId) == maud_errorInvalid, "wrong direction");
-    CHECK(maudGetContextMisuse(context) == misuse + 1, "counted");
+    CHECK(maudContext_GetMisuse(context) == misuse + 1, "counted");
     stream.device = (maudDeviceId){1, 9};
     CHECK(maudCreateStream(context, &stream, &streamId) == maud_errorStale, "stale device");
     maudDeviceId ids[1];
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, maud_directionOutput, ids, 1, &count) == maud_success, "list");
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, ids, 1, &count) == maud_success,
+          "list");
     CHECK(count == 3, "the true total past the capacity");
-    CHECK(maudGetDevices(context, 2, ids, 1, &count) == maud_errorInvalid, "unknown direction");
-    CHECK(maudGetDevices(context, maud_directionOutput, nullptr, 1, &count) == maud_errorInvalid,
+    CHECK(maudContext_GetDevices(context, 2, ids, 1, &count) == maud_errorInvalid,
+          "unknown direction");
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, nullptr, 1, &count) ==
+              maud_errorInvalid,
           "null array with room");
-    CHECK(maudNextNotification(context, nullptr) == maud_errorInvalid, "null record");
+    CHECK(maudContext_NextNotification(context, nullptr) == maud_errorInvalid, "null record");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -362,40 +366,41 @@ static void TestRouteChanges(void)
     def.key = "laptop";
     def.keyLength = 6;
     maudDeviceId device = {0, 0};
-    CHECK(maudAddOfflineDevice(context, &def, &device) == maud_success, "add");
+    CHECK(maudCreateOfflineDevice(context, &def, &device) == maud_success, "add");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, device, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, device, &info) == maud_success &&
               info.form == maud_formSpeakers && info.spatializer == maud_spatializerNone,
           "it reports its form, and no spatializer on an output");
     Blocks blocks = {0};
     maudStreamId stream = OpenOutput(context, device, maud_roleGeneral, &blocks);
-    while (maudNextNotification(context, &(maudNotification){0}) == maud_success)
+    while (maudContext_NextNotification(context, &(maudNotification){0}) == maud_success)
     {
     }
-    CHECK(maudSetOfflineDeviceForm(context, device, maud_formHeadphones) == maud_success,
+    CHECK(maudDevice_SetOfflineForm(context, device, maud_formHeadphones) == maud_success,
           "plug headphones");
     maudNotification record = Expect(context, maud_notifyRouteChanged, "a route record");
     CHECK(Same(record.device, device) && record.direction == maud_directionOutput &&
               record.form == maud_formHeadphones,
           "naming the device and its new form");
-    CHECK(maudGetDeviceInfo(context, device, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, device, &info) == maud_success &&
               info.form == maud_formHeadphones,
           "which its info reports");
-    CHECK(maudSetOfflineDeviceForm(context, device, maud_formHeadphones) == maud_success,
+    CHECK(maudDevice_SetOfflineForm(context, device, maud_formHeadphones) == maud_success,
           "the same again");
     ExpectDrained(context, "is no change");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
               Same(status.device, device) && status.suspension == maud_suspendNone,
           "the stream stays on it");
-    CHECK(maudSetOfflineDeviceForm(context, device, maud_formDigital + 1) == maud_errorInvalid,
+    CHECK(maudDevice_SetOfflineForm(context, device, maud_formDigital + 1) == maud_errorInvalid,
           "an unknown form");
-    CHECK(maudSetOfflineDeviceForm(context, device, maud_formDigital) == maud_success,
+    CHECK(maudDevice_SetOfflineForm(context, device, maud_formDigital) == maud_success,
           "the last form");
     def.form = maud_formDigital + 1;
-    CHECK(maudAddOfflineDevice(context, &def, &device) == maud_errorInvalid,
+    CHECK(maudCreateOfflineDevice(context, &def, &device) == maud_errorInvalid,
           "an unknown form in a def");
-    CHECK(maudSetOfflineDeviceForm(context, (maudDeviceId){3, 7}, maud_formLine) == maud_errorStale,
+    CHECK(maudDevice_SetOfflineForm(context, (maudDeviceId){3, 7}, maud_formLine) ==
+              maud_errorStale,
           "a stale device");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
@@ -408,55 +413,55 @@ static void TestSpatializerChanges(void)
     maudContext* context = Offline(16);
     maudDeviceId output = {0, 0};
     maudDeviceId input = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
                   maud_success &&
-              maudGetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &input) ==
-                  maud_success,
+              maudContext_GetDefaultDevice(context, maud_directionInput, maud_roleGeneral,
+                                           &input) == maud_success,
           "the starting devices");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, output, &info) == maud_success &&
               info.spatializer == maud_spatializerNone && !info.headTracking &&
-              info.spatialObjects == 0,
+              info.spatialObjectCount == 0,
           "an offline output has none");
-    CHECK(maudGetDeviceInfo(context, input, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, input, &info) == maud_success &&
               info.spatializer == maud_spatializerUnknown,
           "an input says nothing");
-    while (maudNextNotification(context, &(maudNotification){0}) == maud_success)
+    while (maudContext_NextNotification(context, &(maudNotification){0}) == maud_success)
     {
     }
-    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, true, 128) ==
+    CHECK(maudDevice_SetOfflineSpatializer(context, output, maud_spatializerOn, true, 128) ==
               maud_success,
           "a spatial format turned on");
     maudNotification record = Expect(context, maud_notifySpatializerChanged, "a record");
     CHECK(Same(record.device, output) && record.direction == maud_directionOutput,
           "naming the device");
-    CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, output, &info) == maud_success &&
               info.spatializer == maud_spatializerOn && info.headTracking &&
-              info.spatialObjects == 128,
+              info.spatialObjectCount == 128,
           "which its info reports");
-    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, true, 128) ==
+    CHECK(maudDevice_SetOfflineSpatializer(context, output, maud_spatializerOn, true, 128) ==
               maud_success,
           "the same again");
     ExpectDrained(context, "is no change");
-    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, false, 128) ==
+    CHECK(maudDevice_SetOfflineSpatializer(context, output, maud_spatializerOn, false, 128) ==
               maud_success,
           "the head tracker gone");
     Expect(context, maud_notifySpatializerChanged, "is a change");
-    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn, false, 20) ==
+    CHECK(maudDevice_SetOfflineSpatializer(context, output, maud_spatializerOn, false, 20) ==
               maud_success,
           "fewer objects");
     Expect(context, maud_notifySpatializerChanged, "is a change");
-    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOff, false, 4) ==
+    CHECK(maudDevice_SetOfflineSpatializer(context, output, maud_spatializerOff, false, 4) ==
               maud_errorInvalid,
           "objects while off");
-    CHECK(maudSetOfflineDeviceSpatializer(context, output, maud_spatializerOn + 1, false, 0) ==
+    CHECK(maudDevice_SetOfflineSpatializer(context, output, maud_spatializerOn + 1, false, 0) ==
               maud_errorInvalid,
           "an unknown state");
-    CHECK(maudSetOfflineDeviceSpatializer(context, input, maud_spatializerOff, false, 0) ==
+    CHECK(maudDevice_SetOfflineSpatializer(context, input, maud_spatializerOff, false, 0) ==
               maud_errorInvalid,
           "an input");
-    CHECK(maudSetOfflineDeviceSpatializer(context, (maudDeviceId){3, 7}, maud_spatializerOff, false,
-                                          0) == maud_errorStale,
+    CHECK(maudDevice_SetOfflineSpatializer(context, (maudDeviceId){3, 7}, maud_spatializerOff,
+                                           false, 0) == maud_errorStale,
           "a stale device");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
@@ -468,46 +473,46 @@ static void TestFormatChanges(void)
 {
     maudContext* context = Offline(16);
     maudDeviceId output = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
               maud_success,
           "the starting output");
     Blocks blocks = {0};
     maudStreamId stream = OpenOutput(context, output, maud_roleGeneral, &blocks);
-    while (maudNextNotification(context, &(maudNotification){0}) == maud_success)
+    while (maudContext_NextNotification(context, &(maudNotification){0}) == maud_success)
     {
     }
-    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layout5Point1, 96000) == maud_success,
+    CHECK(maudDevice_SetOfflineFormat(context, output, maud_layout5Point1, 96000) == maud_success,
           "another format picked");
     maudNotification record = Expect(context, maud_notifyDeviceFormatChanged, "a record");
     CHECK(Same(record.device, output) && record.direction == maud_directionOutput &&
               record.sampleRate == 96000,
           "naming the device and its rate");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, output, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, output, &info) == maud_success &&
               info.nativeLayout == maud_layout5Point1 && info.nativeSampleRate == 96000,
           "which its info reports");
     record = Expect(context, maud_notifyStreamFormatChanged, "the stream follows");
     CHECK(SameStream(record.stream, stream) && record.sampleRate == 96000, "to the new rate");
     ExpectDrained(context, "nothing more");
-    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layout5Point1, 96000) == maud_success,
+    CHECK(maudDevice_SetOfflineFormat(context, output, maud_layout5Point1, 96000) == maud_success,
           "the same again");
     ExpectDrained(context, "is no change");
-    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 96000) == maud_success,
+    CHECK(maudDevice_SetOfflineFormat(context, output, maud_layoutStereo, 96000) == maud_success,
           "the layout alone");
     Expect(context, maud_notifyDeviceFormatChanged, "is a change");
     ExpectDrained(context, "which the stream's rate does not follow");
-    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layoutNone, 48000) ==
+    CHECK(maudDevice_SetOfflineFormat(context, output, maud_layoutNone, 48000) ==
                   maud_errorInvalid &&
-              maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 7999) ==
+              maudDevice_SetOfflineFormat(context, output, maud_layoutStereo, 7999) ==
                   maud_errorInvalid &&
-              maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 384001) ==
+              maudDevice_SetOfflineFormat(context, output, maud_layoutStereo, 384001) ==
                   maud_errorInvalid,
           "no layout, rates out of range");
-    CHECK(maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 8000) == maud_success &&
-              maudSetOfflineDeviceFormat(context, output, maud_layoutStereo, 384000) ==
+    CHECK(maudDevice_SetOfflineFormat(context, output, maud_layoutStereo, 8000) == maud_success &&
+              maudDevice_SetOfflineFormat(context, output, maud_layoutStereo, 384000) ==
                   maud_success,
           "the rates' ends");
-    CHECK(maudSetOfflineDeviceFormat(context, (maudDeviceId){3, 7}, maud_layoutStereo, 48000) ==
+    CHECK(maudDevice_SetOfflineFormat(context, (maudDeviceId){3, 7}, maud_layoutStereo, 48000) ==
               maud_errorStale,
           "a stale device");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -533,14 +538,14 @@ static void ScriptInside(const maudStreamBlock* block, void* user)
     maudContext* context = inside->context;
     maudOfflineDeviceDef def = maudDefaultOfflineDeviceDef();
     maudDeviceId added;
-    inside->results[0] = maudAddOfflineDevice(context, &def, &added);
-    inside->results[1] = maudRemoveOfflineDevice(context, inside->device);
-    inside->results[2] = maudSetOfflineDefaultDevice(context, maud_roleGeneral, inside->device);
-    inside->results[3] = maudSetOfflineDeviceForm(context, inside->device, maud_formHeadphones);
+    inside->results[0] = maudCreateOfflineDevice(context, &def, &added);
+    inside->results[1] = maudDestroyOfflineDevice(context, inside->device);
+    inside->results[2] = maudDevice_SetOfflineDefault(context, inside->device, maud_roleGeneral);
+    inside->results[3] = maudDevice_SetOfflineForm(context, inside->device, maud_formHeadphones);
     inside->results[4] =
-        maudSetOfflineDeviceFormat(context, inside->device, maud_layoutStereo, 44100);
+        maudDevice_SetOfflineFormat(context, inside->device, maud_layoutStereo, 44100);
     inside->results[5] =
-        maudSetOfflineDeviceSpatializer(context, inside->device, maud_spatializerOff, false, 0);
+        maudDevice_SetOfflineSpatializer(context, inside->device, maud_spatializerOff, false, 0);
 }
 
 // Every scripting call refuses a NULL context, and a thread rendering
@@ -550,22 +555,22 @@ static void TestScriptGuards(void)
 {
     maudOfflineDeviceDef def = maudDefaultOfflineDeviceDef();
     maudDeviceId id = {7, 7};
-    CHECK(maudAddOfflineDevice(nullptr, &def, &id) == maud_errorInvalid && id.index1 == 0,
+    CHECK(maudCreateOfflineDevice(nullptr, &def, &id) == maud_errorInvalid && id.index1 == 0,
           "add without a context");
-    CHECK(maudRemoveOfflineDevice(nullptr, (maudDeviceId){1, 1}) == maud_errorInvalid &&
-              maudSetOfflineDefaultDevice(nullptr, maud_roleGeneral, (maudDeviceId){1, 1}) ==
+    CHECK(maudDestroyOfflineDevice(nullptr, (maudDeviceId){1, 1}) == maud_errorInvalid &&
+              maudDevice_SetOfflineDefault(nullptr, (maudDeviceId){1, 1}, maud_roleGeneral) ==
                   maud_errorInvalid &&
-              maudSetOfflineDeviceForm(nullptr, (maudDeviceId){1, 1}, maud_formHeadphones) ==
+              maudDevice_SetOfflineForm(nullptr, (maudDeviceId){1, 1}, maud_formHeadphones) ==
                   maud_errorInvalid &&
-              maudSetOfflineDeviceFormat(nullptr, (maudDeviceId){1, 1}, maud_layoutStereo, 44100) ==
-                  maud_errorInvalid &&
-              maudSetOfflineDeviceSpatializer(nullptr, (maudDeviceId){1, 1}, maud_spatializerOff,
-                                              false, 0) == maud_errorInvalid,
+              maudDevice_SetOfflineFormat(nullptr, (maudDeviceId){1, 1}, maud_layoutStereo,
+                                          44100) == maud_errorInvalid &&
+              maudDevice_SetOfflineSpatializer(nullptr, (maudDeviceId){1, 1}, maud_spatializerOff,
+                                               false, 0) == maud_errorInvalid,
           "the rest without a context");
     maudContext* context = Offline(16);
     Inside inside = {.context = context};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &inside.device) ==
-              maud_success,
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                       &inside.device) == maud_success,
           "the default output");
     maudStreamDef stream = maudDefaultStreamDef();
     stream.mode = maud_modePull;
@@ -573,11 +578,11 @@ static void TestScriptGuards(void)
     stream.user = &inside;
     maudStreamId streamId;
     CHECK(maudCreateStream(context, &stream, &streamId) == maud_success &&
-              maudStartStream(context, streamId) == maud_success,
+              maudStream_Start(context, streamId) == maud_success,
           "a stream");
-    uint64_t misuse = maudGetContextMisuse(context);
+    uint64_t misuse = maudContext_GetMisuse(context);
     float frames[2 * 64];
-    CHECK(maudRenderStream(context, streamId, frames, 64) == maud_success && inside.blocks == 1,
+    CHECK(maudStream_Render(context, streamId, frames, 64) == maud_success && inside.blocks == 1,
           "rendered");
     bool refused = true;
     for (int i = 0; i < 6; ++i)
@@ -585,9 +590,9 @@ static void TestScriptGuards(void)
         refused = refused && inside.results[i] == maud_errorBusy;
     }
     CHECK(refused, "every call refused inside the callback");
-    CHECK(maudGetContextMisuse(context) == misuse + 6, "each counted");
+    CHECK(maudContext_GetMisuse(context) == misuse + 6, "each counted");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, inside.device, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, inside.device, &info) == maud_success &&
               info.form != maud_formHeadphones && info.nativeSampleRate != 44100,
           "the device untouched");
     ExpectDrained(context, "nothing posted");

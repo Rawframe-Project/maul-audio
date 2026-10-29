@@ -66,8 +66,8 @@ static inline bool StreamClockIsSound(const maudContext* context, maudStreamId s
     maudStreamFormat format = {0};
     maudStreamClock first = {0};
     maudStreamClock second = {0};
-    if (maudGetStreamFormat(context, stream, &format) != maud_success ||
-        maudGetStreamClock(context, stream, &first) != maud_success)
+    if (maudStream_GetFormat(context, stream, &format) != maud_success ||
+        maudStream_GetClock(context, stream, &first) != maud_success)
     {
         return false;
     }
@@ -75,7 +75,7 @@ static inline bool StreamClockIsSound(const maudContext* context, maudStreamId s
     {
         // hygiene: a second between the two reads of the clock
         pause(1000);
-        if (maudGetStreamClock(context, stream, &second) != maud_success)
+        if (maudStream_GetClock(context, stream, &second) != maud_success)
         {
             return false;
         }
@@ -245,7 +245,7 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
     }
     maudStreamClock first = {0};
     (void)window(user);
-    if (maudGetStreamClock(context, stream, &first) != maud_success)
+    if (maudStream_GetClock(context, stream, &first) != maud_success)
     {
         return measured;
     }
@@ -257,7 +257,7 @@ static inline ClockRate StreamClockRate(const maudContext* context, maudStreamId
     {
         bool clean = window(user);
         maudStreamClock second = {0};
-        if (maudGetStreamClock(context, stream, &second) != maud_success)
+        if (maudStream_GetClock(context, stream, &second) != maud_success)
         {
             return measured;
         }

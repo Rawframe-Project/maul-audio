@@ -80,7 +80,7 @@ static void Decode(const maudSpeakerDecoder* decoder, uint32_t order, maudVector
     {
         out[s] = &speakers[s];
     }
-    CHECK(maudDecodeToSpeakers(decoder, bed, out, 1) == maud_success, "decode");
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, out, 1) == maud_success, "decode");
 }
 
 typedef struct Measure
@@ -168,7 +168,7 @@ static void TestSilenceAndMirror(void)
     maudChannelLayout layout = maud_layout7Point1Point4;
     maudSpeakerDecoder* decoder = Create(layout, 3);
     float matrix[12 * 16];
-    CHECK(maudGetSpeakerDecoderMatrix(decoder, matrix) == maud_success, "the matrix");
+    CHECK(maudSpeakerDecoder_GetMatrix(decoder, matrix) == maud_success, "the matrix");
     bool silent = true;
     bool mirrored = true;
     for (uint32_t s = 0; s < 12; ++s)
@@ -209,7 +209,7 @@ static void TestDecode(void)
 {
     maudSpeakerDecoder* decoder = Create(maud_layout5Point1, 2);
     float matrix[6 * 9];
-    CHECK(maudGetSpeakerDecoderMatrix(decoder, matrix) == maud_success, "the matrix");
+    CHECK(maudSpeakerDecoder_GetMatrix(decoder, matrix) == maud_success, "the matrix");
     float channels[9][5];
     const float* bed[9];
     for (int c = 0; c < 9; ++c)
@@ -230,7 +230,7 @@ static void TestDecode(void)
             speakers[s][n] = 9.0f;
         }
     }
-    CHECK(maudDecodeToSpeakers(decoder, bed, out, 5) == maud_success, "decode");
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, out, 5) == maud_success, "decode");
     bool product = true;
     for (int s = 0; s < 6; ++s)
     {
@@ -247,15 +247,16 @@ static void TestDecode(void)
     CHECK(product, "decoding is the matrix, written over the output");
     float* missing[6] = {out[0], out[1], out[2], out[3], out[4], nullptr};
     speakers[0][0] = 7.0f;
-    CHECK(maudDecodeToSpeakers(decoder, bed, missing, 5) == maud_errorInvalid, "a missing speaker");
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, missing, 5) == maud_errorInvalid,
+          "a missing speaker");
     CHECK(speakers[0][0] == 7.0f, "nothing written by a bad call");
     const float* gap[9] = {bed[0], bed[1], bed[2], bed[3], bed[4], bed[5], bed[6], bed[7], nullptr};
-    CHECK(maudDecodeToSpeakers(decoder, gap, out, 5) == maud_errorInvalid &&
-              maudDecodeToSpeakers(decoder, nullptr, out, 5) == maud_errorInvalid &&
-              maudDecodeToSpeakers(decoder, bed, nullptr, 5) == maud_errorInvalid,
+    CHECK(maudSpeakerDecoder_Decode(decoder, gap, out, 5) == maud_errorInvalid &&
+              maudSpeakerDecoder_Decode(decoder, nullptr, out, 5) == maud_errorInvalid &&
+              maudSpeakerDecoder_Decode(decoder, bed, nullptr, 5) == maud_errorInvalid,
           "a missing channel, no bed, no output");
-    CHECK(maudDecodeToSpeakers(decoder, nullptr, nullptr, 0) == maud_success, "no frames");
-    CHECK(maudGetSpeakerDecoderMatrix(decoder, nullptr) == maud_errorInvalid, "no matrix");
+    CHECK(maudSpeakerDecoder_Decode(decoder, nullptr, nullptr, 0) == maud_success, "no frames");
+    CHECK(maudSpeakerDecoder_GetMatrix(decoder, nullptr) == maud_errorInvalid, "no matrix");
     maudDestroySpeakerDecoder(decoder);
     maudSpeakerDecoderDef def = maudDefaultSpeakerDecoderDef();
     maudSpeakerDecoder* none = (maudSpeakerDecoder*)&def;

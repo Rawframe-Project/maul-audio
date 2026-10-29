@@ -20,7 +20,7 @@
 
 static const maudAllocator s_allocator = {nullptr, nullptr, nullptr};
 
-static maudAcousticScene* Corridor(void)
+static maudScene* Corridor(void)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
@@ -31,11 +31,11 @@ static maudAcousticScene* Corridor(void)
         v[i] = (maudVector3){(i & 1) ? 17.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 20.0f : 3.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a corridor");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a corridor");
     return scene;
 }
 
@@ -89,7 +89,7 @@ static bool Linked(const maudProbeGraph* g, uint32_t a, uint32_t b)
 
 static void TestCorridor(void)
 {
-    maudAcousticScene* scene = Corridor();
+    maudScene* scene = Corridor();
     static maudVector3 points[400];
     uint32_t count = 0;
     for (int x = 0; x < 20; ++x)
@@ -102,7 +102,7 @@ static void TestCorridor(void)
             }
         }
     }
-    maudProbeQueries q = {.anyHit = maudSceneAnyHit,
+    maudProbeQueries q = {.anyHit = maudFindAnyHit,
                           .rayContext = scene,
                           .allocator = &s_allocator,
                           .maxProbes = 512,
@@ -116,8 +116,8 @@ static void TestCorridor(void)
     const maudVector3 source = {6.0f, 1.5f, 1.5f};
     maudPathEnd to;
     maudPathEnd from;
-    maudAttachPath(&g, g.range, listener, maudSceneAnyHit, scene, &to);
-    maudAttachPath(&g, g.range, source, maudSceneAnyHit, scene, &from);
+    maudAttachPath(&g, g.range, listener, maudFindAnyHit, scene, &to);
+    maudAttachPath(&g, g.range, source, maudFindAnyHit, scene, &from);
     CHECK(to.count == MAUD_PATH_ATTACH && from.count == MAUD_PATH_ATTACH, "both ends attached");
     maudVector3 v[MAUD_PATH_VERTICES];
     uint32_t probes[MAUD_PATH_VERTICES];
@@ -154,7 +154,7 @@ static void TestCorridor(void)
     // the ones in sight attach.
     const maudVector3 beside = {17.5f, 1.5f, 3.5f};
     maudPathEnd near;
-    maudAttachPath(&g, 3.0f, beside, maudSceneAnyHit, scene, &near);
+    maudAttachPath(&g, 3.0f, beside, maudFindAnyHit, scene, &near);
     // The spec by brute force: the 32 nearest in range by distance
     // (then index), the ones in sight of them, the first 8.
     uint32_t order[400];
@@ -183,7 +183,7 @@ static void TestCorridor(void)
         maudRay ray = {
             beside, {(p.x - beside.x) / d, (p.y - beside.y) / d, (p.z - beside.z) / d}, 0.0f, d};
         uint8_t occluded = 1;
-        maudSceneAnyHit(&ray, 1, &occluded, scene);
+        maudFindAnyHit(&ray, 1, &occluded, scene);
         hidden += occluded;
         if (occluded == 0)
         {
@@ -202,7 +202,7 @@ static void TestCorridor(void)
           "an end seeing nothing");
     maudDestroyPathSearch(&s_allocator, &search);
     maudReleaseProbeGraph(&s_allocator, &g);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestTooLong(void)

@@ -42,13 +42,13 @@ or with pkg-config as `maul-audio` (add `--static` for the static library). `sam
 
 ## The model
 
-- **Results.** Every call that can fail returns a `maudResult`: zero for success, a positive value for an outcome that is not an error (`maud_empty`), a negative one for an error. The compiler warns when one is dropped. `maudResultName` names any of them. The library prints and logs nothing.
+- **Results.** Every call that can fail returns a `maudResult`: zero for success, a positive value for an outcome that is not an error (`maud_empty`), a negative one for an error. The compiler warns when one is dropped. `maudGetResultName` names any of them. The library prints and logs nothing.
 - **Defs.** Every object is made from a def that `maudDefault...Def` returns. Change the fields you need and pass it on. A def carries a cookie, so a def built by hand without it is refused with `maud_errorInvalid`.
 - **Versions.** The defaults of the objects made without a parent (a context, an HRTF set, an effect, a spatializer, a voice processor) are inline in the headers and stamp the version the program was built with. A library of another version refuses them with `maud_errorVersion`, so a program never runs against a library whose structs are laid out differently.
 - **Handles.** A context, a spatializer and the standalone effects are pointers. Devices, streams, sources and probe sets are ids: a 1-based slot and a generation. An id whose object is gone is refused with `maud_errorStale`, never mistaken for another object.
 - **Threads.** A context is used by one thread at a time. A stream's callback runs on an audio thread; it must not allocate, lock or wait, and the library holds itself to the same rule there. Each function's documentation says which threads may call it.
 - **Memory.** Every owner object takes an allocator in its def (a zeroed one means the C library's) and allocates when it is made, sized by named limits. Nothing allocates on the audio thread.
-- **Misuse.** An invalid argument to a context or a spatializer, or a call back into one from code it is running, counts one misuse; `maudGetContextMisuse` and `maudGetSpatializerMisuse` read the count, so a program can catch its own bugs in a release build.
+- **Misuse.** An invalid argument to a context or a spatializer, or a call back into one from code it is running, counts one misuse; `maudContext_GetMisuse` and `maudSpatializer_GetMisuse` read the count, so a program can catch its own bugs in a release build.
 
 ## Opening a context
 

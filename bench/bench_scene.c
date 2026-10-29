@@ -153,16 +153,16 @@ static long s_hookRays;
 static void CountAny(const maudRay* rays, uint32_t count, uint8_t* occluded, void* scene)
 {
     s_hookRays += count;
-    maudSceneAnyHit(rays, count, occluded, scene);
+    maudFindAnyHit(rays, count, occluded, scene);
 }
 
 static void CountClosest(const maudRay* rays, uint32_t count, maudRayHit* hits, void* scene)
 {
     s_hookRays += count;
-    maudSceneClosestHit(rays, count, hits, scene);
+    maudFindClosestHit(rays, count, hits, scene);
 }
 
-static void Steps(maudAcousticScene* scene)
+static void Steps(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = CountAny;
@@ -176,7 +176,7 @@ static void Steps(maudAcousticScene* scene)
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
     maudSourceDef sd = maudDefaultSourceDef();
     sd.occlusion = maud_occlusionVolumetric;
-    if (maudSetMaterials(s, &wall, 1) != maud_success)
+    if (maudSpatializer_SetMaterials(s, &wall, 1) != maud_success)
     {
         return;
     }
@@ -186,7 +186,7 @@ static void Steps(maudAcousticScene* scene)
         maudPose pose = {{Uniform(40.0f, 88.0f), 1.5f, Uniform(40.0f, 88.0f)},
                          {0.0f, 0.0f, 0.0f, 1.0f}};
         if (maudCreateSource(s, &sd, &id) != maud_success ||
-            maudSetSourcePose(s, id, &pose) != maud_success)
+            maudSource_SetPose(s, id, &pose) != maud_success)
         {
             return;
         }
@@ -196,7 +196,7 @@ static void Steps(maudAcousticScene* scene)
     double start = Seconds();
     for (int step = 0; step < 20; ++step)
     {
-        if (maudSimulateDirect(s, &listener) != maud_success)
+        if (maudSpatializer_SimulateDirect(s, &listener) != maud_success)
         {
             return;
         }
@@ -209,9 +209,10 @@ static void Steps(maudAcousticScene* scene)
     s_hookRays = 0;
     start = Seconds();
     maudReverbResult reverb;
-    if (maudSimulateReverb(s, &listener) != maud_success ||
-        maudSimulateDirect(s, &listener) != maud_success || maudLatchResults(s) == 0 ||
-        maudGetReverbResult(s, &reverb) != maud_success)
+    if (maudSpatializer_SimulateReverb(s, &listener) != maud_success ||
+        maudSpatializer_SimulateDirect(s, &listener) != maud_success ||
+        maudSpatializer_LatchResults(s) == 0 ||
+        maudSpatializer_GetReverbResult(s, &reverb) != maud_success)
     {
         return;
     }
@@ -233,20 +234,21 @@ static void Steps(maudAcousticScene* scene)
 static void Pathing(maudSpatializer* s, maudProbeSetId set)
 {
     maudSourceDef sd = maudDefaultSourceDef();
-    sd.pathing = true;
+    sd.enablePathing = true;
     maudSourceId sources[PATHED];
     for (int i = 0; i < PATHED; ++i)
     {
         maudPose pose = {{Uniform(0.5f, 15.5f), 1.5f, Uniform(0.5f, 15.5f)},
                          {0.0f, 0.0f, 0.0f, 1.0f}};
         if (maudCreateSource(s, &sd, &sources[i]) != maud_success ||
-            maudSetSourcePose(s, sources[i], &pose) != maud_success)
+            maudSource_SetPose(s, sources[i], &pose) != maud_success)
         {
             return;
         }
     }
     maudPose listener = {{2.0f, 1.6f, 2.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    if (maudSetPathing(s, set) != maud_success || maudSimulateDirect(s, &listener) != maud_success)
+    if (maudProbeSet_UseForPathing(s, set) != maud_success ||
+        maudSpatializer_SimulateDirect(s, &listener) != maud_success)
     {
         return;
     }
@@ -256,7 +258,7 @@ static void Pathing(maudSpatializer* s, maudProbeSetId set)
         double start = Seconds();
         for (int step = 0; step < 10; ++step)
         {
-            if (maudSimulateDirect(s, &listener) != maud_success)
+            if (maudSpatializer_SimulateDirect(s, &listener) != maud_success)
             {
                 return;
             }
@@ -266,16 +268,17 @@ static void Pathing(maudSpatializer* s, maudProbeSetId set)
     }
     int pathed = 0;
     maudDirectResult result;
-    (void)maudLatchResults(s);
+    (void)maudSpatializer_LatchResults(s);
     for (int i = 0; i < PATHED; ++i)
     {
-        pathed += maudGetDirectResult(s, sources[i], &result) == maud_success && result.pathed;
+        pathed +=
+            maudSource_GetDirectResult(s, sources[i], &result) == maud_success && result.pathed;
     }
     printf("pathing: %d sources, %d pathed, %.2f ms per direct step\n", PATHED, pathed, best * 1e3);
     Against("pathing.step.ms", best * 1e3, false);
 }
 
-static void Probes(maudAcousticScene* scene)
+static void Probes(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = CountAny;
@@ -288,8 +291,8 @@ static void Probes(maudAcousticScene* scene)
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
     if (maudCreateSpatializer(&def, &s) != maud_success ||
         maudCreateSpatializer(&def, &loader) != maud_success ||
-        maudSetMaterials(s, &wall, 1) != maud_success ||
-        maudSetMaterials(loader, &wall, 1) != maud_success)
+        maudSpatializer_SetMaterials(s, &wall, 1) != maud_success ||
+        maudSpatializer_SetMaterials(loader, &wall, 1) != maud_success)
     {
         return;
     }
@@ -303,17 +306,17 @@ static void Probes(maudAcousticScene* scene)
     maudProbeSetInfo info = {0};
     double start = Seconds();
     if (maudCreateProbeSet(s, &pd, &set) != maud_success ||
-        maudBakeProbeSet(s, set) != maud_success ||
-        maudGetProbeSet(s, set, &info, 0, 0, nullptr) != maud_success || info.probes == 0)
+        maudProbeSet_Bake(s, set) != maud_success ||
+        maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) != maud_success || info.probeCount == 0)
     {
         return;
     }
     double bake = Seconds() - start;
     size_t size = 0;
     void* bytes = nullptr;
-    if (maudSaveProbeSet(s, set, nullptr, 0, &size) != maud_success ||
+    if (maudProbeSet_Save(s, set, nullptr, 0, &size) != maud_success ||
         (bytes = malloc(size)) == nullptr ||
-        maudSaveProbeSet(s, set, bytes, size, &size) != maud_success)
+        maudProbeSet_Save(s, set, bytes, size, &size) != maud_success)
     {
         free(bytes);
         return;
@@ -334,9 +337,10 @@ static void Probes(maudAcousticScene* scene)
     }
     printf("probes: %u probes, %u links, %zu bytes; baked in %.0f ms a probe, loaded in %.1f us "
            "a probe\n",
-           info.probes, info.links, size, bake / info.probes * 1e3, best / info.probes * 1e6);
-    Against("probes.bake.ms", bake / info.probes * 1e3, false);
-    Against("probes.load.us", best / info.probes * 1e6, false);
+           info.probeCount, info.linkCount, size, bake / info.probeCount * 1e3,
+           best / info.probeCount * 1e6);
+    Against("probes.bake.ms", bake / info.probeCount * 1e3, false);
+    Against("probes.load.us", best / info.probeCount * 1e6, false);
     Pathing(s, set);
     free(bytes);
     maudDestroySpatializer(loader);
@@ -349,11 +353,11 @@ static float s_out[16][480];
 // Geometric reflections at an order: a reverberation estimate with its
 // response (2048 rays, a second at 48 kHz), then the response rendered
 // into the bed, 10 ms at a time.
-static void Reflections(maudAcousticScene* scene, uint32_t order)
+static void Reflections(maudScene* scene, uint32_t order)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reflectionOrder = order;
     def.reflectionDuration = 1.0f;
@@ -361,7 +365,7 @@ static void Reflections(maudAcousticScene* scene, uint32_t order)
     maudSpatializer* s = nullptr;
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
     if (maudCreateSpatializer(&def, &s) != maud_success ||
-        maudSetMaterials(s, &wall, 1) != maud_success)
+        maudSpatializer_SetMaterials(s, &wall, 1) != maud_success)
     {
         return;
     }
@@ -370,7 +374,7 @@ static void Reflections(maudAcousticScene* scene, uint32_t order)
     for (int run = 0; run < 3; ++run)
     {
         double start = Seconds();
-        if (maudSimulateReverb(s, &listener) != maud_success)
+        if (maudSpatializer_SimulateReverb(s, &listener) != maud_success)
         {
             return;
         }
@@ -396,7 +400,8 @@ static void Reflections(maudAcousticScene* scene, uint32_t order)
         double start = Seconds();
         for (int block = 0; block < 1000; ++block)
         {
-            if (maudRenderReflections(s, &listener.orientation, s_send, bed, 480) != maud_success)
+            if (maudSpatializer_RenderReflections(s, &listener.orientation, s_send, bed, 480) !=
+                maud_success)
             {
                 return;
             }
@@ -440,21 +445,21 @@ static maudMesh Object(void)
 }
 
 // Where the object stands in room (x, z) at a time: turning on the spot.
-static maudInstanceTransform Placed(uint32_t x, uint32_t z, float time)
+static maudSceneInstanceTransform Placed(uint32_t x, uint32_t z, float time)
 {
     float angle = 0.5f * (time + (float)(x * GRID + z));
-    return (maudInstanceTransform){{((float)x + 0.5f) * ROOM, 1.0f, ((float)z + 0.5f) * ROOM},
-                                   {0.0f, sinf(angle), 0.0f, cosf(angle)},
-                                   1.0f};
+    return (maudSceneInstanceTransform){{((float)x + 0.5f) * ROOM, 1.0f, ((float)z + 0.5f) * ROOM},
+                                        {0.0f, sinf(angle), 0.0f, cosf(angle)},
+                                        1.0f};
 }
 
-static double BestClosest(maudAcousticScene* scene, maudRayHit* hits)
+static double BestClosest(maudScene* scene, maudRayHit* hits)
 {
     double best = 1e9;
     for (int run = 0; run < 3; ++run)
     {
         double start = Seconds();
-        maudSceneClosestHit(s_rays, RAYS, hits, scene);
+        maudFindClosestHit(s_rays, RAYS, hits, scene);
         double e = Seconds() - start;
         best = e < best ? e : best;
     }
@@ -464,29 +469,29 @@ static double BestClosest(maudAcousticScene* scene, maudRayHit* hits)
 static void Instanced(const maudMesh* level, maudRayHit* hits)
 {
     maudMesh object = Object();
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = level;
     def.meshCount = 1;
     def.instanceMeshes = &object;
     def.instanceMeshCount = 1;
     def.instanceCapacity = GRID * GRID;
-    maudAcousticScene* scene = nullptr;
-    if (maudCreateAcousticScene(&def, &scene) != maud_success)
+    maudScene* scene = nullptr;
+    if (maudCreateScene(&def, &scene) != maud_success)
     {
         return;
     }
     static maudSceneInstanceId ids[GRID * GRID];
     for (uint32_t i = 0; i < GRID * GRID; ++i)
     {
-        maudInstanceTransform t = Placed(i / GRID, i % GRID, 0.0f);
+        maudSceneInstanceTransform t = Placed(i / GRID, i % GRID, 0.0f);
         if (maudCreateSceneInstance(scene, 0, &t, &ids[i]) != maud_success)
         {
-            maudDestroyAcousticScene(scene);
+            maudDestroyScene(scene);
             return;
         }
     }
     double start = Seconds();
-    (void)maudCommitAcousticScene(scene);
+    (void)maudScene_Commit(scene);
     double commit = Seconds() - start;
     printf("instanced:   %u instances of %u triangles, committed in %.3f ms\n", GRID * GRID,
            object.triangleCount, commit * 1e3);
@@ -500,16 +505,16 @@ static void Instanced(const maudMesh* level, maudRayHit* hits)
         start = Seconds();
         for (uint32_t i = 0; i < GRID * GRID; ++i)
         {
-            maudInstanceTransform t = Placed(i / GRID, i % GRID, (float)frame);
-            (void)maudMoveSceneInstance(scene, ids[i], &t);
+            maudSceneInstanceTransform t = Placed(i / GRID, i % GRID, (float)frame);
+            (void)maudSceneInstance_Move(scene, ids[i], &t);
         }
-        (void)maudCommitAcousticScene(scene);
+        (void)maudScene_Commit(scene);
         moving += Seconds() - start;
     }
     printf("moving:      all %u moved and committed in %.3f ms a frame\n", GRID * GRID,
            moving / 10.0 * 1e3);
     Against("instanced.moving.ms", moving / 10.0 * 1e3, false);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 int main(void)
@@ -517,12 +522,12 @@ int main(void)
     Level();
     static uint32_t materials[1 << 16];
     maudMesh mesh = {s_vertices, s_vertexCount, s_indices, materials, s_triangleCount};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
+    maudScene* scene = nullptr;
     double start = Seconds();
-    if (maudCreateAcousticScene(&def, &scene) != maud_success)
+    if (maudCreateScene(&def, &scene) != maud_success)
     {
         return 1;
     }
@@ -536,7 +541,7 @@ int main(void)
     for (int run = 0; run < 3; ++run)
     {
         start = Seconds();
-        maudSceneAnyHit(s_rays, RAYS, occluded, scene);
+        maudFindAnyHit(s_rays, RAYS, occluded, scene);
         double e = Seconds() - start;
         best = e < best ? e : best;
     }
@@ -551,7 +556,7 @@ int main(void)
     for (int run = 0; run < 3; ++run)
     {
         start = Seconds();
-        maudSceneClosestHit(s_rays, RAYS, hits, scene);
+        maudFindClosestHit(s_rays, RAYS, hits, scene);
         double e = Seconds() - start;
         best = e < best ? e : best;
     }
@@ -562,7 +567,7 @@ int main(void)
     Reflections(scene, 1);
     Reflections(scene, 3);
     Instanced(&mesh, hits);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     free(s_vertices);
     free(s_indices);
     return 0;

@@ -130,7 +130,8 @@ static maudEchoState Run(maudEchoCanceller* c, float* capture, uint32_t frames, 
     for (uint32_t at = 0; at < frames; at += chunk)
     {
         uint32_t count = frames - at < chunk ? frames - at : chunk;
-        CHECK(maudCancelEcho(c, capture + at, s_render + at, count, &state) == maud_success,
+        CHECK(maudEchoCanceller_Cancel(c, capture + at, s_render + at, count, &state) ==
+                  maud_success,
               "cancel");
     }
     return state;
@@ -244,7 +245,8 @@ static void TestFraming(void)
     for (uint32_t n = 1; at < frames; n = n % 37 + 1)
     {
         uint32_t count = frames - at < n ? frames - at : n;
-        CHECK(maudCancelEcho(b, s_other + at, s_render + at, count, nullptr) == maud_success,
+        CHECK(maudEchoCanceller_Cancel(b, s_other + at, s_render + at, count, nullptr) ==
+                  maud_success,
               "cancel");
         at += count;
     }
@@ -321,9 +323,9 @@ static void TestRefused(void)
     def.sampleRate = 7999;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a rate too low");
     def = maudDefaultEchoCancellerDef();
-    def.tailSeconds = 1.5f;
+    def.tailTime = 1.5f;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a path too long");
-    def.tailSeconds = NAN;
+    def.tailTime = NAN;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a path not a number");
     def = maudDefaultEchoCancellerDef();
     def.floorDb = -50.0f;
@@ -331,16 +333,17 @@ static void TestRefused(void)
     // The highest rate, the longest path and the shallowest floor.
     def = maudDefaultEchoCancellerDef();
     def.sampleRate = 384000;
-    def.tailSeconds = 1.0f;
+    def.tailTime = 1.0f;
     def.floorDb = -6.0f;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_success, "every bound's upper end taken");
     maudDestroyEchoCanceller(c);
     c = Create(16000);
     float x = 0.0f;
-    CHECK(maudCancelEcho(nullptr, &x, &x, 1, nullptr) == maud_errorInvalid, "no canceller");
-    CHECK(maudCancelEcho(c, nullptr, &x, 1, nullptr) == maud_errorInvalid, "no capture");
-    CHECK(maudCancelEcho(c, &x, nullptr, 1, nullptr) == maud_errorInvalid, "no render");
-    CHECK(maudCancelEcho(c, nullptr, nullptr, 0, nullptr) == maud_success, "no frames");
+    CHECK(maudEchoCanceller_Cancel(nullptr, &x, &x, 1, nullptr) == maud_errorInvalid,
+          "no canceller");
+    CHECK(maudEchoCanceller_Cancel(c, nullptr, &x, 1, nullptr) == maud_errorInvalid, "no capture");
+    CHECK(maudEchoCanceller_Cancel(c, &x, nullptr, 1, nullptr) == maud_errorInvalid, "no render");
+    CHECK(maudEchoCanceller_Cancel(c, nullptr, nullptr, 0, nullptr) == maud_success, "no frames");
     maudDestroyEchoCanceller(c);
     maudDestroyEchoCanceller(nullptr);
 }

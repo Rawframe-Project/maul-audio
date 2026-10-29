@@ -57,7 +57,7 @@ enum
     FRAMES = 9600
 };
 
-static maudAcousticScene* Office(void)
+static maudScene* Office(void)
 {
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
                                        2, 3, 7, 2, 7, 6, 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5};
@@ -68,16 +68,16 @@ static maudAcousticScene* Office(void)
         v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 4.0f : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an office");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "an office");
     return scene;
 }
 
-static void* Reverse(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Reverse(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     for (uint32_t i = itemCount; i-- > 0;)
@@ -93,12 +93,11 @@ static void Finish(void* userTask, void* userContext)
     (void)userContext;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene, bool reversed, uint32_t order,
-                               uint32_t rays)
+static maudSpatializer* Create(maudScene* scene, bool reversed, uint32_t order, uint32_t rays)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reverbRays = rays;
     def.probeSetCapacity = 1;
@@ -116,7 +115,7 @@ static maudSpatializer* Create(maudAcousticScene* scene, bool reversed, uint32_t
             0.3f,
             {0.0f, 0.0f, 0.0f}};
     }
-    CHECK(maudSetMaterials(s, m, 6) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(s, m, 6) == maud_success, "materials");
     return s;
 }
 
@@ -139,12 +138,12 @@ static maudProbeSetId Bake(maudSpatializer* s)
     maudProbeSetId set = {0, 0};
     maudProbeSetInfo info = {0};
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_success &&
-              maudGetProbeSet(s, set, &info, 0, 0, nullptr) == maud_success && !info.baked,
+              maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) == maud_success && !info.baked,
           "a set, not yet baked");
-    CHECK(maudUseBakedReverb(s, set) == maud_errorState, "no bake to use");
-    CHECK(maudBakeProbeSet(s, set) == maud_success &&
-              maudGetProbeSet(s, set, &info, 0, 0, nullptr) == maud_success && info.baked &&
-              maudUseBakedReverb(s, set) == maud_success,
+    CHECK(maudProbeSet_UseBakedReverb(s, set) == maud_errorState, "no bake to use");
+    CHECK(maudProbeSet_Bake(s, set) == maud_success &&
+              maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) == maud_success && info.baked &&
+              maudProbeSet_UseBakedReverb(s, set) == maud_success,
           "baked and in use");
     return set;
 }
@@ -153,11 +152,11 @@ static maudReverbResult At(maudSpatializer* s, float x, float y, float z)
 {
     maudPose pose = {{x, y, z}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudReverbResult r = {0};
-    CHECK(maudSimulateReverb(s, &pose) == maud_success &&
-              maudSimulateDirect(s, &pose) == maud_success,
+    CHECK(maudSpatializer_SimulateReverb(s, &pose) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &pose) == maud_success,
           "a step");
-    maudLatchResults(s);
-    CHECK(maudGetReverbResult(s, &r) == maud_success, "a result");
+    maudSpatializer_LatchResults(s);
+    CHECK(maudSpatializer_GetReverbResult(s, &r) == maud_success, "a result");
     return r;
 }
 
@@ -178,10 +177,10 @@ static bool Same(const maudReverbResult* a, const maudReverbResult* b)
 // that have it.
 static void TestCoupled(void)
 {
-    maudAcousticScene* rooms = CoupledRooms();
+    maudScene* rooms = CoupledRooms();
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = rooms;
     def.reverbRays = RAYS(4096u);
     def.probeSetCapacity = 1;
@@ -190,8 +189,8 @@ static void TestCoupled(void)
     CHECK(maudCreateSpatializer(&def, &baked) == maud_success &&
               maudCreateSpatializer(&def, &live) == maud_success,
           "spatializers in two rooms");
-    CHECK(maudSetMaterials(baked, CoupledMaterials, 2) == maud_success &&
-              maudSetMaterials(live, CoupledMaterials, 2) == maud_success,
+    CHECK(maudSpatializer_SetMaterials(baked, CoupledMaterials, 2) == maud_success &&
+              maudSpatializer_SetMaterials(live, CoupledMaterials, 2) == maud_success,
           "their materials");
     static maudVector3 points[12];
     for (int i = 0; i < 12; ++i)
@@ -204,8 +203,8 @@ static void TestCoupled(void)
     set.range = 1.5f;
     maudProbeSetId id = {0, 0};
     CHECK(maudCreateProbeSet(baked, &set, &id) == maud_success &&
-              maudBakeProbeSet(baked, id) == maud_success &&
-              maudUseBakedReverb(baked, id) == maud_success,
+              maudProbeSet_Bake(baked, id) == maud_success &&
+              maudProbeSet_UseBakedReverb(baked, id) == maud_success,
           "probes through the door, baked");
     maudReverbResult a = At(baked, 8.5f, 1.5f, 2.0f);
     maudReverbResult b = At(live, 8.5f, 1.5f, 2.0f);
@@ -236,10 +235,10 @@ static void TestCoupled(void)
           "and its level faded");
     maudDestroySpatializer(baked);
     maudDestroySpatializer(live);
-    maudDestroyAcousticScene(rooms);
+    maudDestroyScene(rooms);
 }
 
-static void TestReverb(maudAcousticScene* scene)
+static void TestReverb(maudScene* scene)
 {
     maudSpatializer* baked = Create(scene, false, 0, 1024);
     maudSpatializer* live = Create(scene, false, 0, 1024);
@@ -290,7 +289,7 @@ static void TestReverb(maudAcousticScene* scene)
     b = At(live, 7.0f, 1.5f, 2.0f);
     CHECK(Same(&a, &b), "with no probe in sight, a trace");
     CHECK(maudDestroyProbeSet(baked, set) == maud_success &&
-              maudUseBakedReverb(baked, set) == maud_errorStale,
+              maudProbeSet_UseBakedReverb(baked, set) == maud_errorStale,
           "a destroyed set's id");
     maudDestroySpatializer(reversed);
     maudDestroySpatializer(live);
@@ -310,11 +309,12 @@ static void Render(maudSpatializer* s, int which)
     {
         float* bed[4] = {s_bed[which][0] + at, s_bed[which][1] + at, s_bed[which][2] + at,
                          s_bed[which][3] + at};
-        CHECK(maudRenderReflections(s, &upright, s_send + at, bed, 480) == maud_success, "render");
+        CHECK(maudSpatializer_RenderReflections(s, &upright, s_send + at, bed, 480) == maud_success,
+              "render");
     }
 }
 
-static void TestReflections(maudAcousticScene* scene)
+static void TestReflections(maudScene* scene)
 {
     maudSpatializer* baked = Create(scene, false, 1, RAYS(1024u));
     maudSpatializer* live = Create(scene, false, 1, RAYS(1024u));
@@ -334,10 +334,10 @@ static void TestReflections(maudAcousticScene* scene)
     maudDestroySpatializer(baked);
 }
 
-static void TestRefused(maudAcousticScene* scene)
+static void TestRefused(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
+    def.anyHit = maudFindAnyHit;
     def.rayContext = scene;
     def.probeSetCapacity = 1;
     maudSpatializer* s = nullptr;
@@ -348,19 +348,19 @@ static void TestRefused(maudAcousticScene* scene)
     pd.pointCount = 1;
     maudProbeSetId set = {0, 0};
     CHECK(maudCreateProbeSet(s, &pd, &set) == maud_success &&
-              maudBakeProbeSet(s, set) == maud_errorUnsupported,
+              maudProbeSet_Bake(s, set) == maud_errorUnsupported,
           "baking without a closest-hit query");
     maudDestroySpatializer(s);
-    def.closestHit = maudSceneClosestHit;
+    def.closestHit = maudFindClosestHit;
     def.reverbRays = 0;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success &&
               maudCreateProbeSet(s, &pd, &set) == maud_success &&
-              maudBakeProbeSet(s, set) == maud_errorUnsupported,
+              maudProbeSet_Bake(s, set) == maud_errorUnsupported,
           "baking without rays");
     const maudProbeSetId none = {0, 0};
-    CHECK(maudBakeProbeSet(s, none) == maud_errorInvalid &&
-              maudBakeProbeSet(nullptr, set) == maud_errorInvalid &&
-              maudUseBakedReverb(s, none) == maud_success,
+    CHECK(maudProbeSet_Bake(s, none) == maud_errorInvalid &&
+              maudProbeSet_Bake(nullptr, set) == maud_errorInvalid &&
+              maudProbeSet_UseBakedReverb(s, none) == maud_success,
           "0, NULL, and none in use");
     maudDestroySpatializer(s);
 }
@@ -370,14 +370,14 @@ static uint32_t s_closest;
 static void Counted(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
 {
     s_closest += count;
-    maudSceneClosestHit(rays, count, hits, context);
+    maudFindClosestHit(rays, count, hits, context);
 }
 
 // A baked estimate traces nothing; without the set in use it traces.
-static void TestTraces(maudAcousticScene* scene)
+static void TestTraces(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
+    def.anyHit = maudFindAnyHit;
     def.closestHit = Counted;
     def.rayContext = scene;
     def.reverbRays = 1024;
@@ -389,7 +389,7 @@ static void TestTraces(maudAcousticScene* scene)
     (void)At(s, 2.2f, 1.6f, 2.7f);
     uint32_t baked = s_closest;
     const maudProbeSetId none = {0, 0};
-    CHECK(maudUseBakedReverb(s, none) == maud_success, "the set out of use");
+    CHECK(maudProbeSet_UseBakedReverb(s, none) == maud_success, "the set out of use");
     (void)At(s, 2.2f, 1.6f, 2.7f);
     printf("closest-hit rays: %u baked, %u traced\n", baked, s_closest - baked);
     CHECK(baked == 0 && s_closest > 0, "a baked estimate traces nothing");
@@ -399,19 +399,19 @@ static void TestTraces(maudAcousticScene* scene)
 
 static uint8_t* Save(const maudSpatializer* s, maudProbeSetId set, size_t* size)
 {
-    CHECK(maudSaveProbeSet(s, set, nullptr, 0, size) == maud_success && *size > 40, "a size");
+    CHECK(maudProbeSet_Save(s, set, nullptr, 0, size) == maud_success && *size > 40, "a size");
     uint8_t* bytes = malloc(*size);
     size_t short_ = 0;
-    CHECK(maudSaveProbeSet(s, set, bytes, *size - 1, &short_) == maud_errorCapacity &&
+    CHECK(maudProbeSet_Save(s, set, bytes, *size - 1, &short_) == maud_errorCapacity &&
               short_ == *size,
           "a buffer a byte short");
     size_t written = 0;
-    CHECK(maudSaveProbeSet(s, set, bytes, *size, &written) == maud_success && written == *size,
+    CHECK(maudProbeSet_Save(s, set, bytes, *size, &written) == maud_success && written == *size,
           "saved");
     return bytes;
 }
 
-static void TestFile(maudAcousticScene* scene)
+static void TestFile(maudScene* scene)
 {
     maudSpatializer* baked = Create(scene, false, 1, RAYS(1024u));
     maudProbeSetId set = Bake(baked);
@@ -420,7 +420,7 @@ static void TestFile(maudAcousticScene* scene)
     maudSpatializer* loaded = Create(scene, false, 1, RAYS(1024u));
     maudProbeSetId again = {0, 0};
     CHECK(maudLoadProbeSet(loaded, bytes, size, &again) == maud_success &&
-              maudUseBakedReverb(loaded, again) == maud_success,
+              maudProbeSet_UseBakedReverb(loaded, again) == maud_success,
           "loaded and in use");
     bool same = true;
     const float at[3][3] = {{1.0f, 1.5f, 1.0f}, {2.5f, 1.5f, 1.5f}, {3.7f, 1.4f, 1.9f}};
@@ -440,10 +440,10 @@ static void TestFile(maudAcousticScene* scene)
               refused.index1 == 0,
           "fields where there are no reflections");
     // A file is untrusted data: refusing it counts no misuse.
-    uint64_t misuse = maudGetSpatializerMisuse(loaded);
+    uint64_t misuse = maudSpatializer_GetMisuse(loaded);
     bytes[8] = 1;
     CHECK(maudLoadProbeSet(loaded, bytes, size, &refused) == maud_errorVersion &&
-              refused.index1 == 0 && maudGetSpatializerMisuse(loaded) == misuse,
+              refused.index1 == 0 && maudSpatializer_GetMisuse(loaded) == misuse,
           "version 1 refused, no misuse counted");
     bytes[8] = 3;
     bytes[size - 1] ^= 1;
@@ -473,7 +473,7 @@ static void TestFile(maudAcousticScene* scene)
           "no sets asked for, none taken");
     maudDestroySpatializer(none);
     CHECK(maudLoadProbeSet(nullptr, bytes, size, &again) == maud_errorInvalid &&
-              maudSaveProbeSet(plain, bare, nullptr, 0, nullptr) == maud_errorInvalid,
+              maudProbeSet_Save(plain, bare, nullptr, 0, nullptr) == maud_errorInvalid,
           "NULL");
     free(bareBytes);
     free(bytes2);
@@ -504,9 +504,9 @@ static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, c
     maudSpatializer* kept = nullptr;
     maudProbeSetId loaded = {0, 0};
     bool ok = maudCreateSpatializer(def, &kept) == maud_success &&
-              maudSetMaterials(kept, m, 6) == maud_success &&
+              maudSpatializer_SetMaterials(kept, m, 6) == maud_success &&
               maudLoadProbeSet(kept, bytes, size, &loaded) == maud_success &&
-              maudUseBakedReverb(kept, loaded) == maud_success;
+              maudProbeSet_UseBakedReverb(kept, loaded) == maud_success;
     uint64_t hash = 1469598103934665603u;
     for (int i = 0; ok && i < 4; ++i)
     {
@@ -533,11 +533,11 @@ static bool Kept(const maudSpatializerDef* def, const maudAcousticMaterial* m, c
 }
 #endif
 
-static void TestGolden(maudAcousticScene* scene)
+static void TestGolden(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reverbRays = 1024;
     def.probeSetCapacity = 1;
@@ -553,7 +553,7 @@ static void TestGolden(maudAcousticScene* scene)
             0.3f,
             {0.0f, 0.0f, 0.0f}};
     }
-    CHECK(maudSetMaterials(s, m, 6) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(s, m, 6) == maud_success, "materials");
     maudProbeSetId set = Bake(s);
     size_t size = 0;
     uint8_t* bytes = Save(s, set, &size);
@@ -598,13 +598,13 @@ static void TestGolden(maudAcousticScene* scene)
 int main(void)
 {
     TestCoupled();
-    maudAcousticScene* scene = Office();
+    maudScene* scene = Office();
     TestReverb(scene);
     TestReflections(scene);
     TestRefused(scene);
     TestTraces(scene);
     TestFile(scene);
     TestGolden(scene);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     return s_failures == 0 ? 0 : 1;
 }

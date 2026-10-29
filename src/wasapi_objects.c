@@ -311,7 +311,7 @@ HRESULT maudWasapiRenderObjects(maudWasapiObjects* objects, maudStreamCore* core
     {
         held += objects->held[i] != nullptr ? 1u : 0u;
     }
-    period->objectsAvailable = held + available;
+    period->availableObjectCount = held + available;
     if (running)
     {
         maudPullObjects(period, objects->frames, objects->records, frames);

@@ -90,8 +90,8 @@ static void Record(const maudStreamBlock* block, void* user)
         maudStreamDef def = maudDefaultStreamDef();
         recorder->controlResult = maudCreateStream(recorder->context, &def, &other);
         float frame[2];
-        recorder->renderResult = maudRenderStream(recorder->context, recorder->stream, frame, 1);
-        recorder->resumeResult = maudResumeContext(recorder->context);
+        recorder->renderResult = maudStream_Render(recorder->context, recorder->stream, frame, 1);
+        recorder->resumeResult = maudContext_Unlock(recorder->context);
         recorder->destroyResult = maudDestroyContext(recorder->context);
     }
 }
@@ -120,7 +120,7 @@ static maudStreamId Open(maudContext* context, const maudStreamDef* def)
 {
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, def, &stream) == maud_success, "create stream");
-    CHECK(maudStartStream(context, stream) == maud_success, "start stream");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start stream");
     return stream;
 }
 
@@ -131,7 +131,7 @@ static void TestNativeFormatOnTheOfflineDevice(void)
     maudStreamDef def = PullDef(&recorder);
     maudStreamId stream = Open(context, &def);
     maudStreamFormat format;
-    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success, "format");
+    CHECK(maudStream_GetFormat(context, stream, &format) == maud_success, "format");
     CHECK(format.sampleRate == 48000, "the device's rate");
     CHECK(format.periodFrames == 480, "10 ms periods by default");
     CHECK(format.layout == maud_layoutStereo, "stereo");
@@ -141,7 +141,7 @@ static void TestNativeFormatOnTheOfflineDevice(void)
     def.periodFrames = 256;
     def.layout = maud_layout5Point1;
     stream = Open(context, &def);
-    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success, "format");
+    CHECK(maudStream_GetFormat(context, stream, &format) == maud_success, "format");
     CHECK(format.sampleRate == 44100 && format.periodFrames == 256, "required rate and period");
     CHECK(format.layout == maud_layout5Point1, "5.1");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -160,7 +160,7 @@ static void TestBlocksAreFixedAcrossRenderSizes(void)
     uint32_t offset = 0;
     for (size_t k = 0; k < sizeof(sizes) / sizeof(sizes[0]); ++k)
     {
-        CHECK(maudRenderStream(context, stream, rendered + 2 * offset, sizes[k]) == maud_success,
+        CHECK(maudStream_Render(context, stream, rendered + 2 * offset, sizes[k]) == maud_success,
               "render");
         offset += sizes[k];
     }
@@ -178,7 +178,7 @@ static void TestBlocksAreFixedAcrossRenderSizes(void)
     }
     CHECK(fixed, "every block is one period at its stream position");
     uint64_t position = 0;
-    CHECK(maudGetStreamPosition(context, stream, &position) == maud_success, "position");
+    CHECK(maudStream_GetPosition(context, stream, &position) == maud_success, "position");
     CHECK(position == offset, "position counts rendered frames");
     CHECK(!recorder.sawStaleOutput, "output cleared before each block");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -192,9 +192,9 @@ static void TestOutputIsSilentWhenTheCallbackWritesNothing(void)
     def.periodFrames = 16;
     maudStreamId stream = Open(context, &def);
     float frames[2 * 16];
-    CHECK(maudRenderStream(context, stream, frames, 16) == maud_success, "first block");
+    CHECK(maudStream_Render(context, stream, frames, 16) == maud_success, "first block");
     recorder.writeOutput = false;
-    CHECK(maudRenderStream(context, stream, frames, 16) == maud_success, "second block");
+    CHECK(maudStream_Render(context, stream, frames, 16) == maud_success, "second block");
     bool silent = true;
     for (size_t i = 0; i < sizeof(frames) / sizeof(frames[0]); ++i)
     {
@@ -218,16 +218,16 @@ static void TestInputArrivesInCompletedPeriods(void)
     {
         frames[i] = (float)i;
     }
-    CHECK(maudFeedStream(context, stream, frames, 9) == maud_success, "feed 9");
+    CHECK(maudStream_Feed(context, stream, frames, 9) == maud_success, "feed 9");
     CHECK(recorder.blocks == 0, "no block before a period is complete");
-    CHECK(maudFeedStream(context, stream, frames + 9, 16) == maud_success, "feed 16");
+    CHECK(maudStream_Feed(context, stream, frames + 9, 16) == maud_success, "feed 16");
     CHECK(recorder.blocks == 2, "two completed periods");
     CHECK(recorder.firstSamples[0] == 0.0f && recorder.firstSamples[1] == 10.0f,
           "blocks hold the fed frames in order");
     CHECK(recorder.positions[1] == 10, "second block at frame 10");
     float out[1];
-    CHECK(maudRenderStream(context, stream, out, 1) == maud_errorInvalid, "render an input");
-    CHECK(maudGetContextMisuse(context) == 1, "counted as misuse");
+    CHECK(maudStream_Render(context, stream, out, 1) == maud_errorInvalid, "render an input");
+    CHECK(maudContext_GetMisuse(context) == 1, "counted as misuse");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -243,7 +243,7 @@ static void TestUnsupportedAndInvalidDefs(void)
     def.ratePolicy = maud_ratePlatformConverted;
     def.sampleRate = 44100;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "no converter");
-    CHECK(maudGetContextMisuse(context) == 0, "unsupported is not misuse");
+    CHECK(maudContext_GetMisuse(context) == 0, "unsupported is not misuse");
     def = PullDef(&recorder);
     def.sampleRate = 44100;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "rate with native");
@@ -279,7 +279,7 @@ static void TestUnsupportedAndInvalidDefs(void)
     def.direction = maud_directionInput;
     def.voice = 8;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "an unknown voice part");
-    CHECK(maudGetContextMisuse(context) == 9, "each invalid def counted");
+    CHECK(maudContext_GetMisuse(context) == 9, "each invalid def counted");
     def = PullDef(&recorder);
     def.periodFrames = 8193;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorCapacity, "period past limit");
@@ -298,12 +298,12 @@ static void TestVoiceReport(void)
     maudStreamId input = {0, 0};
     CHECK(maudCreateStream(context, &def, &input) == maud_success, "an input asking for voice");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, input, &status) == maud_success, "its status");
+    CHECK(maudStream_GetStatus(context, input, &status) == maud_success, "its status");
     CHECK(status.voiceReported && status.voiceActive == maud_voiceNone, "reports none active");
     def = PullDef(&recorder);
     maudStreamId output = {0, 0};
     CHECK(maudCreateStream(context, &def, &output) == maud_success, "an output");
-    CHECK(maudGetStreamStatus(context, output, &status) == maud_success, "its status");
+    CHECK(maudStream_GetStatus(context, output, &status) == maud_success, "its status");
     CHECK(!status.voiceReported && status.voiceActive == maud_voiceNone, "reports nothing");
     CHECK(maudDefaultStreamDef().voice == maud_voiceNone, "no voice processing by default");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -320,13 +320,13 @@ static void TestSpatialMark(void)
     maudStreamId marked = {0, 0};
     maudStreamStatus status = {0};
     CHECK(maudCreateStream(context, &def, &marked) == maud_success &&
-              maudGetStreamStatus(context, marked, &status) == maud_success &&
+              maudStream_GetStatus(context, marked, &status) == maud_success &&
               status.spatialMark == maud_markHonored,
           "a marked output, honored");
     def = PullDef(&recorder);
     maudStreamId plain = {0, 0};
     CHECK(maudCreateStream(context, &def, &plain) == maud_success &&
-              maudGetStreamStatus(context, plain, &status) == maud_success &&
+              maudStream_GetStatus(context, plain, &status) == maud_success &&
               status.spatialMark == maud_markNone,
           "an unmarked output, no mark");
     def = PullDef(&recorder);
@@ -347,7 +347,7 @@ static void TestExclusive(void)
     Recorder recorder = {0};
     maudStreamId stream = {0, 0};
     maudDeviceId device = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
               maud_success,
           "the device");
     CHECK(maudDefaultStreamDef().share == maud_shareShared, "shared by default");
@@ -358,18 +358,18 @@ static void TestExclusive(void)
     def.share = maud_shareExclusive + 1;
     def.device = device;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "an unknown share mode");
-    CHECK(maudGetContextMisuse(context) == 2, "both counted");
+    CHECK(maudContext_GetMisuse(context) == 2, "both counted");
     def.share = maud_shareExclusive;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
           "exclusive where the backend has none");
     def.direction = maud_directionDuplex;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
           "nor for a duplex stream");
-    CHECK(maudGetContextMisuse(context) == 2, "neither is misuse");
+    CHECK(maudContext_GetMisuse(context) == 2, "neither is misuse");
     def = PullDef(&recorder);
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a shared stream");
     maudStreamStatus status = {.exclusive = true};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && !status.exclusive,
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && !status.exclusive,
           "reports it shares");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
@@ -385,35 +385,35 @@ static void TestStreamLimitAndStaleIds(void)
     CHECK(maudCreateStream(context, &def, &third) == maud_errorCapacity, "past the limit");
     CHECK(maudDestroyStream(context, first) == maud_success, "destroy first");
     CHECK(maudDestroyStream(context, first) == maud_errorStale, "destroyed id is stale");
-    CHECK(maudStartStream(context, first) == maud_errorStale, "start stale");
+    CHECK(maudStream_Start(context, first) == maud_errorStale, "start stale");
     float frames[2];
-    CHECK(maudRenderStream(context, first, frames, 1) == maud_errorStale, "render stale");
+    CHECK(maudStream_Render(context, first, frames, 1) == maud_errorStale, "render stale");
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(context, first, &clock) == maud_errorStale, "a stale stream's clock");
+    CHECK(maudStream_GetClock(context, first, &clock) == maud_errorStale, "a stale stream's clock");
     maudStreamStatus status;
     maudStreamFormat format;
     uint64_t position = 0;
-    CHECK(maudGetStreamStatus(context, first, &status) == maud_errorStale &&
-              maudGetStreamFormat(context, first, &format) == maud_errorStale &&
-              maudGetStreamPosition(context, first, &position) == maud_errorStale,
+    CHECK(maudStream_GetStatus(context, first, &status) == maud_errorStale &&
+              maudStream_GetFormat(context, first, &format) == maud_errorStale &&
+              maudStream_GetPosition(context, first, &position) == maud_errorStale,
           "a stale stream's status, format and position");
-    CHECK(maudGetStreamStatus(nullptr, second, &status) == maud_errorInvalid &&
-              maudGetStreamStatus(context, second, nullptr) == maud_errorInvalid &&
-              maudGetStreamFormat(nullptr, second, &format) == maud_errorInvalid &&
-              maudGetStreamFormat(context, second, nullptr) == maud_errorInvalid &&
-              maudGetStreamPosition(nullptr, second, &position) == maud_errorInvalid &&
-              maudGetStreamPosition(context, second, nullptr) == maud_errorInvalid &&
-              maudGetStreamClock(nullptr, second, &clock) == maud_errorInvalid &&
-              maudGetStreamClock(context, second, nullptr) == maud_errorInvalid &&
-              maudStartStream(nullptr, second) == maud_errorInvalid,
+    CHECK(maudStream_GetStatus(nullptr, second, &status) == maud_errorInvalid &&
+              maudStream_GetStatus(context, second, nullptr) == maud_errorInvalid &&
+              maudStream_GetFormat(nullptr, second, &format) == maud_errorInvalid &&
+              maudStream_GetFormat(context, second, nullptr) == maud_errorInvalid &&
+              maudStream_GetPosition(nullptr, second, &position) == maud_errorInvalid &&
+              maudStream_GetPosition(context, second, nullptr) == maud_errorInvalid &&
+              maudStream_GetClock(nullptr, second, &clock) == maud_errorInvalid &&
+              maudStream_GetClock(context, second, nullptr) == maud_errorInvalid &&
+              maudStream_Start(nullptr, second) == maud_errorInvalid,
           "no context or nowhere to write");
     maudStreamId reused = Open(context, &def);
     CHECK(reused.index1 == first.index1 && reused.generation != first.generation,
           "a reused slot gets a new generation");
-    CHECK(maudStartStream(context, first) == maud_errorStale, "the old id stays stale");
-    CHECK(maudStartStream(context, (maudStreamId){0, 0}) == maud_errorStale, "null id");
-    CHECK(maudStartStream(context, (maudStreamId){99, 1}) == maud_errorStale, "out of range");
-    CHECK(maudGetContextMisuse(context) == 0, "stale ids are not misuse");
+    CHECK(maudStream_Start(context, first) == maud_errorStale, "the old id stays stale");
+    CHECK(maudStream_Start(context, (maudStreamId){0, 0}) == maud_errorStale, "null id");
+    CHECK(maudStream_Start(context, (maudStreamId){99, 1}) == maud_errorStale, "out of range");
+    CHECK(maudContext_GetMisuse(context) == 0, "stale ids are not misuse");
     maudStreamId junk = {7, 7};
     CHECK(maudCreateStream(nullptr, &def, &junk) == maud_errorInvalid && junk.index1 == 0 &&
               junk.generation == 0 && maudCreateStream(context, &def, nullptr) == maud_errorInvalid,
@@ -429,13 +429,13 @@ static void TestStoppedStreamsDoNotRender(void)
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create");
     float frames[2];
-    CHECK(maudRenderStream(context, stream, frames, 1) == maud_errorState, "created stopped");
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
-    CHECK(maudRenderStream(context, stream, frames, 1) == maud_success, "started renders");
-    CHECK(maudStopStream(context, stream) == maud_success, "stop");
-    CHECK(maudRenderStream(context, stream, frames, 1) == maud_errorState, "stopped again");
-    CHECK(maudRenderStream(context, stream, nullptr, 1) == maud_errorInvalid, "null frames");
-    CHECK(maudRenderStream(context, stream, nullptr, 0) == maud_errorState, "zero frames");
+    CHECK(maudStream_Render(context, stream, frames, 1) == maud_errorState, "created stopped");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
+    CHECK(maudStream_Render(context, stream, frames, 1) == maud_success, "started renders");
+    CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
+    CHECK(maudStream_Render(context, stream, frames, 1) == maud_errorState, "stopped again");
+    CHECK(maudStream_Render(context, stream, nullptr, 1) == maud_errorInvalid, "null frames");
+    CHECK(maudStream_Render(context, stream, nullptr, 0) == maud_errorState, "zero frames");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -448,12 +448,12 @@ static void TestControlCallsFromTheCallbackAreRefused(void)
     recorder.context = context;
     recorder.stream = stream;
     float frames[2 * 480];
-    CHECK(maudRenderStream(context, stream, frames, 480) == maud_success, "render");
+    CHECK(maudStream_Render(context, stream, frames, 480) == maud_success, "render");
     CHECK(recorder.controlResult == maud_errorBusy, "create refused on the audio thread");
     CHECK(recorder.renderResult == maud_errorBusy, "re-entrant render refused");
     CHECK(recorder.resumeResult == maud_errorBusy, "resume refused on the audio thread");
     CHECK(recorder.destroyResult == maud_errorBusy, "the context's destruction refused there");
-    CHECK(maudGetContextMisuse(context) == 4,
+    CHECK(maudContext_GetMisuse(context) == 4,
           "control calls and the re-entrant render counted as misuse");
     recorder.tryControl = false;
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy after rendering");
@@ -472,8 +472,8 @@ static void TestRenderingDoesNotAllocate(void)
     int before = s_allocationCalls;
     for (int i = 0; i < 10; ++i)
     {
-        CHECK(maudRenderStream(context, stream, frames, 4800) == maud_success, "render");
-        CHECK(maudFeedStream(context, input, frames, 4800) == maud_success, "feed");
+        CHECK(maudStream_Render(context, stream, frames, 4800) == maud_success, "render");
+        CHECK(maudStream_Feed(context, input, frames, 4800) == maud_success, "feed");
     }
     CHECK(s_allocationCalls == before, "no allocation while rendering");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

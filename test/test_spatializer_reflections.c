@@ -54,41 +54,41 @@ static void Ignore(void* memory, size_t size, size_t alignment, void* context)
     (void)context;
 }
 
-static maudAcousticScene* Wall(void)
+static maudScene* Wall(void)
 {
     static const maudVector3 v[4] = {
         {2, -1000, -1000}, {2, 1000, -1000}, {2, -1000, 1000}, {2, 1000, 1000}};
     static const uint32_t faces[6] = {0, 2, 1, 1, 2, 3};
     static const uint32_t materials[2] = {0, 0};
     maudMesh mesh = {v, 4, faces, materials, 2};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a wall");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a wall");
     return scene;
 }
 
-static maudAcousticScene* Floor(void)
+static maudScene* Floor(void)
 {
     static const maudVector3 v[4] = {
         {-1000, 0, -1000}, {1000, 0, -1000}, {-1000, 0, 1000}, {1000, 0, 1000}};
     static const uint32_t faces[6] = {0, 1, 2, 1, 3, 2};
     static const uint32_t materials[2] = {0, 0};
     maudMesh mesh = {v, 4, faces, materials, 2};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a floor");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a floor");
     return scene;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene)
+static maudSpatializer* Create(maudScene* scene)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reverbRays = 4096;
     def.reflectionOrder = 1;
@@ -100,7 +100,7 @@ static maudSpatializer* Create(maudAcousticScene* scene)
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     maudAcousticMaterial lossless = {{0.0f, 0.0f, 0.0f}, 1.0f, {0, 0, 0}};
-    CHECK(maudSetMaterials(s, &lossless, 1) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(s, &lossless, 1) == maud_success, "materials");
     return s;
 }
 
@@ -123,14 +123,15 @@ static void RenderOver(maudSpatializer* s, maudQuaternion orientation, float bas
     for (int at = 0; at < SETTLE; at += 480)
     {
         float* bed[4] = {s_discard[0], s_discard[1], s_discard[2], s_discard[3]};
-        CHECK(maudRenderReflections(s, &orientation, s_send, bed, 480) == maud_success,
+        CHECK(maudSpatializer_RenderReflections(s, &orientation, s_send, bed, 480) == maud_success,
               "render silence");
     }
     s_send[0] = 1.0f;
     for (int at = 0; at < FRAMES; at += 480)
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
-        CHECK(maudRenderReflections(s, &orientation, s_send + at, bed, 480) == maud_success,
+        CHECK(maudSpatializer_RenderReflections(s, &orientation, s_send + at, bed, 480) ==
+                  maud_success,
               "render");
     }
 }
@@ -176,7 +177,7 @@ static double MeanArrival(double h)
 
 static void TestFloor(void)
 {
-    maudAcousticScene* scene = Floor();
+    maudScene* scene = Floor();
     maudSpatializer* s = Create(scene);
     const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
     Render(s, upright);
@@ -187,7 +188,7 @@ static void TestFloor(void)
     }
     CHECK(silent, "nothing before a response");
     maudPose listener = {{0.3f, 2.0f, -0.2f}, upright};
-    CHECK(maudSimulateReverb(s, &listener) == maud_success, "an estimate");
+    CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "an estimate");
     Render(s, upright);
     double energy = 0.0;
     double early = 0.0;
@@ -230,7 +231,7 @@ static void TestFloor(void)
     CHECK(fabs(Along(2) - 0.8) < 0.05, "rolled over, from above");
     // A new response from higher up swaps in without a jump.
     listener.position.y = 3.0f;
-    CHECK(maudSimulateReverb(s, &listener) == maud_success, "another estimate");
+    CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "another estimate");
     Render(s, upright);
     bool bounded = true;
     for (int i = 0; i < FRAMES; ++i)
@@ -239,7 +240,7 @@ static void TestFloor(void)
     }
     CHECK(bounded, "a swap stays bounded");
     maudDestroySpatializer(s);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 // A turn about the vertical: the wall on the right (Y, left, at -0.8)
@@ -247,11 +248,11 @@ static void TestFloor(void)
 // -0.8); turned the other way it would be ahead.
 static void TestTurn(void)
 {
-    maudAcousticScene* scene = Wall();
+    maudScene* scene = Wall();
     maudSpatializer* s = Create(scene);
     const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
     maudPose listener = {{0.0f, 0.3f, 0.2f}, upright};
-    CHECK(maudSimulateReverb(s, &listener) == maud_success, "an estimate");
+    CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "an estimate");
     Render(s, upright);
     printf("wall: Y %.3f X %.3f\n", Along(1), Along(3));
     CHECK(fabs(Along(1) + 0.8) < 0.05 && fabs(Along(3)) < 0.05, "the wall on the right");
@@ -262,7 +263,7 @@ static void TestTurn(void)
     printf("turned: Y %.3f X %.3f\n", Along(1), Along(3));
     CHECK(fabs(Along(3) + 0.8) < 0.05 && fabs(Along(1)) < 0.05, "turned left, the wall behind");
     maudDestroySpatializer(s);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestMisuse(void)
@@ -274,7 +275,7 @@ static void TestMisuse(void)
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "no reflections");
     const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
     float* bed[1] = {s_bed[0]};
-    CHECK(maudRenderReflections(s, &upright, s_send, bed, 16) == maud_errorUnsupported,
+    CHECK(maudSpatializer_RenderReflections(s, &upright, s_send, bed, 16) == maud_errorUnsupported,
           "none asked for");
     maudDestroySpatializer(s);
     // Short, to fit the web build's 16 MB heap: four responses of nine
@@ -284,14 +285,17 @@ static void TestMisuse(void)
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "order 2");
     float* nine[9] = {s_bed[0], s_bed[1], s_bed[2], s_bed[3], s_bed[0],
                       s_bed[1], s_bed[2], s_bed[3], nullptr};
-    CHECK(maudRenderReflections(s, &upright, s_send, nine, 16) == maud_errorInvalid,
+    CHECK(maudSpatializer_RenderReflections(s, &upright, s_send, nine, 16) == maud_errorInvalid,
           "a channel missing");
     const maudQuaternion zero = {0.0f, 0.0f, 0.0f, 0.0f};
     nine[8] = s_bed[0];
-    CHECK(maudRenderReflections(s, &zero, s_send, nine, 16) == maud_errorInvalid,
+    CHECK(maudSpatializer_RenderReflections(s, &zero, s_send, nine, 16) == maud_errorInvalid,
           "a zero orientation");
-    CHECK(maudRenderReflections(s, &upright, nullptr, nullptr, 0) == maud_success, "no frames");
-    CHECK(maudRenderReflections(nullptr, &upright, s_send, nine, 16) == maud_errorInvalid, "NULL");
+    CHECK(maudSpatializer_RenderReflections(s, &upright, nullptr, nullptr, 0) == maud_success,
+          "no frames");
+    CHECK(maudSpatializer_RenderReflections(nullptr, &upright, s_send, nine, 16) ==
+              maud_errorInvalid,
+          "NULL");
     maudDestroySpatializer(s);
     def.reflectionOrder = 3;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "order 3, the highest");
@@ -317,7 +321,7 @@ static void TestMisuse(void)
     CHECK(maudCreateSpatializer(&def, &none) == maud_errorInvalid, "reflections without rays");
 }
 
-static maudAcousticScene* Office(void)
+static maudScene* Office(void)
 {
     static maudVector3 v[8];
     static const uint32_t faces[36] = {0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, 0, 4, 5, 0, 5, 1,
@@ -328,21 +332,21 @@ static maudAcousticScene* Office(void)
         v[i] = (maudVector3){(i & 1) ? 5.0f : 0.0f, (i & 2) ? 3.0f : 0.0f, (i & 4) ? 4.0f : 0.0f};
     }
     maudMesh mesh = {v, 8, faces, materials, 12};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "an office");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "an office");
     return scene;
 }
 
 // A spatializer in the office (reflections of duration seconds, or
 // none), estimated once at its centre.
-static maudSpatializer* InOffice(maudAcousticScene* scene, float duration, maudReverbResult* result)
+static maudSpatializer* InOffice(maudScene* scene, float duration, maudReverbResult* result)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reverbRays = 2048;
     def.reflectionOrder = duration > 0.0f ? 1 : 0;
@@ -355,10 +359,11 @@ static maudSpatializer* InOffice(maudAcousticScene* scene, float duration, maudR
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.5f, {0, 0, 0}};
     maudPose centre = {{2.3f, 1.4f, 1.9f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetMaterials(s, &wall, 1) == maud_success &&
-              maudSimulateReverb(s, &centre) == maud_success &&
-              maudSimulateDirect(s, &centre) == maud_success && maudLatchResults(s) == 1 &&
-              maudGetReverbResult(s, result) == maud_success,
+    CHECK(maudSpatializer_SetMaterials(s, &wall, 1) == maud_success &&
+              maudSpatializer_SimulateReverb(s, &centre) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &centre) == maud_success &&
+              maudSpatializer_LatchResults(s) == 1 &&
+              maudSpatializer_GetReverbResult(s, result) == maud_success,
           "an estimate");
     return s;
 }
@@ -383,7 +388,7 @@ static void Tail(const maudReverbResult* result)
     for (int at = 0; at < FRAMES; at += 480)
     {
         float* bed[4] = {s_tail[0] + at, s_tail[1] + at, s_tail[2] + at, s_tail[3] + at};
-        CHECK(maudProcessReverb(r, &p, s_send + at, bed, 480) == maud_success, "process");
+        CHECK(maudReverb_Process(r, &p, s_send + at, bed, 480) == maud_success, "process");
     }
     maudDestroyReverb(r);
 }
@@ -400,7 +405,7 @@ static double Energy(const float* w, double from, double to)
 
 static void TestHybrid(void)
 {
-    maudAcousticScene* scene = Office();
+    maudScene* scene = Office();
     const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
     // The reference: reflections rendered to 0.8 s.
     maudReverbResult reference;
@@ -436,7 +441,7 @@ static void TestHybrid(void)
     double response = Energy(truth, 0.075, 0.125);
     printf("alone: the reverb's energy at 100 ms %.3g, the reference's %.3g\n", reverb, response);
     CHECK(fabs(reverb / response - 1.0) < 0.25, "the room's level");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 int main(void)

@@ -36,7 +36,7 @@ From offset 16:
 |---|---|---|
 | `head` | 24 bytes: the sample rate (uint32, 8,000 to 384,000), taps per response (uint32, 8 to 1,024), ring count (uint32, 1 to 181), direction count (uint32, 1 to 65,536, the sum of the rings' azimuth counts), scale (float32, finite and above 0: a tap is its int16 value times this) and distance (float32, 0.05 to 100: metres from the head's centre at which the set was measured) | `maud_errorFormat` |
 | `name` | UTF-8, the dataset and subject, not terminated, up to 256 bytes | empty |
-| `lics` | UTF-8, the dataset's license and attribution, not terminated, up to 65,536 bytes. A set travels with its license, and `maudGetHrtfInfo` hands both texts to the host. | empty |
+| `lics` | UTF-8, the dataset's license and attribution, not terminated, up to 65,536 bytes. A set travels with its license, and `maudHrtf_GetInfo` hands both texts to the host. | empty |
 | `ring` | per ring, a float32 elevation in degrees and a uint32 azimuth count of at least 1. Elevations rise strictly from -90 to 90 inclusive. Each ring's first azimuth is 0 and its step 360 divided by its count. | `maud_errorFormat` |
 | `dlay` | per direction, ring by ring and azimuth by azimuth, two uint16, the left ear's onset delay then the right's, in 1/256 of a sample | `maud_errorFormat` |
 | `taps` | per direction in the same order, the left ear's taps then the right's, int16 each | `maud_errorFormat` |
@@ -47,7 +47,7 @@ Directions follow SOFA's convention: azimuth counterclockwise from straight ahea
 
 ## Bakes (.maudbake)
 
-One probe set: its probes, the links between them, and per probe the reverberation estimate and, when the spatializer renders reflections, the energy field. `maudSaveProbeSet` writes it and `maudLoadProbeSet` reads it ([bake_file.h](../../src/bake_file.h)). A set saves to the same bytes on every platform: bakes are content a program ships, so their bytes must not depend on the machine that made them.
+One probe set: its probes, the links between them, and per probe the reverberation estimate and, when the spatializer renders reflections, the energy field. `maudProbeSet_Save` writes it and `maudLoadProbeSet` reads it ([bake_file.h](../../src/bake_file.h)). A set saves to the same bytes on every platform: bakes are content a program ships, so their bytes must not depend on the machine that made them.
 
 ### Header
 

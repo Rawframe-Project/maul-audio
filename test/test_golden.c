@@ -72,7 +72,7 @@ struct Render
     maudBinauralDecoder* decoder;
     maudDirectEffect* direct;
     maudReverb* reverb;
-    maudAcousticScene* scene;
+    maudScene* scene;
     maudSpatializer* spatializer;
     maudSourceId source;
     maudDirectParams params;
@@ -125,7 +125,7 @@ static void MakeSweep(Render* r, uint32_t block, float* left, float* right)
                                   -2.0f * cosf(azimuth) * cosf(elevation)},
                                  1.0f};
     float* out[2] = {left, right};
-    CHECK(maudProcessBinaural(r->binaural, &params, r->mono, out, BLOCK) == maud_success,
+    CHECK(maudBinaural_Process(r->binaural, &params, r->mono, out, BLOCK) == maud_success,
           "the sweep");
 }
 
@@ -149,9 +149,10 @@ static void MakeRotation(Render* r, uint32_t block, float* left, float* right)
     CHECK(maudEncodeAmbisonic(3, &source, &source, r->mono, bed, BLOCK) == maud_success, "encoded");
     maudQuaternion from = Yaw(2.0f * PI * (float)block / (float)r->blocks);
     maudQuaternion to = Yaw(2.0f * PI * ((float)block + 1.0f) / (float)r->blocks);
-    CHECK(maudRotateAmbisonic(3, &from, &to, bed, BLOCK) == maud_success, "turned");
+    CHECK(maudRotateAmbisonic(bed, BLOCK, 3, &from, &to) == maud_success, "turned");
     float* out[2] = {left, right};
-    CHECK(maudDecodeBinaural(r->decoder, (const float* const*)bed, out, BLOCK) == maud_success,
+    CHECK(maudBinauralDecoder_Decode(r->decoder, (const float* const*)bed, out, BLOCK) ==
+              maud_success,
           "decoded");
 }
 
@@ -164,12 +165,13 @@ static void StepWalk(Render* r, uint32_t block)
     float x = -3.0f + 6.0f * ((float)block + 1.0f) / (float)r->blocks;
     const maudPose source = {{x, 0.0f, -4.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     const maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetSourcePose(r->spatializer, r->source, &source) == maud_success &&
-              maudSimulateDirect(r->spatializer, &listener) == maud_success,
+    CHECK(maudSource_SetPose(r->spatializer, r->source, &source) == maud_success &&
+              maudSpatializer_SimulateDirect(r->spatializer, &listener) == maud_success,
           "a step");
-    (void)maudLatchResults(r->spatializer);
+    (void)maudSpatializer_LatchResults(r->spatializer);
     maudDirectResult result;
-    CHECK(maudGetDirectResult(r->spatializer, r->source, &result) == maud_success, "its result");
+    CHECK(maudSource_GetDirectResult(r->spatializer, r->source, &result) == maud_success,
+          "its result");
     r->params.distance = result.distance;
     r->params.occlusion = result.occlusion;
     for (int b = 0; b < MAUD_BANDS; ++b)
@@ -185,10 +187,11 @@ static void MakeWalk(Render* r, uint32_t block, float* left, float* right)
 {
     (void)block;
     Mono(r);
-    CHECK(maudProcessDirect(r->direct, &r->params, r->mono, r->mono, BLOCK) == maud_success,
+    CHECK(maudDirectEffect_Process(r->direct, &r->params, r->mono, r->mono, BLOCK) == maud_success,
           "the direct effect");
     float* out[2] = {left, right};
-    CHECK(maudProcessBinaural(r->binaural, &r->pan, r->mono, out, BLOCK) == maud_success, "panned");
+    CHECK(maudBinaural_Process(r->binaural, &r->pan, r->mono, out, BLOCK) == maud_success,
+          "panned");
 }
 
 // The tail: 10 ms of noise 24 dB up into the reverb, then silence, the
@@ -204,9 +207,10 @@ static void MakeTail(Render* r, uint32_t block, float* left, float* right)
     float* bed[4] = {r->bed[0], r->bed[1], r->bed[2], r->bed[3]};
     const maudReverbParams params = {
         {1.2f, 0.9f, 0.5f}, {0.0f, 0.0f, 0.0f}, 0.02f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
-    CHECK(maudProcessReverb(r->reverb, &params, r->mono, bed, BLOCK) == maud_success, "reverb");
+    CHECK(maudReverb_Process(r->reverb, &params, r->mono, bed, BLOCK) == maud_success, "reverb");
     float* out[2] = {left, right};
-    CHECK(maudDecodeBinaural(r->decoder, (const float* const*)bed, out, BLOCK) == maud_success,
+    CHECK(maudBinauralDecoder_Decode(r->decoder, (const float* const*)bed, out, BLOCK) ==
+              maud_success,
           "decoded");
 }
 
@@ -220,23 +224,24 @@ static const uint32_t s_wallMaterials[12] = {0};
 static void OpenWalk(Render* r)
 {
     const maudMesh wall = {s_wallVertices, 8, s_boxFaces, s_wallMaterials, 12};
-    maudAcousticSceneDef sceneDef = maudDefaultAcousticSceneDef();
+    maudSceneDef sceneDef = maudDefaultSceneDef();
     sceneDef.meshes = &wall;
     sceneDef.meshCount = 1;
-    CHECK(maudCreateAcousticScene(&sceneDef, &r->scene) == maud_success, "the wall");
+    CHECK(maudCreateScene(&sceneDef, &r->scene) == maud_success, "the wall");
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.sourceCapacity = 1;
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = r->scene;
     CHECK(maudCreateSpatializer(&def, &r->spatializer) == maud_success, "a spatializer");
     const maudAcousticMaterial material = {{0.1f, 0.2f, 0.3f}, 0.1f, {0.3f, 0.1f, 0.03f}};
-    CHECK(maudSetMaterials(r->spatializer, &material, 1) == maud_success, "its material");
+    CHECK(maudSpatializer_SetMaterials(r->spatializer, &material, 1) == maud_success,
+          "its material");
     maudSourceDef sourceDef = maudDefaultSourceDef();
     sourceDef.occlusion = maud_occlusionVolumetric;
     sourceDef.occlusionRadius = 0.5f;
     sourceDef.occlusionSamples = 64;
-    sourceDef.transmission = true;
+    sourceDef.enableTransmission = true;
     CHECK(maudCreateSource(r->spatializer, &sourceDef, &r->source) == maud_success, "a source");
     maudDirectEffectDef directDef = maudDefaultDirectEffectDef();
     CHECK(maudCreateDirectEffect(&directDef, &r->direct) == maud_success, "a direct effect");
@@ -292,7 +297,7 @@ static void Close(Render* r)
     maudDestroyDirectEffect(r->direct);
     maudDestroyReverb(r->reverb);
     maudDestroySpatializer(r->spatializer);
-    maudDestroyAcousticScene(r->scene);
+    maudDestroyScene(r->scene);
 }
 
 // The stream's callback: the render's next block into the stream's
@@ -335,7 +340,7 @@ static void RenderGolden(const Golden* g, float* out)
     def.user = &pull;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+              maudStream_Start(context, stream) == maud_success,
           "a stream");
     for (uint32_t b = 0; b < g->blocks; ++b)
     {
@@ -343,7 +348,8 @@ static void RenderGolden(const Golden* g, float* out)
         {
             StepWalk(&render, b);
         }
-        CHECK(maudRenderStream(context, stream, out + 2 * (size_t)b * BLOCK, BLOCK) == maud_success,
+        CHECK(maudStream_Render(context, stream, out + 2 * (size_t)b * BLOCK, BLOCK) ==
+                  maud_success,
               "a block rendered");
     }
     CHECK(maudDestroyContext(context) == maud_success, "the context");

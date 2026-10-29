@@ -16,23 +16,23 @@ returns a constant, a default def, a name, a count or a table entry:
     maudGetLayoutSpeaker
     maudGetLayoutSpeakerPosition
     maudGetVersion
-    maudResultName
+    maudGetResultName
 
 copies stored values, or stores an id, a flag or bytes, and computes no floats:
-    maudGetAcousticSceneMisuse
-    maudGetDirectResult
-    maudGetHrtfInfo
-    maudGetProbeSet
-    maudGetReverbResult
-    maudGetSpatializerMisuse
-    maudGetSpeakerDecoderMatrix
-    maudLatchResults
-    maudSaveProbeSet
-    maudSetPathing
-    maudUseBakedReverb
+    maudScene_GetMisuse
+    maudSource_GetDirectResult
+    maudHrtf_GetInfo
+    maudProbeSet_GetInfo
+    maudSpatializer_GetReverbResult
+    maudSpatializer_GetMisuse
+    maudSpeakerDecoder_GetMatrix
+    maudSpatializer_LatchResults
+    maudProbeSet_Save
+    maudProbeSet_UseForPathing
+    maudProbeSet_UseBakedReverb
 
 destroys an object or a slot, computing no floats:
-    maudDestroyAcousticScene
+    maudDestroyScene
     maudDestroyBinaural
     maudDestroyBinauralDecoder
     maudDestroyDirectEffect
@@ -50,22 +50,22 @@ destroys an object or a slot, computing no floats:
     maudDestroyVoiceDetector
 
 the rendering side, reproducible on one platform and build in the same float environment, never touches the mode: the audio thread is the host's, and denormals are kept away in code (flush.h):
-    maudApplyGainControl
-    maudCancelEcho
-    maudDecodeBinaural
-    maudDecodeToSpeakers
+    maudGainControl_Apply
+    maudEchoCanceller_Cancel
+    maudBinauralDecoder_Decode
+    maudSpeakerDecoder_Decode
     maudDeinterleave
-    maudDetectVoice
+    maudVoiceDetector_Detect
     maudEncodeAmbisonic
     maudInterleave
-    maudPanToSpeakers
-    maudProcessBinaural
-    maudProcessDirect
-    maudProcessReverb
-    maudRenderObjects
-    maudRenderReflections
+    maudSpeakerPanner_Pan
+    maudBinaural_Process
+    maudDirectEffect_Process
+    maudReverb_Process
+    maudStream_RenderObjects
+    maudSpatializer_RenderReflections
     maudRotateAmbisonic
-    maudSuppressNoise
+    maudNoiseSuppressor_Suppress
 
 makes, resets or feeds the rendering side, whose output is reproducible on one platform and build, not promised the same bits:
     maudCreateBinaural
@@ -80,42 +80,42 @@ makes, resets or feeds the rendering side, whose output is reproducible on one p
     maudCreateVoiceDetector
     maudGetAmbisonicGains
     maudGetDirectivity
-    maudGetSpeakerGains
+    maudSpeakerPanner_GetGains
     maudLoadHrtf
-    maudResetBinaural
-    maudResetBinauralDecoder
-    maudResetDirectEffect
-    maudResetReverb
+    maudBinaural_Reset
+    maudBinauralDecoder_Reset
+    maudDirectEffect_Reset
+    maudReverb_Reset
 
 the Device part, which moves the host's samples as they are and keeps frames and times in integers; nothing it reports is promised the same bits across environments:
-    maudAddOfflineDevice
+    maudCreateOfflineDevice
     maudCreateContext
     maudCreateStream
     maudDestroyContext
     maudDestroyStream
-    maudFeedStream
-    maudGetContextBackend
-    maudGetContextFocus
-    maudGetContextMisuse
-    maudGetDefaultDevice
-    maudGetDeviceInfo
-    maudGetDeviceKey
-    maudGetDeviceName
-    maudGetDevices
+    maudStream_Feed
+    maudContext_GetBackend
+    maudContext_GetFocus
+    maudContext_GetMisuse
+    maudContext_GetDefaultDevice
+    maudDevice_GetInfo
+    maudDevice_GetKey
+    maudDevice_GetName
+    maudContext_GetDevices
     maudGetHostNanoseconds
-    maudGetStreamClock
-    maudGetStreamFormat
-    maudGetStreamPosition
-    maudGetStreamStatus
-    maudNextNotification
-    maudRemoveOfflineDevice
-    maudRenderStream
-    maudRequestFocus
-    maudResumeContext
-    maudSetContextSuspended
-    maudSetOfflineDefaultDevice
-    maudSetOfflineDeviceForm
-    maudSetOfflineDeviceFormat
-    maudSetOfflineDeviceSpatializer
-    maudStartStream
-    maudStopStream
+    maudStream_GetClock
+    maudStream_GetFormat
+    maudStream_GetPosition
+    maudStream_GetStatus
+    maudContext_NextNotification
+    maudDestroyOfflineDevice
+    maudStream_Render
+    maudContext_RequestFocus
+    maudContext_Unlock
+    maudContext_SetSuspended
+    maudDevice_SetOfflineDefault
+    maudDevice_SetOfflineForm
+    maudDevice_SetOfflineFormat
+    maudDevice_SetOfflineSpatializer
+    maudStream_Start
+    maudStream_Stop

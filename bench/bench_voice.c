@@ -59,7 +59,7 @@ static void Run(uint32_t rate, maudChannelLayout layout, uint32_t channels, cons
                 float noise = ((float)(state >> 8) / 16777216.0f - 0.5f) * 0.02f;
                 s_frames[i] = noise + ((b / 30) % 2 ? 0.2f * sinf(0.07f * (float)i) : 0.0f);
             }
-            if (maudSuppressNoise(s, s_frames, block, nullptr) != maud_success)
+            if (maudNoiseSuppressor_Suppress(s, s_frames, block, nullptr) != maud_success)
             {
                 return;
             }
@@ -99,7 +99,7 @@ static void RunEcho(uint32_t rate, const char* key)
                 echo = 0.9f * echo + 0.05f * s_render[i];
                 s_frames[i] = echo;
             }
-            if (maudCancelEcho(c, s_frames, s_render, block, nullptr) != maud_success)
+            if (maudEchoCanceller_Cancel(c, s_frames, s_render, block, nullptr) != maud_success)
             {
                 return;
             }
@@ -142,8 +142,9 @@ static void RunLevel(uint32_t rate, bool gain, const char* key)
                 float noise = ((float)(state >> 8) / 16777216.0f - 0.5f) * 0.02f;
                 s_frames[i] = noise + ((b / 30) % 2 ? 0.2f * sinf(0.07f * (float)i) : 0.0f);
             }
-            if ((gain ? maudApplyGainControl(control, s_frames, block, nullptr)
-                      : maudDetectVoice(detector, s_frames, block, nullptr)) != maud_success)
+            if ((gain ? maudGainControl_Apply(control, s_frames, block, nullptr)
+                      : maudVoiceDetector_Detect(detector, s_frames, block, nullptr)) !=
+                maud_success)
             {
                 return;
             }
@@ -181,13 +182,13 @@ static maudResult Step(Processors* p, Part part, uint32_t block)
     switch (part)
     {
     case PART_NOISE:
-        return maudSuppressNoise(p->noise, s_frames, block, nullptr);
+        return maudNoiseSuppressor_Suppress(p->noise, s_frames, block, nullptr);
     case PART_ECHO:
-        return maudCancelEcho(p->echo, s_frames, s_render, block, nullptr);
+        return maudEchoCanceller_Cancel(p->echo, s_frames, s_render, block, nullptr);
     case PART_DETECTOR:
-        return maudDetectVoice(p->detector, s_frames, block, nullptr);
+        return maudVoiceDetector_Detect(p->detector, s_frames, block, nullptr);
     case PART_GAIN:
-        return maudApplyGainControl(p->gain, s_frames, block, nullptr);
+        return maudGainControl_Apply(p->gain, s_frames, block, nullptr);
     }
     return maud_errorInvalid;
 }

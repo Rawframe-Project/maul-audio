@@ -182,10 +182,10 @@ extern "C"
     ///         nothing is written then.
     /// @par Thread safety
     /// Safe from any thread; the effect is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudProcessDirect(maudDirectEffect* effect,
-                                                         const maudDirectParams* params,
-                                                         const float* in, float* out,
-                                                         uint32_t frames);
+    MAUD_NODISCARD MAUD_API maudResult maudDirectEffect_Process(maudDirectEffect* effect,
+                                                                const maudDirectParams* params,
+                                                                const float* in, float* out,
+                                                                uint32_t frames);
 
     /// Forgets the signal and the params an effect has seen.
     ///
@@ -193,7 +193,7 @@ extern "C"
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
     /// @par Thread safety
     /// Safe from any thread; the effect is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudResetDirectEffect(maudDirectEffect* effect);
+    MAUD_NODISCARD MAUD_API maudResult maudDirectEffect_Reset(maudDirectEffect* effect);
 
 #ifdef __cplusplus
 }

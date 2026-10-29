@@ -29,7 +29,7 @@ static uint32_t Drain(maudContext* context, maudNotificationKind kind)
 {
     uint32_t count = 0;
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         count += record.kind == kind ? 1u : 0u;
     }
@@ -39,7 +39,7 @@ static uint32_t Drain(maudContext* context, maudNotificationKind kind)
 static uint32_t CountDevices(const maudContext* context, maudDirection direction)
 {
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, direction, nullptr, 0, &count) == maud_success, "count");
+    CHECK(maudContext_GetDevices(context, direction, nullptr, 0, &count) == maud_success, "count");
     return count;
 }
 
@@ -47,12 +47,12 @@ static bool HasKey(const maudContext* context, maudDirection direction, const ch
 {
     maudDeviceId ids[64];
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, direction, ids, 64, &count) == maud_success, "list");
+    CHECK(maudContext_GetDevices(context, direction, ids, 64, &count) == maud_success, "list");
     for (uint32_t i = 0; i < count && i < 64; ++i)
     {
         char bytes[128];
         size_t length = 0;
-        if (maudGetDeviceKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
+        if (maudDevice_GetKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
             length == strlen(key) && memcmp(bytes, key, length) == 0)
         {
             return true;
@@ -106,9 +106,10 @@ static void TestSync(maudContext* context)
     CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success, "a format changes");
     maudDeviceId ids[4];
     uint32_t outputs2 = 0;
-    CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &outputs2) == maud_success, "list");
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, ids, 4, &outputs2) == maud_success,
+          "list");
     maudDeviceInfo info = {0};
-    CHECK(outputs2 == 2 && maudGetDeviceInfo(context, ids[1], &info) == maud_success &&
+    CHECK(outputs2 == 2 && maudDevice_GetInfo(context, ids[1], &info) == maud_success &&
               info.nativeSampleRate == 44100 && info.maxSampleRate == 44100 &&
               info.nativeLayout == maud_layoutStereo,
           "the device takes it in place");
@@ -116,11 +117,11 @@ static void TestSync(maudContext* context)
     fake[0].info.form = maud_formDigital;
     CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success, "its form changes");
     maudNotification record = {0};
-    CHECK(maudNextNotification(context, &record) == maud_success &&
+    CHECK(maudContext_NextNotification(context, &record) == maud_success &&
               record.kind == maud_notifyRouteChanged && record.form == maud_formDigital &&
               record.device.index1 == ids[1].index1,
           "a route change, naming the device and its form");
-    CHECK(maudGetDeviceInfo(context, ids[1], &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, ids[1], &info) == maud_success &&
               info.form == maud_formDigital,
           "which its info reports");
     CHECK(maudSyncDevices(context, fake, 2, "default") == maud_success &&
@@ -135,7 +136,7 @@ static void TestSync(maudContext* context)
               HasKey(context, maud_directionOutput, "default"),
           "the default stays");
     maudDeviceId current = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
               maud_success,
           "and is still the default");
     Drain(context, maud_notifyDeviceAdded);

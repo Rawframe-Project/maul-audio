@@ -186,7 +186,7 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     }
     *r = (maudReverb){.allocator = def->allocator,
                       .rate = (double)def->sampleRate,
-                      .networkCount = def->tail ? 2u : 1u};
+                      .networkCount = def->enableTail ? 2u : 1u};
     for (uint32_t k = 0; k < r->networkCount; ++k)
     {
         Network* n = &r->networks[k];
@@ -218,7 +218,7 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     r->delayLine = r->memory + offset;
     maudSetupOctaveEq(&r->setup, r->rate);
     maudSetupBandEq(&r->eqSetup, (float)def->sampleRate);
-    if (maudResetReverb(r) != maud_success)
+    if (maudReverb_Reset(r) != maud_success)
     {
         maudDestroyReverb(r);
         return maud_errorInvalid;
@@ -249,7 +249,7 @@ static void Clear(Network* n)
     n->started = false;
 }
 
-maudResult maudResetReverb(maudReverb* reverb)
+maudResult maudReverb_Reset(maudReverb* reverb)
 {
     if (reverb == nullptr)
     {
@@ -612,8 +612,8 @@ static void Settle(Network* n)
     n->ramp = false;
 }
 
-maudResult maudProcessReverb(maudReverb* reverb, const maudReverbParams* params, const float* in,
-                             float* const* bed, uint32_t frames)
+maudResult maudReverb_Process(maudReverb* reverb, const maudReverbParams* params, const float* in,
+                              float* const* bed, uint32_t frames)
 {
     if (reverb == nullptr || params == nullptr || !ParamsValid(reverb, params) ||
         (frames > 0 && (in == nullptr || bed == nullptr || bed[0] == nullptr || bed[1] == nullptr ||

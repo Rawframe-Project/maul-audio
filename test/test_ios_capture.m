@@ -49,7 +49,7 @@ static pthread_t s_control;
 static void Drain(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -85,7 +85,7 @@ static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t c
 static uint64_t Overruns(const maudContext* context, maudStreamId stream)
 {
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
     return status.overruns;
 }
 
@@ -98,10 +98,10 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
         uint64_t first = 0;
         uint64_t last = 0;
         double start = Now();
-        CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
+        CHECK(maudStream_GetPosition(context, stream, &first) == maud_success, "position");
         // hygiene: a 2 s window of the stream's frames against the wall clock
         Pause(2000);
-        CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
+        CHECK(maudStream_GetPosition(context, stream, &last) == maud_success, "position");
         double rate = (double)(last - first) / (Now() - start);
         best = rate > best ? rate : best;
     }
@@ -169,9 +169,9 @@ static void TestCapture(maudContext* context)
     PrintVoiceUnit();
     maudDeviceId input = {0, 0};
     maudDeviceInfo info = {0};
-    CHECK(maudGetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &input) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &input) ==
                   maud_success &&
-              maudGetDeviceInfo(context, input, &info) == maud_success,
+              maudDevice_GetInfo(context, input, &info) == maud_success,
           "the default input");
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
@@ -181,13 +181,13 @@ static void TestCapture(maudContext* context)
     def.user = &blocks;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("capture: %s\n", maudResultName(result));
+    printf("capture: %s\n", maudGetResultName(result));
     CHECK(result == maud_success, "an input stream, granted the microphone");
     if (result != maud_success)
     {
         return;
     }
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0 && atomic_load(&blocks.onControl) == 0,
           "in whole periods, on the IO thread");
@@ -221,12 +221,12 @@ static void TestCapture(maudContext* context)
 static void TestPinnedInput(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
     maudDeviceId ids[8];
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, maud_directionInput, ids, 8, &count) == maud_success,
+    CHECK(maudContext_GetDevices(context, maud_directionInput, ids, 8, &count) == maud_success,
           "the inputs");
     maudDeviceId port = {0, 0};
     char portKey[128] = {0};
@@ -236,10 +236,10 @@ static void TestPinnedInput(maudContext* context)
         char name[128] = {0};
         size_t length = 0;
         maudDeviceInfo info = {0};
-        CHECK(maudGetDeviceKey(context, ids[i], key, sizeof(key) - 1, &length) == maud_success &&
-                  maudGetDeviceName(context, ids[i], name, sizeof(name) - 1, &length) ==
+        CHECK(maudDevice_GetKey(context, ids[i], key, sizeof(key) - 1, &length) == maud_success &&
+                  maudDevice_GetName(context, ids[i], name, sizeof(name) - 1, &length) ==
                       maud_success &&
-                  maudGetDeviceInfo(context, ids[i], &info) == maud_success,
+                  maudDevice_GetInfo(context, ids[i], &info) == maud_success,
               "described");
         printf("input: %s [%s], form %u\n", name, key, (unsigned)info.form);
         if (strncmp(key, "port:", 5) == 0 && port.index1 == 0)
@@ -263,7 +263,7 @@ static void TestPinnedInput(maudContext* context)
     def.user = &blocks;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+              maudStream_Start(context, stream) == maud_success,
           "a stream pinned to it");
     // A platform that skips cycles delivers fewer blocks: it is given
     // longer, while it shows the skips.
@@ -279,13 +279,13 @@ static void TestPinnedInput(maudContext* context)
         // What the stream and the session were doing, for a run that
         // fails here (one in many on CI's simulator).
         maudStreamStatus status = {0};
-        maudResult read = maudGetStreamStatus(context, stream, &status);
+        maudResult read = maudStream_GetStatus(context, stream, &status);
         AVAudioSessionRouteDescription* route = [AVAudioSession sharedInstance].currentRoute;
         NSString* routed = route.inputs.count != 0 ? route.inputs[0].UID : @"none";
         fprintf(stderr,
                 "pinned capture: %u blocks; status %s, started %d, suspension %d, overruns "
                 "%llu; routed input %s\n",
-                (unsigned)atomic_load(&blocks.count), maudResultName(read), status.started,
+                (unsigned)atomic_load(&blocks.count), maudGetResultName(read), status.started,
                 (int)status.suspension, (unsigned long long)status.overruns, routed.UTF8String);
         CHECK(false, "captures");
     }
@@ -328,18 +328,18 @@ static void TestVoicedDuplex(maudContext* context)
     def.user = &duplex;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("voiced duplex: %s\n", maudResultName(result));
+    printf("voiced duplex: %s\n", maudGetResultName(result));
     CHECK(result == maud_success, "a voiced duplex stream");
     if (result != maud_success)
     {
         return;
     }
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.voiceReported &&
               (status.voiceActive & def.voice) == def.voice,
           "echo cancellation and noise suppression reported");
     CHECK((status.voiceActive & maud_voiceGainControl) == 0, "no gain control unasked");
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     // The simulator's voice unit can be slow to settle on a loaded runner.
     POLL_UNTIL(15000, "the voiced duplex's captured input", Drain(context),
                atomic_load(&duplex.withInput) >= 20);

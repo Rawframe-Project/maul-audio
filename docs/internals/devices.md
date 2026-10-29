@@ -22,7 +22,7 @@ A stream carries one reason at a time. Losing its device, or its direction havin
 
 ## The drain
 
-`maudNextNotification` is where the platform's reports become the host's. Every backend that receives reports on a thread of the platform's (WASAPI's notification client, Core Audio's listeners, AAudio's error callback) only raises a flag or queues a record there; the drain takes them in on the host's thread, where the device table may change. PipeWire and PulseAudio go further: their main loops run only inside the drain, without blocking, so a context that is never drained never hears from its server. This keeps the device table single-threaded: it changes only on the thread that uses the context.
+`maudContext_NextNotification` is where the platform's reports become the host's. Every backend that receives reports on a thread of the platform's (WASAPI's notification client, Core Audio's listeners, AAudio's error callback) only raises a flag or queues a record there; the drain takes them in on the host's thread, where the device table may change. PipeWire and PulseAudio go further: their main loops run only inside the drain, without blocking, so a context that is never drained never hears from its server. This keeps the device table single-threaded: it changes only on the thread that uses the context.
 
 The drain also retries. A stream whose platform side failed to open (a device that refuses its format, a service that is restarting) is suspended with `maud_suspendPlatform`, and each drain tries it again once its wait is up ([retry.h](../../src/retry.h)): 250 ms after the first failure, doubling to 4 s, back to 250 ms after a success. A host that drains every frame therefore never repeats the platform's work every frame.
 

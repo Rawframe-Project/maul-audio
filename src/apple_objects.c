@@ -251,7 +251,7 @@ maudResult maudOpenAppleObjects(maudContext* context, maudStreamCore* core, maud
         return maud_errorCapacity;
     }
     // The mixer takes every object.
-    core->period.objectsAvailable = core->period.objectCount;
+    core->period.availableObjectCount = core->period.objectCount;
     if (AudioComponentInstanceNew(component, &objects->mixer) != noErr)
     {
         objects->mixer = nullptr;

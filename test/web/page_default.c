@@ -101,7 +101,7 @@ EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 
 void TestGesture(void)
 {
-    CHECK(maudResumeContext(s_context) == maud_success, "resume from the gesture");
+    CHECK(maudContext_Unlock(s_context) == maud_success, "resume from the gesture");
     s_since = emscripten_get_now();
 }
 
@@ -126,13 +126,13 @@ static void Step_(void* user)
 {
     (void)user;
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
         if (record.kind == maud_notifyRouteChanged && record.direction <= maud_directionInput)
         {
             maudDeviceId standIn = {0, 0};
-            CHECK(maudGetDefaultDevice(s_context, record.direction, maud_roleGeneral, &standIn) ==
-                          maud_success &&
+            CHECK(maudContext_GetDefaultDevice(s_context, record.direction, maud_roleGeneral,
+                                               &standIn) == maud_success &&
                       standIn.index1 == record.device.index1 &&
                       standIn.generation == record.device.generation,
                   "a route change names the Default stand-in");
@@ -180,7 +180,7 @@ int main(void)
     captureDef.direction = maud_directionInput;
     captureDef.callback = Count;
     CHECK(maudCreateStream(s_context, &captureDef, &s_capture) == maud_success &&
-              maudStartStream(s_context, s_capture) == maud_success,
+              maudStream_Start(s_context, s_capture) == maud_success,
           "a capture");
     ListenForGesture();
     printf("MAUD_TEST_WAITING_FOR_GESTURE\n");

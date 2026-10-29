@@ -26,13 +26,13 @@ static float Uniform(float low, float high)
     return low + (high - low) * (float)(s_seed >> 8) / 16777216.0f;
 }
 
-static maudAcousticScene* Build(const maudMesh* meshes, uint32_t count)
+static maudScene* Build(const maudMesh* meshes, uint32_t count)
 {
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = meshes;
     def.meshCount = count;
-    maudAcousticScene* scene = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_success, "a scene");
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
     return scene;
 }
 
@@ -114,7 +114,7 @@ static void TestSoup(void)
         materials[i] = i;
     }
     maudMesh mesh = {vertices, 3 * TRIANGLES, indices, materials, TRIANGLES};
-    maudAcousticScene* scene = Build(&mesh, 1);
+    maudScene* scene = Build(&mesh, 1);
     static maudRay rays[RAYS];
     for (int i = 0; i < RAYS; ++i)
     {
@@ -128,8 +128,8 @@ static void TestSoup(void)
     }
     static uint8_t occluded[RAYS];
     static maudRayHit hits[RAYS];
-    maudSceneAnyHit(rays, RAYS, occluded, scene);
-    maudSceneClosestHit(rays, RAYS, hits, scene);
+    maudFindAnyHit(rays, RAYS, occluded, scene);
+    maudFindClosestHit(rays, RAYS, hits, scene);
     int anyWrong = 0;
     int closestWrong = 0;
     int hitCount = 0;
@@ -158,7 +158,7 @@ static void TestSoup(void)
     CHECK(hitCount > RAYS / 10 && hitCount < RAYS, "a mix of hits and misses");
     CHECK(anyWrong == 0, "any-hit matches brute force");
     CHECK(closestWrong == 0, "closest-hit matches brute force");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 // A unit square at z = 0 as two triangles over the diagonal x = y, and
@@ -176,27 +176,27 @@ static void TestWatertight(void)
                                    4, 9, 10, 4, 10, 11, 4, 11, 12, 4, 12, 5};
     static const uint32_t materials[8] = {0, 1, 2, 3, 4, 5, 6, 7};
     maudMesh meshes[2] = {{vertices, 13, square, materials, 2}, {vertices, 13, fan, materials, 8}};
-    maudAcousticScene* scene = Build(meshes, 2);
+    maudScene* scene = Build(meshes, 2);
     bool all = true;
     for (int k = 0; k <= 64; ++k)
     {
         float p = (float)k / 64.0f;
         maudRay down = {{p, p, 0.5f}, {0.0f, 0.0f, -1.0f}, 0.0f, 1.0f};
         uint8_t hit = 0;
-        maudSceneAnyHit(&down, 1, &hit, scene);
+        maudFindAnyHit(&down, 1, &hit, scene);
         all = all && hit == 1;
         // Slanted rays through the diagonal too.
         maudRay slant = {{p - 0.25f, p, 0.5f}, {0.4472136f, 0.0f, -0.8944272f}, 0.0f, 2.0f};
-        maudSceneAnyHit(&slant, 1, &hit, scene);
+        maudFindAnyHit(&slant, 1, &hit, scene);
         // At the square's corners a slanted ray may land just outside.
         all = all && (hit == 1 || k == 0 || k == 64);
     }
     CHECK(all, "no ray slips through the shared diagonal");
     maudRay centre = {{0.5f, 0.5f, 2.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 1.5f};
     maudRayHit h;
-    maudSceneClosestHit(&centre, 1, &h, scene);
+    maudFindClosestHit(&centre, 1, &h, scene);
     CHECK(fabsf(h.distance - 1.0f) < 1e-6f, "nor through the vertex eight triangles share");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static void TestTiesAndNormals(void)
@@ -207,14 +207,14 @@ static void TestTiesAndNormals(void)
     static const uint32_t first[] = {7};
     static const uint32_t second[] = {9};
     maudMesh meshes[2] = {{v, 3, down, second, 1}, {v, 3, up, first, 1}};
-    maudAcousticScene* scene = Build(meshes, 2);
+    maudScene* scene = Build(meshes, 2);
     maudRay ray = {{0.2f, 0.2f, 1.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 5.0f};
     maudRayHit h;
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(h.distance == 1.0f && h.material == 9, "equal distances: the first listed");
     CHECK(h.normal.x == 0.0f && h.normal.y == 0.0f && h.normal.z == -1.0f,
           "its normal faces its counterclockwise side");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     // Twenty copies of one triangle span several leaves: the tie still
     // goes to the first listed, whichever leaf is reached first.
     static uint32_t copies[60];
@@ -228,9 +228,9 @@ static void TestTiesAndNormals(void)
     }
     maudMesh stack = {v, 3, copies, numbers, 20};
     scene = Build(&stack, 1);
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(h.material == 100, "a tie across leaves: the first listed");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     // A strip of unit squares along x, the square from x = 4 listed
     // first: a ray down the line x = 4 meets that square and the one
     // before it at the same distance, in leaves on either side of the
@@ -260,20 +260,20 @@ static void TestTiesAndNormals(void)
     maudMesh line = {strip, 18, cells, owner, 16};
     scene = Build(&line, 1);
     maudRay seam = {{4.0f, 0.5f, 1.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 5.0f};
-    maudSceneClosestHit(&seam, 1, &h, scene);
+    maudFindClosestHit(&seam, 1, &h, scene);
     CHECK(h.distance == 1.0f && h.material == 4, "a tie on a seam between leaves");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     maudMesh one = {v, 3, up, first, 1};
     scene = Build(&one, 1);
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(h.normal.z == 1.0f, "the other winding, the other side");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
     scene = Build(nullptr, 0);
     uint8_t hit = 9;
-    maudSceneAnyHit(&ray, 1, &hit, scene);
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindAnyHit(&ray, 1, &hit, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(hit == 0 && isinf(h.distance), "an empty scene misses");
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 // A wall of two faces (a box 0.2 m thick) between listener and source,
@@ -287,30 +287,31 @@ static void TestHooks(void)
     static const uint32_t faces[] = {0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6};
     static const uint32_t materials[] = {0, 0, 0, 0};
     maudMesh wall = {v, 8, faces, materials, 4};
-    maudAcousticScene* scene = Build(&wall, 1);
+    maudScene* scene = Build(&wall, 1);
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     maudAcousticMaterial brick = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
-    CHECK(maudSetMaterials(s, &brick, 1) == maud_success, "a material");
+    CHECK(maudSpatializer_SetMaterials(s, &brick, 1) == maud_success, "a material");
     maudSourceDef sd = maudDefaultSourceDef();
     maudSourceId id = {0, 0};
     CHECK(maudCreateSource(s, &sd, &id) == maud_success, "a source");
     maudPose source = {{0.0f, 0.0f, -10.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudDirectResult r = {0};
-    CHECK(maudSetSourcePose(s, id, &source) == maud_success &&
-              maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) > 0 &&
-              maudGetDirectResult(s, id, &r) == maud_success,
+    CHECK(maudSource_SetPose(s, id, &source) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) > 0 &&
+              maudSource_GetDirectResult(s, id, &r) == maud_success,
           "a result");
-    CHECK(r.occlusion == 1.0f && r.surfaces == 2 && fabsf(r.transmission[0] - 0.09f) < 1e-6f &&
+    CHECK(r.occlusion == 1.0f && r.surfaceCount == 2 && fabsf(r.transmission[0] - 0.09f) < 1e-6f &&
               fabsf(r.transmission[2] - 0.01f) < 1e-6f,
           "the wall occludes, its two faces transmit");
     maudDestroySpatializer(s);
-    maudDestroyAcousticScene(scene);
+    maudDestroyScene(scene);
 }
 
 static long s_live;
@@ -350,7 +351,7 @@ static void TestNoMemory(void)
     static const uint32_t indices[3] = {0, 1, 2};
     static const uint32_t materials[1] = {0};
     const maudMesh mesh = {v, 3, indices, materials, 1};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
+    maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
     def.instanceMeshes = &mesh;
@@ -363,8 +364,8 @@ static void TestNoMemory(void)
     {
         s_asked = 0;
         s_refused = false;
-        maudAcousticScene* scene = nullptr;
-        maudResult result = maudCreateAcousticScene(&def, &scene);
+        maudScene* scene = nullptr;
+        maudResult result = maudCreateScene(&def, &scene);
         if (s_refused)
         {
             refusals = refusals && result == maud_errorCapacity && scene == nullptr && s_live == 0;
@@ -372,7 +373,7 @@ static void TestNoMemory(void)
         else
         {
             made = result == maud_success;
-            maudDestroyAcousticScene(scene);
+            maudDestroyScene(scene);
         }
     }
     CHECK(refusals && made && s_live == 0, "every refusal a capacity error, nothing left");
@@ -384,25 +385,25 @@ static void TestMisuse(void)
     static const uint32_t bad[] = {0, 1, 3};
     static const uint32_t good[] = {0, 1, 2};
     static const uint32_t materials[] = {0};
-    maudAcousticSceneDef def = maudDefaultAcousticSceneDef();
-    maudAcousticScene* scene = (maudAcousticScene*)&def;
+    maudSceneDef def = maudDefaultSceneDef();
+    maudScene* scene = (maudScene*)&def;
     maudMesh mesh = {v, 2, good, materials, 1};
     def.meshes = &mesh;
     def.meshCount = 1;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid && scene == nullptr,
+    CHECK(maudCreateScene(&def, &scene) == maud_errorInvalid && scene == nullptr,
           "an index past the vertices");
     mesh = (maudMesh){v, 3, bad, materials, 1};
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid, "another");
+    CHECK(maudCreateScene(&def, &scene) == maud_errorInvalid, "another");
     mesh = (maudMesh){v, 3, good, materials, 1};
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid, "a NaN vertex");
+    CHECK(maudCreateScene(&def, &scene) == maud_errorInvalid, "a NaN vertex");
     mesh = (maudMesh){v, 2, good, nullptr, 1};
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid, "no materials");
+    CHECK(maudCreateScene(&def, &scene) == maud_errorInvalid, "no materials");
     def.meshes = nullptr;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid, "no meshes");
-    def = maudDefaultAcousticSceneDef();
+    CHECK(maudCreateScene(&def, &scene) == maud_errorInvalid, "no meshes");
+    def = maudDefaultSceneDef();
     def.cookie = 0;
-    CHECK(maudCreateAcousticScene(&def, &scene) == maud_errorInvalid, "no cookie");
-    maudDestroyAcousticScene(nullptr);
+    CHECK(maudCreateScene(&def, &scene) == maud_errorInvalid, "no cookie");
+    maudDestroyScene(nullptr);
 }
 
 int main(void)

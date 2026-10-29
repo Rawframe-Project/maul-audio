@@ -36,8 +36,8 @@ static void Miss(const maudRay* rays, uint32_t count, maudRayHit* hits, void* co
     }
 }
 
-static void* Enqueue(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Enqueue(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     task(0, itemCount, taskContext);
@@ -327,37 +327,38 @@ static void TestCalls(void)
     maudSourceId zero = {0, 1};
     maudSourceId past = {def.sourceCapacity + 1, 1};
     maudSourceId unborn = {id.index1, 0};
-    CHECK(maudSetSourcePose(nullptr, id, &pose) == maud_errorInvalid &&
-              maudSetSourcePose(s, zero, &pose) == maud_errorInvalid &&
-              maudSetSourcePose(s, past, &pose) == maud_errorInvalid &&
-              maudSetSourcePose(s, unborn, &pose) == maud_errorInvalid,
+    CHECK(maudSource_SetPose(nullptr, id, &pose) == maud_errorInvalid &&
+              maudSource_SetPose(s, zero, &pose) == maud_errorInvalid &&
+              maudSource_SetPose(s, past, &pose) == maud_errorInvalid &&
+              maudSource_SetPose(s, unborn, &pose) == maud_errorInvalid,
           "a pose for no spatializer, index 0, past the capacity or generation 0");
-    CHECK(maudSetSourcePose(s, id, nullptr) == maud_errorInvalid &&
-              maudSetSourcePose(s, id, &bad) == maud_errorInvalid,
+    CHECK(maudSource_SetPose(s, id, nullptr) == maud_errorInvalid &&
+              maudSource_SetPose(s, id, &bad) == maud_errorInvalid,
           "no pose, or one not finite");
     CHECK(maudDestroySource(nullptr, id) == maud_errorInvalid &&
               maudDestroySource(s, zero) == maud_errorInvalid,
           "destroying no source");
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.3f, {0.0f, 0.0f, 0.0f}};
-    CHECK(maudSetMaterials(nullptr, &wall, 1) == maud_errorInvalid &&
-              maudSetMaterials(s, nullptr, 1) == maud_errorInvalid &&
-              maudSetMaterials(s, nullptr, 0) == maud_success,
+    CHECK(maudSpatializer_SetMaterials(nullptr, &wall, 1) == maud_errorInvalid &&
+              maudSpatializer_SetMaterials(s, nullptr, 1) == maud_errorInvalid &&
+              maudSpatializer_SetMaterials(s, nullptr, 0) == maud_success,
           "materials: none to set them on, none given for a count, none for none");
-    CHECK(maudSimulateDirect(nullptr, &pose) == maud_errorInvalid &&
-              maudSimulateDirect(s, nullptr) == maud_errorInvalid &&
-              maudSimulateDirect(s, &bad) == maud_errorInvalid,
+    CHECK(maudSpatializer_SimulateDirect(nullptr, &pose) == maud_errorInvalid &&
+              maudSpatializer_SimulateDirect(s, nullptr) == maud_errorInvalid &&
+              maudSpatializer_SimulateDirect(s, &bad) == maud_errorInvalid,
           "a direct step without a spatializer or a sound listener");
-    CHECK(maudSimulateReverb(s, nullptr) == maud_errorInvalid, "an estimate without a listener");
+    CHECK(maudSpatializer_SimulateReverb(s, nullptr) == maud_errorInvalid,
+          "an estimate without a listener");
     maudDirectResult direct;
     maudReverbResult reverb;
-    CHECK(maudGetDirectResult(nullptr, id, &direct) == maud_errorInvalid &&
-              maudGetDirectResult(s, id, nullptr) == maud_errorInvalid &&
-              maudGetDirectResult(s, zero, &direct) == maud_errorInvalid &&
-              maudGetDirectResult(s, past, &direct) == maud_errorInvalid &&
-              maudGetDirectResult(s, unborn, &direct) == maud_errorInvalid,
+    CHECK(maudSource_GetDirectResult(nullptr, id, &direct) == maud_errorInvalid &&
+              maudSource_GetDirectResult(s, id, nullptr) == maud_errorInvalid &&
+              maudSource_GetDirectResult(s, zero, &direct) == maud_errorInvalid &&
+              maudSource_GetDirectResult(s, past, &direct) == maud_errorInvalid &&
+              maudSource_GetDirectResult(s, unborn, &direct) == maud_errorInvalid,
           "a direct result for nothing, or for no source");
-    CHECK(maudGetReverbResult(nullptr, &reverb) == maud_errorInvalid &&
-              maudGetReverbResult(s, nullptr) == maud_errorInvalid,
+    CHECK(maudSpatializer_GetReverbResult(nullptr, &reverb) == maud_errorInvalid &&
+              maudSpatializer_GetReverbResult(s, nullptr) == maud_errorInvalid,
           "a reverb result for nothing or nowhere");
     maudQuaternion facing = {0.0f, 0.0f, 0.0f, 1.0f};
     maudQuaternion none = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -368,14 +369,15 @@ static void TestCalls(void)
     float bed2[16];
     float bed3[16];
     float* bed[4] = {bed0, bed1, bed2, bed3};
-    CHECK(maudRenderReflections(nullptr, &facing, send, bed, 16) == maud_errorInvalid &&
-              maudRenderReflections(s, nullptr, send, bed, 16) == maud_errorInvalid &&
-              maudRenderReflections(s, &none, send, bed, 16) == maud_errorInvalid &&
-              maudRenderReflections(s, &endless, send, bed, 16) == maud_errorInvalid,
+    CHECK(maudSpatializer_RenderReflections(nullptr, &facing, send, bed, 16) == maud_errorInvalid &&
+              maudSpatializer_RenderReflections(s, nullptr, send, bed, 16) == maud_errorInvalid &&
+              maudSpatializer_RenderReflections(s, &none, send, bed, 16) == maud_errorInvalid &&
+              maudSpatializer_RenderReflections(s, &endless, send, bed, 16) == maud_errorInvalid,
           "reflections without a spatializer or an orientation that turns");
-    CHECK(maudRenderReflections(s, &facing, nullptr, bed, 16) == maud_errorInvalid &&
-              maudRenderReflections(s, &facing, send, nullptr, 16) == maud_errorInvalid &&
-              maudRenderReflections(s, &facing, nullptr, nullptr, 0) == maud_success,
+    CHECK(maudSpatializer_RenderReflections(s, &facing, nullptr, bed, 16) == maud_errorInvalid &&
+              maudSpatializer_RenderReflections(s, &facing, send, nullptr, 16) ==
+                  maud_errorInvalid &&
+              maudSpatializer_RenderReflections(s, &facing, nullptr, nullptr, 0) == maud_success,
           "frames without a send or a bed refused, none without either taken");
     maudDestroySpatializer(s);
 }

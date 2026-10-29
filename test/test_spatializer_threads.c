@@ -33,12 +33,12 @@ static void* Simulate(void* unused)
         for (int i = 0; i < SOURCES; ++i)
         {
             maudPose pose = {{0.0f, 0.0f, -(float)(step + i)}, {0.0f, 0.0f, 0.0f, 1.0f}};
-            if (maudSetSourcePose(s_spatializer, s_sources[i], &pose) != maud_success)
+            if (maudSource_SetPose(s_spatializer, s_sources[i], &pose) != maud_success)
             {
                 return nullptr;
             }
         }
-        if (maudSimulateDirect(s_spatializer, &listener) != maud_success)
+        if (maudSpatializer_SimulateDirect(s_spatializer, &listener) != maud_success)
         {
             return nullptr;
         }
@@ -65,7 +65,7 @@ int main(void)
     bool ordered = true;
     while (!atomic_load(&s_done) || last < STEPS)
     {
-        uint64_t step = maudLatchResults(s_spatializer);
+        uint64_t step = maudSpatializer_LatchResults(s_spatializer);
         ordered = ordered && step >= last;
         last = step;
         if (step == 0)
@@ -76,7 +76,8 @@ int main(void)
         for (int i = 0; i < SOURCES; ++i)
         {
             maudDirectResult r;
-            whole = whole && maudGetDirectResult(s_spatializer, s_sources[i], &r) == maud_success &&
+            whole = whole &&
+                    maudSource_GetDirectResult(s_spatializer, s_sources[i], &r) == maud_success &&
                     r.distance == (float)(step + (uint64_t)i);
         }
     }

@@ -49,8 +49,8 @@ static void NoHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* 
 }
 
 // Runs a task at once, counting each one.
-static void* Inline(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                    void* userContext)
+static void* Inline(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                    void* taskContext, void* userContext)
 {
     (void)minRange;
     (void)userContext;
@@ -108,17 +108,17 @@ static void TestIds(void)
     CHECK(maudDestroySource(s, b) == maud_success, "destroy");
     CHECK(maudDestroySource(s, b) == maud_errorStale, "twice: stale");
     maudPose pose = {{1.0f, 2.0f, 3.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetSourcePose(s, b, &pose) == maud_errorStale, "a stale pose");
+    CHECK(maudSource_SetPose(s, b, &pose) == maud_errorStale, "a stale pose");
     d = Source(s);
     CHECK(d.index1 == b.index1 && d.generation != b.generation, "the slot again, a new generation");
-    CHECK(maudSetSourcePose(s, b, &pose) == maud_errorStale, "the old id stays stale");
-    CHECK(maudSetSourcePose(s, (maudSourceId){0, 0}, &pose) == maud_errorInvalid, "id 0");
-    CHECK(maudSetSourcePose(s, (maudSourceId){4, 1}, &pose) == maud_errorInvalid, "past the end");
+    CHECK(maudSource_SetPose(s, b, &pose) == maud_errorStale, "the old id stays stale");
+    CHECK(maudSource_SetPose(s, (maudSourceId){0, 0}, &pose) == maud_errorInvalid, "id 0");
+    CHECK(maudSource_SetPose(s, (maudSourceId){4, 1}, &pose) == maud_errorInvalid, "past the end");
     pose.orientation = (maudQuaternion){0.0f, 0.0f, 0.0f, 0.0f};
-    CHECK(maudSetSourcePose(s, a, &pose) == maud_errorInvalid, "a zero orientation");
+    CHECK(maudSource_SetPose(s, a, &pose) == maud_errorInvalid, "a zero orientation");
     pose.orientation.w = 1.0f;
     pose.position.x = NAN;
-    CHECK(maudSetSourcePose(s, a, &pose) == maud_errorInvalid, "NaN");
+    CHECK(maudSource_SetPose(s, a, &pose) == maud_errorInvalid, "NaN");
     maudDestroySpatializer(s);
 }
 
@@ -127,14 +127,14 @@ static void TestGeometry(void)
     maudSpatializer* s = Create(4);
     maudSourceId id = Source(s);
     maudPose source = {{3.0f, 1.0f, -4.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetSourcePose(s, id, &source) == maud_success, "pose");
+    CHECK(maudSource_SetPose(s, id, &source) == maud_success, "pose");
     maudPose listener = {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     long before = s_allocations;
-    CHECK(maudSimulateDirect(s, &listener) == maud_success, "step");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success, "step");
     CHECK(s_allocations == before, "a step allocates nothing");
-    CHECK(maudLatchResults(s) == 1, "the first step");
+    CHECK(maudSpatializer_LatchResults(s) == 1, "the first step");
     maudDirectResult r;
-    CHECK(maudGetDirectResult(s, id, &r) == maud_success, "result");
+    CHECK(maudSource_GetDirectResult(s, id, &r) == maud_success, "result");
     CHECK(fabsf(r.distance - 5.0f) < 1e-5f && Near(r.direction, 0.6f, 0.0f, -0.8f),
           "5 m ahead and to the right");
     CHECK(r.occlusion == 0.0f && r.transmission[0] == 1.0f && r.directivity[2] == 1.0f,
@@ -142,8 +142,11 @@ static void TestGeometry(void)
     // The listener turns 90 degrees left, to face -x: the source is now
     // to its right and behind.
     listener.orientation = Yaw(90.0);
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) == 2, "step");
-    CHECK(maudGetDirectResult(s, id, &r) == maud_success && Near(r.direction, 0.8f, 0.0f, 0.6f),
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) == 2,
+          "step");
+    CHECK(maudSource_GetDirectResult(s, id, &r) == maud_success &&
+              Near(r.direction, 0.8f, 0.0f, 0.6f),
           "the direction turns with the listener");
     // A cardioid source facing the listener, then turned away.
     maudSourceDef cardioid = maudDefaultSourceDef();
@@ -151,21 +154,28 @@ static void TestGeometry(void)
     maudSourceId loud = {0, 0};
     CHECK(maudCreateSource(s, &cardioid, &loud) == maud_success, "a cardioid");
     maudPose ahead = {{0.0f, 1.0f, -2.0f}, Yaw(180.0)};
-    CHECK(maudSetSourcePose(s, loud, &ahead) == maud_success, "pose");
+    CHECK(maudSource_SetPose(s, loud, &ahead) == maud_success, "pose");
     listener.orientation = Yaw(0.0);
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) == 3, "step");
-    CHECK(maudGetDirectResult(s, loud, &r) == maud_success &&
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) == 3,
+          "step");
+    CHECK(maudSource_GetDirectResult(s, loud, &r) == maud_success &&
               fabsf(r.directivity[1] - 1.0f) < 1e-5f,
           "facing the listener: full");
     ahead.orientation = Yaw(0.0);
-    CHECK(maudSetSourcePose(s, loud, &ahead) == maud_success, "pose");
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) == 4, "step");
-    CHECK(maudGetDirectResult(s, loud, &r) == maud_success && fabsf(r.directivity[1]) < 1e-5f,
+    CHECK(maudSource_SetPose(s, loud, &ahead) == maud_success, "pose");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) == 4,
+          "step");
+    CHECK(maudSource_GetDirectResult(s, loud, &r) == maud_success &&
+              fabsf(r.directivity[1]) < 1e-5f,
           "turned away: the cardioid's null");
     maudPose same = listener;
-    CHECK(maudSetSourcePose(s, loud, &same) == maud_success, "pose");
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) == 5, "step");
-    CHECK(maudGetDirectResult(s, loud, &r) == maud_success && r.distance == 0.0f &&
+    CHECK(maudSource_SetPose(s, loud, &same) == maud_success, "pose");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) == 5,
+          "step");
+    CHECK(maudSource_GetDirectResult(s, loud, &r) == maud_success && r.distance == 0.0f &&
               Near(r.direction, 0.0f, 0.0f, -1.0f),
           "at the listener: ahead");
     maudDestroySpatializer(s);
@@ -224,9 +234,10 @@ static void TestOrientations(void)
         listener.orientation.z *= 3.0f;
         listener.orientation.w *= 3.0f;
         maudDirectResult r;
-        CHECK(maudSetSourcePose(s, id, &source) == maud_success &&
-                  maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) > 0 &&
-                  maudGetDirectResult(s, id, &r) == maud_success,
+        CHECK(maudSource_SetPose(s, id, &source) == maud_success &&
+                  maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+                  maudSpatializer_LatchResults(s) > 0 &&
+                  maudSource_GetDirectResult(s, id, &r) == maud_success,
               "a result");
         worst =
             fmax(worst, fabs((double)(r.direction.x - d.x)) + fabs((double)(r.direction.y - d.y)) +
@@ -235,7 +246,7 @@ static void TestOrientations(void)
     CHECK(worst < 1e-4, "directions come back in the listener's frame");
     // An id for a slot never used is stale, not a source.
     maudPose pose = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetSourcePose(s, (maudSourceId){2, 1}, &pose) == maud_errorStale,
+    CHECK(maudSource_SetPose(s, (maudSourceId){2, 1}, &pose) == maud_errorStale,
           "a slot never used holds no source");
     maudDestroySpatializer(s);
 }
@@ -245,31 +256,33 @@ static void TestLatch(void)
     maudSpatializer* s = Create(4);
     maudSourceId a = Source(s);
     maudDirectResult r;
-    CHECK(maudLatchResults(s) == 0, "nothing published");
-    CHECK(maudGetDirectResult(s, a, &r) == maud_errorInvalid, "no step latched");
+    CHECK(maudSpatializer_LatchResults(s) == 0, "nothing published");
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_errorInvalid, "no step latched");
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudPose near = {{0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetSourcePose(s, a, &near) == maud_success, "pose");
-    CHECK(maudSimulateDirect(s, &listener) == maud_success, "step 1");
-    CHECK(maudGetDirectResult(s, a, &r) == maud_errorInvalid, "published but not latched");
-    CHECK(maudLatchResults(s) == 1, "latched");
+    CHECK(maudSource_SetPose(s, a, &near) == maud_success, "pose");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success, "step 1");
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_errorInvalid, "published but not latched");
+    CHECK(maudSpatializer_LatchResults(s) == 1, "latched");
     maudPose far = {{0.0f, 0.0f, -7.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetSourcePose(s, a, &far) == maud_success, "pose");
+    CHECK(maudSource_SetPose(s, a, &far) == maud_success, "pose");
     maudSourceId b = Source(s);
-    CHECK(maudSimulateDirect(s, &listener) == maud_success, "step 2");
-    CHECK(maudSimulateDirect(s, &listener) == maud_success, "step 3");
-    CHECK(maudGetDirectResult(s, a, &r) == maud_success && fabsf(r.distance - 1.0f) < 1e-6f,
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success, "step 2");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success, "step 3");
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_success && fabsf(r.distance - 1.0f) < 1e-6f,
           "the latched step holds until the next latch");
-    CHECK(maudGetDirectResult(s, b, &r) == maud_errorStale, "made after the latched step");
-    CHECK(maudLatchResults(s) == 3, "the newest step, skipping 2");
-    CHECK(maudLatchResults(s) == 3, "and no newer one");
-    CHECK(maudGetDirectResult(s, a, &r) == maud_success && fabsf(r.distance - 7.0f) < 1e-6f,
+    CHECK(maudSource_GetDirectResult(s, b, &r) == maud_errorStale, "made after the latched step");
+    CHECK(maudSpatializer_LatchResults(s) == 3, "the newest step, skipping 2");
+    CHECK(maudSpatializer_LatchResults(s) == 3, "and no newer one");
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_success && fabsf(r.distance - 7.0f) < 1e-6f,
           "the newer pose");
     CHECK(maudDestroySource(s, a) == maud_success, "destroy");
-    CHECK(maudGetDirectResult(s, a, &r) == maud_success, "still held by the latched step");
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) == 4, "step");
-    CHECK(maudGetDirectResult(s, a, &r) == maud_errorStale, "gone from later steps");
-    CHECK(maudGetDirectResult(s, b, &r) == maud_success, "the newer source is there");
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_success, "still held by the latched step");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) == 4,
+          "step");
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_errorStale, "gone from later steps");
+    CHECK(maudSource_GetDirectResult(s, b, &r) == maud_success, "the newer source is there");
     maudDestroySpatializer(s);
 }
 
@@ -293,9 +306,10 @@ static void TestMisuse(void)
     bad.cookie = 0;
     CHECK(maudCreateSource(s, &bad, &id) == maud_errorInvalid, "a source def without its cookie");
     maudPose listener = {{0.0f, INFINITY, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSimulateDirect(s, &listener) == maud_errorInvalid, "an infinite listener");
-    CHECK(maudSimulateDirect(s, nullptr) == maud_errorInvalid, "no listener");
-    CHECK(maudLatchResults(nullptr) == 0, "latch nothing");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_errorInvalid,
+          "an infinite listener");
+    CHECK(maudSpatializer_SimulateDirect(s, nullptr) == maud_errorInvalid, "no listener");
+    CHECK(maudSpatializer_LatchResults(nullptr) == 0, "latch nothing");
     maudDestroySpatializer(s);
     maudDestroySpatializer(nullptr);
 }
@@ -322,7 +336,7 @@ static void TestRounds(void)
     {
         maudSourceId id = {0, 0};
         made = made && maudCreateSource(s, &sphere, &id) == maud_success &&
-               maudSetSourcePose(s, id, &pose) == maud_success;
+               maudSource_SetPose(s, id, &pose) == maud_success;
     }
     CHECK(made, "64 sources of 64 rays");
     // A source that asks for no occlusion, after the round is full,
@@ -331,20 +345,22 @@ static void TestRounds(void)
     none.occlusion = maud_occlusionNone;
     maudSourceId quiet = {0, 0};
     CHECK(maudCreateSource(s, &none, &quiet) == maud_success &&
-              maudSetSourcePose(s, quiet, &pose) == maud_success,
+              maudSource_SetPose(s, quiet, &pose) == maud_success,
           "a source without occlusion");
     const maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && s_rays == 4096 && s_rounds == 1,
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success && s_rays == 4096 &&
+              s_rounds == 1,
           "4096 rays, one round");
     maudSourceDef ray = maudDefaultSourceDef();
     ray.occlusion = maud_occlusionRay;
     maudSourceId last = {0, 0};
     CHECK(maudCreateSource(s, &ray, &last) == maud_success &&
-              maudSetSourcePose(s, last, &pose) == maud_success,
+              maudSource_SetPose(s, last, &pose) == maud_success,
           "a source of one ray");
     s_rays = 0;
     s_rounds = 0;
-    CHECK(maudSimulateDirect(s, &listener) == maud_success && s_rays == 4097 && s_rounds == 2,
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success && s_rays == 4097 &&
+              s_rounds == 2,
           "a ray more, a second round");
     maudDestroySpatializer(s);
 }

@@ -60,7 +60,7 @@ static maudDeviceId AddDevice(maudContext* context, maudDirection direction)
     maudOfflineDeviceDef def = maudDefaultOfflineDeviceDef();
     def.direction = direction;
     maudDeviceId id = {0, 0};
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_success, "add a device");
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_success, "add a device");
     return id;
 }
 
@@ -76,21 +76,21 @@ static void TestFedAsInput(void)
     maudStreamDef def = LoopbackDef(&recorder);
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+              maudStream_Start(context, stream) == maud_success,
           "a loopback stream opens and starts");
     float frames[25];
     for (uint32_t i = 0; i < 25; ++i)
     {
         frames[i] = (float)i;
     }
-    CHECK(maudFeedStream(context, stream, frames, 25) == maud_success, "fed what was played");
+    CHECK(maudStream_Feed(context, stream, frames, 25) == maud_success, "fed what was played");
     CHECK(recorder.blocks == 2 && !recorder.sawOutput, "two input blocks, no output");
     CHECK(recorder.firstSamples[0] == 0.0f && recorder.firstSamples[1] == 10.0f &&
               recorder.positions[1] == 10,
           "the blocks hold the fed frames in order");
     float out[1];
-    CHECK(maudRenderStream(context, stream, out, 1) == maud_errorInvalid, "not rendered");
-    CHECK(maudGetContextMisuse(context) == 1, "rendering one is misuse");
+    CHECK(maudStream_Render(context, stream, out, 1) == maud_errorInvalid, "not rendered");
+    CHECK(maudContext_GetMisuse(context) == 1, "rendering one is misuse");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -98,7 +98,7 @@ static void TestDevices(void)
 {
     maudContext* context = Offline();
     maudDeviceId initial = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &initial) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &initial) ==
               maud_success,
           "the default output");
     maudDeviceId second = AddDevice(context, maud_directionOutput);
@@ -111,24 +111,24 @@ static void TestDevices(void)
     def.device = second;
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "on an output");
     maudStreamStatus status;
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
               SameDevice(status.device, second),
           "it runs on that output");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy it");
     def.device = (maudDeviceId){0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success &&
               SameDevice(status.device, initial),
           "the null id takes the default output");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, second) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success &&
+    CHECK(maudDevice_SetOfflineDefault(context, second, maud_roleGeneral) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success &&
               SameDevice(status.device, second),
           "and follows it");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, microphone) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success &&
+    CHECK(maudDevice_SetOfflineDefault(context, microphone, maud_roleGeneral) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success &&
               SameDevice(status.device, second),
           "not the default input");
-    CHECK(maudGetContextMisuse(context) == 1, "the input device was misuse");
+    CHECK(maudContext_GetMisuse(context) == 1, "the input device was misuse");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
@@ -139,11 +139,11 @@ static void TestLost(void)
 {
     maudContext* context = Offline();
     maudDeviceId initial = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &initial) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &initial) ==
               maud_success,
           "the default output");
     maudDeviceId second = AddDevice(context, maud_directionOutput);
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, second) == maud_success,
+    CHECK(maudDevice_SetOfflineDefault(context, second, maud_roleGeneral) == maud_success,
           "the second output is the default");
     Recorder pinnedHeard = {0};
     Recorder followerHeard = {0};
@@ -152,28 +152,28 @@ static void TestLost(void)
     maudStreamId pinned = {0, 0};
     maudStreamId follower = {0, 0};
     CHECK(maudCreateStream(context, &def, &pinned) == maud_success &&
-              maudStartStream(context, pinned) == maud_success,
+              maudStream_Start(context, pinned) == maud_success,
           "a loopback stream pinned to the second output");
     def = LoopbackDef(&followerHeard);
     CHECK(maudCreateStream(context, &def, &follower) == maud_success &&
-              maudStartStream(context, follower) == maud_success,
+              maudStream_Start(context, follower) == maud_success,
           "one following the default");
-    CHECK(maudRemoveOfflineDevice(context, second) == maud_success, "unplug the second output");
+    CHECK(maudDestroyOfflineDevice(context, second) == maud_success, "unplug the second output");
     maudStreamStatus status;
-    CHECK(maudGetStreamStatus(context, pinned, &status) == maud_success && status.started &&
+    CHECK(maudStream_GetStatus(context, pinned, &status) == maud_success && status.started &&
               status.suspension == maud_suspendDeviceLost && status.device.index1 == 0,
           "the pinned one is lost");
-    CHECK(maudGetStreamStatus(context, follower, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(context, follower, &status) == maud_success &&
               status.suspension == maud_suspendNone && SameDevice(status.device, initial),
           "the follower moved to the default output left");
     float played[8 * 480] = {0};
-    CHECK(maudFeedStream(context, pinned, played, 480) == maud_errorState,
+    CHECK(maudStream_Feed(context, pinned, played, 480) == maud_errorState,
           "the lost one is fed no more");
-    CHECK(maudFeedStream(context, follower, played, 480) == maud_success &&
+    CHECK(maudStream_Feed(context, follower, played, 480) == maud_success &&
               followerHeard.blocks > 0 && pinnedHeard.blocks == 0,
           "the follower is");
-    CHECK(maudRemoveOfflineDevice(context, initial) == maud_success &&
-              maudGetStreamStatus(context, follower, &status) == maud_success &&
+    CHECK(maudDestroyOfflineDevice(context, initial) == maud_success &&
+              maudStream_GetStatus(context, follower, &status) == maud_success &&
               status.suspension == maud_suspendNoDevice,
           "with no output left, it waits for one");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -193,7 +193,7 @@ static void TestRefusals(void)
     def.share = maud_shareExclusive;
     def.device = output;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported, "exclusive");
-    CHECK(maudGetContextMisuse(context) == 0, "unsupported is not misuse");
+    CHECK(maudContext_GetMisuse(context) == 0, "unsupported is not misuse");
     def = LoopbackDef(&recorder);
     def.voice = maud_voiceEchoCancellation;
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "voice processing");
@@ -211,13 +211,13 @@ static void TestRefusals(void)
     def = LoopbackDef(&recorder);
     def.direction = (maudDirection)(maud_directionLoopback + 1);
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "a direction past it");
-    CHECK(maudGetContextMisuse(context) == 5, "each invalid def is misuse");
+    CHECK(maudContext_GetMisuse(context) == 5, "each invalid def is misuse");
     uint32_t count = 0;
     maudDeviceId id = {0, 0};
-    CHECK(maudGetDevices(context, maud_directionLoopback, nullptr, 0, &count) ==
+    CHECK(maudContext_GetDevices(context, maud_directionLoopback, nullptr, 0, &count) ==
                   maud_errorInvalid &&
-              maudGetDefaultDevice(context, maud_directionLoopback, maud_roleGeneral, &id) ==
-                  maud_errorInvalid,
+              maudContext_GetDefaultDevice(context, maud_directionLoopback, maud_roleGeneral,
+                                           &id) == maud_errorInvalid,
           "no device is a loopback one");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }

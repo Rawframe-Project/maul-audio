@@ -63,7 +63,7 @@ static void Respond(const maudDirectParams* params)
     maudDirectEffect* effect = Create();
     memset(s_impulse, 0, sizeof(s_impulse));
     s_impulse[0] = 1.0f;
-    CHECK(maudProcessDirect(effect, params, s_impulse, s_response, TAPS) == maud_success,
+    CHECK(maudDirectEffect_Process(effect, params, s_impulse, s_response, TAPS) == maud_success,
           "process");
     maudDestroyDirectEffect(effect);
 }
@@ -115,11 +115,11 @@ static void TestPassThrough(void)
     {
         in[n] = sinf(0.1f * (float)n);
     }
-    CHECK(maudProcessDirect(effect, &params, in, out, 256) == maud_success &&
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 256) == maud_success &&
               memcmp(in, out, sizeof(in)) == 0,
           "default params pass the signal unchanged");
     params.gain = 0.5f;
-    CHECK(maudProcessDirect(effect, &params, in, out, 256) == maud_success, "process");
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 256) == maud_success, "process");
     bool ramped = true;
     for (int n = 0; n < 256; ++n)
     {
@@ -141,7 +141,8 @@ static void TestPassThrough(void)
     params.transmission[0] = 0.3f;
     params.transmission[1] = 0.1f;
     params.transmission[2] = 0.02f;
-    CHECK(maudProcessDirect(effect, &params, high, out, 256) == maud_success, "behind a wall");
+    CHECK(maudDirectEffect_Process(effect, &params, high, out, 256) == maud_success,
+          "behind a wall");
     float loudest = 0.0f;
     for (int n = 224; n < 256; ++n)
     {
@@ -206,14 +207,14 @@ static void TestNoClick(void)
     }
     maudDirectParams params = maudDefaultDirectParams();
     long before = s_allocations;
-    CHECK(maudProcessDirect(effect, &params, in, out, 960) == maud_success, "process");
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 960) == maud_success, "process");
     params.occlusion = 1.0f;
     params.transmission[0] = 0.5f;
     params.transmission[1] = 0.1f;
     params.transmission[2] = 0.02f;
     for (int at = 960; at < 4800; at += 480)
     {
-        CHECK(maudProcessDirect(effect, &params, in + at, out + at, 480) == maud_success,
+        CHECK(maudDirectEffect_Process(effect, &params, in + at, out + at, 480) == maud_success,
               "process");
     }
     CHECK(s_allocations == before, "processing allocates nothing");
@@ -248,7 +249,7 @@ static void Run(maudDirectEffect* effect, const maudDirectParams* params, int ca
             seed = seed * 1664525u + 1013904223u;
             noise[n] = (float)(int32_t)(seed >> 8) / 8388608.0f - 1.0f;
         }
-        CHECK(maudProcessDirect(effect, params, noise, out, 480) == maud_success, "process");
+        CHECK(maudDirectEffect_Process(effect, params, noise, out, 480) == maud_success, "process");
     }
 }
 
@@ -372,15 +373,16 @@ static void TestSilent(void)
     static float expected[TAPS];
     memset(s_impulse, 0, sizeof(s_impulse));
     s_impulse[0] = 1.0f;
-    bool silent = maudProcessDirect(after, &quiet, s_impulse, out, TAPS) == maud_success;
+    bool silent = maudDirectEffect_Process(after, &quiet, s_impulse, out, TAPS) == maud_success;
     for (int i = 0; i < TAPS; ++i)
     {
         silent = silent && out[i] == 0.0f;
     }
     CHECK(silent, "at the threshold, silence");
-    CHECK(maudProcessDirect(reference, &none, s_impulse, expected, TAPS) == maud_success &&
-              maudProcessDirect(after, &full, s_impulse, out, TAPS) == maud_success &&
-              maudProcessDirect(reference, &full, s_impulse, expected, TAPS) == maud_success &&
+    CHECK(maudDirectEffect_Process(reference, &none, s_impulse, expected, TAPS) == maud_success &&
+              maudDirectEffect_Process(after, &full, s_impulse, out, TAPS) == maud_success &&
+              maudDirectEffect_Process(reference, &full, s_impulse, expected, TAPS) ==
+                  maud_success &&
               memcmp(out, expected, sizeof(out)) == 0,
           "and the filters flat after it");
     maudDestroyDirectEffect(after);
@@ -394,28 +396,31 @@ static void TestMisuse(void)
     float in[8] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
     float out[8] = {9.0f, 9.0f, 9.0f, 9.0f, 9.0f, 9.0f, 9.0f, 9.0f};
     params.occlusion = 1.5f;
-    CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_errorInvalid, "occlusion 1.5");
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 8) == maud_errorInvalid,
+          "occlusion 1.5");
     params = maudDefaultDirectParams();
     params.gain = -1.0f;
-    CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_errorInvalid, "a negative gain");
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 8) == maud_errorInvalid,
+          "a negative gain");
     params.gain = 0.0f;
-    CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_success, "a gain of 0");
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 8) == maud_success, "a gain of 0");
     for (int n = 0; n < 8; ++n)
     {
         out[n] = 9.0f;
     }
     params = maudDefaultDirectParams();
     params.distance = INFINITY;
-    CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_errorInvalid, "infinite");
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 8) == maud_errorInvalid, "infinite");
     params = maudDefaultDirectParams();
     params.transmission[2] = NAN;
-    CHECK(maudProcessDirect(effect, &params, in, out, 8) == maud_errorInvalid, "NaN");
+    CHECK(maudDirectEffect_Process(effect, &params, in, out, 8) == maud_errorInvalid, "NaN");
     CHECK(out[0] == 9.0f, "nothing written by a bad call");
-    CHECK(maudProcessDirect(effect, nullptr, in, out, 8) == maud_errorInvalid, "no params");
+    CHECK(maudDirectEffect_Process(effect, nullptr, in, out, 8) == maud_errorInvalid, "no params");
     params = maudDefaultDirectParams();
-    CHECK(maudProcessDirect(effect, &params, nullptr, nullptr, 0) == maud_success, "no frames");
-    CHECK(maudResetDirectEffect(nullptr) == maud_errorInvalid, "reset nothing");
-    CHECK(maudResetDirectEffect(effect) == maud_success, "reset");
+    CHECK(maudDirectEffect_Process(effect, &params, nullptr, nullptr, 0) == maud_success,
+          "no frames");
+    CHECK(maudDirectEffect_Reset(nullptr) == maud_errorInvalid, "reset nothing");
+    CHECK(maudDirectEffect_Reset(effect) == maud_success, "reset");
     maudDestroyDirectEffect(effect);
     maudDestroyDirectEffect(nullptr);
     maudDirectEffectDef def = maudDefaultDirectEffectDef();
