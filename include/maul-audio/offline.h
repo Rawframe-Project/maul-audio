@@ -136,7 +136,7 @@ extern "C"
     /// @param device        An output device.
     /// @param spatializer   Its new state.
     /// @param headTracking  Whether it can follow the listener's head.
-    /// @param objects       The positioned objects it takes; 0 unless on.
+    /// @param objectCount   The positioned objects it takes; 0 unless on.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL context, an unknown state, objects while not on, or an
     ///         input device; `maud_errorUnsupported` on a context that is not
@@ -146,7 +146,7 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudDevice_SetOfflineSpatializer(
         maudContext* context, maudDeviceId device, maudPlatformSpatializer spatializer,
-        bool headTracking, uint32_t objects);
+        bool headTracking, uint32_t objectCount);
 
 #ifdef __cplusplus
 }

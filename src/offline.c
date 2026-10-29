@@ -180,14 +180,14 @@ maudResult maudDevice_SetOfflineFormat(maudContext* context, maudDeviceId device
 
 maudResult maudDevice_SetOfflineSpatializer(maudContext* context, maudDeviceId device,
                                             maudPlatformSpatializer spatializer, bool headTracking,
-                                            uint32_t objects)
+                                            uint32_t objectCount)
 {
     maudResult result = CheckOffline(context);
     if (result != maud_success)
     {
         return result;
     }
-    if (spatializer > maud_spatializerOn || (objects > 0 && spatializer != maud_spatializerOn))
+    if (spatializer > maud_spatializerOn || (objectCount > 0 && spatializer != maud_spatializerOn))
     {
         maudCountMisuse(context);
         return maud_errorInvalid;
@@ -205,7 +205,7 @@ maudResult maudDevice_SetOfflineSpatializer(maudContext* context, maudDeviceId d
     maudDeviceInfo info = slot->info;
     info.spatializer = spatializer;
     info.headTracking = headTracking;
-    info.spatialObjectCount = objects;
+    info.spatialObjectCount = objectCount;
     maudSetDeviceSpatializer(context, slot, &info);
     return maud_success;
 }

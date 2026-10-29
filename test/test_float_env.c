@@ -335,7 +335,7 @@ static uint64_t Simulate(bool spread)
     // Behind the wall; in sight, off the plane z = 0 by a subnormal,
     // which a host's denormals-are-zero would read as 0.
     maudSourceDef sd = maudDefaultSourceDef();
-    sd.pathing = true;
+    sd.enablePathing = true;
     maudSourceId sources[2] = {{0, 0}, {0, 0}};
     const maudPose at[2] = {{{6.0f, 1.5f, -2.0f}, {0.0f, 0.0f, 0.0f, 1.0f}},
                             {{2.5f, 1.5f, 1e-39f}, {0.0f, 0.0f, 0.0f, 1.0f}}};

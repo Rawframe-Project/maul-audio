@@ -183,7 +183,7 @@ static World Build(bool reversed, float transmission)
     {
         int i = order[n];
         maudSourceDef sd = maudDefaultSourceDef();
-        sd.pathing = i != 1;
+        sd.enablePathing = i != 1;
         maudPose pose = {at[i], {0.0f, 0.0f, 0.0f, 1.0f}};
         if (s_cardioid && i == 0)
         {

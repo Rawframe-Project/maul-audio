@@ -48,8 +48,8 @@ maudSourceDef maudDefaultSourceDef(void)
         .occlusion = maud_occlusionRay,
         .occlusionRadius = 1.0f,
         .occlusionSamples = 32,
-        .transmission = true,
-        .pathing = true,
+        .enableTransmission = true,
+        .enablePathing = true,
     };
 }
 
@@ -368,8 +368,8 @@ static MAUD_NOINLINE maudResult CreateSource(maudSpatializer* spatializer, const
     slot->occlusion = def->occlusion;
     slot->radius = def->occlusionRadius;
     slot->samples = def->occlusionSamples;
-    slot->transmission = def->transmission;
-    slot->pathing = def->pathing;
+    slot->transmission = def->enableTransmission;
+    slot->pathing = def->enablePathing;
     *sourceOut = (maudSourceId){index + 1, slot->generation};
     return maud_success;
 }

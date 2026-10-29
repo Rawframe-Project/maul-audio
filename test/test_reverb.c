@@ -557,7 +557,7 @@ static void Sequence(bool tail, const maudReverbParams* params, const int* impul
                      uint32_t stop, uint32_t start)
 {
     maudReverbDef def = maudDefaultReverbDef();
-    def.tail = tail;
+    def.enableTail = tail;
     def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
     maudReverb* r = nullptr;
     CHECK(maudCreateReverb(&def, &r) == maud_success, "a reverb with a tail");

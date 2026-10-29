@@ -186,7 +186,7 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     }
     *r = (maudReverb){.allocator = def->allocator,
                       .rate = (double)def->sampleRate,
-                      .networkCount = def->tail ? 2u : 1u};
+                      .networkCount = def->enableTail ? 2u : 1u};
     for (uint32_t k = 0; k < r->networkCount; ++k)
     {
         Network* n = &r->networks[k];

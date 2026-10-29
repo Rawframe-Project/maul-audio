@@ -234,7 +234,7 @@ static void Steps(maudScene* scene)
 static void Pathing(maudSpatializer* s, maudProbeSetId set)
 {
     maudSourceDef sd = maudDefaultSourceDef();
-    sd.pathing = true;
+    sd.enablePathing = true;
     maudSourceId sources[PATHED];
     for (int i = 0; i < PATHED; ++i)
     {

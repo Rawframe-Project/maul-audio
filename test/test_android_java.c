@@ -433,7 +433,7 @@ static void* Main(void* unused)
     def.androidContext = s_run.activity;
     maudContext* context = nullptr;
     maudResult result = maudCreateContext(&def, &context);
-    printf("context: %s\n", maudResultName(result));
+    printf("context: %s\n", maudGetResultName(result));
     CHECK(result == maud_success, "a context with the Java half");
     if (context != nullptr)
     {

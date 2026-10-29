@@ -835,7 +835,7 @@ static void TestObjects(maudContext* context)
     def.user = &placed;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("object stream: %s, the endpoint takes %u objects\n", maudResultName(result),
+    printf("object stream: %s, the endpoint takes %u objects\n", maudGetResultName(result),
            info.spatialObjectCount);
     CHECK(result == maud_success && maudStream_Start(context, stream) == maud_success,
           "an object stream runs");
@@ -872,7 +872,7 @@ static void TestExclusive(maudContext* context)
     def.callback = CountBlocks;
     def.user = &blocks;
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("exclusive output: %s\n", maudResultName(result));
+    printf("exclusive output: %s\n", maudGetResultName(result));
     if (UnderWine())
     {
         CHECK(result == maud_errorUnsupported || result == maud_errorPlatform,

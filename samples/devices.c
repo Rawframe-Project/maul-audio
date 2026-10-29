@@ -327,7 +327,7 @@ int main(int argc, char** argv)
     maudResult result = maudCreateContext(&def, &s_context);
     if (result != maud_success)
     {
-        fprintf(stderr, "no context: %s\n", maudResultName(result));
+        fprintf(stderr, "no context: %s\n", maudGetResultName(result));
         return 1;
     }
     ListDevices(s_context);
@@ -343,14 +343,14 @@ int main(int argc, char** argv)
     result = Open(maud_directionOutput, output, Tone, &s_stream);
     if (result != maud_success)
     {
-        fprintf(stderr, "no stream: %s\n", maudResultName(result));
+        fprintf(stderr, "no stream: %s\n", maudGetResultName(result));
         (void)maudDestroyContext(s_context);
         return 1;
     }
     if (capture && (result = Open(maud_directionInput, (maudDeviceId){0, 0}, Capture,
                                   &s_capture)) != maud_success)
     {
-        fprintf(stderr, "no capture: %s\n", maudResultName(result));
+        fprintf(stderr, "no capture: %s\n", maudGetResultName(result));
         s_capture = (maudStreamId){0, 0};
     }
     printf("Playing a tone on %s%s for %d s.\n",

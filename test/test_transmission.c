@@ -126,7 +126,7 @@ static maudDirectResult Result(maudSpatializer* s, maudSourceId id, float x, flo
 static maudSourceId Source(maudSpatializer* s, bool transmission)
 {
     maudSourceDef def = maudDefaultSourceDef();
-    def.transmission = transmission;
+    def.enableTransmission = transmission;
     maudSourceId id = {0, 0};
     CHECK(maudCreateSource(s, &def, &id) == maud_success, "a source");
     return id;

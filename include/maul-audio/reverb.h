@@ -40,7 +40,7 @@ extern "C"
         // Whether it renders a slower second slope (the params' tail):
         // a second network, which doubles its memory and, while a tail
         // sounds, its work. False by default.
-        bool tail;
+        bool enableTail;
         maudAllocator allocator;
     } maudReverbDef;
 

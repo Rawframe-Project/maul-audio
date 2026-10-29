@@ -229,10 +229,10 @@ extern "C"
         uint32_t occlusionSamples;
         // Whether an occluded path's transmission is walked through the
         // closest-hit query.
-        bool transmission;
+        bool enableTransmission;
         // Whether an occluded source looks for a path around what hides
         // it, over the probe set in use (maudProbeSet_UseForPathing).
-        bool pathing;
+        bool enablePathing;
     } maudSourceDef;
 
     // How to create a probe set: probes at the host's points or, without

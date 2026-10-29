@@ -16,7 +16,7 @@ returns a constant, a default def, a name, a count or a table entry:
     maudGetLayoutSpeaker
     maudGetLayoutSpeakerPosition
     maudGetVersion
-    maudResultName
+    maudGetResultName
 
 copies stored values, or stores an id, a flag or bytes, and computes no floats:
     maudScene_GetMisuse

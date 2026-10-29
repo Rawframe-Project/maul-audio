@@ -142,7 +142,7 @@ if (result == maud_success)
 maudDestroyReverb(reverb);
 ```
 
-Coupled spaces (a hall behind an open door) decay in two slopes. A reverb made with `tail` on also renders the slower one from `tailTime` and `tailLevel`, at twice the memory.
+Coupled spaces (a hall behind an open door) decay in two slopes. A reverb made with `enableTail` set also renders the slower one from `tailTime` and `tailLevel`, at twice the memory.
 
 ## What every effect shares
 

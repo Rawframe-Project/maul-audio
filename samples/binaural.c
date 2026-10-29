@@ -108,7 +108,7 @@ int main(int argc, char** argv)
     free(bytes);
     if (result != maud_success)
     {
-        fprintf(stderr, "the set does not load: %s\n", maudResultName(result));
+        fprintf(stderr, "the set does not load: %s\n", maudGetResultName(result));
         return 1;
     }
     maudBinauralDef def = maudDefaultBinauralDef();
@@ -118,7 +118,7 @@ int main(int argc, char** argv)
     FILE* out = result == maud_success ? fopen(argv[2], "wb") : nullptr;
     if (out == nullptr)
     {
-        fprintf(stderr, "cannot start: %s\n", maudResultName(result));
+        fprintf(stderr, "cannot start: %s\n", maudGetResultName(result));
         maudDestroyBinaural(effect);
         maudDestroyHrtf(hrtf);
         return 1;
@@ -156,7 +156,7 @@ int main(int argc, char** argv)
     maudDestroyHrtf(hrtf);
     if (result != maud_success)
     {
-        fprintf(stderr, "rendering failed: %s\n", maudResultName(result));
+        fprintf(stderr, "rendering failed: %s\n", maudGetResultName(result));
         return 1;
     }
     printf("wrote %s: %d s, a source circling once every 4 s\n", argv[2], SECONDS);

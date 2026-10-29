@@ -47,7 +47,7 @@ static double Run(const maudHrtf* hrtf, bool moving, bool nearField)
     maudBinauralDef def = maudDefaultBinauralDef();
     def.hrtf = hrtf;
     def.maxFrames = FRAMES;
-    def.nearField = nearField;
+    def.enableNearField = nearField;
     maudBinaural* effect = nullptr;
     if (maudCreateBinaural(&def, &effect) != maud_success)
     {
@@ -259,7 +259,7 @@ static void RunSilent(const maudHrtf* hrtf, Effect which, const char* name, cons
     maudBinauralDef binauralDef = maudDefaultBinauralDef();
     binauralDef.hrtf = hrtf;
     binauralDef.maxFrames = FRAMES;
-    binauralDef.nearField = true;
+    binauralDef.enableNearField = true;
     maudDirectEffectDef directDef = maudDefaultDirectEffectDef();
     maudReverbDef reverbDef = maudDefaultReverbDef();
     Effects e = {nullptr, nullptr, nullptr};

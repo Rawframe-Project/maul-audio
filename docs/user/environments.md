@@ -36,7 +36,7 @@ With the task hooks (`enqueueTask` and `finishTask`) set, a step spreads its ray
 
 `maudCreateSource` makes a source with a directivity pattern and an occlusion method: a single ray from the listener, or a sphere of sample points (volumetric), which lets a source fade as it moves behind an edge instead of switching. `maudSource_SetPose` places it.
 
-`maudSpatializer_SimulateDirect` runs a direct step for a listener. For each source it finds the distance, the direction in the listener's frame, the directivity, the occlusion and, for occluded sources that ask, the transmission through each surface crossed (up to `maxSurfaces`). A source with `pathing` on that is occluded looks for a path around the obstacle over the probe set in use; when one is found, the result's distance is the path's length and its direction blends the path's with the straight line's.
+`maudSpatializer_SimulateDirect` runs a direct step for a listener. For each source it finds the distance, the direction in the listener's frame, the directivity, the occlusion and, for occluded sources that ask, the transmission through each surface crossed (up to `maxSurfaces`). A source with `enablePathing` set that is occluded looks for a path around the obstacle over the probe set in use; when one is found, the result's distance is the path's length and its direction blends the path's with the straight line's.
 
 The result's fields map onto `maudDirectParams` and `maudBinauralParams`; the program applies its own distance curve to the distance.
 

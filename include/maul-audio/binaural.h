@@ -40,7 +40,7 @@ extern "C"
         // head's near field (a rigid sphere of headRadius, against the
         // distance the set was measured at) and looking its response up
         // in the direction it sees the source from (parallax).
-        bool nearField;
+        bool enableNearField;
         // The head's radius in metres, 0.05 to 0.15.
         float headRadius;
         maudAllocator allocator;
@@ -83,7 +83,7 @@ extern "C"
         def.cookie = MAUD_BINAURAL_DEF_COOKIE;
         def.version = MAUD_ABI_VERSION;
         def.maxFrames = 1024;
-        def.nearField = true;
+        def.enableNearField = true;
         def.headRadius = 0.0875f;
         return def;
     }

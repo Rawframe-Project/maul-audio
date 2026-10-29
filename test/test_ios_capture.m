@@ -181,7 +181,7 @@ static void TestCapture(maudContext* context)
     def.user = &blocks;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("capture: %s\n", maudResultName(result));
+    printf("capture: %s\n", maudGetResultName(result));
     CHECK(result == maud_success, "an input stream, granted the microphone");
     if (result != maud_success)
     {
@@ -285,7 +285,7 @@ static void TestPinnedInput(maudContext* context)
         fprintf(stderr,
                 "pinned capture: %u blocks; status %s, started %d, suspension %d, overruns "
                 "%llu; routed input %s\n",
-                (unsigned)atomic_load(&blocks.count), maudResultName(read), status.started,
+                (unsigned)atomic_load(&blocks.count), maudGetResultName(read), status.started,
                 (int)status.suspension, (unsigned long long)status.overruns, routed.UTF8String);
         CHECK(false, "captures");
     }
@@ -328,7 +328,7 @@ static void TestVoicedDuplex(maudContext* context)
     def.user = &duplex;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("voiced duplex: %s\n", maudResultName(result));
+    printf("voiced duplex: %s\n", maudGetResultName(result));
     CHECK(result == maud_success, "a voiced duplex stream");
     if (result != maud_success)
     {

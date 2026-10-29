@@ -154,7 +154,7 @@ static bool Destroy(maudContext* context, maudStreamId stream)
     maudResult result = maudDestroyStream(context, stream);
     if (result != maud_success)
     {
-        fprintf(stderr, "maudDestroyStream: %s\n", maudResultName(result));
+        fprintf(stderr, "maudDestroyStream: %s\n", maudGetResultName(result));
     }
     return result == maud_success;
 }
@@ -350,7 +350,7 @@ static void TestExclusive(maudContext* context)
     blocks.periodFrames = 256;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("exclusive: %s\n", maudResultName(result));
+    printf("exclusive: %s\n", maudGetResultName(result));
     CHECK(result == maud_success || result == maud_errorUnsupported, "granted or refused");
     CHECK(!Emulated() || result == maud_errorUnsupported, "refused where AAudio only shares");
     if (result == maud_success)
@@ -389,7 +389,7 @@ static void TestCapture(maudContext* context)
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
     bool required = getenv("MAUD_REQUIRE_CAPTURE") != nullptr;
-    printf("capture: %s\n", maudResultName(result));
+    printf("capture: %s\n", maudGetResultName(result));
     CHECK(result == maud_success || (!required && result == maud_errorPlatform),
           "an input stream, or the platform's refusal");
     if (result != maud_success)

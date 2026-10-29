@@ -241,7 +241,7 @@ static void OpenWalk(Render* r)
     sourceDef.occlusion = maud_occlusionVolumetric;
     sourceDef.occlusionRadius = 0.5f;
     sourceDef.occlusionSamples = 64;
-    sourceDef.transmission = true;
+    sourceDef.enableTransmission = true;
     CHECK(maudCreateSource(r->spatializer, &sourceDef, &r->source) == maud_success, "a source");
     maudDirectEffectDef directDef = maudDefaultDirectEffectDef();
     CHECK(maudCreateDirectEffect(&directDef, &r->direct) == maud_success, "a direct effect");

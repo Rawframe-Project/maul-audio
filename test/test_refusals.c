@@ -100,7 +100,7 @@ static void Sweep(const char* what, MakeFn* make, UndoFn* undo)
             if (result != maud_errorCapacity || refusing.live != 0)
             {
                 printf("%s: block %d refused gave %s, %d held\n", what, failAt,
-                       maudResultName(result), refusing.live);
+                       maudGetResultName(result), refusing.live);
                 clean = false;
             }
         }
@@ -198,7 +198,7 @@ static void UndoDirectEffect(void* made)
 static maudResult MakeReverb(const maudAllocator* allocator, void* made)
 {
     maudReverbDef def = maudDefaultReverbDef();
-    def.tail = true;
+    def.enableTail = true;
     def.allocator = *allocator;
     return maudCreateReverb(&def, made);
 }

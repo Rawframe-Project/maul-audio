@@ -215,7 +215,7 @@ static bool Destroy(maudContext* context, maudStreamId stream)
     maudResult result = maudDestroyStream(context, stream);
     if (result != maud_success)
     {
-        fprintf(stderr, "maudDestroyStream: %s\n", maudResultName(result));
+        fprintf(stderr, "maudDestroyStream: %s\n", maudGetResultName(result));
     }
     return result == maud_success;
 }

@@ -167,7 +167,7 @@ maudResult maudCreateBinaural(const maudBinauralDef* def, maudBinaural** effectO
         .taps = hrtf->taps,
         .fadeFrames = fade < 1.0 ? 1u : (uint32_t)fade,
         .reach = reach,
-        .nearField = def->nearField,
+        .nearField = def->enableNearField,
         .headRadius = def->headRadius,
         .history = (float*)(block + parts.history),
         .ears = {(float*)(block + parts.ears[0]), (float*)(block + parts.ears[1])},

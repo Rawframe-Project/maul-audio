@@ -368,7 +368,7 @@ static void TestCapture(maudContext* context)
     def.user = &blocks;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("capture: %s\n", maudResultName(result));
+    printf("capture: %s\n", maudGetResultName(result));
     CHECK(result == maud_success || result == maud_errorPlatform, "an input, or a refusal");
     if (result != maud_success)
     {
@@ -426,7 +426,7 @@ static void TestObjects(maudContext* context)
     def.user = &placed;
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
-    printf("object stream: %s\n", maudResultName(result));
+    printf("object stream: %s\n", maudGetResultName(result));
     CHECK(result == maud_success && maudStream_Start(context, stream) == maud_success,
           "an object stream runs");
     POLL_UNTIL(5000, "the object stream's blocks", (void)0, atomic_load(&placed.count) >= 20);

@@ -175,7 +175,7 @@ static maudBinaural* CreateWith(const maudHrtf* hrtf, uint32_t maxFrames, bool n
     maudBinauralDef def = maudDefaultBinauralDef();
     def.hrtf = hrtf;
     def.maxFrames = maxFrames;
-    def.nearField = nearField;
+    def.enableNearField = nearField;
     def.allocator = (maudAllocator){CountedAlloc, CountedFree, nullptr};
     maudBinaural* effect = nullptr;
     CHECK(maudCreateBinaural(&def, &effect) == maud_success, "an effect");
