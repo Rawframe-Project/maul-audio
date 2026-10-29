@@ -431,13 +431,14 @@ static maudResult Run(maudBinaural* effect, const maudBinauralParams* params, co
 }
 
 maudResult maudBinaural_Process(maudBinaural* effect, const maudBinauralParams* params,
-                                const float* in, float* const samplesOut[2], uint32_t frames)
+                                const float* samples, float* const samplesOut[2],
+                                uint32_t frameCount)
 {
-    maudResult result = Run(effect, params, in, samplesOut, frames);
+    maudResult result = Run(effect, params, samples, samplesOut, frameCount);
     if (result != maud_success)
     {
         uint32_t most = effect != nullptr ? effect->maxFrames : MAUD_MAX_BINAURAL_FRAMES;
-        Silence(samplesOut, 2, frames < most ? frames : most);
+        Silence(samplesOut, 2, frameCount < most ? frameCount : most);
     }
     return result;
 }
