@@ -77,10 +77,10 @@ An object stream renders with `maudStream_RenderObjects`, the caller standing in
 |---|---|
 | `maudCreateOfflineDevice` | A device was plugged in. It becomes the default if its direction had none, and streams waiting for one move to it. |
 | `maudDestroyOfflineDevice` | A device was unplugged. Streams following the default move; streams made on it are suspended. |
-| `maudDevice_SetOfflineDefault` | The user picked another default. |
-| `maudDevice_SetOfflineForm` | Headphones were plugged into the device's jack. |
-| `maudDevice_SetOfflineFormat` | The user picked another format in the system's settings. |
-| `maudDevice_SetOfflineSpatializer` | The user turned a platform spatializer on. |
+| `maudOfflineDevice_SetDefault` | The user picked another default. |
+| `maudOfflineDevice_SetForm` | Headphones were plugged into the device's jack. |
+| `maudOfflineDevice_SetFormat` | The user picked another format in the system's settings. |
+| `maudOfflineDevice_SetSpatializer` | The user turned a platform spatializer on. |
 
 Each posts the notifications a real change would, in the same order, so a program's handling of device churn can be tested on every platform. An offline device runs at any rate from 8,000 to 384,000 without conversion; there is no platform converter, so `maud_ratePlatformConverted` is refused.
 

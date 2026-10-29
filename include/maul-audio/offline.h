@@ -87,7 +87,7 @@ extern "C"
     ///         rendering one of the context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudDevice_SetOfflineDefault(maudContext* context,
+    MAUD_NODISCARD MAUD_API maudResult maudOfflineDevice_SetDefault(maudContext* context,
                                                                     maudDeviceId device,
                                                                     maudDeviceRole role);
 
@@ -103,7 +103,7 @@ extern "C"
     ///         rendering one of the context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudDevice_SetOfflineForm(maudContext* context,
+    MAUD_NODISCARD MAUD_API maudResult maudOfflineDevice_SetForm(maudContext* context,
                                                                  maudDeviceId device,
                                                                  maudDeviceForm form);
 
@@ -123,7 +123,7 @@ extern "C"
     ///         streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudDevice_SetOfflineFormat(maudContext* context,
+    MAUD_NODISCARD MAUD_API maudResult maudOfflineDevice_SetFormat(maudContext* context,
                                                                    maudDeviceId device,
                                                                    maudChannelLayout layout,
                                                                    uint32_t sampleRate);
@@ -144,7 +144,7 @@ extern "C"
     ///         context's streams or running its allocator.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudDevice_SetOfflineSpatializer(
+    MAUD_NODISCARD MAUD_API maudResult maudOfflineDevice_SetSpatializer(
         maudContext* context, maudDeviceId device, maudPlatformSpatializer spatializer,
         bool headTracking, uint32_t objectCount);
 

@@ -115,9 +115,9 @@ the Device part, which moves the host's samples as they are and keeps frames and
     maudContext_RequestFocus
     maudContext_Unlock
     maudContext_SetSuspended
-    maudDevice_SetOfflineDefault
-    maudDevice_SetOfflineForm
-    maudDevice_SetOfflineFormat
-    maudDevice_SetOfflineSpatializer
+    maudOfflineDevice_SetDefault
+    maudOfflineDevice_SetForm
+    maudOfflineDevice_SetFormat
+    maudOfflineDevice_SetSpatializer
     maudStream_Start
     maudStream_Stop
