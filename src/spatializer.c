@@ -823,7 +823,7 @@ maudResult maudSource_GetDirectResult(const maudSpatializer* spatializer, maudSo
     const Buffer* buffer = &spatializer->buffers[spatializer->front];
     if (buffer->step == 0)
     {
-        return maud_errorInvalid;
+        return maud_errorState;
     }
     const Entry* entry = &buffer->entries[source.index1 - 1];
     if (entry->generation != source.generation)
@@ -849,7 +849,7 @@ maudResult maudSpatializer_GetReverbResult(const maudSpatializer* spatializer,
     const Buffer* buffer = &spatializer->buffers[spatializer->front];
     if (buffer->step == 0)
     {
-        return maud_errorInvalid;
+        return maud_errorState;
     }
     *resultOut = buffer->reverb;
     return maud_success;

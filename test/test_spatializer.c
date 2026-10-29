@@ -5,9 +5,10 @@
 // stale and its slot comes back with a new generation; a step gives the
 // distance and the direction in the listener's frame, turning with the
 // listener, and the source's directivity turning with the source; the
-// rendering side sees a step only once it latches it, and a source made
-// or destroyed after a step is stale in it; occlusion rays go in
-// rounds of 4096; bad calls are refused; a step allocates nothing.
+// rendering side sees a step only once it latches it, reads before the
+// first latch are a state and read zero, and a source made or destroyed
+// after a step is stale in it; occlusion rays go in rounds of 4096; bad
+// calls are refused; a step allocates nothing.
 
 #include "test_harness.h"
 
@@ -15,6 +16,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 static long s_allocations;
 
@@ -251,18 +253,41 @@ static void TestOrientations(void)
     maudDestroySpatializer(s);
 }
 
+// Whether bytes are all zero.
+static bool Zero(const void* bytes, size_t size)
+{
+    const unsigned char* p = bytes;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (p[i] != 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void TestLatch(void)
 {
     maudSpatializer* s = Create(4);
     maudSourceId a = Source(s);
     maudDirectResult r;
+    maudReverbResult reverb;
+    // The first block, before any step is latched: the program is not wrong,
+    // the spatializer has no results yet, and the outputs read zero.
     CHECK(maudSpatializer_LatchResults(s) == 0, "nothing published");
-    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_errorInvalid, "no step latched");
+    memset(&r, 0x5a, sizeof(r));
+    memset(&reverb, 0x5a, sizeof(reverb));
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_errorState && Zero(&r, sizeof(r)),
+          "no step latched, a zeroed direct result");
+    CHECK(maudSpatializer_GetReverbResult(s, &reverb) == maud_errorState &&
+              Zero(&reverb, sizeof(reverb)),
+          "no step latched, a zeroed reverb result");
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudPose near = {{0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     CHECK(maudSource_SetPose(s, a, &near) == maud_success, "pose");
     CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success, "step 1");
-    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_errorInvalid, "published but not latched");
+    CHECK(maudSource_GetDirectResult(s, a, &r) == maud_errorState, "published but not latched");
     CHECK(maudSpatializer_LatchResults(s) == 1, "latched");
     maudPose far = {{0.0f, 0.0f, -7.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     CHECK(maudSource_SetPose(s, a, &far) == maud_success, "pose");

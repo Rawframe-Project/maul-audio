@@ -18,7 +18,7 @@ A spatializer has two sides that run on different threads.
 - **The simulation side** runs on the program's threads, at a rate the program picks (a game might run a direct step every frame and a reverberation estimate every second). It makes and destroys sources, sets their poses, and runs steps that trace rays through the scene. Steps publish their results whole.
 - **The rendering side** runs on the audio thread. `maudSpatializer_LatchResults` takes the newest published step, and `maudSource_GetDirectResult`, `maudSpatializer_GetReverbResult` and `maudSpatializer_RenderReflections` read from it, never torn, without allocating, locking or waiting. The program then passes the results to the direct effect, the binaural effect or a panner, and the reverb.
 
-A source made after the latched step, or destroyed before it, reads `maud_errorStale` until the next latch catches up.
+Before the first latch there are no results: both reads return `maud_errorState` and zeroed results, so an audio thread that starts before the first step has published renders its first blocks from zeroed results and reads again on the next block. A source made after the latched step, or destroyed before it, reads `maud_errorStale` until the next latch catches up.
 
 Positions on the simulation side are in metres in the program's world, right-handed with +y up; an orientation turns the frame of the listener or a source (+x right, +y up, -z ahead) into the world's. Results come back in the listener's frame, ready for the effects.
 
