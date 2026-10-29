@@ -546,10 +546,10 @@ extern "C"
     /// @param spatializer  The spatializer.
     /// @param source       The source.
     /// @param resultOut    Receives the result; all zero on failure.
-    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a 0
-    ///         or unknown id, or no latched step; `maud_errorStale` when
-    ///         the latched step does not hold the source (made after it,
-    ///         or destroyed before it).
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a
+    ///         0 or unknown id; `maud_errorState` before the first latched
+    ///         step; `maud_errorStale` when the latched step does not hold
+    ///         the source (made after it, or destroyed before it).
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The rendering side is
     /// used by one thread at a time.
@@ -588,8 +588,8 @@ extern "C"
     ///
     /// @param spatializer  The spatializer.
     /// @param resultOut    Receives the result; all zero on failure.
-    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
-    ///         no latched step.
+    /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer;
+    ///         `maud_errorState` before the first latched step.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The rendering side is
     /// used by one thread at a time.

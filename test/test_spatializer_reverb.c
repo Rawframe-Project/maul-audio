@@ -90,7 +90,7 @@ static void TestEstimate(void)
     maudSpatializer* plain = Create(scene, false, maudFindAnyHit);
     maudSpatializer* tasked = Create(scene, true, maudFindAnyHit);
     maudReverbResult result;
-    CHECK(maudSpatializer_GetReverbResult(plain, &result) == maud_errorInvalid,
+    CHECK(maudSpatializer_GetReverbResult(plain, &result) == maud_errorState,
           "nothing latched yet");
     CHECK(maudSpatializer_SimulateDirect(plain, &s_listener) == maud_success, "a direct step");
     CHECK(maudSpatializer_LatchResults(plain) == 1, "latched");
