@@ -6,6 +6,8 @@
 # (docs/internals/realtime.md).
 
 returns a constant, a default def, a name, a count or a table entry:
+    maudDefaultBinauralDecoderDef
+    maudDefaultBinauralDef
     maudDefaultDirectParams
     maudDefaultOfflineDeviceDef
     maudDefaultProbeSetDef

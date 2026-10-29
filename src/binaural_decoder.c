@@ -18,6 +18,7 @@
 #include <string.h>
 
 #define DEFAULT_MAX_FRAMES 1024u
+#define DEF_COOKIE         0x6D616264u
 // At 48 kHz, in proportion at other rates: the filters' length, the
 // group delay carried through the fit, and the fade at the filters' end.
 #define FILTER_TAPS 96.0
@@ -39,8 +40,8 @@ struct maudBinauralDecoder
 
 static bool DefValid(const maudBinauralDecoderDef* def)
 {
-    return def->cookie == MAUD_BINAURAL_DECODER_DEF_COOKIE && def->hrtf != nullptr &&
-           def->order >= 1 && def->order <= MAUD_MAX_AMBISONIC_ORDER && def->maxFrames >= 1 &&
+    return def->cookie == DEF_COOKIE && def->hrtf != nullptr && def->order >= 1 &&
+           def->order <= MAUD_MAX_AMBISONIC_ORDER && def->maxFrames >= 1 &&
            maudIsAllocatorValid(&def->allocator);
 }
 
@@ -50,6 +51,15 @@ static uint32_t Scaled(double atFortyEight, uint32_t rate)
     return value < 1.0 ? 1u : (uint32_t)value;
 }
 
+maudBinauralDecoderDef maudDefaultBinauralDecoderDef(void)
+{
+    return (maudBinauralDecoderDef){
+        .cookie = DEF_COOKIE,
+        .order = MAUD_MAX_AMBISONIC_ORDER,
+        .maxFrames = DEFAULT_MAX_FRAMES,
+    };
+}
+
 maudResult maudCreateBinauralDecoder(const maudBinauralDecoderDef* def,
                                      maudBinauralDecoder** decoderOut)
 {
@@ -57,13 +67,7 @@ maudResult maudCreateBinauralDecoder(const maudBinauralDecoderDef* def,
     {
         *decoderOut = nullptr;
     }
-    if (def != nullptr && def->cookie == MAUD_BINAURAL_DECODER_DEF_COOKIE &&
-        def->version != MAUD_ABI_VERSION)
-    {
-        return maud_errorVersion;
-    }
-    if (def != nullptr && decoderOut != nullptr &&
-        def->cookie == MAUD_BINAURAL_DECODER_DEF_COOKIE &&
+    if (def != nullptr && decoderOut != nullptr && def->cookie == DEF_COOKIE &&
         (def->order > MAUD_MAX_AMBISONIC_ORDER || def->maxFrames > MAUD_MAX_BINAURAL_FRAMES))
     {
         return maud_errorLimit;

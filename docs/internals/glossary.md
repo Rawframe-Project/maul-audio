@@ -49,5 +49,5 @@ The words the code, the headers and these pages use, in the sense they use them.
 
 ## The family
 
-- **Def.** The struct an object is made from, with a **cookie** that marks it as built by its default. A **root def** (an object made without a parent) also carries the **ABI stamp**, the version of the headers the program was built with.
+- **Def.** The struct an object is made from, with a **cookie** that marks it as built by its default. A **root def** (the def of a creation that takes no other library object, so a program can call it first) also carries the **ABI stamp**, the version of the headers the program was built with. The binaural effect and decoder take an HRTF set, so their defs carry only the cookie.
 - **Misuse.** A call an object refuses because a correct program never makes it, counted on the object.
