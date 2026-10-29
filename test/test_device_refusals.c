@@ -120,6 +120,17 @@ static void TestContextDefs(void)
                   context == nullptr;
     }
     CHECK(allowed, "each limit at its MAUD_MAX_* constant allowed");
+#ifdef __EMSCRIPTEN__
+    // A context of MAUD_MAX_STREAMS streams needs more memory than the
+    // test's module holds. Linked with ABORTING_MALLOC=0, which the
+    // library's CMake target gives every program, the C library's
+    // allocator fails, and the context reports it.
+    maudContextDef huge = def;
+    huge.limits.streams = MAUD_MAX_STREAMS;
+    context = (maudContext*)&context;
+    CHECK(maudCreateContext(&huge, &context) == maud_errorCapacity && context == nullptr,
+          "a context larger than the web's memory: maud_errorCapacity, not an abort");
+#endif
     maudContextDef bounds[3] = {def, def, def};
     bounds[0].offlineSampleRate = 8000;
     bounds[1].offlineSampleRate = 384000;

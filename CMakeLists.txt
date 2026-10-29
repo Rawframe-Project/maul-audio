@@ -178,6 +178,14 @@ if(MAUL_AUDIO_SPATIAL)
     target_sources(maul-audio PRIVATE ${MAUL_AUDIO_SPATIAL_SOURCES})
 endif()
 maul_configure_library(maul-audio)
+# With Emscripten's defaults a failed allocation aborts the module before
+# the library sees it. Every program that links the library through CMake,
+# in this tree or through the installed package, links so that malloc may
+# fail and maud_errorCapacity reaches it; docs/user/platforms.md asks other
+# builds to do the same.
+if(EMSCRIPTEN)
+    target_link_options(maul-audio INTERFACE -sABORTING_MALLOC=0)
+endif()
 # The voice processors use the C math library, a library of its own on
 # POSIX systems other than Darwin; static consumers need it too.
 if(UNIX AND NOT APPLE)
