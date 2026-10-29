@@ -208,7 +208,9 @@ extern "C"
     /// Suspends a context for the host's lifecycle, or resumes it: the
     /// application went to the background, its tab was hidden or the
     /// system sleeps, and later it is back. The library never infers this
-    /// itself. Suspending suspends every stream that runs or only waits
+    /// itself. It reports a state the host learns from the system, so it is
+    /// a setter, not a switch that turns a part of the library on or off.
+    /// Suspending suspends every stream that runs or only waits
     /// to run with maud_suspendHost, with a notification each, and stops
     /// its platform side; on the web it also suspends the AudioContext.
     /// Resuming lets each run again, or wait for what it waited for. A
