@@ -1,6 +1,6 @@
 # Spatial audio
 
-The Spatial part renders mono sources in space: for headphones through a head-related transfer function (HRTF) set, or for a speaker layout. It is a set of effects the program chains on its own audio thread, each processing a block in place or into caller buffers. None of them needs a context, a device or a thread; they work as well in an offline renderer as in a game's mixer.
+The Spatial part renders mono sources in space: for headphones through a head-related transfer function (HRTF) set, or for a speaker layout. It is a set of effects the program chains on its own audio thread, each processing a block in place or into caller buffers. An effect or decoder that refuses a call writes silence where it would have written, so a block played after an unchecked error is quiet; a buffer a call adds into (a bed, a panner's channels) keeps what it held. None of them needs a context, a device or a thread; they work as well in an offline renderer as in a game's mixer.
 
 A source usually goes through two stages: the [direct effect](#what-the-path-does-to-a-source) applies what the path does to it (distance, walls, air), then the [binaural effect](#a-source-for-headphones), the [ambisonic bed](#many-sources-the-ambisonic-bed) or a [speaker panner](#speakers) places it. A [reverb](#the-room-the-reverb) adds the room. The [spatializer](environments.md) can compute every effect's parameters from a scene.
 

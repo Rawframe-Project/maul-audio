@@ -753,6 +753,67 @@ static void TestExactBuffers(const maudHrtf* hrtf)
     maudDestroyBinaural(effect);
 }
 
+static void SetAll(float* samples, uint32_t count, float value)
+{
+    for (uint32_t n = 0; n < count; ++n)
+    {
+        samples[n] = value;
+    }
+}
+
+static bool AllAre(const float* samples, uint32_t count, float value)
+{
+    bool same = true;
+    for (uint32_t n = 0; n < count; ++n)
+    {
+        same = same && samples[n] == value;
+    }
+    return same;
+}
+
+// A refused call leaves silence where it would have written, never what
+// the buffers held, and never more than a successful call would write.
+static void TestFailureSilence(const maudHrtf* hrtf)
+{
+    maudBinaural* effect = Create(hrtf, 64);
+    maudBinauralParams params = At(0.0f, 0.0f, -1.0f);
+    maudBinauralParams bad = At(NAN, 0.0f, 0.0f);
+    float* out[2] = {s_left, s_right};
+    SetAll(s_left, 64, 7.0f);
+    SetAll(s_right, 64, 7.0f);
+    CHECK(maudBinaural_Process(effect, &bad, s_in, out, 64) == maud_errorInvalid &&
+              AllAre(s_left, 64, 0.0f) && AllAre(s_right, 64, 0.0f),
+          "a refused parameter silences both ears");
+    SetAll(s_left, 64, 7.0f);
+    SetAll(s_right, 64, 7.0f);
+    CHECK(maudBinaural_Process(nullptr, &params, s_in, out, 64) == maud_errorInvalid &&
+              AllAre(s_left, 64, 0.0f) && AllAre(s_right, 64, 0.0f),
+          "no effect silences both ears");
+    SetAll(s_left, 64, 7.0f);
+    float* half[2] = {s_left, nullptr};
+    CHECK(maudBinaural_Process(effect, &params, s_in, half, 64) == maud_errorInvalid &&
+              AllAre(s_left, 64, 0.0f),
+          "a missing ear silences the other");
+    // One frame past maxFrames into buffers exactly maxFrames long: ASan
+    // fails the suite on a write past them.
+    float* left = malloc(64 * sizeof(float));
+    float* right = malloc(64 * sizeof(float));
+    bool made = left != nullptr && right != nullptr;
+    if (made)
+    {
+        SetAll(left, 64, 7.0f);
+        SetAll(right, 64, 7.0f);
+        float* exact[2] = {left, right};
+        CHECK(maudBinaural_Process(effect, &params, s_in, exact, 65) == maud_errorCapacity &&
+                  AllAre(left, 64, 0.0f) && AllAre(right, 64, 0.0f),
+              "one frame past maxFrames silences maxFrames, no more");
+    }
+    CHECK(made, "buffers exactly maxFrames long");
+    free(left);
+    free(right);
+    maudDestroyBinaural(effect);
+}
+
 static void TestMisuse(const maudHrtf* hrtf)
 {
     maudBinaural* effect = Create(hrtf, 64);
@@ -774,7 +835,6 @@ static void TestMisuse(const maudHrtf* hrtf)
     CHECK(maudBinaural_Process(effect, &params, s_in, half, 64) == maud_errorInvalid,
           "one channel missing");
     CHECK(maudBinaural_Process(nullptr, &params, s_in, out, 64) == maud_errorInvalid, "no effect");
-    CHECK(s_left[0] == 7.0f && s_left[63] == 7.0f, "nothing written by a bad call");
     CHECK(maudBinaural_Process(effect, &params, nullptr, out, 0) == maud_success, "no frames");
     // A zero direction is straight ahead.
     maudBinaural* ahead = Create(hrtf, 64);
@@ -944,6 +1004,7 @@ int main(void)
         TestBlocks(hrtf);
         TestGain(hrtf);
         TestMisuse(hrtf);
+        TestFailureSilence(hrtf);
         TestExactBuffers(hrtf);
         TestNoAllocation(hrtf);
         TestNearField(hrtf);

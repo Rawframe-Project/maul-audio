@@ -172,22 +172,26 @@ extern "C"
     /// Safe from any thread; the decoder is used by one thread at a time.
     MAUD_API void maudDestroyBinauralDecoder(maudBinauralDecoder* decoder);
 
-    /// Decodes frames of a bed for both ears, written to out[0] (left)
-    /// and out[1] (right).
+    /// Decodes frames of a bed for both ears, written to samplesOut[0]
+    /// (left) and samplesOut[1] (right).
     ///
-    /// @param decoder  The decoder.
-    /// @param bed      The decoder's order's channel count of channels,
-    ///                 frames each.
-    /// @param out      Two channels of frames samples each.
-    /// @param frames   0 to the def's maxFrames; 0 does nothing.
+    /// @param decoder     The decoder.
+    /// @param bed         The decoder's order's channel count of channels,
+    ///                    frames each.
+    /// @param samplesOut  Two channels of frames samples each.
+    /// @param frames      0 to the def's maxFrames; 0 does nothing.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer;
     ///         `maud_errorCapacity` for more frames than the def's
-    ///         maxFrames. Nothing is written on failure.
+    ///         maxFrames. On failure each channel of samplesOut that is
+    ///         not NULL is silenced over frames samples, but never past the
+    ///         def's maxFrames (MAUD_MAX_BINAURAL_FRAMES for a NULL
+    ///         decoder): a failed call writes no more than a successful one
+    ///         could.
     /// @par Thread safety
     /// Safe from any thread; the decoder is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudBinauralDecoder_Decode(maudBinauralDecoder* decoder,
                                                                   const float* const* bed,
-                                                                  float* const out[2],
+                                                                  float* const samplesOut[2],
                                                                   uint32_t frames);
 
     /// Forgets the bed a decoder has heard.
@@ -285,20 +289,23 @@ extern "C"
     maudSpeakerDecoder_GetMatrix(const maudSpeakerDecoder* decoder, float* matrixOut);
 
     /// Decodes frames of a bed to the layout's channels, written over
-    /// out. The decoder holds no state between calls.
+    /// samplesOut. The decoder holds no state between calls.
     ///
-    /// @param decoder  The decoder.
-    /// @param bed      The decoder's order's channel count of channels,
-    ///                 frames each.
-    /// @param out      The layout's channel count of channels, frames each.
-    /// @param frames   The frames; 0 does nothing.
-    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer;
-    ///         nothing is written then.
+    /// @param decoder     The decoder.
+    /// @param bed         The decoder's order's channel count of channels,
+    ///                    frames each.
+    /// @param samplesOut  The layout's channel count of channels, frames
+    ///                    each.
+    /// @param frames      The frames; 0 does nothing.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
+    ///         On failure each channel of samplesOut that is not NULL is
+    ///         silenced over frames samples; a NULL decoder, which gives no
+    ///         channel count, writes nothing.
     /// @par Thread safety
     /// Safe from any thread; the output is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSpeakerDecoder_Decode(const maudSpeakerDecoder* decoder,
                                                                  const float* const* bed,
-                                                                 float* const* out,
+                                                                 float* const* samplesOut,
                                                                  uint32_t frames);
 
 #ifdef __cplusplus

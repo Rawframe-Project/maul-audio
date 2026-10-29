@@ -260,6 +260,56 @@ static void TestBlocks(const maudHrtf* hrtf)
     maudDestroyBinauralDecoder(parts);
 }
 
+static void SetAll(float* samples, uint32_t count, float value)
+{
+    for (uint32_t n = 0; n < count; ++n)
+    {
+        samples[n] = value;
+    }
+}
+
+static bool AllAre(const float* samples, uint32_t count, float value)
+{
+    bool same = true;
+    for (uint32_t n = 0; n < count; ++n)
+    {
+        same = same && samples[n] == value;
+    }
+    return same;
+}
+
+// A refused decode leaves silence where it would have written, and one
+// frame past maxFrames into buffers exactly maxFrames long writes no
+// further: ASan fails the suite on a write past them.
+static void TestFailureSilence(const maudHrtf* hrtf)
+{
+    maudBinauralDecoder* decoder = Create(hrtf, 1, 64);
+    const float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], nullptr};
+    float* out[2] = {s_left, s_right};
+    SetAll(s_left, 64, 7.0f);
+    SetAll(s_right, 64, 7.0f);
+    CHECK(maudBinauralDecoder_Decode(decoder, bed, out, 64) == maud_errorInvalid &&
+              AllAre(s_left, 64, 0.0f) && AllAre(s_right, 64, 0.0f),
+          "a missing bed channel silences both ears");
+    bed[3] = s_bed[3];
+    float* left = malloc(64 * sizeof(float));
+    float* right = malloc(64 * sizeof(float));
+    bool made = left != nullptr && right != nullptr;
+    if (made)
+    {
+        SetAll(left, 64, 7.0f);
+        SetAll(right, 64, 7.0f);
+        float* exact[2] = {left, right};
+        CHECK(maudBinauralDecoder_Decode(decoder, bed, exact, 65) == maud_errorCapacity &&
+                  AllAre(left, 64, 0.0f) && AllAre(right, 64, 0.0f),
+              "one frame past maxFrames silences maxFrames, no more");
+    }
+    CHECK(made, "buffers exactly maxFrames long");
+    free(left);
+    free(right);
+    maudDestroyBinauralDecoder(decoder);
+}
+
 static void TestMisuse(const maudHrtf* hrtf)
 {
     maudBinauralDecoderDef def = maudDefaultBinauralDecoderDef();
@@ -297,7 +347,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     CHECK(maudBinauralDecoder_Decode(decoder, nullptr, out, 64) == maud_errorInvalid, "no bed");
     float* noEar[2] = {s_left, nullptr};
     CHECK(maudBinauralDecoder_Decode(decoder, bed, noEar, 64) == maud_errorInvalid, "no right ear");
-    CHECK(s_left[0] == 7.0f, "nothing written by a bad call");
+    CHECK(s_left[0] == 0.0f, "a bad call silences the ear it has");
     CHECK(maudBinauralDecoder_Decode(decoder, nullptr, out, 0) == maud_success, "no frames");
     CHECK(maudBinauralDecoder_Reset(nullptr) == maud_errorInvalid, "reset nothing");
     maudDestroyBinauralDecoder(decoder);
@@ -481,6 +531,7 @@ int main(void)
     TestEars(hrtf);
     TestBlocks(hrtf);
     TestMisuse(hrtf);
+    TestFailureSilence(hrtf);
     // The decoder keeps its own filters: the set may go first.
     long live = s_live;
     maudBinauralDecoder* decoder = Create(hrtf, 3, FRAMES);
