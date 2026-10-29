@@ -201,13 +201,13 @@ static maudResult Run(maudBinauralDecoder* decoder, const float* const* bed, flo
 }
 
 maudResult maudBinauralDecoder_Decode(maudBinauralDecoder* decoder, const float* const* bed,
-                                      float* const samplesOut[2], uint32_t frames)
+                                      float* const samplesOut[2], uint32_t frameCount)
 {
-    maudResult result = Run(decoder, bed, samplesOut, frames);
+    maudResult result = Run(decoder, bed, samplesOut, frameCount);
     if (result != maud_success)
     {
         uint32_t most = decoder != nullptr ? decoder->maxFrames : MAUD_MAX_BINAURAL_FRAMES;
-        Silence(samplesOut, 2, frames < most ? frames : most);
+        Silence(samplesOut, 2, frameCount < most ? frameCount : most);
     }
     return result;
 }

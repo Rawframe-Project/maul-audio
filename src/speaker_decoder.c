@@ -284,12 +284,12 @@ static maudResult Run(const maudSpeakerDecoder* decoder, const float* const* bed
 }
 
 maudResult maudSpeakerDecoder_Decode(const maudSpeakerDecoder* decoder, const float* const* bed,
-                                     float* const* samplesOut, uint32_t frames)
+                                     float* const* samplesOut, uint32_t frameCount)
 {
-    maudResult result = Run(decoder, bed, samplesOut, frames);
+    maudResult result = Run(decoder, bed, samplesOut, frameCount);
     if (result != maud_success && decoder != nullptr)
     {
-        Silence(samplesOut, decoder->speakers, frames);
+        Silence(samplesOut, decoder->speakers, frameCount);
     }
     return result;
 }

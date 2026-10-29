@@ -294,12 +294,12 @@ static maudResult Run(maudDirectEffect* effect, const maudDirectParams* params, 
 }
 
 maudResult maudDirectEffect_Process(maudDirectEffect* effect, const maudDirectParams* params,
-                                    const float* in, float* samplesOut, uint32_t frames)
+                                    const float* samples, float* samplesOut, uint32_t frameCount)
 {
-    maudResult result = Run(effect, params, in, samplesOut, frames);
+    maudResult result = Run(effect, params, samples, samplesOut, frameCount);
     if (result != maud_success && samplesOut != nullptr)
     {
-        memset(samplesOut, 0, (size_t)frames * sizeof(float));
+        memset(samplesOut, 0, (size_t)frameCount * sizeof(float));
     }
     return result;
 }

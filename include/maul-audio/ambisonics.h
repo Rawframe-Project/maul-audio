@@ -52,15 +52,15 @@ extern "C"
 
     /// Adds a mono source into a bed, its direction and gain moving
     /// linearly from `from` to `to` across the call: frame n is encoded
-    /// with the gains (n + 1) / frames of the way.
+    /// with the gains (n + 1) / frameCount of the way.
     ///
-    /// @param order   The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER.
-    /// @param from    The source at the previous call's end.
-    /// @param to      The source at this call's end.
-    /// @param in      frames samples.
-    /// @param bed     The order's channel count of channels, frames each,
-    ///                added to.
-    /// @param frames  The frames.
+    /// @param order       The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER.
+    /// @param from        The source at the previous call's end.
+    /// @param to          The source at this call's end.
+    /// @param samples     frameCount samples.
+    /// @param bed         The order's channel count of channels, frameCount each,
+    ///                    added to.
+    /// @param frameCount  The frames.
     /// @return `maud_success`; `maud_errorLimit` for an order past
     ///         MAUD_MAX_AMBISONIC_ORDER; `maud_errorInvalid` for an order
     ///         of 0, a NULL pointer or a value that is not finite; nothing
@@ -69,8 +69,9 @@ extern "C"
     /// Safe from any thread; the bed is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudEncodeAmbisonic(uint32_t order,
                                                            const maudPanSource* from,
-                                                           const maudPanSource* to, const float* in,
-                                                           float* const* bed, uint32_t frames);
+                                                           const maudPanSource* to,
+                                                           const float* samples, float* const* bed,
+                                                           uint32_t frameCount);
 
     /// Rotates a bed in place, the rotation moving linearly from `from`
     /// to `to` across the call (a crossfade of the two rotated fields; a
@@ -78,18 +79,18 @@ extern "C"
     /// turns the field in the listener's frame: a sound from direction d
     /// comes out from the rotated d.
     ///
-    /// @param bed     The order's channel count of channels, frames each.
-    /// @param frames  The frames.
-    /// @param order   The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER.
-    /// @param from    The rotation at the previous call's end.
-    /// @param to      The rotation at this call's end.
+    /// @param bed         The order's channel count of channels, frameCount each.
+    /// @param frameCount  The frames.
+    /// @param order       The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER.
+    /// @param from        The rotation at the previous call's end.
+    /// @param to          The rotation at this call's end.
     /// @return `maud_success`; `maud_errorLimit` for an order past
     ///         MAUD_MAX_AMBISONIC_ORDER; `maud_errorInvalid` for an order
     ///         of 0, a NULL pointer, or a quaternion of zero length or not
     ///         finite; nothing is written on failure.
     /// @par Thread safety
     /// Safe from any thread; the bed is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudRotateAmbisonic(float* const* bed, uint32_t frames,
+    MAUD_NODISCARD MAUD_API maudResult maudRotateAmbisonic(float* const* bed, uint32_t frameCount,
                                                            uint32_t order,
                                                            const maudQuaternion* from,
                                                            const maudQuaternion* to);
@@ -177,13 +178,13 @@ extern "C"
     ///
     /// @param decoder     The decoder.
     /// @param bed         The decoder's order's channel count of channels,
-    ///                    frames each.
-    /// @param samplesOut  Two channels of frames samples each.
-    /// @param frames      0 to the def's maxFrames; 0 does nothing.
+    ///                    frameCount each.
+    /// @param samplesOut  Two channels of frameCount samples each.
+    /// @param frameCount  0 to the def's maxFrames; 0 does nothing.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer;
     ///         `maud_errorCapacity` for more frames than the def's
     ///         maxFrames. On failure each channel of samplesOut that is
-    ///         not NULL is silenced over frames samples, but never past the
+    ///         not NULL is silenced over frameCount samples, but never past the
     ///         def's maxFrames (MAUD_MAX_BINAURAL_FRAMES for a NULL
     ///         decoder): a failed call writes no more than a successful one
     ///         could.
@@ -192,7 +193,7 @@ extern "C"
     MAUD_NODISCARD MAUD_API maudResult maudBinauralDecoder_Decode(maudBinauralDecoder* decoder,
                                                                   const float* const* bed,
                                                                   float* const samplesOut[2],
-                                                                  uint32_t frames);
+                                                                  uint32_t frameCount);
 
     /// Forgets the bed a decoder has heard.
     ///
@@ -293,20 +294,20 @@ extern "C"
     ///
     /// @param decoder     The decoder.
     /// @param bed         The decoder's order's channel count of channels,
-    ///                    frames each.
+    ///                    frameCount each.
     /// @param samplesOut  The layout's channel count of channels, frames
     ///                    each.
-    /// @param frames      The frames; 0 does nothing.
+    /// @param frameCount  The frames; 0 does nothing.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
     ///         On failure each channel of samplesOut that is not NULL is
-    ///         silenced over frames samples; a NULL decoder, which gives no
+    ///         silenced over frameCount samples; a NULL decoder, which gives no
     ///         channel count, writes nothing.
     /// @par Thread safety
     /// Safe from any thread; the output is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSpeakerDecoder_Decode(const maudSpeakerDecoder* decoder,
                                                                  const float* const* bed,
                                                                  float* const* samplesOut,
-                                                                 uint32_t frames);
+                                                                 uint32_t frameCount);
 
 #ifdef __cplusplus
 }
