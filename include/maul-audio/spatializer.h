@@ -730,17 +730,19 @@ extern "C"
     ///
     /// @param spatializer  The spatializer.
     /// @param set          The set.
-    /// @param bytesOut     Receives the file, or NULL to ask its size.
+    /// @param bytesOut     Receives the file, or NULL to ask its size. On
+    ///                     any failure its capacity bytes are zeros.
     /// @param capacity     The bytes bytesOut holds.
     /// @param sizeOut      Receives the file's size, also when capacity is
     ///                     short of it; 0 on other failures.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
     ///         or size, or a 0 or unknown id; `maud_errorStale` for a
     ///         destroyed set's id; `maud_errorCapacity` when capacity is
-    ///         short of the size (nothing written), a part of the file
-    ///         would pass the 4 GiB a field holds (the energy fields of
-    ///         about 55,800 probes at order 3 and 401 bins), or the size
-    ///         does not fit in size_t.
+    ///         short of the size, a part of the file would pass the 4 GiB
+    ///         a field holds (the energy fields of about 55,800 probes at
+    ///         order 3 and 401 bins), or the size does not fit in size_t.
+    ///         On failure bytesOut, unless NULL, is zeroed over capacity
+    ///         bytes, so it never holds an earlier save.
     /// @par Thread safety
     /// Safe from any thread; the simulation side is used by one thread at
     /// a time.

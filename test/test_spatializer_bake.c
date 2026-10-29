@@ -397,15 +397,45 @@ static void TestTraces(maudScene* scene)
     maudDestroySpatializer(s);
 }
 
+static bool ZeroBytes(const uint8_t* bytes, size_t count)
+{
+    bool zero = bytes != nullptr;
+    for (size_t i = 0; zero && i < count; ++i)
+    {
+        zero = bytes[i] == 0;
+    }
+    return zero;
+}
+
+// A refused save over a buffer that holds an earlier one leaves zeros over
+// its capacity and nothing past it, so no stale file can be stored as this
+// one; a short buffer still learns the size it needs.
 static uint8_t* Save(const maudSpatializer* s, maudProbeSetId set, size_t* size)
 {
     CHECK(maudProbeSet_Save(s, set, nullptr, 0, size) == maud_success && *size > 40, "a size");
     uint8_t* bytes = malloc(*size);
+    size_t written = 0;
+    CHECK(bytes != nullptr && maudProbeSet_Save(s, set, bytes, *size, &written) == maud_success &&
+              written == *size,
+          "saved");
+    if (bytes == nullptr)
+    {
+        return nullptr;
+    }
+    uint8_t last = bytes[*size - 1];
     size_t short_ = 0;
     CHECK(maudProbeSet_Save(s, set, bytes, *size - 1, &short_) == maud_errorCapacity &&
-              short_ == *size,
-          "a buffer a byte short");
-    size_t written = 0;
+              short_ == *size && ZeroBytes(bytes, *size - 1) && bytes[*size - 1] == last,
+          "a buffer a byte short is zeroed, and learns the size");
+    CHECK(maudProbeSet_Save(s, set, bytes, *size, &written) == maud_success, "saved again");
+    const maudProbeSetId unknown = {0, 0};
+    CHECK(maudProbeSet_Save(s, unknown, bytes, *size, &written) == maud_errorInvalid &&
+              written == 0 && ZeroBytes(bytes, *size),
+          "an unknown set zeroes the earlier save");
+    CHECK(maudProbeSet_Save(s, set, bytes, *size, &written) == maud_success, "saved again");
+    CHECK(maudProbeSet_Save(nullptr, set, bytes, *size, &written) == maud_errorInvalid &&
+              ZeroBytes(bytes, *size),
+          "no spatializer zeroes the earlier save");
     CHECK(maudProbeSet_Save(s, set, bytes, *size, &written) == maud_success && written == *size,
           "saved");
     return bytes;
