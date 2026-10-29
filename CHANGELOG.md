@@ -5,6 +5,139 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.3.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.2.0...v0.3.0) (2026-10-29)
+
+0.3.0 settles the names of the API before 1.0.0. It changes how web programs link ([#163](https://github.com/Rawframe-Project/maul-audio/pull/163)), and the Core Audio and WASAPI object renderers read the new position type ([#152](https://github.com/Rawframe-Project/maul-audio/pull/152)); the other backends change only by name. The device checklist on real hardware is waived by the owner for releases through 2026-10-29, so 0.3.0 ships on its other gates, and the checklist runs against it in [#161](https://github.com/Rawframe-Project/maul-audio/issues/161). The golden renders and the office bake are unchanged.
+
+### Changed
+
+- **Breaking:** the API follows the Maul family's naming rule. A call on one object is named `maudObject_Verb`, after the kind of its first id or the root it takes (`maudStream_Start`, `maudContext_GetDevices`, `maudDevice_GetInfo`). Creation, destruction, defaults and calls on no object keep `maudVerbNoun` (`maudCreateStream`, `maudDefaultStreamDef`). Callback and hook types end in `Function`, the acoustic scene is `maudScene` throughout, a field that counts things ends in `Count`, times are in seconds with no unit in the name, and a def field that switches a part on is `enableThing` ([#165](https://github.com/Rawframe-Project/maul-audio/pull/165)). A program renames each call, type and field by the tables below, and also:
+  - moves the arguments of the three calls marked **reordered**. `maudProbeSet_GetInfo` and `maudRotateAmbisonic` each move two `uint32_t` arguments, so a call left in the old order still compiles: check each one;
+  - declares a variable or field that holds a stream callback as `maudStreamFunction*`. `maudStreamCallback` was a pointer type; `maudStreamFunction` is a function type;
+  - gives `maudVoiceDetectorDef.hangover` in seconds as a `float` (0.2 for the old 200 milliseconds), and `maudEchoCancellerDef.tailTime` in seconds as before.
+- **Breaking:** `maudStreamObject.position` is a `maudVector3` instead of `float[3]`, like every other position in the API. Write `position.x`, `.y` and `.z` instead of `position[0]`, `[1]` and `[2]`. Its frame, its default and its layout are unchanged ([#152](https://github.com/Rawframe-Project/maul-audio/pull/152)).
+- **Breaking:** `maudDirectEffectDef.sampleRate`, `maudReverbDef.sampleRate` and `maudSpatializerDef.reflectionRate` are `uint32_t` instead of `float`, like every other sample rate, defaulting to 48000. Their ranges are unchanged ([#151](https://github.com/Rawframe-Project/maul-audio/pull/151)).
+- **Breaking:** `MAUD_DIRECT_BANDS` is `MAUD_BANDS`. It sizes every per-band array of the Spatial part, not only the direct path's. The count stays 3 ([#154](https://github.com/Rawframe-Project/maul-audio/pull/154)).
+- **Breaking:** `maudLimits.streams`, `devices`, `notifications` and `deviceTextBytes` are `uint32_t` instead of `uint16_t`. The new constants `MAUD_MAX_STREAMS`, `MAUD_MAX_DEVICES`, `MAUD_MAX_NOTIFICATIONS` and `MAUD_MAX_DEVICE_TEXT_BYTES` cap them at 65,535, the most the old fields held, and `maudCreateContext` refuses a limit past its constant with `maud_errorLimit`. Every value accepted before is accepted as before ([#153](https://github.com/Rawframe-Project/maul-audio/pull/153)).
+- The voice detector still counts its hangover in 10 ms steps, and a hangover in the upper half of a step now rounds up to the next one instead of down: 207 ms used to give 200 ms and now gives 210 ms. The default, 0.2 seconds, is unchanged. A voice application that set its own hangover may hear speech held one step longer ([#165](https://github.com/Rawframe-Project/maul-audio/pull/165)).
+
+#### Renamed functions
+
+| Old | New | |
+|---|---|---|
+| `maudResumeContext` | `maudContext_Unlock` |  |
+| `maudSetContextSuspended` | `maudContext_SetSuspended` |  |
+| `maudGetContextBackend` | `maudContext_GetBackend` |  |
+| `maudGetContextMisuse` | `maudContext_GetMisuse` |  |
+| `maudGetDevices` | `maudContext_GetDevices` |  |
+| `maudGetDefaultDevice` | `maudContext_GetDefaultDevice` |  |
+| `maudGetDeviceInfo` | `maudDevice_GetInfo` |  |
+| `maudGetDeviceName` | `maudDevice_GetName` |  |
+| `maudGetDeviceKey` | `maudDevice_GetKey` |  |
+| `maudRequestFocus` | `maudContext_RequestFocus` |  |
+| `maudGetContextFocus` | `maudContext_GetFocus` |  |
+| `maudNextNotification` | `maudContext_NextNotification` |  |
+| `maudRenderObjects` | `maudStream_RenderObjects` |  |
+| `maudSetOfflineDefaultDevice` | `maudDevice_SetOfflineDefault` | **reordered**: `(context, role, device)` to `(context, device, role)` |
+| `maudSetOfflineDeviceForm` | `maudDevice_SetOfflineForm` |  |
+| `maudSetOfflineDeviceFormat` | `maudDevice_SetOfflineFormat` |  |
+| `maudSetOfflineDeviceSpatializer` | `maudDevice_SetOfflineSpatializer` |  |
+| `maudStartStream` | `maudStream_Start` |  |
+| `maudStopStream` | `maudStream_Stop` |  |
+| `maudGetStreamFormat` | `maudStream_GetFormat` |  |
+| `maudGetStreamStatus` | `maudStream_GetStatus` |  |
+| `maudGetStreamPosition` | `maudStream_GetPosition` |  |
+| `maudGetStreamClock` | `maudStream_GetClock` |  |
+| `maudRenderStream` | `maudStream_Render` |  |
+| `maudFeedStream` | `maudStream_Feed` |  |
+| `maudDecodeBinaural` | `maudBinauralDecoder_Decode` |  |
+| `maudResetBinauralDecoder` | `maudBinauralDecoder_Reset` |  |
+| `maudGetSpeakerDecoderMatrix` | `maudSpeakerDecoder_GetMatrix` |  |
+| `maudDecodeToSpeakers` | `maudSpeakerDecoder_Decode` |  |
+| `maudProcessBinaural` | `maudBinaural_Process` |  |
+| `maudResetBinaural` | `maudBinaural_Reset` |  |
+| `maudProcessDirect` | `maudDirectEffect_Process` |  |
+| `maudResetDirectEffect` | `maudDirectEffect_Reset` |  |
+| `maudGetHrtfInfo` | `maudHrtf_GetInfo` |  |
+| `maudProcessReverb` | `maudReverb_Process` |  |
+| `maudResetReverb` | `maudReverb_Reset` |  |
+| `maudGetAcousticSceneMisuse` | `maudAcousticScene_GetMisuse` |  |
+| `maudCommitAcousticScene` | `maudAcousticScene_Commit` |  |
+| `maudMoveSceneInstance` | `maudSceneInstance_Move` |  |
+| `maudGetSpeakerGains` | `maudSpeakerPanner_GetGains` |  |
+| `maudPanToSpeakers` | `maudSpeakerPanner_Pan` |  |
+| `maudGetSpatializerMisuse` | `maudSpatializer_GetMisuse` |  |
+| `maudSetSourcePose` | `maudSource_SetPose` |  |
+| `maudGetDirectResult` | `maudSource_GetDirectResult` |  |
+| `maudSimulateDirect` | `maudSpatializer_SimulateDirect` |  |
+| `maudSimulateReverb` | `maudSpatializer_SimulateReverb` |  |
+| `maudSetMaterials` | `maudSpatializer_SetMaterials` |  |
+| `maudLatchResults` | `maudSpatializer_LatchResults` |  |
+| `maudRenderReflections` | `maudSpatializer_RenderReflections` |  |
+| `maudGetReverbResult` | `maudSpatializer_GetReverbResult` |  |
+| `maudGetProbeSet` | `maudProbeSet_GetInfo` | **reordered**: `(spatializer, set, infoOut, first, count, points)` to `(spatializer, set, first, infoOut, pointsOut, count)` |
+| `maudSetPathing` | `maudProbeSet_UseForPathing` |  |
+| `maudUseBakedReverb` | `maudProbeSet_UseBakedReverb` |  |
+| `maudBakeProbeSet` | `maudProbeSet_Bake` |  |
+| `maudSaveProbeSet` | `maudProbeSet_Save` |  |
+| `maudDetectVoice` | `maudVoiceDetector_Detect` |  |
+| `maudApplyGainControl` | `maudGainControl_Apply` |  |
+| `maudSuppressNoise` | `maudNoiseSuppressor_Suppress` |  |
+| `maudCancelEcho` | `maudEchoCanceller_Cancel` |  |
+| `maudAddOfflineDevice` | `maudCreateOfflineDevice` |  |
+| `maudRemoveOfflineDevice` | `maudDestroyOfflineDevice` |  |
+| `maudSceneAnyHit` | `maudFindAnyHit` |  |
+| `maudSceneClosestHit` | `maudFindClosestHit` |  |
+| `maudResultName` | `maudGetResultName` |  |
+| `maudRotateAmbisonic` | `maudRotateAmbisonic` | **reordered**: `(order, from, to, bed, frames)` to `(bed, frames, order, from, to)` |
+
+#### Renamed types
+
+| Old | New |
+|---|---|
+| `maudStreamCallback` | `maudStreamFunction` |
+| `maudAnyHitFn` | `maudAnyHitFunction` |
+| `maudClosestHitFn` | `maudClosestHitFunction` |
+| `maudTaskFn` | `maudTaskFunction` |
+| `maudEnqueueTaskFn` | `maudEnqueueTaskFunction` |
+| `maudFinishTaskFn` | `maudFinishTaskFunction` |
+
+#### Renamed scene names
+
+| Old | New |
+|---|---|
+| `maudAcousticScene` | `maudScene` |
+| `maudAcousticSceneDef` | `maudSceneDef` |
+| `MAUD_ACOUSTIC_SCENE_DEF_COOKIE` | `MAUD_SCENE_DEF_COOKIE` |
+| `maudDefaultAcousticSceneDef` | `maudDefaultSceneDef` |
+| `maudCreateAcousticScene` | `maudCreateScene` |
+| `maudDestroyAcousticScene` | `maudDestroyScene` |
+| `maudAcousticScene_Commit` | `maudScene_Commit` |
+| `maudAcousticScene_GetMisuse` | `maudScene_GetMisuse` |
+| `maudInstanceTransform` | `maudSceneInstanceTransform` |
+
+#### Renamed fields
+
+| Old | New |
+|---|---|
+| `maudVoiceDetectorDef.hangoverMilliseconds` (`uint32_t`, milliseconds) | `hangover` (`float`, seconds) |
+| `maudEchoCancellerDef.tailSeconds` | `tailTime` |
+| `maudHrtfInfo.taps` | `tapCount` |
+| `maudProbeSetInfo.probes` | `probeCount` |
+| `maudProbeSetInfo.links` | `linkCount` |
+| `maudReverbResult.estimates` | `estimateCount` |
+| `maudDirectResult.surfaces` | `surfaceCount` |
+| `maudDeviceInfo.spatialObjects` | `spatialObjectCount` |
+| `maudStreamBlock.objectsAvailable` | `availableObjectCount` |
+| `maudBinauralDef.nearField` | `enableNearField` |
+| `maudReverbDef.tail` | `enableTail` |
+| `maudSourceDef.transmission` | `enableTransmission` |
+| `maudSourceDef.pathing` | `enablePathing` |
+
+### Fixed
+
+- Web: a context or effect too large for the page's memory returns `maud_errorCapacity` instead of aborting the whole module with `Aborted(OOM)`. A program that links the library through CMake, from the build tree or the installed package, now links with `-sABORTING_MALLOC=0`; any other build links with it or with `-sALLOW_MEMORY_GROWTH=1`, as the web section of the platforms guide says. A program that relied on the abort now gets NULL from its own failed allocations ([#163](https://github.com/Rawframe-Project/maul-audio/pull/163)).
+
 ## [0.2.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.1.0...v0.2.0) (2026-10-28)
 
 ### Changed
