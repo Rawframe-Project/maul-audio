@@ -5,6 +5,30 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.3.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.2.0...v0.3.0) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* 63 public functions and 6 types are renamed by the family's naming rule, maudDevice_SetOfflineDefault, maudProbeSet_GetInfo and maudRotateAmbisonic take their parameters in a new order, maudAcousticScene and its def, calls and cookie are maudScene's, maudInstanceTransform is maudSceneInstanceTransform, maudResultName is maudGetResultName, maudVoiceDetectorDef.hangoverMilliseconds (uint32_t, milliseconds) is hangover (float, seconds), seven count fields, four switch fields (now enableThing) and maudEchoCancellerDef.tailSeconds are renamed. maudStreamCallback was a pointer type and maudStreamFunction is a function type, so a variable or field that holds the callback is declared maudStreamFunction*. The tables in this pull request list each.
+* **stream:** maudStreamObject.position is a maudVector3 instead of float[3]; write position.x, .y and .z instead of position[0], [1] and [2].
+* **spatializer:** MAUD_DIRECT_BANDS is renamed MAUD_BANDS.
+* maudDirectEffectDef.sampleRate, maudReverbDef.sampleRate and maudSpatializerDef.reflectionRate are uint32_t instead of float.
+* **context:** maudLimits.streams, devices, notifications and deviceTextBytes are uint32_t instead of uint16_t, and maudCreateContext refuses one past its new MAUD_MAX_* constant with maud_errorLimit.
+
+### Fixed
+
+* **web:** link programs so a failed allocation is a status, not an abort ([#163](https://github.com/Rawframe-Project/maul-audio/issues/163)) ([9efd54c](https://github.com/Rawframe-Project/maul-audio/commit/9efd54c205bd258b3f9673fba8a8615e7ccfab2d)), closes [#158](https://github.com/Rawframe-Project/maul-audio/issues/158)
+
+
+### Changed
+
+* **context:** cap maudLimits by named constants, not field widths ([#153](https://github.com/Rawframe-Project/maul-audio/issues/153)) ([f670810](https://github.com/Rawframe-Project/maul-audio/commit/f6708101d39bf1decbeb504de864c455c2b2375d))
+* name the API by the family's naming rule ([#165](https://github.com/Rawframe-Project/maul-audio/issues/165)) ([2be7d67](https://github.com/Rawframe-Project/maul-audio/commit/2be7d67e9393ef3f04e3348c6b5e2720671361ff))
+* **spatializer:** name the band count MAUD_BANDS ([#154](https://github.com/Rawframe-Project/maul-audio/issues/154)) ([43979f3](https://github.com/Rawframe-Project/maul-audio/commit/43979f32867f9236fc6cea71772279d8e739b591)), closes [#145](https://github.com/Rawframe-Project/maul-audio/issues/145)
+* **stream:** give a stream object's position as a maudVector3 ([#152](https://github.com/Rawframe-Project/maul-audio/issues/152)) ([82297e3](https://github.com/Rawframe-Project/maul-audio/commit/82297e34abd07c679bf628c0674e7f583920c8b9))
+* take every sample rate as a uint32_t ([#151](https://github.com/Rawframe-Project/maul-audio/issues/151)) ([35e8df8](https://github.com/Rawframe-Project/maul-audio/commit/35e8df81c6759e62e8e833cdbe16f6d9a6a79324))
+
 ## [0.2.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.1.0...v0.2.0) (2026-10-28)
 
 ### Changed
