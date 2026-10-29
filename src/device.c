@@ -125,8 +125,8 @@ void maudSetDefaultDevice(maudContext* context, maudDeviceRole role, maudDeviceI
     }
 }
 
-maudResult maudGetDevices(const maudContext* context, maudDirection direction, maudDeviceId* idsOut,
-                          uint32_t capacity, uint32_t* countOut)
+maudResult maudContext_GetDevices(const maudContext* context, maudDirection direction,
+                                  maudDeviceId* idsOut, uint32_t capacity, uint32_t* countOut)
 {
     // Cleared first, so a failure leaves zero.
     if (countOut != nullptr)
@@ -155,8 +155,8 @@ maudResult maudGetDevices(const maudContext* context, maudDirection direction, m
     return maud_success;
 }
 
-maudResult maudGetDeviceInfo(const maudContext* context, maudDeviceId device,
-                             maudDeviceInfo* infoOut)
+maudResult maudDevice_GetInfo(const maudContext* context, maudDeviceId device,
+                              maudDeviceInfo* infoOut)
 {
     // Cleared first, so a failure leaves zero.
     if (infoOut != nullptr)
@@ -204,8 +204,8 @@ static maudResult CopyText(const maudContext* context, maudDeviceId device, bool
     return maud_success;
 }
 
-maudResult maudGetDeviceName(const maudContext* context, maudDeviceId device, char* bytesOut,
-                             size_t capacity, size_t* lengthOut)
+maudResult maudDevice_GetName(const maudContext* context, maudDeviceId device, char* bytesOut,
+                              size_t capacity, size_t* lengthOut)
 {
     // Cleared first, so a failure leaves zero.
     if (lengthOut != nullptr)
@@ -215,8 +215,8 @@ maudResult maudGetDeviceName(const maudContext* context, maudDeviceId device, ch
     return CopyText(context, device, false, bytesOut, capacity, lengthOut);
 }
 
-maudResult maudGetDeviceKey(const maudContext* context, maudDeviceId device, char* bytesOut,
-                            size_t capacity, size_t* lengthOut)
+maudResult maudDevice_GetKey(const maudContext* context, maudDeviceId device, char* bytesOut,
+                             size_t capacity, size_t* lengthOut)
 {
     // Cleared first, so a failure leaves zero.
     if (lengthOut != nullptr)
@@ -226,8 +226,8 @@ maudResult maudGetDeviceKey(const maudContext* context, maudDeviceId device, cha
     return CopyText(context, device, true, bytesOut, capacity, lengthOut);
 }
 
-maudResult maudGetDefaultDevice(const maudContext* context, maudDirection direction,
-                                maudDeviceRole role, maudDeviceId* deviceOut)
+maudResult maudContext_GetDefaultDevice(const maudContext* context, maudDirection direction,
+                                        maudDeviceRole role, maudDeviceId* deviceOut)
 {
     // Cleared first, so a failure leaves zero.
     if (deviceOut != nullptr)

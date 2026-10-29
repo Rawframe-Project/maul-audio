@@ -107,7 +107,7 @@ static void BlendTail(const maudProbeBake* bake, const maudPathEnd* end, const d
 }
 
 bool maudInterpolateBake(const maudProbeGraph* graph, const maudProbeBake* bake,
-                         maudAnyHitFn* anyHit, void* context, maudVector3 point,
+                         maudAnyHitFunction* anyHit, void* context, maudVector3 point,
                          maudReverbResult* result, float* field)
 {
     maudPathEnd end;

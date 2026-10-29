@@ -81,7 +81,7 @@ static void TestCorner(void)
     const maudVector3 listener = {18.5f, 1.5f, 12.0f};
     const maudVector3 source = {6.0f, 1.5f, 1.5f};
     maudVector3 v[4] = {listener, {19.5f, 1.5f, 2.5f}, {16.5f, 1.5f, 0.5f}, source};
-    uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+    uint32_t n = maudRefinePath(maudFindAnyHit, scene, v, 4);
     const maudVector3 corner = {17.0f, 1.5f, 3.0f};
     double exact = Length(listener, corner) + Length(corner, source);
     printf("corner: %u vertices, %.5f m against %.5f, the vertex %.4f m off the edge\n", n,
@@ -92,14 +92,14 @@ static void TestCorner(void)
     // A path as long as its array, its one vertex needed: refined in
     // place, nothing past it read.
     maudVector3 exactly[3] = {listener, {18.0f, 1.5f, 2.0f}, source};
-    CHECK(maudRefinePath(maudSceneAnyHit, scene, exactly, 3) == 3 &&
+    CHECK(maudRefinePath(maudFindAnyHit, scene, exactly, 3) == 3 &&
               fabs(PathLength(exactly, 3) / exact - 1.0) < 1e-4,
           "a path as long as its array");
     maudVector3 same[3] = {listener, {19.5f, 1.5f, 2.5f}, source};
     CHECK(maudRefinePath(nullptr, nullptr, same, 3) == 3 && same[1].x == 19.5f,
           "no query, no change");
     maudVector3 clear[3] = {listener, {18.0f, 1.5f, 8.0f}, {18.5f, 1.5f, 4.0f}};
-    CHECK(maudRefinePath(maudSceneAnyHit, scene, clear, 3) == 2, "a clear line, no vertex");
+    CHECK(maudRefinePath(maudFindAnyHit, scene, clear, 3) == 2, "a clear line, no vertex");
     maudDestroyAcousticScene(scene);
 }
 
@@ -169,7 +169,7 @@ static void TestDoor(void)
     for (int c = 0; c < 2; ++c)
     {
         maudVector3 v[4] = {ends[c][0], {6.0f, 1.5f, 2.5f}, {4.0f, 1.5f, 2.5f}, ends[c][1]};
-        uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+        uint32_t n = maudRefinePath(maudFindAnyHit, scene, v, 4);
         double exact = ThroughThickDoor(ends[c][0], ends[c][1]);
         double got = PathLength(v, n);
         printf("door %d: %u vertices, %.5f m, the shortest %.5f (+%.3f %%)\n", c, n, got, exact,
@@ -224,7 +224,7 @@ static void TestLedge(void)
         maudVector3 a = {from[c], 1.0f, 0.0f};
         maudVector3 b = {10.0f - from[c], 1.0f, 10.0f};
         maudVector3 v[4] = {a, {from[c], 2.5f, 4.7f}, {10.0f - from[c], 2.5f, 5.3f}, b};
-        uint32_t n = maudRefinePath(maudSceneAnyHit, scene, v, 4);
+        uint32_t n = maudRefinePath(maudFindAnyHit, scene, v, 4);
         double exact = OverLedge(a, b);
         double got = PathLength(v, n);
         printf("ledge %d: %u vertices, %.5f m, the shortest %.5f (+%.4f %%)\n", c, n, got, exact,

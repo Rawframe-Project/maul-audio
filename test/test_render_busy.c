@@ -28,7 +28,7 @@ static void* Other(void* user)
 {
     Race* race = user;
     float frame[2];
-    race->render = maudRenderStream(race->context, race->stream, frame, 1);
+    race->render = maudStream_Render(race->context, race->stream, frame, 1);
     race->destroy = maudDestroyStream(race->context, race->stream);
     return nullptr;
 }
@@ -60,17 +60,17 @@ int main(void)
     streamDef.callback = Callback;
     streamDef.user = &race;
     CHECK(maudCreateStream(context, &streamDef, &race.stream) == maud_success &&
-              maudStartStream(context, race.stream) == maud_success,
+              maudStream_Start(context, race.stream) == maud_success,
           "a running stream");
-    uint64_t misuse = maudGetContextMisuse(context);
+    uint64_t misuse = maudContext_GetMisuse(context);
     float frames[2 * 64];
-    CHECK(maudRenderStream(context, race.stream, frames, 64) == maud_success && race.joined,
+    CHECK(maudStream_Render(context, race.stream, frames, 64) == maud_success && race.joined,
           "rendered, the second thread run inside");
     CHECK(race.render == maud_errorBusy, "the second thread's render refused while it renders");
     CHECK(race.destroy == maud_errorBusy, "its destruction refused while it renders");
-    CHECK(maudGetContextMisuse(context) == misuse + 1,
+    CHECK(maudContext_GetMisuse(context) == misuse + 1,
           "the destruction counted as misuse, the render not");
-    CHECK(maudRenderStream(context, race.stream, frames, 64) == maud_success,
+    CHECK(maudStream_Render(context, race.stream, frames, 64) == maud_success,
           "rendered again once the render returned");
     CHECK(maudDestroyStream(context, race.stream) == maud_success,
           "destroyed once the render returned");

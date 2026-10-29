@@ -78,7 +78,7 @@ EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 
 void TestGesture(void)
 {
-    CHECK(maudResumeContext(s_context) == maud_success, "resume from the gesture");
+    CHECK(maudContext_Unlock(s_context) == maud_success, "resume from the gesture");
     s_since = emscripten_get_now();
     s_phaseSince = s_since;
     s_phase = 1;
@@ -89,7 +89,7 @@ static maudDeviceId Named(const char* name)
 {
     maudDeviceId ids[8];
     uint32_t count = 0;
-    if (maudGetDevices(s_context, maud_directionOutput, ids, 8, &count) != maud_success)
+    if (maudContext_GetDevices(s_context, maud_directionOutput, ids, 8, &count) != maud_success)
     {
         return (maudDeviceId){0, 0};
     }
@@ -97,7 +97,8 @@ static maudDeviceId Named(const char* name)
     {
         char text[64];
         size_t length = 0;
-        if (maudGetDeviceName(s_context, ids[i], text, sizeof(text) - 1, &length) == maud_success &&
+        if (maudDevice_GetName(s_context, ids[i], text, sizeof(text) - 1, &length) ==
+                maud_success &&
             length == strlen(name) && memcmp(text, name, length) == 0)
         {
             return ids[i];
@@ -114,7 +115,7 @@ static maudStreamId PinOutput(maudDeviceId device)
     def.callback = Play;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(s_context, &def, &stream) == maud_success &&
-              maudStartStream(s_context, stream) == maud_success,
+              maudStream_Start(s_context, stream) == maud_success,
           "an output pinned to a listed device");
     return stream;
 }
@@ -122,7 +123,7 @@ static maudStreamId PinOutput(maudDeviceId device)
 static maudSuspendReason Suspension(maudStreamId stream)
 {
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, stream, &status) == maud_success, "status");
     return status.suspension;
 }
 
@@ -149,7 +150,7 @@ static void Step_(void* user)
 {
     (void)user;
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
     }
     if (s_phase == 0)
@@ -204,7 +205,7 @@ int main(void)
     captureDef.direction = maud_directionInput;
     captureDef.callback = Count;
     CHECK(maudCreateStream(s_context, &captureDef, &s_capture) == maud_success &&
-              maudStartStream(s_context, s_capture) == maud_success,
+              maudStream_Start(s_context, s_capture) == maud_success,
           "a capture following the default, whose grant names the outputs");
     maudStreamDef marked = maudDefaultStreamDef();
     marked.callback = Play;
@@ -212,7 +213,7 @@ int main(void)
     maudStreamId markedId = {0, 0};
     maudStreamStatus status = {0};
     CHECK(maudCreateStream(s_context, &marked, &markedId) == maud_success &&
-              maudGetStreamStatus(s_context, markedId, &status) == maud_success &&
+              maudStream_GetStatus(s_context, markedId, &status) == maud_success &&
               status.spatialMark == maud_markUnknown &&
               maudDestroyStream(s_context, markedId) == maud_success,
           "a marked output's fate is unknown");

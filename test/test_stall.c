@@ -115,7 +115,7 @@ static void Report(const char* verdict)
 static void Drain(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -169,11 +169,11 @@ static void Render(const maudStreamBlock* block, void* user)
         long long none = 0;
         atomic_compare_exchange_strong(&shared->firstInStall, &none, start);
     }
-    uint64_t step = maudLatchResults(shared->spatializer);
+    uint64_t step = maudSpatializer_LatchResults(shared->spatializer);
     float gain = 0.0f;
     maudDirectResult result;
     if (step != 0 &&
-        maudGetDirectResult(shared->spatializer, shared->source, &result) == maud_success)
+        maudSource_GetDirectResult(shared->spatializer, shared->source, &result) == maud_success)
     {
         // An odd step put the wall up, an even one took it down.
         if (result.occlusion != ((step & 1u) != 0 ? 1.0f : 0.0f))
@@ -220,7 +220,7 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
         return;
     }
     maudStreamStatus status;
-    if (maudGetStreamStatus(shared->context, shared->stream, &status) == maud_success)
+    if (maudStream_GetStatus(shared->context, shared->stream, &status) == maud_success)
     {
         shared->underrunsBefore = status.underruns;
     }
@@ -255,7 +255,7 @@ int main(int argc, char** argv)
         CHECK(!required, "a native context");
         return required ? 1 : PlatformAbsent("no native backend opens here");
     }
-    maudBackendKind chosen = maudGetContextBackend(context);
+    maudBackendKind chosen = maudContext_GetBackend(context);
     if (required && chosen != requiredKind)
     {
         printf("the native backend is kind %d, and this run requires kind %d\n", (int)chosen,
@@ -271,7 +271,7 @@ int main(int argc, char** argv)
     maudPose source = {{0.0f, 0.0f, -3.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     CHECK(maudCreateSpatializer(&spatialDef, &shared->spatializer) == maud_success &&
               maudCreateSource(shared->spatializer, &sourceDef, &shared->source) == maud_success &&
-              maudSetSourcePose(shared->spatializer, shared->source, &source) == maud_success,
+              maudSource_SetPose(shared->spatializer, shared->source, &source) == maud_success,
           "a spatializer with a source");
     maudStreamDef streamDef = maudDefaultStreamDef();
     streamDef.callback = Render;
@@ -279,7 +279,7 @@ int main(int argc, char** argv)
     shared->context = context;
     maudResult opened = maudCreateStream(context, &streamDef, &shared->stream);
     if (s_failures != 0 || opened != maud_success ||
-        maudStartStream(context, shared->stream) != maud_success)
+        maudStream_Start(context, shared->stream) != maud_success)
     {
         CHECK(!required, "a native output stream");
         maudDestroySpatializer(shared->spatializer);
@@ -287,7 +287,7 @@ int main(int argc, char** argv)
         return required ? 1 : PlatformAbsent("no native output stream opens here");
     }
     maudStreamFormat format;
-    CHECK(maudGetStreamFormat(context, shared->stream, &format) == maud_success, "format");
+    CHECK(maudStream_GetFormat(context, shared->stream, &format) == maud_success, "format");
     // The host drains its notifications as a game does once a frame,
     // which on some platforms is what connects the stream; then it steps
     // every 5 ms, the stalled step stalling the drain too.
@@ -297,7 +297,7 @@ int main(int argc, char** argv)
     // want of one (the Windows runners): nothing to stall under there.
     // Any other suspension is the platform failing, and fails the test.
     maudStreamStatus first = {0};
-    CHECK(maudGetStreamStatus(context, shared->stream, &first) == maud_success, "status");
+    CHECK(maudStream_GetStatus(context, shared->stream, &first) == maud_success, "status");
     if (atomic_load(&shared->blocks) < 10 && !required && first.suspension == maud_suspendNoDevice)
     {
         printf("the stream is suspended (reason %d)\n", (int)first.suspension);
@@ -319,7 +319,8 @@ int main(int argc, char** argv)
     for (unsigned step = 1; step <= STEPS; ++step)
     {
         atomic_store(&shared->step, step);
-        CHECK(maudSimulateDirect(shared->spatializer, &listener) == maud_success, "a step");
+        CHECK(maudSpatializer_SimulateDirect(shared->spatializer, &listener) == maud_success,
+              "a step");
         Drain(context);
         // hygiene: the host steps every 5 ms, as a game's thread does
         int64_t late = PauseLate(5);
@@ -333,7 +334,7 @@ int main(int argc, char** argv)
         // an underrun now and then with no stall at all.
         if (step == STALLED_STEP + 10)
         {
-            CHECK(maudGetStreamStatus(context, shared->stream, &status) == maud_success, "status");
+            CHECK(maudStream_GetStatus(context, shared->stream, &status) == maud_success, "status");
         }
     }
     graphRead = GraphXruns(&graphAfter) && graphRead;
@@ -390,7 +391,7 @@ int main(int argc, char** argv)
         CHECK(shared->latchedInStall == STALLED_STEP - 1, "the last whole step stayed latched");
         CHECK(status.underruns == 0, "no underrun over the stall");
     }
-    CHECK(maudStopStream(context, shared->stream) == maud_success, "stopped");
+    CHECK(maudStream_Stop(context, shared->stream) == maud_success, "stopped");
     CHECK(maudDestroyContext(context) == maud_success, "destroyed");
     maudDestroySpatializer(shared->spatializer);
     return s_failures == 0 ? 0 : 1;

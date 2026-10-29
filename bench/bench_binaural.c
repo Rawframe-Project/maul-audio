@@ -62,7 +62,7 @@ static double Run(const maudHrtf* hrtf, bool moving, bool nearField)
         {
             float angle = moving ? 0.01f * (float)block : 0.5f;
             maudBinauralParams params = {{sinf(angle), 0.2f, -cosf(angle)}, 1.0f};
-            if (maudProcessBinaural(effect, &params, s_in, out, FRAMES) != maud_success)
+            if (maudBinaural_Process(effect, &params, s_in, out, FRAMES) != maud_success)
             {
                 return 0.0;
             }
@@ -112,7 +112,8 @@ static void RunBed(const maudHrtf* hrtf)
         double middle = Seconds();
         for (int block = 0; block < BLOCKS; ++block)
         {
-            if (maudDecodeBinaural(decoder, (const float* const*)bed, out, FRAMES) != maud_success)
+            if (maudBinauralDecoder_Decode(decoder, (const float* const*)bed, out, FRAMES) !=
+                maud_success)
             {
                 return;
             }
@@ -153,7 +154,7 @@ static void RunDirect(void)
             for (int block = 0; block < BLOCKS; ++block)
             {
                 params.distance = moving ? 27.5f + 22.5f * sinf(0.004f * (float)block) : 20.0f;
-                if (maudProcessDirect(effect, &params, s_in, s_left, FRAMES) != maud_success)
+                if (maudDirectEffect_Process(effect, &params, s_in, s_left, FRAMES) != maud_success)
                 {
                     return;
                 }
@@ -193,7 +194,7 @@ static void RunReverb(void)
                                            0.0f,
                                            {0.0f, 0.0f, 0.0f},
                                            {0.0f, 0.0f, 0.0f}};
-                if (maudProcessReverb(reverb, &params, s_in, bed, FRAMES) != maud_success)
+                if (maudReverb_Process(reverb, &params, s_in, bed, FRAMES) != maud_success)
                 {
                     return;
                 }
@@ -241,11 +242,11 @@ static maudResult Step(Effects* e, Effect which)
     switch (which)
     {
     case EFFECT_BINAURAL:
-        return maudProcessBinaural(e->binaural, &binaural, s_in, out, FRAMES);
+        return maudBinaural_Process(e->binaural, &binaural, s_in, out, FRAMES);
     case EFFECT_DIRECT:
-        return maudProcessDirect(e->direct, &direct, s_in, s_left, FRAMES);
+        return maudDirectEffect_Process(e->direct, &direct, s_in, s_left, FRAMES);
     case EFFECT_REVERB:
-        return maudProcessReverb(e->reverb, &reverb, s_in, bed, FRAMES);
+        return maudReverb_Process(e->reverb, &reverb, s_in, bed, FRAMES);
     }
     return maud_errorInvalid;
 }

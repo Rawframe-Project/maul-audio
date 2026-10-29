@@ -56,7 +56,7 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
                             o.z == s_listener.position.z;
         s_attachRays += fromListener && rays[i].maxDistance <= 3.0f ? 1 : 0;
     }
-    maudSceneAnyHit(rays, count, occluded, s_current);
+    maudFindAnyHit(rays, count, occluded, s_current);
     for (uint32_t i = 0; i < count && s_linksBlocked; ++i)
     {
         occluded[i] = AtProbe(rays[i].origin) ? 1 : occluded[i];
@@ -66,7 +66,7 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
 static void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
 {
     (void)context;
-    maudSceneClosestHit(rays, count, hits, s_current);
+    maudFindClosestHit(rays, count, hits, s_current);
 }
 
 enum
@@ -111,8 +111,8 @@ static maudAcousticScene* Corridor(int extra)
     return scene;
 }
 
-static void* Reverse(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Reverse(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     for (uint32_t i = itemCount; i-- > 0;)
@@ -153,7 +153,7 @@ static World Build(bool reversed, float transmission)
     CHECK(maudCreateSpatializer(&def, &w.s) == maud_success, "a spatializer");
     maudAcousticMaterial wall = {
         {0.1f, 0.1f, 0.1f}, 0.5f, {transmission, transmission, transmission}};
-    CHECK(maudSetMaterials(w.s, &wall, 1) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(w.s, &wall, 1) == maud_success, "materials");
     static maudVector3 points[400];
     uint32_t count = 0;
     for (int x = 0; x < 20; ++x)
@@ -171,7 +171,7 @@ static World Build(bool reversed, float transmission)
     pd.pointCount = count;
     pd.range = 3.0f;
     CHECK(maudCreateProbeSet(w.s, &pd, &w.set) == maud_success &&
-              maudSetPathing(w.s, w.set) == maud_success,
+              maudProbeSet_UseForPathing(w.s, w.set) == maud_success,
           "a set in use");
     const maudVector3 at[4] = {
         {6.0f, 1.5f, 1.5f}, {6.0f, 1.5f, 1.5f}, {18.5f, 1.5f, 5.0f}, {8.0f, 1.5f, 1.0f}};
@@ -196,7 +196,7 @@ static World Build(bool reversed, float transmission)
             pose.orientation = (maudQuaternion){0.0f, -0.70710678f, 0.0f, 0.70710678f};
         }
         CHECK(maudCreateSource(w.s, &sd, &w.sources[i]) == maud_success &&
-                  maudSetSourcePose(w.s, w.sources[i], &pose) == maud_success,
+                  maudSource_SetPose(w.s, w.sources[i], &pose) == maud_success,
               "a source");
     }
     return w;
@@ -204,11 +204,13 @@ static World Build(bool reversed, float transmission)
 
 static void Step(const World* w, maudDirectResult* results)
 {
-    CHECK(maudSimulateDirect(w->s, &s_listener) == maud_success && maudLatchResults(w->s) > 0,
+    CHECK(maudSpatializer_SimulateDirect(w->s, &s_listener) == maud_success &&
+              maudSpatializer_LatchResults(w->s) > 0,
           "a step");
     for (int i = 0; i < 4; ++i)
     {
-        CHECK(maudGetDirectResult(w->s, w->sources[i], &results[i]) == maud_success, "a result");
+        CHECK(maudSource_GetDirectResult(w->s, w->sources[i], &results[i]) == maud_success,
+              "a result");
     }
 }
 
@@ -354,25 +356,26 @@ int main(void)
     const maudPose inSight = {{18.5f, 1.5f, 6.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     const maudPose around = {{6.0f, 1.5f, 1.5f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     const maudPose past = {{8.0f, 1.5f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSetSourcePose(w.s, w.sources[0], &inSight) == maud_success &&
-              maudSetSourcePose(w.s, w.sources[3], &inSight) == maud_success,
+    CHECK(maudSource_SetPose(w.s, w.sources[0], &inSight) == maud_success &&
+              maudSource_SetPose(w.s, w.sources[3], &inSight) == maud_success,
           "moved into sight");
     s_attachRays = 0;
     Step(&w, r);
     printf("attaching the listener: %u rays with a source to path, %u without\n", attaching,
            s_attachRays);
     CHECK(attaching > 0 && s_attachRays == 0, "nothing to path, no ray to the set");
-    CHECK(maudSetSourcePose(w.s, w.sources[0], &around) == maud_success &&
-              maudSetSourcePose(w.s, w.sources[3], &past) == maud_success,
+    CHECK(maudSource_SetPose(w.s, w.sources[0], &around) == maud_success &&
+              maudSource_SetPose(w.s, w.sources[3], &past) == maud_success,
           "moved back");
     // A destroyed set: its id stale, its paths gone.
     CHECK(maudDestroyProbeSet(w.s, w.set) == maud_success, "destroyed");
-    CHECK(maudSetPathing(w.s, w.set) == maud_errorStale, "a destroyed set's id is stale");
+    CHECK(maudProbeSet_UseForPathing(w.s, w.set) == maud_errorStale,
+          "a destroyed set's id is stale");
     Step(&w, r);
     CHECK(!r[0].pathed, "no set, no path");
     const maudProbeSetId none = {0, 0};
-    CHECK(maudSetPathing(w.s, none) == maud_success &&
-              maudSetPathing(nullptr, none) == maud_errorInvalid,
+    CHECK(maudProbeSet_UseForPathing(w.s, none) == maud_success &&
+              maudProbeSet_UseForPathing(nullptr, none) == maud_errorInvalid,
           "pathing off; NULL");
     maudDestroySpatializer(w.s);
     maudDestroyAcousticScene(closed);

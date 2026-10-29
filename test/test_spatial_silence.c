@@ -147,7 +147,7 @@ static void TestBinaural(bool moving)
             params.position = (maudVector3){distance * sinf(angle), 0.1f, -distance * cosf(angle)};
         }
         Clear();
-        if (maudProcessBinaural(effect, &params, s_in, out, FRAMES) != maud_success)
+        if (maudBinaural_Process(effect, &params, s_in, out, FRAMES) != maud_success)
         {
             CHECK(false, "binaural: every call succeeds");
             break;
@@ -176,7 +176,7 @@ static void TestDirect(void)
     {
         Fill(b < LOUD, FRAMES);
         Clear();
-        if (maudProcessDirect(effect, &params, s_in, s_out[0], FRAMES) != maud_success)
+        if (maudDirectEffect_Process(effect, &params, s_in, s_out[0], FRAMES) != maud_success)
         {
             CHECK(false, "direct: every call succeeds");
             break;
@@ -209,7 +209,7 @@ static void TestReverb(bool tail, uint32_t frames)
         // The reverb adds into the bed.
         memset(s_out, 0, sizeof(s_out));
         Clear();
-        if (maudProcessReverb(reverb, &params, s_in, bed, frames) != maud_success)
+        if (maudReverb_Process(reverb, &params, s_in, bed, frames) != maud_success)
         {
             CHECK(false, "reverb: every call succeeds");
             break;

@@ -128,8 +128,8 @@ static void TestSoup(void)
     }
     static uint8_t occluded[RAYS];
     static maudRayHit hits[RAYS];
-    maudSceneAnyHit(rays, RAYS, occluded, scene);
-    maudSceneClosestHit(rays, RAYS, hits, scene);
+    maudFindAnyHit(rays, RAYS, occluded, scene);
+    maudFindClosestHit(rays, RAYS, hits, scene);
     int anyWrong = 0;
     int closestWrong = 0;
     int hitCount = 0;
@@ -183,18 +183,18 @@ static void TestWatertight(void)
         float p = (float)k / 64.0f;
         maudRay down = {{p, p, 0.5f}, {0.0f, 0.0f, -1.0f}, 0.0f, 1.0f};
         uint8_t hit = 0;
-        maudSceneAnyHit(&down, 1, &hit, scene);
+        maudFindAnyHit(&down, 1, &hit, scene);
         all = all && hit == 1;
         // Slanted rays through the diagonal too.
         maudRay slant = {{p - 0.25f, p, 0.5f}, {0.4472136f, 0.0f, -0.8944272f}, 0.0f, 2.0f};
-        maudSceneAnyHit(&slant, 1, &hit, scene);
+        maudFindAnyHit(&slant, 1, &hit, scene);
         // At the square's corners a slanted ray may land just outside.
         all = all && (hit == 1 || k == 0 || k == 64);
     }
     CHECK(all, "no ray slips through the shared diagonal");
     maudRay centre = {{0.5f, 0.5f, 2.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 1.5f};
     maudRayHit h;
-    maudSceneClosestHit(&centre, 1, &h, scene);
+    maudFindClosestHit(&centre, 1, &h, scene);
     CHECK(fabsf(h.distance - 1.0f) < 1e-6f, "nor through the vertex eight triangles share");
     maudDestroyAcousticScene(scene);
 }
@@ -210,7 +210,7 @@ static void TestTiesAndNormals(void)
     maudAcousticScene* scene = Build(meshes, 2);
     maudRay ray = {{0.2f, 0.2f, 1.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 5.0f};
     maudRayHit h;
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(h.distance == 1.0f && h.material == 9, "equal distances: the first listed");
     CHECK(h.normal.x == 0.0f && h.normal.y == 0.0f && h.normal.z == -1.0f,
           "its normal faces its counterclockwise side");
@@ -228,7 +228,7 @@ static void TestTiesAndNormals(void)
     }
     maudMesh stack = {v, 3, copies, numbers, 20};
     scene = Build(&stack, 1);
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(h.material == 100, "a tie across leaves: the first listed");
     maudDestroyAcousticScene(scene);
     // A strip of unit squares along x, the square from x = 4 listed
@@ -260,18 +260,18 @@ static void TestTiesAndNormals(void)
     maudMesh line = {strip, 18, cells, owner, 16};
     scene = Build(&line, 1);
     maudRay seam = {{4.0f, 0.5f, 1.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 5.0f};
-    maudSceneClosestHit(&seam, 1, &h, scene);
+    maudFindClosestHit(&seam, 1, &h, scene);
     CHECK(h.distance == 1.0f && h.material == 4, "a tie on a seam between leaves");
     maudDestroyAcousticScene(scene);
     maudMesh one = {v, 3, up, first, 1};
     scene = Build(&one, 1);
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(h.normal.z == 1.0f, "the other winding, the other side");
     maudDestroyAcousticScene(scene);
     scene = Build(nullptr, 0);
     uint8_t hit = 9;
-    maudSceneAnyHit(&ray, 1, &hit, scene);
-    maudSceneClosestHit(&ray, 1, &h, scene);
+    maudFindAnyHit(&ray, 1, &hit, scene);
+    maudFindClosestHit(&ray, 1, &h, scene);
     CHECK(hit == 0 && isinf(h.distance), "an empty scene misses");
     maudDestroyAcousticScene(scene);
 }
@@ -289,22 +289,23 @@ static void TestHooks(void)
     maudMesh wall = {v, 8, faces, materials, 4};
     maudAcousticScene* scene = Build(&wall, 1);
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     maudAcousticMaterial brick = {{0.1f, 0.1f, 0.1f}, 0.1f, {0.3f, 0.2f, 0.1f}};
-    CHECK(maudSetMaterials(s, &brick, 1) == maud_success, "a material");
+    CHECK(maudSpatializer_SetMaterials(s, &brick, 1) == maud_success, "a material");
     maudSourceDef sd = maudDefaultSourceDef();
     maudSourceId id = {0, 0};
     CHECK(maudCreateSource(s, &sd, &id) == maud_success, "a source");
     maudPose source = {{0.0f, 0.0f, -10.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudDirectResult r = {0};
-    CHECK(maudSetSourcePose(s, id, &source) == maud_success &&
-              maudSimulateDirect(s, &listener) == maud_success && maudLatchResults(s) > 0 &&
-              maudGetDirectResult(s, id, &r) == maud_success,
+    CHECK(maudSource_SetPose(s, id, &source) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) > 0 &&
+              maudSource_GetDirectResult(s, id, &r) == maud_success,
           "a result");
     CHECK(r.occlusion == 1.0f && r.surfaces == 2 && fabsf(r.transmission[0] - 0.09f) < 1e-6f &&
               fabsf(r.transmission[2] - 0.01f) < 1e-6f,

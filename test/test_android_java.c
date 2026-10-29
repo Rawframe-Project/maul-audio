@@ -48,7 +48,7 @@ static atomic_uint s_captured;
 static void Drain(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -58,7 +58,7 @@ static bool ResumedAmong(maudContext* context, maudStreamId stream)
 {
     bool resumed = false;
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         resumed = resumed || (record.kind == maud_notifyStreamResumed &&
                               record.stream.index1 == stream.index1);
@@ -71,7 +71,7 @@ static bool FocusAmong(maudContext* context, maudFocus focus)
 {
     bool seen = false;
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         seen = seen || (record.kind == maud_notifyFocusChanged && record.focus == focus);
     }
@@ -98,7 +98,7 @@ static maudDeviceId Named(const maudContext* context, maudDirection direction, c
                           uint32_t* count)
 {
     maudDeviceId ids[16];
-    CHECK(maudGetDevices(context, direction, ids, 16, count) == maud_success, "listed");
+    CHECK(maudContext_GetDevices(context, direction, ids, 16, count) == maud_success, "listed");
     maudDeviceId found = {0, 0};
     for (uint32_t i = 0; i < *count && i < 16; ++i)
     {
@@ -106,11 +106,11 @@ static maudDeviceId Named(const maudContext* context, maudDirection direction, c
         char key[128] = {0};
         size_t length = 0;
         maudDeviceInfo info = {0};
-        CHECK(maudGetDeviceName(context, ids[i], text, sizeof(text) - 1, &length) == maud_success &&
-                  maudGetDeviceKey(context, ids[i], key, sizeof(key) - 1, &length) ==
-                      maud_success &&
-                  maudGetDeviceInfo(context, ids[i], &info) == maud_success,
-              "described");
+        CHECK(
+            maudDevice_GetName(context, ids[i], text, sizeof(text) - 1, &length) == maud_success &&
+                maudDevice_GetKey(context, ids[i], key, sizeof(key) - 1, &length) == maud_success &&
+                maudDevice_GetInfo(context, ids[i], &info) == maud_success,
+            "described");
         printf("%s: %s [%s] %u Hz (%u to %u), form %u\n",
                direction == maud_directionOutput ? "output" : "input", text, key,
                info.nativeSampleRate, info.minSampleRate, info.maxSampleRate, (unsigned)info.form);
@@ -202,7 +202,7 @@ static bool KeyedAsJava(const maudContext* context, maudDeviceId id, int type, b
     char key[128] = {0};
     char wanted[128] = {0};
     size_t length = 0;
-    bool ok = maudGetDeviceKey(context, id, key, sizeof(key) - 1, &length) == maud_success &&
+    bool ok = maudDevice_GetKey(context, id, key, sizeof(key) - 1, &length) == maud_success &&
               JavaKey(type, input, wanted, sizeof(wanted));
     printf("key %s, Android's %s\n", key, wanted);
     return ok && strlen(wanted) > 2 && strcmp(key, wanted) == 0;
@@ -228,18 +228,18 @@ static void TestDevices(maudContext* context, maudDeviceId* speaker)
     CHECK(KeyedAsJava(context, *speaker, 2, false) && KeyedAsJava(context, microphone, 15, true),
           "keyed by their addresses, or their product names");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, *speaker, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, *speaker, &info) == maud_success &&
               info.form == maud_formSpeakers,
           "speakers");
-    CHECK(maudGetDeviceInfo(context, microphone, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, microphone, &info) == maud_success &&
               info.form == maud_formMicrophone,
           "a microphone");
     // The default output follows the route Android's Spatializer works
     // on, so Java tells its state; a pinned output's is the system's.
     maudDeviceId current = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
                   maud_success &&
-              maudGetDeviceInfo(context, current, &info) == maud_success,
+              maudDevice_GetInfo(context, current, &info) == maud_success,
           "the default output");
     printf("spatializer %u, head tracking %d\n", (unsigned)info.spatializer, info.headTracking);
     CHECK(info.spatializer != maud_spatializerUnknown && info.spatialObjects == 0,
@@ -247,10 +247,10 @@ static void TestDevices(maudContext* context, maudDeviceId* speaker)
     // The emulator's route has none at any API level, so its state is
     // exactly none there.
     CHECK(!Emulated() || info.spatializer == maud_spatializerNone, "none in the emulator");
-    CHECK(maudGetDeviceInfo(context, *speaker, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, *speaker, &info) == maud_success &&
               info.spatializer == maud_spatializerUnknown,
           "a pinned output's left unknown");
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &current) ==
                   maud_success &&
               current.index1 != speaker->index1,
           "the default stays Android's to route");
@@ -263,7 +263,7 @@ static void TestPinned(maudContext* context, maudDeviceId speaker)
     def.callback = Silence;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+              maudStream_Start(context, stream) == maud_success,
           "a stream on the speaker");
     atomic_store(&s_blocks, 0);
     POLL_UNTIL(3000, "the speaker's blocks", Drain(context), atomic_load(&s_blocks) >= 20);
@@ -274,7 +274,7 @@ static void TestPinned(maudContext* context, maudDeviceId speaker)
 static maudSuspendReason Suspension(const maudContext* context, maudStreamId stream)
 {
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
     return status.suspension;
 }
 
@@ -285,7 +285,7 @@ static void TestPermission(maudContext* context)
     def.callback = Silence;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+              maudStream_Start(context, stream) == maud_success,
           "an input stream");
     CHECK(Suspension(context, stream) == maud_suspendPermission, "waits for the microphone");
     STEP_FOR(300, Drain(context));
@@ -355,7 +355,7 @@ static bool FocusBecomes(maudContext* context, maudFocus focus)
     bool seen = false;
     POLL_UNTIL(2000, "the focus record", seen = FocusAmong(context, focus) || seen, seen);
     maudFocus now = maud_focusNone;
-    CHECK(maudGetContextFocus(context, &now) == maud_success, "focus read");
+    CHECK(maudContext_GetFocus(context, &now) == maud_success, "focus read");
     if (!seen || now != focus)
     {
         printf("focus: wanted %u, now %u\n", (unsigned)focus, (unsigned)now);
@@ -376,9 +376,9 @@ static void TestFocus(maudContext* context)
     def.callback = Silence;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+              maudStream_Start(context, stream) == maud_success,
           "a stream plays");
-    CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_success,
+    CHECK(maudContext_RequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_success,
           "focus asked for");
     CHECK(FocusBecomes(context, maud_focusHeld), "and held");
     CHECK(OtherFocus(GAIN_TRANSIENT) && FocusBecomes(context, maud_focusPaused),
@@ -390,17 +390,18 @@ static void TestFocus(maudContext* context)
     CHECK(OtherFocus(GAIN) && FocusBecomes(context, maud_focusLost),
           "lost when another takes it for good");
     CHECK(OtherFocus(0), "the other gives it back");
-    CHECK(maudRequestFocus(context, maud_focusBrief, maud_roleCommunications) == maud_success &&
+    CHECK(maudContext_RequestFocus(context, maud_focusBrief, maud_roleCommunications) ==
+                  maud_success &&
               FocusBecomes(context, maud_focusHeld),
           "asked for again, for a call");
-    CHECK(maudRequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success &&
+    CHECK(maudContext_RequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success &&
               FocusBecomes(context, maud_focusNone),
           "released");
-    CHECK(maudRequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success,
+    CHECK(maudContext_RequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_success,
           "released again");
     maudNotification record;
     bool again = false;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         again = again || record.kind == maud_notifyFocusChanged;
     }

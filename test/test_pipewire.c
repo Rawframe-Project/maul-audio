@@ -87,7 +87,7 @@ static const struct pw_registry_events s_helperRegistry = {
 static void Drain(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -229,7 +229,7 @@ static bool KeyIs(const maudContext* context, maudDeviceId device, const char* k
 {
     char bytes[64];
     size_t length = 0;
-    return maudGetDeviceKey(context, device, bytes, sizeof(bytes), &length) == maud_success &&
+    return maudDevice_GetKey(context, device, bytes, sizeof(bytes), &length) == maud_success &&
            length == strlen(key) && memcmp(bytes, key, length) == 0;
 }
 
@@ -244,7 +244,7 @@ static bool DrainTo(maudContext* context, maudNotificationKind kind, const char*
                     maudDeviceId* deviceOut)
 {
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         bool matches = key == nullptr ? record.device.index1 == deviceOut->index1 &&
                                             record.device.generation == deviceOut->generation
@@ -285,14 +285,14 @@ static void PrintDefaults(const maudContext* context)
     maudDeviceId ids[32];
     uint32_t count = 0;
     maudDeviceId general = {0, 0};
-    (void)maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general);
-    if (maudGetDevices(context, maud_directionOutput, ids, 32, &count) == maud_success)
+    (void)maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general);
+    if (maudContext_GetDevices(context, maud_directionOutput, ids, 32, &count) == maud_success)
     {
         for (uint32_t i = 0; i < count && i < 32; ++i)
         {
             char key[64];
             size_t length = 0;
-            if (maudGetDeviceKey(context, ids[i], key, sizeof(key), &length) != maud_success)
+            if (maudDevice_GetKey(context, ids[i], key, sizeof(key), &length) != maud_success)
             {
                 length = 0;
             }
@@ -326,10 +326,10 @@ static bool IsDefault(const maudContext* context, maudDeviceId device)
 {
     maudDeviceId general = {0, 0};
     maudDeviceId communications = {0, 0};
-    return maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general) ==
-               maud_success &&
-           maudGetDefaultDevice(context, maud_directionOutput, maud_roleCommunications,
-                                &communications) == maud_success &&
+    return maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                        &general) == maud_success &&
+           maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleCommunications,
+                                        &communications) == maud_success &&
            general.index1 == device.index1 && general.generation == device.generation &&
            communications.index1 == device.index1;
 }
@@ -363,7 +363,7 @@ static bool FindByKey(const maudContext* context, maudDirection direction, const
 {
     maudDeviceId ids[32];
     uint32_t count = 0;
-    if (maudGetDevices(context, direction, ids, 32, &count) != maud_success)
+    if (maudContext_GetDevices(context, direction, ids, 32, &count) != maud_success)
     {
         return false;
     }
@@ -380,25 +380,26 @@ static bool FindByKey(const maudContext* context, maudDirection direction, const
 
 static void TestTheDaemonsDevices(maudContext* context)
 {
-    CHECK(maudGetContextBackend(context) == maud_backendPipewire, "PipeWire chosen");
+    CHECK(maudContext_GetBackend(context) == maud_backendPipewire, "PipeWire chosen");
     maudDeviceId sink = {0, 0};
     CHECK(FindByKey(context, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, sink, &info) == maud_success, "sink info");
+    CHECK(maudDevice_GetInfo(context, sink, &info) == maud_success, "sink info");
     CHECK(info.nativeSampleRate == 48000 && info.nativeLayout == maud_layoutStereo, "48 kHz");
     CHECK(info.defaultGeneral && info.defaultCommunications, "the default sink");
     char name[64];
     size_t length = 0;
-    CHECK(maudGetDeviceName(context, sink, name, sizeof(name), &length) == maud_success, "name");
+    CHECK(maudDevice_GetName(context, sink, name, sizeof(name), &length) == maud_success, "name");
     CHECK(length == 14 && memcmp(name, "Maud test sink", 14) == 0, "its description");
     maudDeviceId source = {0, 0};
     CHECK(FindByKey(context, maud_directionInput, "maud-test-source", &source), "test source");
     char longName[512];
-    CHECK(maudGetDeviceName(context, source, longName, sizeof(longName), &length) == maud_success &&
+    CHECK(maudDevice_GetName(context, source, longName, sizeof(longName), &length) ==
+                  maud_success &&
               IsCutSourceName(longName, length),
           "a description past the limit is cut after a whole character");
     maudDeviceId fallback = {0, 0};
-    CHECK(maudGetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &fallback) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionInput, maud_roleGeneral, &fallback) ==
               maud_success,
           "default source");
     CHECK(fallback.index1 == source.index1, "the test source is the default");
@@ -443,7 +444,7 @@ static void TestLayoutFromFormats(maudContext* context, Helper* helper)
     CHECK(WaitFor(context, maud_notifyDeviceFormatChanged, nullptr, &changed),
           "its format reported");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success &&
+    CHECK(maudDevice_GetInfo(context, plugged, &info) == maud_success &&
               info.nativeLayout == maud_layout5Point1,
           "5.1 from its formats");
     UnplugSurround(helper);
@@ -458,7 +459,7 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     PlugSink(helper);
     CHECK(WaitFor(context, maud_notifyDeviceAdded, "maud-test-hotplug", &plugged), "plugged in");
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success, "plugged info");
+    CHECK(maudDevice_GetInfo(context, plugged, &info) == maud_success, "plugged info");
     CHECK(info.nativeSampleRate == 48000 && info.minSampleRate == 48000 &&
               info.maxSampleRate == 48000,
           "a 44.1 kHz node runs at the graph's rate");
@@ -475,14 +476,14 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     // manager makes it the effective one.
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-hotplug");
     CHECK(WaitForDefault(context, plugged), "configured to the plugged sink");
-    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_success && info.defaultGeneral,
+    CHECK(maudDevice_GetInfo(context, plugged, &info) == maud_success && info.defaultGeneral,
           "it reports itself the default");
     SetDefaultKey(helper, "default.configured.audio.sink", "maud-test-sink");
     CHECK(WaitForDefault(context, sink), "configured back to the test sink");
     UnplugSink(helper);
     maudDeviceId removed = plugged;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
-    CHECK(maudGetDeviceInfo(context, plugged, &info) == maud_errorStale, "its id is stale");
+    CHECK(maudDevice_GetInfo(context, plugged, &info) == maud_errorStale, "its id is stale");
     ResetDefaults(context, helper);
 }
 
@@ -638,7 +639,7 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
     atomic_store(&blocks->lastRate, block->sampleRate);
     if (blocks->tryControl && atomic_load(&blocks->count) == 2)
     {
-        atomic_store(&blocks->controlResult, maudStopStream(blocks->context, blocks->stream));
+        atomic_store(&blocks->controlResult, maudStream_Stop(blocks->context, blocks->stream));
     }
     if (blocks->stallAt != 0 && atomic_load(&blocks->count) == blocks->stallAt)
     {
@@ -705,7 +706,7 @@ static maudStreamId OpenStream(maudContext* context, maudDirection direction, ma
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create stream");
     blocks->stream = stream;
-    CHECK(maudStartStream(context, stream) == maud_success, "start stream");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start stream");
     return stream;
 }
 
@@ -725,7 +726,7 @@ static bool EndNewestOutputStream(void)
 static bool DrainToStream(maudContext* context, maudNotificationKind kind, maudSuspendReason reason)
 {
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         if (record.kind == kind && (kind != maud_notifyStreamSuspended || record.reason == reason))
         {
@@ -747,13 +748,13 @@ static void TestGraphEnded(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, ended + 20), "it plays on, built again");
     Blocks idle = {0};
     maudStreamId stopped = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &idle);
-    CHECK(WaitForBlocks(context, &idle, 5) && maudStopStream(context, stopped) == maud_success,
+    CHECK(WaitForBlocks(context, &idle, 5) && maudStream_Stop(context, stopped) == maud_success,
           "a second plays and stops");
     CHECK(EndNewestOutputStream(), "the graph ends the stopped one");
     // hygiene: lets the graph's end reach the stopped stream before its count is taken
     Pause(200);
     uint32_t before = atomic_load(&idle.count);
-    CHECK(maudStartStream(context, stopped) == maud_success &&
+    CHECK(maudStream_Start(context, stopped) == maud_success &&
               WaitForBlocks(context, &idle, before + 20),
           "it starts, built again");
     CHECK(maudDestroyStream(context, stopped) == maud_success, "destroy it");
@@ -813,13 +814,13 @@ static void TestMark(maudContext* context)
     maudStreamId stream = {0, 0};
     maudStreamStatus status = {0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success &&
               status.spatialMark == maud_markUnknown,
           "a marked stream's fate is unknown");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy it");
     def.contentSpatialized = false;
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success &&
               status.spatialMark == maud_markNone &&
               maudDestroyStream(context, stream) == maud_success,
           "an unmarked one has no mark");
@@ -830,18 +831,18 @@ static void TestOutputStream(maudContext* context)
     Blocks blocks = {.tryControl = true};
     maudStreamId stream = OpenStream(context, maud_directionOutput, (maudDeviceId){0, 0}, &blocks);
     maudStreamFormat format = {0};
-    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success, "format");
+    CHECK(maudStream_GetFormat(context, stream, &format) == maud_success, "format");
     CHECK(format.sampleRate == 48000 && format.periodFrames == 256, "the sink's rate");
     CHECK(WaitForBlocks(context, &blocks, 20), "callbacks on the data thread");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "every block is one period");
     CHECK(atomic_load(&blocks.lastRate) == 48000, "blocks carry the rate");
     CHECK(atomic_load(&blocks.controlResult) == maud_errorBusy, "control refused there");
-    CHECK(maudGetContextMisuse(context) >= 1, "and counted");
+    CHECK(maudContext_GetMisuse(context) >= 1, "and counted");
     CHECK(RateHolds(MeasureRate(context, stream), 48000.0),
           "the clock advances at the stream's rate");
     CHECK(StreamClockIsSound(context, stream, true, false, Pause),
           "its clock maps frames to host time");
-    CHECK(maudStopStream(context, stream) == maud_success, "stop");
+    CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
     WaitForBlocks(context, &blocks, UINT32_MAX / 2);
     uint32_t stopped = atomic_load(&blocks.count);
     // hygiene: gives a callback after the stop 100 ms to show
@@ -863,7 +864,7 @@ static void TestOutputStream(maudContext* context)
     def.sampleRate = 48000;
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "the device's own rate");
     maudStreamClock clock = {.hostNanoseconds = 1};
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success &&
               clock.hostNanoseconds == 0 && clock.position == 0,
           "a new stream has no stamp, even in a slot used before");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
@@ -944,7 +945,7 @@ static void TestXruns(maudContext* context)
         maudStreamId stream = OpenStream(context, direction, (maudDeviceId){0, 0}, &blocks);
         CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
         maudStreamStatus status = {0};
-        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
         CHECK(input ? status.overruns >= 1 && status.underruns == 0
                     : status.underruns >= 1 && status.overruns == 0,
               "the stall counted by the stream's direction");
@@ -961,14 +962,14 @@ static void TestXruns(maudContext* context)
     for (int restart = 0; restart < 10; ++restart)
     {
         CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 20), "it runs");
-        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
         uint64_t before = status.underruns;
-        CHECK(maudStopStream(context, stream) == maud_success, "stop");
+        CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
         // hygiene: a stop's gap of 100 ms, which the underrun count must not take
         Pause(100);
-        CHECK(maudStartStream(context, stream) == maud_success, "start again");
+        CHECK(maudStream_Start(context, stream) == maud_success, "start again");
         CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 5), "it runs again");
-        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
         jumped += status.underruns != before ? 1u : 0u;
     }
     if (jumped > 6)
@@ -1012,7 +1013,7 @@ static void TestDuplexStream(maudContext* context)
     CHECK(atomic_load(&blocks.wrongSize) == 0, "every duplex block is one period");
     CHECK(RateHolds(MeasureRate(context, stream), 48000.0), "at the graph's rate");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
     CHECK(status.drift == maud_driftNone, "no drift on one graph");
     uint32_t nodes = 0;
     uint32_t drivers = 0;
@@ -1034,7 +1035,7 @@ static void TestDuplexStream(maudContext* context)
     {
         uint64_t before = status.slippedFrames;
         bool kept = GraphWindow(&watch);
-        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+        CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
         windows += 1;
         if (kept)
         {
@@ -1069,7 +1070,7 @@ static void TestDuplexStream(maudContext* context)
     Blocks stalled = {.stallAt = 30};
     stream = OpenStream(context, maud_directionDuplex, (maudDeviceId){0, 0}, &stalled);
     CHECK(WaitForBlocks(context, &stalled, 80), "past the duplex stall");
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.underruns >= 1 &&
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.underruns >= 1 &&
               status.overruns >= 1,
           "both halves count the stall");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stalled duplex");
@@ -1080,7 +1081,7 @@ static void TestDuplexStream(maudContext* context)
 static bool DrainToRecord(maudContext* context, maudNotificationKind kind, maudStreamId stream,
                           maudNotification* recordOut)
 {
-    while (maudNextNotification(context, recordOut) == maud_success)
+    while (maudContext_NextNotification(context, recordOut) == maud_success)
     {
         if (recordOut->kind == kind && recordOut->stream.index1 == stream.index1 &&
             recordOut->stream.generation == stream.generation)
@@ -1297,8 +1298,8 @@ static void TestExclusiveRefused(maudContext* context)
     maudStreamDef def = maudDefaultStreamDef();
     def.callback = CountBlocks;
     def.share = maud_shareExclusive;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
-              maud_success,
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                       &def.device) == maud_success,
           "the default output");
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorUnsupported,
@@ -1348,8 +1349,9 @@ static void TestLimits(void)
     maudDeviceId ids[4];
     uint32_t outputs = 0;
     uint32_t inputs = 0;
-    CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &outputs) == maud_success &&
-              maudGetDevices(context, maud_directionInput, ids, 4, &inputs) == maud_success &&
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, ids, 4, &outputs) == maud_success &&
+              maudContext_GetDevices(context, maud_directionInput, ids, 4, &inputs) ==
+                  maud_success &&
               outputs + inputs == 1,
           "one device listed");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -1388,7 +1390,7 @@ int main(int argc, char** argv)
     // Without a PipeWire daemon the native context picks the next
     // backend, or none: the test then has nothing to test.
     bool pipewire =
-        result == maud_success && maudGetContextBackend(context) == maud_backendPipewire;
+        result == maud_success && maudContext_GetBackend(context) == maud_backendPipewire;
     if (!pipewire && getenv("MAUD_REQUIRE_PIPEWIRE") == nullptr)
     {
         if (result == maud_success)

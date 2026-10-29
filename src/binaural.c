@@ -193,7 +193,7 @@ void maudDestroyBinaural(maudBinaural* effect)
     maudRelease(&allocator, effect, effect->bytes, alignof(maudBinaural));
 }
 
-maudResult maudResetBinaural(maudBinaural* effect)
+maudResult maudBinaural_Reset(maudBinaural* effect)
 {
     if (effect == nullptr)
     {
@@ -369,8 +369,8 @@ static bool ParamsValid(const maudBinauralParams* params)
            isfinite(params->position.z) && isfinite(params->gain);
 }
 
-maudResult maudProcessBinaural(maudBinaural* effect, const maudBinauralParams* params,
-                               const float* in, float* const out[2], uint32_t frames)
+maudResult maudBinaural_Process(maudBinaural* effect, const maudBinauralParams* params,
+                                const float* in, float* const out[2], uint32_t frames)
 {
     if (effect == nullptr || params == nullptr || out == nullptr || !ParamsValid(params) ||
         (frames > 0 && (in == nullptr || out[0] == nullptr || out[1] == nullptr)))

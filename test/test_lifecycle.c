@@ -26,7 +26,7 @@ static void Fill(const maudStreamBlock* block, void* user)
     (void)user;
     if (s_tryFromCallback)
     {
-        s_fromCallback = maudSetContextSuspended(s_context, true);
+        s_fromCallback = maudContext_SetSuspended(s_context, true);
         s_tryFromCallback = false;
     }
     memset(block->output, 0, (size_t)block->frameCount * 2 * sizeof(float));
@@ -43,7 +43,7 @@ static maudStreamId Open(maudDeviceId device, bool start)
     CHECK(maudCreateStream(s_context, &def, &stream) == maud_success, "create");
     if (start)
     {
-        CHECK(maudStartStream(s_context, stream) == maud_success, "start");
+        CHECK(maudStream_Start(s_context, stream) == maud_success, "start");
     }
     return stream;
 }
@@ -51,7 +51,7 @@ static maudStreamId Open(maudDeviceId device, bool start)
 static maudSuspendReason ReasonOf(maudStreamId stream)
 {
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, stream, &status) == maud_success, "status");
     return status.suspension;
 }
 
@@ -60,7 +60,7 @@ static uint32_t Drain(maudNotificationKind kind, maudSuspendReason reason)
 {
     uint32_t count = 0;
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
         count += record.kind == kind && record.reason == reason ? 1u : 0u;
     }
@@ -70,7 +70,7 @@ static uint32_t Drain(maudNotificationKind kind, maudSuspendReason reason)
 static bool Renders(maudStreamId stream)
 {
     float frames[2 * PERIOD];
-    return maudRenderStream(s_context, stream, frames, PERIOD) == maud_success;
+    return maudStream_Render(s_context, stream, frames, PERIOD) == maud_success;
 }
 
 static void TestSuspendAndResume(void)
@@ -79,17 +79,17 @@ static void TestSuspendAndResume(void)
     maudStreamId idle = Open((maudDeviceId){0, 0}, false);
     (void)Drain(maud_notifyStreamSuspended, maud_suspendNone);
     CHECK(Renders(running), "it renders before");
-    CHECK(maudSetContextSuspended(s_context, true) == maud_success, "suspend");
+    CHECK(maudContext_SetSuspended(s_context, true) == maud_success, "suspend");
     CHECK(ReasonOf(running) == maud_suspendHost && ReasonOf(idle) == maud_suspendHost,
           "both streams wait for the host");
     CHECK(Drain(maud_notifyStreamSuspended, maud_suspendHost) == 2, "each told");
     CHECK(!Renders(running), "nothing renders while suspended");
-    CHECK(maudSetContextSuspended(s_context, true) == maud_success &&
+    CHECK(maudContext_SetSuspended(s_context, true) == maud_success &&
               Drain(maud_notifyStreamSuspended, maud_suspendHost) == 0,
           "suspending again does nothing");
     maudStreamId late = Open((maudDeviceId){0, 0}, true);
     CHECK(ReasonOf(late) == maud_suspendHost && !Renders(late), "a stream made meanwhile waits");
-    CHECK(maudSetContextSuspended(s_context, false) == maud_success, "resume");
+    CHECK(maudContext_SetSuspended(s_context, false) == maud_success, "resume");
     CHECK(ReasonOf(running) == maud_suspendNone && Renders(running) && Renders(late),
           "they run again");
     CHECK(Drain(maud_notifyStreamResumed, maud_suspendNone) == 3, "each told");
@@ -106,23 +106,23 @@ static void TestSuspendAndResume(void)
 static void TestLostDevice(void)
 {
     maudDeviceId original = {0, 0};
-    CHECK(maudGetDefaultDevice(s_context, maud_directionOutput, maud_roleGeneral, &original) ==
-              maud_success,
+    CHECK(maudContext_GetDefaultDevice(s_context, maud_directionOutput, maud_roleGeneral,
+                                       &original) == maud_success,
           "the default output");
     maudStreamId stream = Open((maudDeviceId){0, 0}, true);
-    CHECK(maudRemoveOfflineDevice(s_context, original) == maud_success, "unplug it");
+    CHECK(maudDestroyOfflineDevice(s_context, original) == maud_success, "unplug it");
     CHECK(ReasonOf(stream) == maud_suspendNoDevice, "the stream has no device");
-    CHECK(maudSetContextSuspended(s_context, true) == maud_success, "suspend");
+    CHECK(maudContext_SetSuspended(s_context, true) == maud_success, "suspend");
     CHECK(ReasonOf(stream) == maud_suspendNoDevice, "a missing device keeps its reason");
     maudOfflineDeviceDef deviceDef = maudDefaultOfflineDeviceDef();
     deviceDef.key = "another";
     deviceDef.keyLength = 7;
     maudDeviceId device = {0, 0};
-    CHECK(maudAddOfflineDevice(s_context, &deviceDef, &device) == maud_success, "plug another");
-    CHECK(maudSetOfflineDefaultDevice(s_context, maud_roleGeneral, device) == maud_success,
+    CHECK(maudCreateOfflineDevice(s_context, &deviceDef, &device) == maud_success, "plug another");
+    CHECK(maudDevice_SetOfflineDefault(s_context, device, maud_roleGeneral) == maud_success,
           "make it the default");
     CHECK(ReasonOf(stream) == maud_suspendHost, "back while suspended, it waits for the host");
-    CHECK(maudSetContextSuspended(s_context, false) == maud_success, "resume");
+    CHECK(maudContext_SetSuspended(s_context, false) == maud_success, "resume");
     CHECK(ReasonOf(stream) == maud_suspendNone && Renders(stream), "and then runs");
     CHECK(maudDestroyStream(s_context, stream) == maud_success, "destroy");
 }
@@ -130,12 +130,12 @@ static void TestLostDevice(void)
 static void TestFromCallback(void)
 {
     maudStreamId stream = Open((maudDeviceId){0, 0}, true);
-    uint64_t before = maudGetContextMisuse(s_context);
+    uint64_t before = maudContext_GetMisuse(s_context);
     s_tryFromCallback = true;
     CHECK(Renders(stream), "render");
     CHECK(s_fromCallback == maud_errorBusy, "the callback may not suspend the context");
-    CHECK(maudGetContextMisuse(s_context) == before + 1, "counted as misuse");
-    CHECK(maudSetContextSuspended(nullptr, true) == maud_errorInvalid, "no context");
+    CHECK(maudContext_GetMisuse(s_context) == before + 1, "counted as misuse");
+    CHECK(maudContext_SetSuspended(nullptr, true) == maud_errorInvalid, "no context");
     CHECK(maudDestroyStream(s_context, stream) == maud_success, "destroy");
 }
 

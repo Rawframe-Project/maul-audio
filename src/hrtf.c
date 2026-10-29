@@ -179,7 +179,7 @@ void maudDestroyHrtf(maudHrtf* hrtf)
     maudRelease(&allocator, hrtf, hrtf->bytes, alignof(maudHrtf));
 }
 
-maudResult maudGetHrtfInfo(const maudHrtf* hrtf, maudHrtfInfo* infoOut)
+maudResult maudHrtf_GetInfo(const maudHrtf* hrtf, maudHrtfInfo* infoOut)
 {
     // Cleared first, so a failure leaves zero.
     if (infoOut != nullptr)

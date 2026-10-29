@@ -121,9 +121,10 @@ extern "C"
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The detector is used
     /// by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudDetectVoice(maudVoiceDetector* detector,
-                                                       const float* frames, uint32_t frameCount,
-                                                       maudVoiceState* stateOut);
+    MAUD_NODISCARD MAUD_API maudResult maudVoiceDetector_Detect(maudVoiceDetector* detector,
+                                                                const float* frames,
+                                                                uint32_t frameCount,
+                                                                maudVoiceState* stateOut);
 
     // An automatic gain control. Build its def with
     // maudDefaultGainControlDef. It brings speech to a target level,
@@ -245,9 +246,9 @@ extern "C"
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The gain control is
     /// used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudApplyGainControl(maudGainControl* gain, float* frames,
-                                                            uint32_t frameCount,
-                                                            maudGainState* stateOut);
+    MAUD_NODISCARD MAUD_API maudResult maudGainControl_Apply(maudGainControl* gain, float* frames,
+                                                             uint32_t frameCount,
+                                                             maudGainState* stateOut);
 
     // A noise suppressor. Build its def with
     // maudDefaultNoiseSuppressorDef. A high-pass filter takes out the
@@ -352,9 +353,10 @@ extern "C"
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The noise suppressor
     /// is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudSuppressNoise(maudNoiseSuppressor* suppressor,
-                                                         float* frames, uint32_t frameCount,
-                                                         maudNoiseState* stateOut);
+    MAUD_NODISCARD MAUD_API maudResult maudNoiseSuppressor_Suppress(maudNoiseSuppressor* suppressor,
+                                                                    float* frames,
+                                                                    uint32_t frameCount,
+                                                                    maudNoiseState* stateOut);
 
     // An echo canceller: it takes out of the capture what the render
     // played into it, as a call's far end heard through the device's
@@ -469,9 +471,10 @@ extern "C"
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The echo canceller is
     /// used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture,
-                                                      const float* render, uint32_t frameCount,
-                                                      maudEchoState* stateOut);
+    MAUD_NODISCARD MAUD_API maudResult maudEchoCanceller_Cancel(maudEchoCanceller* canceller,
+                                                                float* capture, const float* render,
+                                                                uint32_t frameCount,
+                                                                maudEchoState* stateOut);
 
 #ifdef __cplusplus
 }

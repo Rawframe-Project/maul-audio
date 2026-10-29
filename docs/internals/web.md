@@ -27,7 +27,7 @@ A loopback stream captures what the user picks in `getDisplayMedia`'s picker, wi
 
 The JavaScript side keeps the latest `enumerateDevices` list and marks it new; the drain copies it and syncs the device table ([web_devices.h](../../src/web_devices.h)). Inputs are listed always; outputs only where `AudioContext.setSinkId` can choose one. The browser's `default` and `communications` entries are the Default devices; entries without an id (before the microphone is granted) name nothing. When the system's default moves, the Default device stays the default and reports `maud_notifyRouteChanged`. A sink the browser refuses suspends the streams on it with `maud_suspendDeviceLost`.
 
-The autoplay policy holds a new `AudioContext` until a user gesture. The drain reads the context's state and suspends or resumes the streams with `maud_suspendPolicy`; `maudResumeContext` from a gesture's handler asks the browser to run it.
+The autoplay policy holds a new `AudioContext` until a user gesture. The drain reads the context's state and suspends or resumes the streams with `maud_suspendPolicy`; `maudContext_Unlock` from a gesture's handler asks the browser to run it.
 
 ## The stream clock
 

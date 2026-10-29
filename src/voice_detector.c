@@ -73,8 +73,8 @@ void maudDestroyVoiceDetector(maudVoiceDetector* detector)
     maudRelease(&allocator, detector, sizeof(maudVoiceDetector), alignof(maudVoiceDetector));
 }
 
-maudResult maudDetectVoice(maudVoiceDetector* detector, const float* frames, uint32_t frameCount,
-                           maudVoiceState* stateOut)
+maudResult maudVoiceDetector_Detect(maudVoiceDetector* detector, const float* frames,
+                                    uint32_t frameCount, maudVoiceState* stateOut)
 {
     // Cleared first, so a failure leaves zero.
     if (stateOut != nullptr)

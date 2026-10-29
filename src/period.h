@@ -18,7 +18,7 @@
 
 typedef struct maudPeriod
 {
-    maudStreamCallback callback;
+    maudStreamFunction* callback;
     void* user;
     // frames * channelCount interleaved samples.
     float* samples;

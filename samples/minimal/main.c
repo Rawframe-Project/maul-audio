@@ -45,8 +45,8 @@ int main(void)
     static float frames[2 * 960];
     int ok = maudCreateContext(&contextDef, &context) == maud_success &&
              maudCreateStream(context, &streamDef, &stream) == maud_success &&
-             maudStartStream(context, stream) == maud_success &&
-             maudRenderStream(context, stream, frames, 960) == maud_success && s_blocks == 2 &&
+             maudStream_Start(context, stream) == maud_success &&
+             maudStream_Render(context, stream, frames, 960) == maud_success && s_blocks == 2 &&
              frames[0] == 0.1f;
     if (context != NULL && maudDestroyContext(context) != maud_success)
     {
@@ -62,10 +62,10 @@ int main(void)
     maudDirectResult result = {0};
     ok = ok && maudCreateSpatializer(&spatialDef, &spatializer) == maud_success &&
          maudCreateSource(spatializer, &sourceDef, &source) == maud_success &&
-         maudSetSourcePose(spatializer, source, &at) == maud_success &&
-         maudSimulateDirect(spatializer, &listener) == maud_success &&
-         maudLatchResults(spatializer) == 1 &&
-         maudGetDirectResult(spatializer, source, &result) == maud_success &&
+         maudSource_SetPose(spatializer, source, &at) == maud_success &&
+         maudSpatializer_SimulateDirect(spatializer, &listener) == maud_success &&
+         maudSpatializer_LatchResults(spatializer) == 1 &&
+         maudSource_GetDirectResult(spatializer, source, &result) == maud_success &&
          fabsf(result.distance - 3.0f) < 1e-4f;
     maudDestroySpatializer(spatializer);
     printf("%s: maul-audio %u.%u.%u, %u blocks, a source %.2f m away\n", ok ? "ok" : "FAIL",

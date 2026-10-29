@@ -95,7 +95,7 @@ static maudBackendKind RequiredBackend(void)
 static void CheckRequiredBackend(const maudContext* context)
 {
     maudBackendKind required = RequiredBackend();
-    maudBackendKind chosen = maudGetContextBackend(context);
+    maudBackendKind chosen = maudContext_GetBackend(context);
     if (required != maud_backendNative && chosen != required)
     {
         printf("the native backend is kind %d, and this run requires kind %d\n", (int)chosen,
@@ -139,11 +139,11 @@ static bool NativeWithOutput(void)
         return false;
     }
     uint32_t outputs = 0;
-    bool any =
-        maudGetDevices(context, maud_directionOutput, nullptr, 0, &outputs) == maud_success &&
-        outputs > 0;
+    bool any = maudContext_GetDevices(context, maud_directionOutput, nullptr, 0, &outputs) ==
+                   maud_success &&
+               outputs > 0;
 #if defined(GUIDE_ALSA)
-    if (any && maudGetContextBackend(context) == maud_backendAlsa && !KernelPlayback())
+    if (any && maudContext_GetBackend(context) == maud_backendAlsa && !KernelPlayback())
     {
         Synth synth = {0};
         maudStreamDef probe = maudDefaultStreamDef();
@@ -160,7 +160,7 @@ static bool NativeWithOutput(void)
 static void Drain(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -202,10 +202,10 @@ static void GuidePlay(void)
     maudResult result = maudCreateStream(context, &def, &stream);
     if (result == maud_success)
     {
-        result = maudStartStream(context, stream);
+        result = maudStream_Start(context, stream);
     }
     maudStreamFormat format;
-    if (result == maud_success && maudGetStreamFormat(context, stream, &format) == maud_success)
+    if (result == maud_success && maudStream_GetFormat(context, stream, &format) == maud_success)
     {
         // format.sampleRate and format.periodFrames: what the callback sees.
     }

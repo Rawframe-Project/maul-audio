@@ -19,7 +19,7 @@ A context connects to one backend and holds the streams opened through it. A str
 
 ## Contexts and backends
 
-`maud_backendNative`, the default, opens the platform's backend: PipeWire, then PulseAudio, then ALSA on Linux; WASAPI on Windows; Core Audio on macOS and on iOS; AAudio on Android; Web Audio in a browser. A build with a private backend tries it first. `maudGetContextBackend` says which one opened. When none answers (a Linux machine with no sound server and no ALSA), creation returns `maud_errorUnsupported`.
+`maud_backendNative`, the default, opens the platform's backend: PipeWire, then PulseAudio, then ALSA on Linux; WASAPI on Windows; Core Audio on macOS and on iOS; AAudio on Android; Web Audio in a browser. A build with a private backend tries it first. `maudContext_GetBackend` says which one opened. When none answers (a Linux machine with no sound server and no ALSA), creation returns `maud_errorUnsupported`.
 
 `maud_backendOffline` plays to no hardware; see [Offline rendering](offline-rendering.md).
 
@@ -30,15 +30,15 @@ The context def's limits (streams, the longest period, devices, notifications, t
 ```c
 maudDeviceId ids[16];
 uint32_t count = 0;
-if (maudGetDevices(context, maud_directionOutput, ids, 16, &count) == maud_success)
+if (maudContext_GetDevices(context, maud_directionOutput, ids, 16, &count) == maud_success)
 {
     for (uint32_t i = 0; i < count && i < 16; ++i)
     {
         char name[256];
         size_t length = 0;
         maudDeviceInfo info;
-        if (maudGetDeviceName(context, ids[i], name, sizeof(name), &length) == maud_success &&
-            maudGetDeviceInfo(context, ids[i], &info) == maud_success)
+        if (maudDevice_GetName(context, ids[i], name, sizeof(name), &length) == maud_success &&
+            maudDevice_GetInfo(context, ids[i], &info) == maud_success)
         {
             // name holds length bytes, not terminated; info has the native
             // rate and layout, the form (speakers, headphones, ...), and
@@ -50,8 +50,8 @@ if (maudGetDevices(context, maud_directionOutput, ids, 16, &count) == maud_succe
 
 A count larger than the room given says how many devices there are. Names and keys are UTF-8 with a length and no terminator.
 
-- `maudGetDefaultDevice` gives the default device of a direction for a role: `maud_roleGeneral` for games and media, `maud_roleCommunications` for calls.
-- `maudGetDeviceKey` gives a key that stays the same when the device is unplugged and plugged in again, and across restarts where the platform allows. Store the key to remember a user's choice; an id does not survive the device leaving.
+- `maudContext_GetDefaultDevice` gives the default device of a direction for a role: `maud_roleGeneral` for games and media, `maud_roleCommunications` for calls.
+- `maudDevice_GetKey` gives a key that stays the same when the device is unplugged and plugged in again, and across restarts where the platform allows. Store the key to remember a user's choice; an id does not survive the device leaving.
 - `maudDeviceInfo` reports the native layout and rate (zero where the platform cannot tell without opening the device, as on ALSA), the rates the device takes without conversion, its form (speakers, headphones, a headset, a digital connector), and what the platform's own spatializer does there.
 
 ## Playing a stream
@@ -82,10 +82,10 @@ maudStreamId stream = {0, 0};
 maudResult result = maudCreateStream(context, &def, &stream);
 if (result == maud_success)
 {
-    result = maudStartStream(context, stream);
+    result = maudStream_Start(context, stream);
 }
 maudStreamFormat format;
-if (result == maud_success && maudGetStreamFormat(context, stream, &format) == maud_success)
+if (result == maud_success && maudStream_GetFormat(context, stream, &format) == maud_success)
 {
     // format.sampleRate and format.periodFrames: what the callback sees.
 }
@@ -115,7 +115,7 @@ Changes arrive in the context's notification queue. Drain it on the program's ow
 
 ```c
 maudNotification note;
-while (maudNextNotification(context, &note) == maud_success)
+while (maudContext_NextNotification(context, &note) == maud_success)
 {
     switch (note.kind)
     {
@@ -143,22 +143,22 @@ Across a restart of the audio service, devices keep their ids while they come ba
 
 ## Why a stream is suspended
 
-`maudGetStreamStatus` gives a stream's state: started or not, the device it is on, and why it cannot run.
+`maudStream_GetStatus` gives a stream's state: started or not, the device it is on, and why it cannot run.
 
 | Reason | What happened | What ends it |
 |---|---|---|
 | `maud_suspendDeviceLost` | The device the stream was made on went away, or a browser refused to play on it. | Nothing: make a new stream. |
 | `maud_suspendNoDevice` | The stream follows the default and its direction has no device. | A device appearing. |
-| `maud_suspendPolicy` | The platform holds audio until the user acts: a browser before a gesture, an iOS interruption. | `maudResumeContext` from a gesture's handler, or the interruption ending. |
+| `maud_suspendPolicy` | The platform holds audio until the user acts: a browser before a gesture, an iOS interruption. | `maudContext_Unlock` from a gesture's handler, or the interruption ending. |
 | `maud_suspendPermission` | The platform has not granted the device: a browser before the user allows the microphone. | The user granting it. |
-| `maud_suspendHost` | The program suspended the context. | `maudSetContextSuspended(context, false)`. |
+| `maud_suspendHost` | The program suspended the context. | `maudContext_SetSuspended(context, false)`. |
 | `maud_suspendPlatform` | The platform failed to open the stream on its device: the device refused the format, or the service is restarting. | The library tries again after a wait that grows to a few seconds, from the drain. |
 
 Each change of state posts `maud_notifyStreamSuspended` or `maud_notifyStreamResumed`. A suspended stream that was started renders nothing until it resumes; the status also counts underruns and overruns the platform revealed.
 
 ## Timing and synchronization
 
-`maudGetStreamPosition` counts the frames a stream has moved. `maudGetStreamClock` maps one of them to the host clock (`maudGetHostNanoseconds`) with the latency between the callback and the device, as the platform last reported it at a callback; a frame's time follows at the stream's rate. Use it to line audio up with video or input. On the offline backend the host time is 0, since the caller's clock is the only one.
+`maudStream_GetPosition` counts the frames a stream has moved. `maudStream_GetClock` maps one of them to the host clock (`maudGetHostNanoseconds`) with the latency between the callback and the device, as the platform last reported it at a callback; a frame's time follows at the stream's rate. Use it to line audio up with video or input. On the offline backend the host time is 0, since the caller's clock is the only one.
 
 ## Capture, duplex and loopback
 
@@ -172,11 +172,11 @@ Each change of state posts `maud_notifyStreamSuspended` or `maud_notifyStreamRes
 
 ## The host's lifecycle and audio focus
 
-The library never guesses that the program went to the background. Call `maudSetContextSuspended(context, true)` when it does (a hidden tab, a backgrounded application, the system going to sleep): every stream is suspended with `maud_suspendHost` and the platform side stops. Call it with `false` when the program is back.
+The library never guesses that the program went to the background. Call `maudContext_SetSuspended(context, true)` when it does (a hidden tab, a backgrounded application, the system going to sleep): every stream is suspended with `maud_suspendHost` and the platform side stops. Call it with `false` when the program is back.
 
-Browsers hold audio until the user acts, and iOS can hold it after an interruption: call `maudResumeContext` from a user gesture's handler, such as a click's.
+Browsers hold audio until the user acts, and iOS can hold it after an interruption: call `maudContext_Unlock` from a user gesture's handler, such as a click's.
 
-On platforms with audio focus (Android with the Java half, iOS), `maudRequestFocus` asks for the program's turn to play, and `maud_notifyFocusChanged` reports the state (held, lost, paused, ducked). The library pauses and ducks nothing itself: the program does what the focus asks.
+On platforms with audio focus (Android with the Java half, iOS), `maudContext_RequestFocus` asks for the program's turn to play, and `maud_notifyFocusChanged` reports the state (held, lost, paused, ducked). The library pauses and ducks nothing itself: the program does what the focus asks.
 
 ## Object streams
 

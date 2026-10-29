@@ -43,8 +43,8 @@ static maudAcousticScene* Office(void)
 // A task system that runs ranges of one item, last first.
 static long s_enqueued;
 
-static void* Enqueue(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Enqueue(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     (void)userContext;
@@ -62,11 +62,11 @@ static void Finish(void* userTask, void* userContext)
     (void)userContext;
 }
 
-static maudSpatializer* Create(maudAcousticScene* scene, bool tasks, maudAnyHitFn* anyHit)
+static maudSpatializer* Create(maudAcousticScene* scene, bool tasks, maudAnyHitFunction* anyHit)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = anyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reverbRays = 1024;
     for (int b = 0; b < MAUD_BANDS; ++b)
@@ -78,7 +78,7 @@ static maudSpatializer* Create(maudAcousticScene* scene, bool tasks, maudAnyHitF
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.5f, {0, 0, 0}};
-    CHECK(maudSetMaterials(s, &wall, 1) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(s, &wall, 1) == maud_success, "materials");
     return s;
 }
 
@@ -87,21 +87,24 @@ static const maudPose s_listener = {{1.85f, 1.64f, 1.35f}, {0.0f, 0.0f, 0.0f, 1.
 static void TestEstimate(void)
 {
     maudAcousticScene* scene = Office();
-    maudSpatializer* plain = Create(scene, false, maudSceneAnyHit);
-    maudSpatializer* tasked = Create(scene, true, maudSceneAnyHit);
+    maudSpatializer* plain = Create(scene, false, maudFindAnyHit);
+    maudSpatializer* tasked = Create(scene, true, maudFindAnyHit);
     maudReverbResult result;
-    CHECK(maudGetReverbResult(plain, &result) == maud_errorInvalid, "nothing latched yet");
-    CHECK(maudSimulateDirect(plain, &s_listener) == maud_success, "a direct step");
-    CHECK(maudLatchResults(plain) == 1, "latched");
-    CHECK(maudGetReverbResult(plain, &result) == maud_success && result.estimates == 0 &&
-              result.reverbTime[1] == 0.1f,
+    CHECK(maudSpatializer_GetReverbResult(plain, &result) == maud_errorInvalid,
+          "nothing latched yet");
+    CHECK(maudSpatializer_SimulateDirect(plain, &s_listener) == maud_success, "a direct step");
+    CHECK(maudSpatializer_LatchResults(plain) == 1, "latched");
+    CHECK(maudSpatializer_GetReverbResult(plain, &result) == maud_success &&
+              result.estimates == 0 && result.reverbTime[1] == 0.1f,
           "before an estimate: 0.1 s, none counted");
-    CHECK(maudSimulateReverb(plain, &s_listener) == maud_success, "an estimate");
-    CHECK(maudLatchResults(plain) == 1 && maudGetReverbResult(plain, &result) == maud_success &&
+    CHECK(maudSpatializer_SimulateReverb(plain, &s_listener) == maud_success, "an estimate");
+    CHECK(maudSpatializer_LatchResults(plain) == 1 &&
+              maudSpatializer_GetReverbResult(plain, &result) == maud_success &&
               result.estimates == 0,
           "it waits for the next direct step");
-    CHECK(maudSimulateDirect(plain, &s_listener) == maud_success, "a direct step");
-    CHECK(maudLatchResults(plain) == 2 && maudGetReverbResult(plain, &result) == maud_success,
+    CHECK(maudSpatializer_SimulateDirect(plain, &s_listener) == maud_success, "a direct step");
+    CHECK(maudSpatializer_LatchResults(plain) == 2 &&
+              maudSpatializer_GetReverbResult(plain, &result) == maud_success,
           "latched");
     printf("office: %.3f / %.3f / %.3f s after %u estimate\n", (double)result.reverbTime[0],
            (double)result.reverbTime[1], (double)result.reverbTime[2], result.estimates);
@@ -111,11 +114,13 @@ static void TestEstimate(void)
         CHECK(fabs((double)result.reverbTime[b] / 0.99 - 1.0) < 0.03, "the office's time");
     }
     long before = s_enqueued;
-    CHECK(maudSimulateReverb(tasked, &s_listener) == maud_success, "an estimate on tasks");
+    CHECK(maudSpatializer_SimulateReverb(tasked, &s_listener) == maud_success,
+          "an estimate on tasks");
     CHECK(s_enqueued == before + 1, "through the task hooks");
-    CHECK(maudSimulateDirect(tasked, &s_listener) == maud_success, "a direct step");
+    CHECK(maudSpatializer_SimulateDirect(tasked, &s_listener) == maud_success, "a direct step");
     maudReverbResult viaTasks;
-    CHECK(maudLatchResults(tasked) == 1 && maudGetReverbResult(tasked, &viaTasks) == maud_success,
+    CHECK(maudSpatializer_LatchResults(tasked) == 1 &&
+              maudSpatializer_GetReverbResult(tasked, &viaTasks) == maud_success,
           "latched");
     bool same = true;
     for (int b = 0; b < MAUD_BANDS; ++b)
@@ -126,9 +131,10 @@ static void TestEstimate(void)
     // Outside the closed office, rays strike its outer walls and leave:
     // hardly any decay.
     maudPose outside = {{20.0f, 2.0f, 1.5f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    CHECK(maudSimulateReverb(plain, &outside) == maud_success &&
-              maudSimulateDirect(plain, &s_listener) == maud_success &&
-              maudLatchResults(plain) == 3 && maudGetReverbResult(plain, &result) == maud_success,
+    CHECK(maudSpatializer_SimulateReverb(plain, &outside) == maud_success &&
+              maudSpatializer_SimulateDirect(plain, &s_listener) == maud_success &&
+              maudSpatializer_LatchResults(plain) == 3 &&
+              maudSpatializer_GetReverbResult(plain, &result) == maud_success,
           "an estimate outside");
     printf("outside: %.3f s\n", (double)result.reverbTime[1]);
     CHECK(result.reverbTime[1] < 0.2f, "outside the room, no reverberation");
@@ -153,16 +159,17 @@ static void TestBlocked(void)
     maudSpatializer* s = nullptr;
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = Block;
-    def.closestHit = maudSceneClosestHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reverbRays = 256;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
     maudAcousticMaterial wall = {{0.1f, 0.1f, 0.1f}, 0.5f, {0, 0, 0}};
-    CHECK(maudSetMaterials(s, &wall, 1) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(s, &wall, 1) == maud_success, "materials");
     maudReverbResult result;
-    CHECK(maudSimulateReverb(s, &s_listener) == maud_success &&
-              maudSimulateDirect(s, &s_listener) == maud_success && maudLatchResults(s) == 1 &&
-              maudGetReverbResult(s, &result) == maud_success,
+    CHECK(maudSpatializer_SimulateReverb(s, &s_listener) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &s_listener) == maud_success &&
+              maudSpatializer_LatchResults(s) == 1 &&
+              maudSpatializer_GetReverbResult(s, &result) == maud_success,
           "an estimate");
     CHECK(result.reverbTime[1] == 0.1f, "every path blocked: nothing lit");
     maudDestroySpatializer(s);
@@ -175,17 +182,19 @@ static void TestBlocked(void)
 static void TestNoAnyHit(void)
 {
     maudAcousticScene* scene = Office();
-    maudSpatializer* queried = Create(scene, false, maudSceneAnyHit);
+    maudSpatializer* queried = Create(scene, false, maudFindAnyHit);
     maudSpatializer* clear = Create(scene, false, nullptr);
     maudReverbResult a;
     maudReverbResult b;
-    CHECK(maudSimulateReverb(queried, &s_listener) == maud_success &&
-              maudSimulateDirect(queried, &s_listener) == maud_success &&
-              maudLatchResults(queried) == 1 && maudGetReverbResult(queried, &a) == maud_success,
+    CHECK(maudSpatializer_SimulateReverb(queried, &s_listener) == maud_success &&
+              maudSpatializer_SimulateDirect(queried, &s_listener) == maud_success &&
+              maudSpatializer_LatchResults(queried) == 1 &&
+              maudSpatializer_GetReverbResult(queried, &a) == maud_success,
           "an estimate with the scene's any-hit query");
-    CHECK(maudSimulateReverb(clear, &s_listener) == maud_success &&
-              maudSimulateDirect(clear, &s_listener) == maud_success &&
-              maudLatchResults(clear) == 1 && maudGetReverbResult(clear, &b) == maud_success,
+    CHECK(maudSpatializer_SimulateReverb(clear, &s_listener) == maud_success &&
+              maudSpatializer_SimulateDirect(clear, &s_listener) == maud_success &&
+              maudSpatializer_LatchResults(clear) == 1 &&
+              maudSpatializer_GetReverbResult(clear, &b) == maud_success,
           "an estimate without one");
     CHECK(memcmp(a.reverbTime, b.reverbTime, sizeof(a.reverbTime)) == 0 &&
               memcmp(a.level, b.level, sizeof(a.level)) == 0 && b.reverbTime[1] > 0.5f,
@@ -203,21 +212,23 @@ static void TestMisuse(void)
           "the default: 2048 rays through ordinary air");
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "no hooks");
-    CHECK(maudSimulateReverb(s, &s_listener) == maud_success, "no geometry");
-    CHECK(maudSimulateDirect(s, &s_listener) == maud_success, "a direct step");
+    CHECK(maudSpatializer_SimulateReverb(s, &s_listener) == maud_success, "no geometry");
+    CHECK(maudSpatializer_SimulateDirect(s, &s_listener) == maud_success, "a direct step");
     maudReverbResult result;
-    CHECK(maudLatchResults(s) == 1 && maudGetReverbResult(s, &result) == maud_success &&
+    CHECK(maudSpatializer_LatchResults(s) == 1 &&
+              maudSpatializer_GetReverbResult(s, &result) == maud_success &&
               result.estimates == 1 && result.reverbTime[0] == 0.1f && result.reverbTime[2] == 0.1f,
           "no geometry: 0.1 s");
     maudPose bad = s_listener;
     bad.position.x = NAN;
-    CHECK(maudSimulateReverb(s, &bad) == maud_errorInvalid, "a listener not finite");
-    CHECK(maudSimulateReverb(nullptr, &s_listener) == maud_errorInvalid, "NULL");
-    CHECK(maudGetReverbResult(s, nullptr) == maud_errorInvalid, "NULL out");
+    CHECK(maudSpatializer_SimulateReverb(s, &bad) == maud_errorInvalid, "a listener not finite");
+    CHECK(maudSpatializer_SimulateReverb(nullptr, &s_listener) == maud_errorInvalid, "NULL");
+    CHECK(maudSpatializer_GetReverbResult(s, nullptr) == maud_errorInvalid, "NULL out");
     maudDestroySpatializer(s);
     def.reverbRays = 0;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "no estimates");
-    CHECK(maudSimulateReverb(s, &s_listener) == maud_errorUnsupported, "estimates refused");
+    CHECK(maudSpatializer_SimulateReverb(s, &s_listener) == maud_errorUnsupported,
+          "estimates refused");
     maudDestroySpatializer(s);
     maudSpatializer* none = nullptr;
     def.reverbRays = 63;

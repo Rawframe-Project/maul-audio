@@ -46,7 +46,7 @@ static uint32_t Drain(maudContext* context, maudNotificationKind kind)
 {
     uint32_t count = 0;
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         count += record.kind == kind ? 1u : 0u;
     }
@@ -56,7 +56,7 @@ static uint32_t Drain(maudContext* context, maudNotificationKind kind)
 static uint32_t CountDevices(const maudContext* context, maudDirection direction)
 {
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, direction, nullptr, 0, &count) == maud_success, "count");
+    CHECK(maudContext_GetDevices(context, direction, nullptr, 0, &count) == maud_success, "count");
     return count;
 }
 
@@ -139,8 +139,8 @@ static bool DefaultIs(const maudContext* context, maudDirection direction, maudD
     maudDeviceId current = {0, 0};
     char bytes[128];
     size_t length = 0;
-    return maudGetDefaultDevice(context, direction, role, &current) == maud_success &&
-           maudGetDeviceKey(context, current, bytes, sizeof(bytes), &length) == maud_success &&
+    return maudContext_GetDefaultDevice(context, direction, role, &current) == maud_success &&
+           maudDevice_GetKey(context, current, bytes, sizeof(bytes), &length) == maud_success &&
            length == strlen(key) && memcmp(bytes, key, length) == 0;
 }
 
@@ -236,7 +236,7 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
 static void DrainAll(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -258,10 +258,10 @@ static double MeasureWindow(const maudContext* context, maudStreamId stream, int
     uint64_t last = 0;
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&start);
-    CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
+    CHECK(maudStream_GetPosition(context, stream, &first) == maud_success, "position");
     // hygiene: a window of the stream's frames against the wall clock
     Pause(milliseconds);
-    CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
+    CHECK(maudStream_GetPosition(context, stream, &last) == maud_success, "position");
     QueryPerformanceCounter(&end);
     double seconds = (double)(end.QuadPart - start.QuadPart) / (double)frequency.QuadPart;
     return (double)(last - first) / seconds;
@@ -337,7 +337,7 @@ static void TestApartment(maudContext* context)
 
 static void TestDevices(maudContext* context)
 {
-    CHECK(maudGetContextBackend(context) == maud_backendWasapi, "WASAPI");
+    CHECK(maudContext_GetBackend(context) == maud_backendWasapi, "WASAPI");
     IMMDeviceEnumerator* enumerator = nullptr;
     CHECK(SUCCEEDED(CoCreateInstance(&s_clsidEnumerator, nullptr, CLSCTX_ALL, &s_iidEnumerator,
                                      (void**)&enumerator)),
@@ -362,20 +362,21 @@ static void TestDevices(maudContext* context)
         }
         maudDeviceId ids[32];
         uint32_t count = 0;
-        CHECK(maudGetDevices(context, flows[f].direction, ids, 32, &count) == maud_success &&
+        CHECK(maudContext_GetDevices(context, flows[f].direction, ids, 32, &count) ==
+                      maud_success &&
                   count >= 1,
               "endpoints are listed");
         for (uint32_t i = 0; i < count && i < 32; ++i)
         {
             maudDeviceInfo info = {0};
-            CHECK(maudGetDeviceInfo(context, ids[i], &info) == maud_success &&
+            CHECK(maudDevice_GetInfo(context, ids[i], &info) == maud_success &&
                       info.nativeSampleRate >= 8000 && info.nativeLayout != maud_layoutNone &&
                       info.minSampleRate == info.nativeSampleRate &&
                       info.maxSampleRate == info.nativeSampleRate,
                   "each with the engine's format, read without activating it");
             char endpoint[128];
             size_t length = 0;
-            CHECK(maudGetDeviceKey(context, ids[i], endpoint, sizeof(endpoint) - 1, &length) ==
+            CHECK(maudDevice_GetKey(context, ids[i], endpoint, sizeof(endpoint) - 1, &length) ==
                       maud_success,
                   "its key");
             endpoint[length < sizeof(endpoint) - 1 ? length : sizeof(endpoint) - 1] = '\0';
@@ -385,7 +386,7 @@ static void TestDevices(maudContext* context)
             CHECK(FormMatches(info.form, formFactor), "and the form its form factor names");
             char name[512];
             size_t named = 0;
-            CHECK(maudGetDeviceName(context, ids[i], name, sizeof(name), &named) == maud_success &&
+            CHECK(maudDevice_GetName(context, ids[i], name, sizeof(name), &named) == maud_success &&
                       named > 0 && named < 256 && IsUtf8(name, named) &&
                       (named != length || memcmp(name, endpoint, length) != 0),
                   "and a name in UTF-8, its friendly name, not its key");
@@ -420,13 +421,13 @@ static void TestMark(maudContext* context)
     maudStreamId stream = {0, 0};
     maudStreamStatus status = {0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success &&
               status.spatialMark == maud_markHonored &&
               maudDestroyStream(context, stream) == maud_success,
           "a marked stereo stream's mark is honored");
     def.layout = maud_layout5Point1;
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success &&
               status.spatialMark == maud_markUnknown &&
               maudDestroyStream(context, stream) == maud_success,
           "a marked 5.1 stream's fate is unknown");
@@ -438,13 +439,13 @@ static void TestOutputStream(maudContext* context)
     maudStreamDef def = maudDefaultStreamDef();
     maudStreamId stream = OpenStream(context, &def, &blocks);
     maudStreamFormat format;
-    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+    CHECK(maudStream_GetFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 48000,
           "native at the engine's rate");
     // hygiene: gives a callback before the start 100 ms to show
     Pause(100);
     CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(atomic_load(&blocks.onControl) == 0, "on a thread of the stream's");
@@ -452,12 +453,12 @@ static void TestOutputStream(maudContext* context)
     CHECK(Near(MeasureRate(context, stream), 48000.0), "at its rate");
     CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
-    CHECK(maudStopStream(context, stream) == maud_success, "stop");
+    CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
     // hygiene: gives a callback after the stop 100 ms to show
     Pause(100);
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
-    CHECK(maudStartStream(context, stream) == maud_success, "start again");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy while running");
     def = maudDefaultStreamDef();
@@ -469,7 +470,7 @@ static void TestOutputStream(maudContext* context)
     Blocks converted = {0};
     def.ratePolicy = maud_ratePlatformConverted;
     stream = OpenStream(context, &def, &converted);
-    CHECK(maudStartStream(context, stream) == maud_success, "start converted");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start converted");
     CHECK(WaitForBlocks(context, &converted, 10), "it runs");
     CHECK(Near(MeasureRate(context, stream), 44100.0), "at its own rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
@@ -485,7 +486,7 @@ static void TestInputStream(maudContext* context)
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionInput;
     maudStreamId stream = OpenStream(context, &def, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success, "start capture");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start capture");
     CHECK(WaitForBlocks(context, &blocks, 20), "captured blocks arrive");
     CHECK(atomic_load(&blocks.withInput) == atomic_load(&blocks.count), "each with input");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
@@ -512,8 +513,8 @@ static void TestLoopback(maudContext* context)
     def = maudDefaultStreamDef();
     def.direction = maud_directionLoopback;
     maudStreamId loop = OpenStream(context, &def, &heard);
-    CHECK(maudStartStream(context, tone) == maud_success &&
-              maudStartStream(context, loop) == maud_success,
+    CHECK(maudStream_Start(context, tone) == maud_success &&
+              maudStream_Start(context, loop) == maud_success,
           "a tone and a loopback on the default endpoint");
     POLL_UNTIL(3000, "the loopback to hear the tone", (void)0, atomic_load(&heard.peak) >= 400);
     CHECK(atomic_load(&heard.peak) >= 400 && atomic_load(&heard.peak) <= 600,
@@ -552,10 +553,10 @@ static void TestUnderrun(maudContext* context)
     Blocks blocks = {.stallAt = 30};
     maudStreamDef def = maudDefaultStreamDef();
     maudStreamId stream = OpenStream(context, &def, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
     if (UnderWine())
     {
         printf("underruns after a stall under Wine: %llu\n", (unsigned long long)status.underruns);
@@ -584,10 +585,10 @@ static void TestVoiceInput(maudContext* context)
     def.direction = maud_directionInput;
     def.voice = maud_voiceEchoCancellation | maud_voiceNoiseSuppression | maud_voiceGainControl;
     maudStreamId stream = OpenStream(context, &def, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success, "start a voice capture");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start a voice capture");
     CHECK(WaitForBlocks(context, &blocks, 20), "its blocks arrive");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "its status");
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "its status");
     if (UnderWine())
     {
         CHECK(!status.voiceReported && status.voiceActive == maud_voiceNone,
@@ -608,9 +609,10 @@ static void TestMove(maudContext* context)
     maudDeviceId ids[8];
     uint32_t count = 0;
     maudDeviceId original = {0, 0};
-    CHECK(maudGetDevices(context, maud_directionOutput, ids, 8, &count) == maud_success, "list");
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &original) ==
-              maud_success,
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, ids, 8, &count) == maud_success,
+          "list");
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                       &original) == maud_success,
           "the default");
     maudDeviceId other = {0, 0};
     for (uint32_t i = 0; i < count && i < 8 && other.index1 == 0; ++i)
@@ -624,12 +626,12 @@ static void TestMove(maudContext* context)
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
     maudStreamId stream = OpenStream(context, &def, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 10), "it plays");
     maudSetDefaultDevice(context, maud_roleGeneral, other);
     maudNotification record;
     bool moved = false;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         moved = moved ||
                 (record.kind == maud_notifyStreamMoved && record.stream.index1 == stream.index1 &&
@@ -669,7 +671,7 @@ static void TestResume(maudContext* context)
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
     maudStreamId stream = OpenStream(context, &def, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 10), "it plays");
     maudWasapiStream* entry = &wasapi->streams[stream.index1 - 1];
     atomic_store(&entry->failed, true);
@@ -691,7 +693,7 @@ static bool DrainToNotice(maudContext* context, maudStreamId stream, maudNotific
                           maudSuspendReason reason)
 {
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         if (record.kind == kind && record.stream.index1 == stream.index1 &&
             record.stream.generation == stream.generation &&
@@ -721,9 +723,9 @@ static void TestHostSuspended(maudContext* context)
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
     maudStreamId stream = OpenStream(context, &def, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &blocks, 10),
+    CHECK(maudStream_Start(context, stream) == maud_success && WaitForBlocks(context, &blocks, 10),
           "it plays");
-    CHECK(maudSetContextSuspended(context, true) == maud_success &&
+    CHECK(maudContext_SetSuspended(context, true) == maud_success &&
               NoticeFor(context, stream, maud_notifyStreamSuspended, maud_suspendHost),
           "suspended for the host");
     // hygiene: lets callbacks in flight at the suspension end before counting
@@ -732,7 +734,7 @@ static void TestHostSuspended(maudContext* context)
     // hygiene: gives a callback while suspended 300 ms to show
     Pause(300);
     CHECK(atomic_load(&blocks.count) == count, "no callbacks while suspended");
-    CHECK(maudSetContextSuspended(context, false) == maud_success &&
+    CHECK(maudContext_SetSuspended(context, false) == maud_success &&
               NoticeFor(context, stream, maud_notifyStreamResumed, maud_suspendNone),
           "resumed");
     count = atomic_load(&blocks.count);
@@ -821,9 +823,9 @@ static void TestObjects(maudContext* context)
 {
     maudDeviceId output = {0, 0};
     maudDeviceInfo info = {0};
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &output) ==
                   maud_success &&
-              maudGetDeviceInfo(context, output, &info) == maud_success,
+              maudDevice_GetInfo(context, output, &info) == maud_success,
           "the default output");
     Placed placed = {0};
     maudStreamDef def = maudDefaultStreamDef();
@@ -834,17 +836,17 @@ static void TestObjects(maudContext* context)
     maudResult result = maudCreateStream(context, &def, &stream);
     printf("object stream: %s, the endpoint takes %u objects\n", maudResultName(result),
            info.spatialObjects);
-    CHECK(result == maud_success && maudStartStream(context, stream) == maud_success,
+    CHECK(result == maud_success && maudStream_Start(context, stream) == maud_success,
           "an object stream runs");
     POLL_UNTIL(3000, "the object stream's blocks", (void)0, atomic_load(&placed.count) >= 20);
     CHECK(atomic_load(&placed.count) >= 20, "its callback runs");
     CHECK(atomic_load(&placed.mostOffered) <= info.spatialObjects,
           "offered no more objects than the endpoint takes");
     uint64_t position = 0;
-    CHECK(maudGetStreamPosition(context, stream, &position) == maud_success && position > 0,
+    CHECK(maudStream_GetPosition(context, stream, &position) == maud_success && position > 0,
           "its clock advances");
-    CHECK(maudStopStream(context, stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+    CHECK(maudStream_Stop(context, stream) == maud_success &&
+              maudStream_Start(context, stream) == maud_success,
           "stops and starts again");
     uint32_t before = atomic_load(&placed.count);
     POLL_UNTIL(3000, "the object stream's blocks again", (void)0,
@@ -862,8 +864,8 @@ static void TestExclusive(maudContext* context)
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
     def.share = maud_shareExclusive;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
-              maud_success,
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                       &def.device) == maud_success,
           "the default output");
     maudStreamId stream = {0, 0};
     def.callback = CountBlocks;
@@ -881,9 +883,9 @@ static void TestExclusive(maudContext* context)
     if (result == maud_success)
     {
         maudStreamStatus status = {0};
-        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.exclusive,
+        CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.exclusive,
               "and the stream says so");
-        CHECK(maudStartStream(context, stream) == maud_success &&
+        CHECK(maudStream_Start(context, stream) == maud_success &&
                   WaitForBlocks(context, &blocks, 20),
               "it plays");
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");

@@ -295,8 +295,8 @@ static unsigned char s_bake[1 << 20];
 static maudResult MakeSpatializer(const maudAllocator* allocator, void* made)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = s_office;
     def.reverbRays = 256;
     def.reflectionOrder = 1;
@@ -320,12 +320,12 @@ static maudResult MakeSpatializer(const maudAllocator* allocator, void* made)
     maudProbeSetId set = {0, 0};
     maudProbeSetId loaded = {0, 0};
     size_t size = 0;
-    result = maudSetMaterials(s, &wall, 1);
+    result = maudSpatializer_SetMaterials(s, &wall, 1);
     result = result == maud_success ? maudCreateProbeSet(s, &setDef, &set) : result;
-    result = result == maud_success ? maudBakeProbeSet(s, set) : result;
-    result = result == maud_success ? maudSaveProbeSet(s, set, nullptr, 0, &size) : result;
+    result = result == maud_success ? maudProbeSet_Bake(s, set) : result;
+    result = result == maud_success ? maudProbeSet_Save(s, set, nullptr, 0, &size) : result;
     result = result == maud_success && size > sizeof(s_bake) ? maud_errorState : result;
-    result = result == maud_success ? maudSaveProbeSet(s, set, s_bake, size, &size) : result;
+    result = result == maud_success ? maudProbeSet_Save(s, set, s_bake, size, &size) : result;
     result = result == maud_success ? maudLoadProbeSet(s, s_bake, size, &loaded) : result;
     if (result != maud_success)
     {

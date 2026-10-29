@@ -57,7 +57,7 @@ EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 
 void TestGesture(void)
 {
-    CHECK(maudResumeContext(s_context) == maud_success, "resume from the gesture");
+    CHECK(maudContext_Unlock(s_context) == maud_success, "resume from the gesture");
     s_since = emscripten_get_now();
 }
 
@@ -76,7 +76,7 @@ static void Step_(void* user)
 {
     (void)user;
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
         bool mine = record.stream.index1 == s_capture.index1 &&
                     record.stream.generation == s_capture.generation;
@@ -92,7 +92,7 @@ static void Step_(void* user)
         s_endedAt = s_blocks;
         EndCaptureTracks();
         maudStreamStatus status = {0};
-        s_waited = maudGetStreamStatus(s_context, s_capture, &status) == maud_success &&
+        s_waited = maudStream_GetStatus(s_context, s_capture, &status) == maud_success &&
                    status.suspension == maud_suspendPermission;
     }
     double waited = emscripten_get_now() - s_since;
@@ -110,7 +110,7 @@ int main(void)
     captureDef.direction = maud_directionInput;
     captureDef.callback = Count;
     CHECK(maudCreateStream(s_context, &captureDef, &s_capture) == maud_success &&
-              maudStartStream(s_context, s_capture) == maud_success,
+              maudStream_Start(s_context, s_capture) == maud_success,
           "a capture");
     ListenForGesture();
     printf("MAUD_TEST_WAITING_FOR_GESTURE\n");

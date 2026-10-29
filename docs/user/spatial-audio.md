@@ -34,7 +34,7 @@ maudResult result = maudLoadHrtf(&def, &hrtf);
 // maud_errorFormat: a damaged or foreign file; maud_errorVersion: another version.
 ```
 
-Set `def.sampleRate` to the rate the effects run at, and the loader resamples the set to it. One set serves every effect that uses it and must outlive them. `maudGetHrtfInfo` gives its name and license text, which a program that ships the set shows with its credits.
+Set `def.sampleRate` to the rate the effects run at, and the loader resamples the set to it. One set serves every effect that uses it and must outlive them. `maudHrtf_GetInfo` gives its name and license text, which a program that ships the set shows with its credits.
 
 ## A source for headphones
 
@@ -49,13 +49,13 @@ maudBinauralParams params = {{2.0f, 0.0f, -1.0f}, 0.5f};   // ahead and right; i
 float* ears[2] = {left, right};
 if (result == maud_success)
 {
-    result = maudProcessBinaural(effect, &params, mono, ears, 480);
+    result = maudBinaural_Process(effect, &params, mono, ears, 480);
 }
 ```
 
 - The gain is the program's own, distance attenuation included: the effect applies none, so the program keeps its distance curve. Gain and position move across the call from the previous call's.
 - With the near field on (the default), a source closer than the set's measuring distance sounds closer: each ear is filtered for the head's shadow, and each ear looks its response up from where it sees the source. `headRadius` sets the head's size.
-- `maudResetBinaural` forgets the previous call, for a source that jumps (a cut, a respawn).
+- `maudBinaural_Reset` forgets the previous call, for a source that jumps (a cut, a respawn).
 
 ## Many sources: the ambisonic bed
 
@@ -82,7 +82,7 @@ if (result == maud_success)
 float* ears[2] = {left, right};
 if (result == maud_success)
 {
-    result = maudDecodeBinaural(decoder, (const float* const*)bed, ears, 480);
+    result = maudBinauralDecoder_Decode(decoder, (const float* const*)bed, ears, 480);
 }
 maudDestroyBinauralDecoder(decoder);
 ```
@@ -94,7 +94,7 @@ A bed of order 1 to 3 has `maudGetAmbisonicChannelCount(order)` planar channels 
 For a speaker layout there are two ways:
 
 - A **speaker panner** (`maudCreateSpeakerPanner`) pans each source straight into the layout's channels by vector base amplitude panning. Once made it is read only: any number of sources share it, from any thread.
-- A **speaker decoder** (`maudCreateSpeakerDecoder`, `maudDecodeToSpeakers`) renders an ambisonic bed to the layout, so the same bed serves headphones and speakers.
+- A **speaker decoder** (`maudCreateSpeakerDecoder`, `maudSpeakerDecoder_Decode`) renders an ambisonic bed to the layout, so the same bed serves headphones and speakers.
 
 The layout's speaker positions are the nominal ones of ITU-R BS.2051.
 
@@ -114,7 +114,7 @@ params.transmission[1] = 0.1f;
 params.transmission[2] = 0.02f;
 if (result == maud_success)
 {
-    result = maudProcessDirect(effect, &params, mono, filtered, 480);
+    result = maudDirectEffect_Process(effect, &params, mono, filtered, 480);
 }
 maudDestroyDirectEffect(effect);
 ```
@@ -137,7 +137,7 @@ maudReverbParams params = {
 };
 if (result == maud_success)
 {
-    result = maudProcessReverb(reverb, &params, mono, bed, 480);   // four channels
+    result = maudReverb_Process(reverb, &params, mono, bed, 480);   // four channels
 }
 maudDestroyReverb(reverb);
 ```

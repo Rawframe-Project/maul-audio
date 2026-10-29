@@ -82,12 +82,12 @@ EMSCRIPTEN_KEEPALIVE void TestGesture(void);
 
 void TestGesture(void)
 {
-    CHECK(maudResumeContext(s_context) == maud_success, "resume from the gesture");
+    CHECK(maudContext_Unlock(s_context) == maud_success, "resume from the gesture");
     maudStreamDef def = maudDefaultStreamDef();
     def.direction = maud_directionLoopback;
     def.callback = Hear;
     CHECK(maudCreateStream(s_context, &def, &s_loop) == maud_success &&
-              maudStartStream(s_context, s_loop) == maud_success,
+              maudStream_Start(s_context, s_loop) == maud_success,
           "a loopback stream made in the gesture");
     s_since = emscripten_get_now();
 }
@@ -99,7 +99,7 @@ static void Finish(void)
     CHECK(s_peak >= 0.4f && s_peak <= 0.6f, "it hears the page's tone at its level");
     EndCaptureTracks();
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_loop, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_loop, &status) == maud_success &&
               status.suspension == maud_suspendPermission,
           "its sharing stopped, it waits for the permission");
     CHECK(maudDestroyStream(s_context, s_loop) == maud_success &&
@@ -114,7 +114,7 @@ static void Step_(void* user)
 {
     (void)user;
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
     }
     if (s_since == 0.0)
@@ -136,7 +136,7 @@ int main(void)
     maudStreamDef toneDef = maudDefaultStreamDef();
     toneDef.callback = Play;
     CHECK(maudCreateStream(s_context, &toneDef, &s_tone) == maud_success &&
-              maudStartStream(s_context, s_tone) == maud_success,
+              maudStream_Start(s_context, s_tone) == maud_success,
           "a tone");
     maudStreamDef refused = maudDefaultStreamDef();
     refused.direction = maud_directionLoopback;

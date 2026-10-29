@@ -102,7 +102,7 @@ static void TestCorridor(void)
             }
         }
     }
-    maudProbeQueries q = {.anyHit = maudSceneAnyHit,
+    maudProbeQueries q = {.anyHit = maudFindAnyHit,
                           .rayContext = scene,
                           .allocator = &s_allocator,
                           .maxProbes = 512,
@@ -116,8 +116,8 @@ static void TestCorridor(void)
     const maudVector3 source = {6.0f, 1.5f, 1.5f};
     maudPathEnd to;
     maudPathEnd from;
-    maudAttachPath(&g, g.range, listener, maudSceneAnyHit, scene, &to);
-    maudAttachPath(&g, g.range, source, maudSceneAnyHit, scene, &from);
+    maudAttachPath(&g, g.range, listener, maudFindAnyHit, scene, &to);
+    maudAttachPath(&g, g.range, source, maudFindAnyHit, scene, &from);
     CHECK(to.count == MAUD_PATH_ATTACH && from.count == MAUD_PATH_ATTACH, "both ends attached");
     maudVector3 v[MAUD_PATH_VERTICES];
     uint32_t probes[MAUD_PATH_VERTICES];
@@ -154,7 +154,7 @@ static void TestCorridor(void)
     // the ones in sight attach.
     const maudVector3 beside = {17.5f, 1.5f, 3.5f};
     maudPathEnd near;
-    maudAttachPath(&g, 3.0f, beside, maudSceneAnyHit, scene, &near);
+    maudAttachPath(&g, 3.0f, beside, maudFindAnyHit, scene, &near);
     // The spec by brute force: the 32 nearest in range by distance
     // (then index), the ones in sight of them, the first 8.
     uint32_t order[400];
@@ -183,7 +183,7 @@ static void TestCorridor(void)
         maudRay ray = {
             beside, {(p.x - beside.x) / d, (p.y - beside.y) / d, (p.z - beside.z) / d}, 0.0f, d};
         uint8_t occluded = 1;
-        maudSceneAnyHit(&ray, 1, &occluded, scene);
+        maudFindAnyHit(&ray, 1, &occluded, scene);
         hidden += occluded;
         if (occluded == 0)
         {

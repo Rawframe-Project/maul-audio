@@ -104,7 +104,7 @@ static inline uint64_t StreamXruns(const GraphWatch* watch)
     {
         return 0;
     }
-    return maudGetStreamStatus(watch->context, watch->stream, &status) == maud_success
+    return maudStream_GetStatus(watch->context, watch->stream, &status) == maud_success
                ? status.underruns + status.overruns
                : UINT64_MAX;
 }
@@ -118,7 +118,7 @@ static inline bool GraphWindow(void* user)
     {
         maudNotification ignored;
         while (watch->context != nullptr &&
-               maudNextNotification(watch->context, &ignored) == maud_success)
+               maudContext_NextNotification(watch->context, &ignored) == maud_success)
         {
         }
         int64_t before = maudGetHostNanoseconds();

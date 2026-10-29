@@ -62,7 +62,7 @@ extern "C"
     ///                     room for frameCount frames (or NULL when
     ///                     frameCount is 0); the rest is written. The bed,
     ///                     the records and their samples are left as they
-    ///                     were on failure, as maudRenderStream's frames.
+    ///                     were on failure, as maudStream_Render's frames.
     /// @param objectCount  The stream's objectCount.
     /// @param frameCount   The number of frames.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
@@ -75,10 +75,11 @@ extern "C"
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. A stream renders on one
     /// thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudRenderObjects(maudContext* context, maudStreamId stream,
-                                                         float* bedOut,
-                                                         maudStreamObject* objectsOut,
-                                                         uint32_t objectCount, uint32_t frameCount);
+    MAUD_NODISCARD MAUD_API maudResult maudStream_RenderObjects(maudContext* context,
+                                                                maudStreamId stream, float* bedOut,
+                                                                maudStreamObject* objectsOut,
+                                                                uint32_t objectCount,
+                                                                uint32_t frameCount);
 
 #ifdef __cplusplus
 }

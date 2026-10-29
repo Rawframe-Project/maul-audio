@@ -90,7 +90,7 @@ static void TestSteadyNoise(void)
     memcpy(s_out, s_in, sizeof(s_in));
     maudNoiseSuppressor* s = Make(maud_layoutMono, 0.0f);
     maudNoiseState state;
-    CHECK(maudSuppressNoise(s, s_out, FRAMES, &state) == maud_success, "suppressed");
+    CHECK(maudNoiseSuppressor_Suppress(s, s_out, FRAMES, &state) == maud_success, "suppressed");
     double early = LevelDb(s_in, RATE / 2, RATE, 1) - LevelDb(s_out, RATE / 2, RATE, 1);
     double late = LevelDb(s_in, 3 * RATE, FRAMES, 1) - LevelDb(s_out, 3 * RATE, FRAMES, 1);
     printf("steady noise: %.1f dB down from 0.5 to 1 s, %.1f dB from 3 s; its level %.1f dBFS, "
@@ -122,7 +122,7 @@ static void TestBursts(void)
     }
     memcpy(s_out, s_in, sizeof(s_in));
     maudNoiseSuppressor* s = Make(maud_layoutMono, 0.0f);
-    CHECK(maudSuppressNoise(s, s_out, FRAMES, nullptr) == maud_success, "suppressed");
+    CHECK(maudNoiseSuppressor_Suppress(s, s_out, FRAMES, nullptr) == maud_success, "suppressed");
     // Compare the middle of each burst and gap after 1.2 s, the output
     // moved back by its 10 ms.
     double worstBurst = 0.0;
@@ -157,7 +157,7 @@ static void TestLatencyAndCuts(void)
     }
     maudNoiseSuppressor* whole = Make(maud_layoutMono, 100.0f);
     memcpy(s_out, s_in, sizeof(s_in));
-    CHECK(maudSuppressNoise(whole, s_out, FRAMES, nullptr) == maud_success, "whole");
+    CHECK(maudNoiseSuppressor_Suppress(whole, s_out, FRAMES, nullptr) == maud_success, "whole");
     bool silent = true;
     for (uint32_t i = 0; i < HOP; ++i)
     {
@@ -173,7 +173,8 @@ static void TestLatencyAndCuts(void)
         for (uint32_t at = 0; at < FRAMES; at += cuts[c])
         {
             uint32_t n = at + cuts[c] <= FRAMES ? cuts[c] : FRAMES - at;
-            CHECK(maudSuppressNoise(cut, pieces + at, n, nullptr) == maud_success, "a piece");
+            CHECK(maudNoiseSuppressor_Suppress(cut, pieces + at, n, nullptr) == maud_success,
+                  "a piece");
         }
         CHECK(memcmp(pieces, s_out, sizeof(s_out)) == 0, "the same however cut");
         maudDestroyNoiseSuppressor(cut);
@@ -196,8 +197,8 @@ static void TestChannels(void)
     maudNoiseSuppressor* stereo = Make(maud_layoutStereo, 100.0f);
     maudNoiseState one;
     maudNoiseState two;
-    CHECK(maudSuppressNoise(mono, s_out, FRAMES, &one) == maud_success &&
-              maudSuppressNoise(stereo, s_stereo, FRAMES, &two) == maud_success,
+    CHECK(maudNoiseSuppressor_Suppress(mono, s_out, FRAMES, &one) == maud_success &&
+              maudNoiseSuppressor_Suppress(stereo, s_stereo, FRAMES, &two) == maud_success,
           "both");
     CHECK(one.noiseDbfs == two.noiseDbfs, "the same noise level: the channels' mean");
     bool same = true;
@@ -224,7 +225,7 @@ static void TestFloor(void)
     def.highPassHz = 0.0f;
     maudNoiseSuppressor* s = nullptr;
     CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_success &&
-              maudSuppressNoise(s, s_out, FRAMES, nullptr) == maud_success,
+              maudNoiseSuppressor_Suppress(s, s_out, FRAMES, nullptr) == maud_success,
           "suppressed");
     double down =
         LevelDb(s_in, RATE, FRAMES - HOP, 1) - LevelDb(s_out + HOP, RATE, FRAMES - HOP, 1);
@@ -247,7 +248,7 @@ static void TestHighPass(void)
     def.floorDb = -6.0f;
     maudNoiseSuppressor* s = nullptr;
     CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_success &&
-              maudSuppressNoise(s, s_out, FRAMES, nullptr) == maud_success,
+              maudNoiseSuppressor_Suppress(s, s_out, FRAMES, nullptr) == maud_success,
           "a hum");
     double down =
         LevelDb(s_in, RATE, FRAMES - HOP, 1) - LevelDb(s_out + HOP, RATE, FRAMES - HOP, 1);
@@ -281,11 +282,12 @@ static void TestRefused(void)
     def.cookie = 0;
     CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_errorInvalid, "no cookie");
     CHECK(maudCreateNoiseSuppressor(nullptr, &s) == maud_errorInvalid, "no def");
-    CHECK(maudSuppressNoise(nullptr, s_out, 1, nullptr) == maud_errorInvalid, "no suppressor");
+    CHECK(maudNoiseSuppressor_Suppress(nullptr, s_out, 1, nullptr) == maud_errorInvalid,
+          "no suppressor");
     def = maudDefaultNoiseSuppressorDef();
     CHECK(maudCreateNoiseSuppressor(&def, &s) == maud_success, "a suppressor");
-    CHECK(maudSuppressNoise(s, nullptr, 1, nullptr) == maud_errorInvalid &&
-              maudSuppressNoise(s, nullptr, 0, nullptr) == maud_success,
+    CHECK(maudNoiseSuppressor_Suppress(s, nullptr, 1, nullptr) == maud_errorInvalid &&
+              maudNoiseSuppressor_Suppress(s, nullptr, 0, nullptr) == maud_success,
           "no frames, with and without a count");
     maudDestroyNoiseSuppressor(s);
     maudDestroyNoiseSuppressor(nullptr);
@@ -295,7 +297,7 @@ static void TestNoAllocation(void)
 {
     maudNoiseSuppressor* s = Make(maud_layoutStereo, 100.0f);
     int before = s_allocations;
-    CHECK(maudSuppressNoise(s, s_stereo, FRAMES, nullptr) == maud_success, "processed");
+    CHECK(maudNoiseSuppressor_Suppress(s, s_stereo, FRAMES, nullptr) == maud_success, "processed");
     CHECK(s_allocations == before, "without allocating");
     maudDestroyNoiseSuppressor(s);
 }

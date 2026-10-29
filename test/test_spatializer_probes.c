@@ -67,8 +67,8 @@ static maudAcousticScene* Room(void)
 static maudSpatializer* Create(maudAcousticScene* scene, uint32_t sets)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.probeSetCapacity = sets;
     def.maxProbes = 64;
@@ -90,16 +90,16 @@ static void TestPoints(maudSpatializer* s)
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_success && set.index1 == 1, "a set");
     maudProbeSetInfo info = {0};
     maudVector3 copied[2];
-    CHECK(maudGetProbeSet(s, set, &info, 1, 2, copied) == maud_success, "its info");
+    CHECK(maudProbeSet_GetInfo(s, set, 1, &info, copied, 2) == maud_success, "its info");
     printf("points: %u probes, %u links\n", info.probes, info.links);
     CHECK(info.probes == 3 && info.links == 1, "only the probes on one side linked");
     CHECK(copied[0].x == 8.0f && copied[1].z == 7.0f, "its points copied");
-    CHECK(maudGetProbeSet(s, set, &info, 2, 2, copied) == maud_errorInvalid,
+    CHECK(maudProbeSet_GetInfo(s, set, 2, &info, copied, 2) == maud_errorInvalid,
           "probes past the set's");
-    CHECK(maudGetProbeSet(s, set, &info, 3, 0, copied) == maud_success, "none at the end");
+    CHECK(maudProbeSet_GetInfo(s, set, 3, &info, copied, 0) == maud_success, "none at the end");
     CHECK(maudDestroyProbeSet(s, set) == maud_success, "destroyed");
     CHECK(maudDestroyProbeSet(s, set) == maud_errorStale &&
-              maudGetProbeSet(s, set, &info, 0, 0, nullptr) == maud_errorStale,
+              maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) == maud_errorStale,
           "a destroyed set's id is stale");
     maudProbeSetId again = {0, 0};
     CHECK(maudCreateProbeSet(s, &def, &again) == maud_success && again.index1 == set.index1 &&
@@ -125,7 +125,7 @@ static void TestGenerated(maudSpatializer* s)
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_success, "generated");
     maudProbeSetInfo info = {0};
     maudVector3 points[16];
-    CHECK(maudGetProbeSet(s, set, &info, 0, 16, points) == maud_success, "its probes");
+    CHECK(maudProbeSet_GetInfo(s, set, 0, &info, points, 16) == maud_success, "its probes");
     bool floor = info.probes == 16;
     for (uint32_t i = 0; i < 16 && floor; ++i)
     {
@@ -168,7 +168,7 @@ static void TestMisuse(maudSpatializer* s)
     maudProbeSetInfo info;
     CHECK(maudDestroyProbeSet(s, none) == maud_errorInvalid &&
               maudDestroyProbeSet(s, unknown) == maud_errorInvalid &&
-              maudGetProbeSet(s, none, &info, 0, 0, nullptr) == maud_errorInvalid,
+              maudProbeSet_GetInfo(s, none, 0, &info, nullptr, 0) == maud_errorInvalid,
           "0 and unknown ids");
     // Generation needs the closest-hit query; a spatializer without sets
     // has no room for one; limits out of range are refused.

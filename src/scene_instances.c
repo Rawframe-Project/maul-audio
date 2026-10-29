@@ -169,8 +169,8 @@ static MAUD_NOINLINE maudResult MoveSceneInstance(maudAcousticScene* scene,
     return maud_success;
 }
 
-maudResult maudMoveSceneInstance(maudAcousticScene* scene, maudSceneInstanceId instance,
-                                 const maudInstanceTransform* transform)
+maudResult maudSceneInstance_Move(maudAcousticScene* scene, maudSceneInstanceId instance,
+                                  const maudInstanceTransform* transform)
 {
     uint64_t token = maudFloatEnvEnter();
     maudResult result = MoveSceneInstance(scene, instance, transform);
@@ -271,7 +271,7 @@ static MAUD_NOINLINE maudResult CommitAcousticScene(maudAcousticScene* scene)
     return maud_success;
 }
 
-maudResult maudCommitAcousticScene(maudAcousticScene* scene)
+maudResult maudAcousticScene_Commit(maudAcousticScene* scene)
 {
     uint64_t token = maudFloatEnvEnter();
     maudResult result = CommitAcousticScene(scene);

@@ -208,7 +208,7 @@ static maudResult Process(maudBinaural* effect, maudBinauralParams params, const
                           float* left, float* right, uint32_t frames)
 {
     float* out[2] = {left, right};
-    return maudProcessBinaural(effect, &params, in, out, frames);
+    return maudBinaural_Process(effect, &params, in, out, frames);
 }
 
 static void Noise(float* samples, uint32_t count, uint32_t seed)
@@ -360,7 +360,7 @@ static void TestFade(const maudHrtf* hrtf)
     }
     CHECK(before, "and differed before the change");
     // Changes during a fade: the last one wins.
-    CHECK(maudResetBinaural(moving) == maud_success && maudResetBinaural(settled) == maud_success,
+    CHECK(maudBinaural_Reset(moving) == maud_success && maudBinaural_Reset(settled) == maud_success,
           "reset");
     for (uint32_t done = 0; done < 1024; done += 32)
     {
@@ -655,7 +655,7 @@ static void TestNearField(const maudHrtf* hrtf)
           "process");
     CHECK(memcmp(s_left, s_left2, 256 * sizeof(float)) == 0, "a zero position is 0.1 m ahead");
     // A reset forgets the near-field filters' memory too.
-    CHECK(maudResetBinaural(on) == maud_success, "reset");
+    CHECK(maudBinaural_Reset(on) == maud_success, "reset");
     maudBinaural* fresh = CreateWith(hrtf, 256, true);
     CHECK(Process(on, At(0.2f, 0.0f, -0.1f), s_in, s_left, s_right, 256) == maud_success,
           "process");
@@ -691,12 +691,12 @@ static void TestBlocks(const maudHrtf* hrtf)
               memcmp(s_right, s_right2, 1000 * sizeof(float)) == 0,
           "one call or many");
     // A reset forgets: the parts effect now renders as a fresh one.
-    CHECK(maudResetBinaural(parts) == maud_success, "reset");
+    CHECK(maudBinaural_Reset(parts) == maud_success, "reset");
     CHECK(Process(parts, params, s_in, s_left2, s_right2, 1000) == maud_success, "process");
     CHECK(memcmp(s_left, s_left2, 1000 * sizeof(float)) == 0, "a reset effect starts afresh");
     // Even at another direction: no fade from the one before the reset.
     maudBinaural* fresh = Create(hrtf, 1024);
-    CHECK(maudResetBinaural(parts) == maud_success, "reset");
+    CHECK(maudBinaural_Reset(parts) == maud_success, "reset");
     CHECK(Process(parts, At(1.0f, 0.0f, 0.0f), s_in, s_left, s_right, 1000) == maud_success,
           "process");
     CHECK(Process(fresh, At(1.0f, 0.0f, 0.0f), s_in, s_left2, s_right2, 1000) == maud_success,
@@ -762,20 +762,20 @@ static void TestMisuse(const maudHrtf* hrtf)
     }
     float* out[2] = {s_left, s_right};
     maudBinauralParams bad = At(NAN, 0.0f, 0.0f);
-    CHECK(maudProcessBinaural(effect, &bad, s_in, out, 64) == maud_errorInvalid, "NaN");
+    CHECK(maudBinaural_Process(effect, &bad, s_in, out, 64) == maud_errorInvalid, "NaN");
     bad = At(0.0f, 0.0f, -1.0f);
     bad.gain = INFINITY;
-    CHECK(maudProcessBinaural(effect, &bad, s_in, out, 64) == maud_errorInvalid, "infinite gain");
+    CHECK(maudBinaural_Process(effect, &bad, s_in, out, 64) == maud_errorInvalid, "infinite gain");
     maudBinauralParams params = At(0.0f, 0.0f, -1.0f);
-    CHECK(maudProcessBinaural(effect, &params, s_in, out, 65) == maud_errorCapacity,
+    CHECK(maudBinaural_Process(effect, &params, s_in, out, 65) == maud_errorCapacity,
           "more frames than the def allows");
-    CHECK(maudProcessBinaural(effect, &params, nullptr, out, 64) == maud_errorInvalid, "no input");
+    CHECK(maudBinaural_Process(effect, &params, nullptr, out, 64) == maud_errorInvalid, "no input");
     float* half[2] = {s_left, nullptr};
-    CHECK(maudProcessBinaural(effect, &params, s_in, half, 64) == maud_errorInvalid,
+    CHECK(maudBinaural_Process(effect, &params, s_in, half, 64) == maud_errorInvalid,
           "one channel missing");
-    CHECK(maudProcessBinaural(nullptr, &params, s_in, out, 64) == maud_errorInvalid, "no effect");
+    CHECK(maudBinaural_Process(nullptr, &params, s_in, out, 64) == maud_errorInvalid, "no effect");
     CHECK(s_left[0] == 7.0f && s_left[63] == 7.0f, "nothing written by a bad call");
-    CHECK(maudProcessBinaural(effect, &params, nullptr, out, 0) == maud_success, "no frames");
+    CHECK(maudBinaural_Process(effect, &params, nullptr, out, 0) == maud_success, "no frames");
     // A zero direction is straight ahead.
     maudBinaural* ahead = Create(hrtf, 64);
     memset(s_in, 0, 64 * sizeof(float));
@@ -823,7 +823,7 @@ static void TestMisuse(const maudHrtf* hrtf)
     CHECK(maudCreateBinaural(&def, &none) == maud_errorCapacity && none == nullptr,
           "an allocator that fails");
     s_failAfter = -1;
-    CHECK(maudResetBinaural(nullptr) == maud_errorInvalid, "reset nothing");
+    CHECK(maudBinaural_Reset(nullptr) == maud_errorInvalid, "reset nothing");
     maudDestroyBinaural(nullptr);
 }
 
@@ -840,7 +840,7 @@ static void TestNoAllocation(const maudHrtf* hrtf)
         CHECK(Process(effect, params, s_in + done, s_left, s_right, 512) == maud_success,
               "process");
     }
-    CHECK(maudResetBinaural(effect) == maud_success, "reset");
+    CHECK(maudBinaural_Reset(effect) == maud_success, "reset");
     CHECK(s_allocations == before + 1, "processing allocates nothing");
     maudDestroyBinaural(effect);
 }

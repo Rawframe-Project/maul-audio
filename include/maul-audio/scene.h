@@ -147,9 +147,9 @@ extern "C"
     /// @return The count since the scene was created.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API uint64_t maudGetAcousticSceneMisuse(const maudAcousticScene* scene);
+    MAUD_API uint64_t maudAcousticScene_GetMisuse(const maudAcousticScene* scene);
 
-    /// Answers any-hit queries against a scene (a maudAnyHitFn): a ray
+    /// Answers any-hit queries against a scene (a maudAnyHitFunction): a ray
     /// hits when a triangle lies within [minDistance, maxDistance] along
     /// it. A ray through an edge or vertex shared by triangles hits.
     ///
@@ -159,10 +159,10 @@ extern "C"
     /// @param scene     The scene.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API void maudSceneAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded,
-                                  void* scene);
+    MAUD_API void maudFindAnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded,
+                                 void* scene);
 
-    /// Answers closest-hit queries against a scene (a maudClosestHitFn):
+    /// Answers closest-hit queries against a scene (a maudClosestHitFunction):
     /// the nearest triangle within a ray's distances, equal distances
     /// going to the triangle listed first (meshes in order, then their
     /// triangles); its unit normal faces the side the triangle is wound
@@ -174,8 +174,8 @@ extern "C"
     /// @param scene  The scene.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API void maudSceneClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits,
-                                      void* scene);
+    MAUD_API void maudFindClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits,
+                                     void* scene);
 
     /// Makes an instance of one of the scene's instancing meshes. It is
     /// part of queries from the next commit on.
@@ -207,8 +207,8 @@ extern "C"
     /// Safe from any thread; the scene is used by one thread at a time.
     /// Changes and commits must not overlap its queries.
     MAUD_NODISCARD MAUD_API maudResult
-    maudMoveSceneInstance(maudAcousticScene* scene, maudSceneInstanceId instance,
-                          const maudInstanceTransform* transform);
+    maudSceneInstance_Move(maudAcousticScene* scene, maudSceneInstanceId instance,
+                           const maudInstanceTransform* transform);
 
     /// Destroys an instance; it leaves queries at the next commit.
     ///
@@ -232,7 +232,7 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the scene is used by one thread at a time.
     /// Changes and commits must not overlap its queries.
-    MAUD_NODISCARD MAUD_API maudResult maudCommitAcousticScene(maudAcousticScene* scene);
+    MAUD_NODISCARD MAUD_API maudResult maudAcousticScene_Commit(maudAcousticScene* scene);
 
 #ifdef __cplusplus
 }

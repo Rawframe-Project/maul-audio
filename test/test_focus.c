@@ -16,7 +16,7 @@ static uint32_t FocusNotes(maudContext* context, maudFocus* lastOut)
 {
     uint32_t count = 0;
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         if (record.kind == maud_notifyFocusChanged)
         {
@@ -46,7 +46,7 @@ int main(void)
     maudReportFocus(context, maud_focusDucked);
     maudFocus now = maud_focusNone;
     CHECK(FocusNotes(context, &last) == 1 && last == maud_focusDucked &&
-              maudGetContextFocus(context, &now) == maud_success && now == maud_focusDucked,
+              maudContext_GetFocus(context, &now) == maud_success && now == maud_focusDucked,
           "the next change is posted and read back");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     return s_failures == 0 ? 0 : 1;

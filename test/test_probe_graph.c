@@ -69,16 +69,16 @@ static const maudAllocator s_allocator = {nullptr, nullptr, nullptr};
 
 static maudProbeQueries Queries(maudAcousticScene* scene)
 {
-    return (maudProbeQueries){.anyHit = maudSceneAnyHit,
-                              .closestHit = maudSceneClosestHit,
+    return (maudProbeQueries){.anyHit = maudFindAnyHit,
+                              .closestHit = maudFindClosestHit,
                               .rayContext = scene,
                               .allocator = &s_allocator,
                               .maxProbes = 4096,
                               .maxPairs = 1u << 20};
 }
 
-static void* Reverse(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                     void* userContext)
+static void* Reverse(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                     void* taskContext, void* userContext)
 {
     (void)minRange;
     for (uint32_t i = itemCount; i-- > 0;)
@@ -138,7 +138,7 @@ static void CheckLinks(maudAcousticScene* scene, const maudProbeGraph* g, float 
             maudRay ray = {
                 from, {(to.x - from.x) / d, (to.y - from.y) / d, (to.z - from.z) / d}, 0.0f, d};
             uint8_t occluded = 0;
-            maudSceneAnyHit(&ray, 1, &occluded, scene);
+            maudFindAnyHit(&ray, 1, &occluded, scene);
             links += occluded == 0 && j > i ? 1 : 0;
             wrong += (occluded == 0) == Linked(g, i, j) ? 0 : 1;
         }

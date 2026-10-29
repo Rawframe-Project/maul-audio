@@ -30,7 +30,7 @@ int main(void)
         cd.backend = kinds[i];
         maudContext* context = nullptr;
         CHECK(maudCreateContext(&cd, &context) == maud_success && context != nullptr &&
-                  maudGetContextBackend(context) == maud_backendPrivate,
+                  maudContext_GetBackend(context) == maud_backendPrivate,
               "the private backend, by kind and first as native");
         if (context == nullptr)
         {
@@ -38,9 +38,9 @@ int main(void)
         }
         maudDeviceInfo info = {0};
         maudDeviceId device = {0, 0};
-        CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
-                      maud_success &&
-                  maudGetDeviceInfo(context, device, &info) == maud_success &&
+        CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                           &device) == maud_success &&
+                  maudDevice_GetInfo(context, device, &info) == maud_success &&
                   info.nativeSampleRate == 48000,
               "its device");
         maudStreamDef sd = maudDefaultStreamDef();
@@ -50,8 +50,8 @@ int main(void)
         float frames[2 * 960];
         s_blocks = 0;
         CHECK(maudCreateStream(context, &sd, &stream) == maud_success &&
-                  maudStartStream(context, stream) == maud_success &&
-                  maudRenderStream(context, stream, frames, 960) == maud_success && s_blocks == 2,
+                  maudStream_Start(context, stream) == maud_success &&
+                  maudStream_Render(context, stream, frames, 960) == maud_success && s_blocks == 2,
               "a stream the caller renders, two periods of 480");
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
     }

@@ -76,7 +76,7 @@ static void Respond(maudReverb* r, const float* before, const float* times)
     for (int block = 0; block < 2; ++block)
     {
         float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], s_bed[3]};
-        CHECK(maudProcessReverb(r, &first, s_in, bed, 480) == maud_success, "process");
+        CHECK(maudReverb_Process(r, &first, s_in, bed, 480) == maud_success, "process");
     }
     s_in[0] = 1.0f;
     maudReverbParams params = {{times[0], times[1], times[2]},
@@ -87,7 +87,7 @@ static void Respond(maudReverb* r, const float* before, const float* times)
     for (int at = 0; at < LENGTH; at += 480)
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
-        CHECK(maudProcessReverb(r, &params, s_in + at, bed, 480) == maud_success, "process");
+        CHECK(maudReverb_Process(r, &params, s_in + at, bed, 480) == maud_success, "process");
     }
 }
 
@@ -257,7 +257,7 @@ static void TestBehaviour(void)
     float in[480] = {0};
     static float bed[4][480];
     float* out[4] = {bed[0], bed[1], bed[2], bed[3]};
-    CHECK(maudProcessReverb(r, &params, in, out, 480) == maud_success, "process");
+    CHECK(maudReverb_Process(r, &params, in, out, 480) == maud_success, "process");
     bool silent = true;
     for (int c = 0; c < 4; ++c)
     {
@@ -278,7 +278,7 @@ static void TestBehaviour(void)
     long before = s_allocations;
     for (int block = 0; block < 10; ++block)
     {
-        CHECK(maudProcessReverb(r, &params, in, out, 480) == maud_success, "process");
+        CHECK(maudReverb_Process(r, &params, in, out, 480) == maud_success, "process");
         in[0] = 0.0f;
     }
     CHECK(s_allocations == before, "processing allocates nothing");
@@ -298,7 +298,7 @@ static void TestBehaviour(void)
     bool finite = true;
     for (int block = 0; block < 20; ++block)
     {
-        CHECK(maudProcessReverb(r, block == 0 ? &params : &longer, in, out, 480) == maud_success,
+        CHECK(maudReverb_Process(r, block == 0 ? &params : &longer, in, out, 480) == maud_success,
               "process");
         for (int n = 0; n < 480; ++n)
         {
@@ -306,10 +306,10 @@ static void TestBehaviour(void)
         }
     }
     CHECK(finite, "a change of times stays finite");
-    CHECK(maudResetReverb(r) == maud_success, "reset");
+    CHECK(maudReverb_Reset(r) == maud_success, "reset");
     memset(bed, 0, sizeof(bed));
     in[0] = 0.0f;
-    CHECK(maudProcessReverb(r, &longer, in, out, 480) == maud_success, "process");
+    CHECK(maudReverb_Process(r, &longer, in, out, 480) == maud_success, "process");
     silent = true;
     for (int n = 0; n < 480; ++n)
     {
@@ -320,11 +320,11 @@ static void TestBehaviour(void)
         {0.05f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
     bed[0][0] = 7.0f;
     in[0] = 1.0f;
-    CHECK(maudProcessReverb(r, &bad, in, out, 480) == maud_errorInvalid, "a time too short");
+    CHECK(maudReverb_Process(r, &bad, in, out, 480) == maud_errorInvalid, "a time too short");
     bad.reverbTime[0] = NAN;
-    CHECK(maudProcessReverb(r, &bad, in, out, 480) == maud_errorInvalid, "NaN");
+    CHECK(maudReverb_Process(r, &bad, in, out, 480) == maud_errorInvalid, "NaN");
     CHECK(bed[0][0] == 7.0f, "nothing written by a bad call");
-    CHECK(maudProcessReverb(r, &params, nullptr, nullptr, 0) == maud_success, "no frames");
+    CHECK(maudReverb_Process(r, &params, nullptr, nullptr, 0) == maud_success, "no frames");
     maudDestroyReverb(r);
     maudDestroyReverb(nullptr);
     maudReverbDef def = maudDefaultReverbDef();
@@ -359,13 +359,13 @@ static void TestBlocks(void)
     for (int at = 0; at < 4800; at += 480)
     {
         float* bed[4] = {a + at, zero[1] + at, zero[2] + at, zero[3] + at};
-        CHECK(maudProcessReverb(whole, &params, in + at, bed, 480) == maud_success, "process");
+        CHECK(maudReverb_Process(whole, &params, in + at, bed, 480) == maud_success, "process");
     }
     for (int at = 0; at < 4800;)
     {
         uint32_t count = at == 0 ? 100 : (at + 480 <= 4800 ? 480 : 4800 - (uint32_t)at);
         float* bed[4] = {b + at, zero[1] + at, zero[2] + at, zero[3] + at};
-        CHECK(maudProcessReverb(split, &params, in + at, bed, count) == maud_success, "process");
+        CHECK(maudReverb_Process(split, &params, in + at, bed, count) == maud_success, "process");
         at += (int)count;
     }
     bool same = true;
@@ -405,8 +405,8 @@ static void TestRamp(void)
         memset(b, 0, sizeof(b));
         float* outA[4] = {a[0], a[1], a[2], a[3]};
         float* outB[4] = {b[0], b[1], b[2], b[3]};
-        CHECK(maudProcessReverb(kept, &before, noise, outA, 480) == maud_success, "process");
-        CHECK(maudProcessReverb(changed, block < 10 ? &before : &after, noise, outB, 480) ==
+        CHECK(maudReverb_Process(kept, &before, noise, outA, 480) == maud_success, "process");
+        CHECK(maudReverb_Process(changed, block < 10 ? &before : &after, noise, outB, 480) ==
                   maud_success,
               "process");
     }
@@ -455,7 +455,7 @@ static void TestSend(void)
         for (int at = 0; at < 24000; at += 480)
         {
             float* bed[4] = {out[k][0] + at, out[k][1] + at, out[k][2] + at, out[k][3] + at};
-            CHECK(maudProcessReverb(r[k], &p, in + at, bed, 480) == maud_success, "process");
+            CHECK(maudReverb_Process(r[k], &p, in + at, bed, 480) == maud_success, "process");
         }
     }
     int onset[2] = {-1, -1};
@@ -481,20 +481,20 @@ static void TestSend(void)
     CHECK(fabs(loud / plain / pow(10.0, 0.6) - 1.0) < 0.05, "6 dB louder");
     maudReverbParams bad = {
         {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.21f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
-    CHECK(maudProcessReverb(r[0], &bad, out[0][0],
-                            (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
-                            16) == maud_errorInvalid,
+    CHECK(maudReverb_Process(r[0], &bad, out[0][0],
+                             (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
+                             16) == maud_errorInvalid,
           "a delay past the longest");
     bad.delay = 0.0f;
     bad.level[1] = 25.0f;
-    CHECK(maudProcessReverb(r[0], &bad, out[0][0],
-                            (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
-                            16) == maud_errorInvalid,
+    CHECK(maudReverb_Process(r[0], &bad, out[0][0],
+                             (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
+                             16) == maud_errorInvalid,
           "a level past 24 dB");
     bad.level[1] = NAN;
-    CHECK(maudProcessReverb(r[0], &bad, out[0][0],
-                            (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
-                            16) == maud_errorInvalid,
+    CHECK(maudReverb_Process(r[0], &bad, out[0][0],
+                             (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
+                             16) == maud_errorInvalid,
           "a level not a number");
     maudDestroyReverb(r[0]);
     maudDestroyReverb(r[1]);
@@ -523,7 +523,7 @@ static double LowOverMiddle(const float* levels)
     for (int at = 0; at < LENGTH; at += 480)
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
-        CHECK(maudProcessReverb(r, &p, s_in + at, bed, 480) == maud_success, "process");
+        CHECK(maudReverb_Process(r, &p, s_in + at, bed, 480) == maud_success, "process");
     }
     maudDestroyReverb(r);
     double energy[2] = {0.0, 0.0};
@@ -574,7 +574,7 @@ static void Sequence(bool tail, const maudReverbParams* params, const int* impul
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
         bool on = at / 480 < stop || at / 480 >= start;
-        CHECK(maudProcessReverb(r, on ? params : &stopped, s_in + at, bed, 480) == maud_success,
+        CHECK(maudReverb_Process(r, on ? params : &stopped, s_in + at, bed, 480) == maud_success,
               "process");
     }
     CHECK(s_allocations == before, "a tail allocates nothing");
@@ -765,19 +765,19 @@ static void TestTail(void)
     float* const bed[4] = {out[0], out[1], out[2], out[3]};
     maudReverbParams bad = first;
     bad.tailTime[1] = 0.05f;
-    CHECK(maudProcessReverb(r, &bad, out[0], bed, 16) == maud_errorInvalid, "a tail too short");
+    CHECK(maudReverb_Process(r, &bad, out[0], bed, 16) == maud_errorInvalid, "a tail too short");
     bad.tailTime[1] = NAN;
-    CHECK(maudProcessReverb(r, &bad, out[0], bed, 16) == maud_errorInvalid, "a tail not a number");
+    CHECK(maudReverb_Process(r, &bad, out[0], bed, 16) == maud_errorInvalid, "a tail not a number");
     bad.tailTime[1] = 1.0f;
     bad.tailLevel[2] = 25.0f;
-    CHECK(maudProcessReverb(r, &bad, out[0], bed, 16) == maud_errorInvalid,
+    CHECK(maudReverb_Process(r, &bad, out[0], bed, 16) == maud_errorInvalid,
           "a tail's level past 24 dB");
     maudReverbParams highest = first;
     highest.reverbTime[0] = 20.0f;
     highest.level[0] = 24.0f;
     highest.tailTime[1] = 20.0f;
     highest.tailLevel[1] = 24.0f;
-    CHECK(maudProcessReverb(r, &highest, out[0], bed, 16) == maud_success,
+    CHECK(maudReverb_Process(r, &highest, out[0], bed, 16) == maud_success,
           "the longest times and highest levels");
     maudDestroyReverb(r);
 }

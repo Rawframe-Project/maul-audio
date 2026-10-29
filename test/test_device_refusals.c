@@ -143,8 +143,8 @@ static void TestContextDefs(void)
     }
     CHECK(taken, "a context def's bounds taken");
     CHECK(maudDestroyContext(nullptr) == maud_success, "destroying NULL does nothing");
-    CHECK(maudResumeContext(nullptr) == maud_errorInvalid &&
-              maudSetContextSuspended(nullptr, true) == maud_errorInvalid,
+    CHECK(maudContext_Unlock(nullptr) == maud_errorInvalid &&
+              maudContext_SetSuspended(nullptr, true) == maud_errorInvalid,
           "resume and suspend without a context");
 }
 
@@ -206,61 +206,69 @@ static void TestQueries(void)
     maudDeviceId device = {0, 0};
     uint32_t count = 0;
     maudDeviceId ids[2];
-    CHECK(maudGetDevices(nullptr, maud_directionOutput, ids, 2, &count) == maud_errorInvalid &&
-              maudGetDevices(context, maud_directionOutput, ids, 2, nullptr) == maud_errorInvalid &&
-              maudGetDevices(context, maud_directionOutput, nullptr, 2, &count) ==
+    CHECK(maudContext_GetDevices(nullptr, maud_directionOutput, ids, 2, &count) ==
                   maud_errorInvalid &&
-              maudGetDevices(context, maud_directionDuplex, ids, 2, &count) == maud_errorInvalid,
+              maudContext_GetDevices(context, maud_directionOutput, ids, 2, nullptr) ==
+                  maud_errorInvalid &&
+              maudContext_GetDevices(context, maud_directionOutput, nullptr, 2, &count) ==
+                  maud_errorInvalid &&
+              maudContext_GetDevices(context, maud_directionDuplex, ids, 2, &count) ==
+                  maud_errorInvalid,
           "devices without a context, a count, an array for the capacity or a single direction");
-    CHECK(maudGetDevices(context, maud_directionOutput, nullptr, 0, &count) == maud_success &&
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, nullptr, 0, &count) ==
+                  maud_success &&
               count > 0,
           "the count alone");
-    CHECK(maudGetDefaultDevice(nullptr, maud_directionOutput, maud_roleGeneral, &device) ==
+    CHECK(maudContext_GetDefaultDevice(nullptr, maud_directionOutput, maud_roleGeneral, &device) ==
                   maud_errorInvalid &&
-              maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, nullptr) ==
-                  maud_errorInvalid &&
-              maudGetDefaultDevice(context, maud_directionDuplex, maud_roleGeneral, &device) ==
-                  maud_errorInvalid &&
-              maudGetDefaultDevice(context, maud_directionOutput, maud_roleCommunications + 1,
-                                   &device) == maud_errorInvalid,
+              maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                           nullptr) == maud_errorInvalid &&
+              maudContext_GetDefaultDevice(context, maud_directionDuplex, maud_roleGeneral,
+                                           &device) == maud_errorInvalid &&
+              maudContext_GetDefaultDevice(context, maud_directionOutput,
+                                           maud_roleCommunications + 1,
+                                           &device) == maud_errorInvalid,
           "a default without a context, somewhere to write, a direction or a role");
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
               maud_success,
           "the default output");
     maudDeviceInfo info;
-    CHECK(maudGetDeviceInfo(nullptr, device, &info) == maud_errorInvalid &&
-              maudGetDeviceInfo(context, device, nullptr) == maud_errorInvalid,
+    CHECK(maudDevice_GetInfo(nullptr, device, &info) == maud_errorInvalid &&
+              maudDevice_GetInfo(context, device, nullptr) == maud_errorInvalid,
           "info without a context or somewhere to write");
     char text[64];
     size_t length = 0;
     maudDeviceId gone = {device.index1, device.generation + 1};
-    CHECK(maudGetDeviceName(nullptr, device, text, sizeof(text), &length) == maud_errorInvalid &&
-              maudGetDeviceName(context, device, text, sizeof(text), nullptr) ==
+    CHECK(maudDevice_GetName(nullptr, device, text, sizeof(text), &length) == maud_errorInvalid &&
+              maudDevice_GetName(context, device, text, sizeof(text), nullptr) ==
                   maud_errorInvalid &&
-              maudGetDeviceName(context, device, nullptr, sizeof(text), &length) ==
+              maudDevice_GetName(context, device, nullptr, sizeof(text), &length) ==
                   maud_errorInvalid &&
-              maudGetDeviceName(context, gone, text, sizeof(text), &length) == maud_errorStale,
+              maudDevice_GetName(context, gone, text, sizeof(text), &length) == maud_errorStale,
           "a name without a context, a length, bytes for the capacity, or of a stale device");
-    CHECK(maudGetDeviceKey(nullptr, device, text, sizeof(text), &length) == maud_errorInvalid &&
-              maudGetDeviceKey(context, device, text, sizeof(text), nullptr) == maud_errorInvalid &&
-              maudGetDeviceKey(context, device, nullptr, sizeof(text), &length) ==
+    CHECK(maudDevice_GetKey(nullptr, device, text, sizeof(text), &length) == maud_errorInvalid &&
+              maudDevice_GetKey(context, device, text, sizeof(text), nullptr) ==
                   maud_errorInvalid &&
-              maudGetDeviceKey(context, gone, text, sizeof(text), &length) == maud_errorStale,
+              maudDevice_GetKey(context, device, nullptr, sizeof(text), &length) ==
+                  maud_errorInvalid &&
+              maudDevice_GetKey(context, gone, text, sizeof(text), &length) == maud_errorStale,
           "a key the same");
-    CHECK(maudGetDeviceName(context, device, nullptr, 0, &length) == maud_errorCapacity &&
+    CHECK(maudDevice_GetName(context, device, nullptr, 0, &length) == maud_errorCapacity &&
               length > 0,
           "no room for a name: its length, as a capacity error");
     maudNotification record;
-    CHECK(maudNextNotification(nullptr, &record) == maud_errorInvalid &&
-              maudNextNotification(context, nullptr) == maud_errorInvalid,
+    CHECK(maudContext_NextNotification(nullptr, &record) == maud_errorInvalid &&
+              maudContext_NextNotification(context, nullptr) == maud_errorInvalid,
           "a notification without a context or somewhere to write");
-    CHECK(maudRequestFocus(nullptr, maud_focusLasting, maud_roleGeneral) == maud_errorInvalid &&
-              maudRequestFocus(context, maud_focusBriefMixed + 1, maud_roleGeneral) ==
+    CHECK(maudContext_RequestFocus(nullptr, maud_focusLasting, maud_roleGeneral) ==
                   maud_errorInvalid &&
-              maudRequestFocus(context, maud_focusLasting, maud_roleCommunications + 1) ==
+              maudContext_RequestFocus(context, maud_focusBriefMixed + 1, maud_roleGeneral) ==
+                  maud_errorInvalid &&
+              maudContext_RequestFocus(context, maud_focusLasting, maud_roleCommunications + 1) ==
                   maud_errorInvalid,
           "focus without a context, a known request or a role");
-    CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_errorUnsupported,
+    CHECK(maudContext_RequestFocus(context, maud_focusLasting, maud_roleGeneral) ==
+              maud_errorUnsupported,
           "focus where the platform has none");
     CHECK(maudDestroyContext(context) == maud_success, "destroyed");
 }

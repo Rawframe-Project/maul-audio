@@ -278,7 +278,7 @@ static void Watch(const maudStreamBlock* block, void* user)
 static void Drain(void)
 {
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
     }
 }
@@ -286,7 +286,7 @@ static void Drain(void)
 static int64_t Latency(void)
 {
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(s_context, s_stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(s_context, s_stream, &clock) == maud_success, "the clock");
     return clock.latencyNanoseconds;
 }
 
@@ -311,7 +311,7 @@ static void BeginEnded(bool isolated);
 static double Taken(void)
 {
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(s_context, s_stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(s_context, s_stream, &clock) == maud_success, "the clock");
     return (double)clock.hostNanoseconds - (double)clock.position * 1e9 / RATE - StampBase() * 1e6;
 }
 
@@ -357,7 +357,7 @@ static void Granted(void* user)
     (void)user;
     Drain();
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendNone,
           "granted, the capture runs");
 
@@ -396,7 +396,7 @@ static void Granted(void* user)
         int64_t back = s_isolated ? 3 * QUANTUM : (3 - report) * QUANTUM;
         int64_t expected = back * 1000000000LL / RATE - 20000000LL + 26000000LL + LATENCY;
         maudStreamClock clock = {0};
-        CHECK(maudGetStreamClock(s_context, s_stream, &clock) == maud_success, "the clock");
+        CHECK(maudStream_GetClock(s_context, s_stream, &clock) == maud_success, "the clock");
         // A capture's host time is when the frame at its position was
         // captured; the filter holds frame 0's time, to a microsecond (the
         // page's clock is the test's).
@@ -446,7 +446,7 @@ static void Granted(void* user)
     DropReports();
     Pull(CAPACITY / QUANTUM + 3);
     (void)DeliverOneToMain();
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     CHECK(status.overruns == (s_isolated ? 3u : 0u),
           "quanta past the ring's capacity counted as overruns");
 
@@ -502,10 +502,10 @@ static void FilterGranted(void* user)
         CHECK(false, "a new route starts the filter again");
     }
     // Six quanta dropped while stopped: frame 0 moves 16 ms later.
-    CHECK(maudStopStream(s_context, s_stream) == maud_success, "stop");
+    CHECK(maudStream_Stop(s_context, s_stream) == maud_success, "stop");
     Pull(6);
     (void)TakeAll();
-    CHECK(maudStartStream(s_context, s_stream) == maud_success, "start again");
+    CHECK(maudStream_Start(s_context, s_stream) == maud_success, "start again");
     Pull(1);
     double restarted = TakeAll();
     if (restarted < routed + 10e6)
@@ -524,28 +524,28 @@ static void FilterGranted(void* user)
     NewRoute();
     double steady = Settle();
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     uint64_t overruns = status.overruns;
     Skip(11);
     Pull(1);
     double near = TakeAll();
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     CHECK(near <= steady + 1000.0 && status.overruns == overruns,
           "29 ms later is drift: held, nothing counted");
     Late(70.0);
     Pull(1);
     (void)TakeAll();
     double settled = Run(400);
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     CHECK(settled <= steady + 1000.0 && status.overruns == overruns,
           "70 ms late once is a delivery placed late: held, nothing counted");
     Skip(12);
     double waiting = Run(940);
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     CHECK(waiting <= steady + 1000.0 && status.overruns == overruns,
           "61 ms later for 2.5 s: still held, nothing counted yet");
     double lost = Run(1124);
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     if (lost < steady + 55e6 || status.overruns != overruns + 1)
     {
         printf("61 ms later for 5.5 s: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
@@ -615,7 +615,7 @@ static void Reopened(void* user)
     (void)user;
     Drain();
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendNone,
           "granted again, the capture runs");
     Pull(8);
@@ -649,7 +649,7 @@ static void EndedGranted(void* user)
     CHECK(s_blocks == 0, "three quanta, short of a block");
     EndTrack();
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendPermission,
           "the track ended, it waits for the permission again");
     emscripten_set_timeout(Reopened, 0, nullptr);
@@ -658,7 +658,7 @@ static void EndedGranted(void* user)
 // Opens a capture of periodFrames (0 for the default) feeding callback;
 // it waits for the permission until getUserMedia's promise settles,
 // after this step, then runs `then`.
-static void Open(bool isolated, maudStreamCallback callback, uint32_t periodFrames,
+static void Open(bool isolated, maudStreamFunction* callback, uint32_t periodFrames,
                  void (*then)(void*))
 {
     s_isolated = isolated;
@@ -682,10 +682,10 @@ static void Open(bool isolated, maudStreamCallback callback, uint32_t periodFram
     stream.periodFrames = periodFrames;
     stream.callback = callback;
     CHECK(maudCreateStream(s_context, &stream, &s_stream) == maud_success &&
-              maudStartStream(s_context, s_stream) == maud_success,
+              maudStream_Start(s_context, s_stream) == maud_success,
           "a capture");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
               status.suspension == maud_suspendPermission,
           "it waits for the permission");
     emscripten_set_timeout(then, 0, nullptr);

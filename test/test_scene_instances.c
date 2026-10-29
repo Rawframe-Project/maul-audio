@@ -141,7 +141,7 @@ static maudAcousticScene* Instanced(int count)
         CHECK(maudCreateSceneInstance(scene, 0, &s_transforms[i], &id) == maud_success,
               "an instance");
     }
-    CHECK(maudCommitAcousticScene(scene) == maud_success, "committed");
+    CHECK(maudAcousticScene_Commit(scene) == maud_success, "committed");
     return scene;
 }
 
@@ -198,13 +198,13 @@ static void TestAgainstFlattened(int count)
         maudRay ray = {o, {d.x / n, d.y / n, d.z / n}, 0.0f, 30.0f};
         uint8_t oa = 0;
         uint8_t ob = 0;
-        maudSceneAnyHit(&ray, 1, &oa, a);
-        maudSceneAnyHit(&ray, 1, &ob, b);
+        maudFindAnyHit(&ray, 1, &oa, a);
+        maudFindAnyHit(&ray, 1, &ob, b);
         anyWrong += oa != ob ? 1 : 0;
         maudRayHit ha;
         maudRayHit hb;
-        maudSceneClosestHit(&ray, 1, &ha, a);
-        maudSceneClosestHit(&ray, 1, &hb, b);
+        maudFindClosestHit(&ray, 1, &ha, a);
+        maudFindClosestHit(&ray, 1, &hb, b);
         bool both = ha.distance != INFINITY && hb.distance != INFINITY;
         if (!both)
         {
@@ -230,7 +230,7 @@ static maudRayHit Down(maudAcousticScene* scene, float x, float z)
 {
     maudRay ray = {{x, 10.0f, z}, {0.0f, -1.0f, 0.0f}, 0.0f, 100.0f};
     maudRayHit hit;
-    maudSceneClosestHit(&ray, 1, &hit, scene);
+    maudFindClosestHit(&ray, 1, &hit, scene);
     return hit;
 }
 
@@ -255,7 +255,7 @@ static void TestExactAndTurn(void)
               maudCreateSceneInstance(scene, 1, &turned, &b) == maud_success,
           "two instances");
     CHECK(Down(scene, 5.0f, 5.0f).distance == INFINITY, "nothing before the commit");
-    CHECK(maudCommitAcousticScene(scene) == maud_success, "committed");
+    CHECK(maudAcousticScene_Commit(scene) == maud_success, "committed");
     maudRayHit top = Down(scene, 5.2f, 4.9f);
     printf("onto the box: %.7f m, normal y %.6f\n", (double)top.distance, (double)top.normal.y);
     CHECK(fabsf(top.distance - 6.0f) < 1e-5f && fabsf(fabsf(top.normal.y) - 1.0f) < 1e-6f,
@@ -264,19 +264,19 @@ static void TestExactAndTurn(void)
               Down(scene, 1.5f, 0.0f).distance == INFINITY,
           "a quarter turn about +y carries +x to -z");
     const maudInstanceTransform moved = {{-5.0f, 3.0f, 5.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 2.0f};
-    CHECK(maudMoveSceneInstance(scene, a, &moved) == maud_success &&
+    CHECK(maudSceneInstance_Move(scene, a, &moved) == maud_success &&
               Down(scene, 5.0f, 5.0f).distance != INFINITY,
           "a move waits for the commit");
-    CHECK(maudCommitAcousticScene(scene) == maud_success &&
+    CHECK(maudAcousticScene_Commit(scene) == maud_success &&
               Down(scene, 5.0f, 5.0f).distance == INFINITY &&
               Down(scene, -5.0f, 5.0f).distance != INFINITY,
           "and then takes effect");
     CHECK(maudDestroySceneInstance(scene, a) == maud_success &&
               Down(scene, -5.0f, 5.0f).distance != INFINITY &&
-              maudCommitAcousticScene(scene) == maud_success &&
+              maudAcousticScene_Commit(scene) == maud_success &&
               Down(scene, -5.0f, 5.0f).distance == INFINITY,
           "destroyed, gone at the commit");
-    CHECK(maudMoveSceneInstance(scene, a, &moved) == maud_errorStale &&
+    CHECK(maudSceneInstance_Move(scene, a, &moved) == maud_errorStale &&
               maudDestroySceneInstance(scene, a) == maud_errorStale,
           "a destroyed instance's id is stale");
     maudDestroyAcousticScene(scene);
@@ -304,20 +304,20 @@ static void TestTies(void)
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_success &&
               maudCreateSceneInstance(scene, 1, &at, &first) == maud_success &&
               maudCreateSceneInstance(scene, 0, &at, &second) == maud_success &&
-              maudCommitAcousticScene(scene) == maud_success,
+              maudAcousticScene_Commit(scene) == maud_success,
           "two coincident instances");
     CHECK(Down(scene, 0.3f, 0.2f).material == 7, "the lower slot wins a tie");
     // A ray ending exactly on the instances: a hit within [tMin, tMax].
     maudRay exact = {{0.3f, 10.0f, 0.2f}, {0.0f, -1.0f, 0.0f}, 0.0f, 10.0f};
     uint8_t occluded = 0;
-    maudSceneAnyHit(&exact, 1, &occluded, scene);
+    maudFindAnyHit(&exact, 1, &occluded, scene);
     CHECK(occluded == 1, "a hit at the ray's end");
     maudDestroyAcousticScene(scene);
     def.meshes = &statics;
     def.meshCount = 1;
     CHECK(maudCreateAcousticScene(&def, &scene) == maud_success &&
               maudCreateSceneInstance(scene, 0, &at, &first) == maud_success &&
-              maudCommitAcousticScene(scene) == maud_success,
+              maudAcousticScene_Commit(scene) == maud_success,
           "an instance on the static floor");
     CHECK(Down(scene, 0.3f, 0.2f).material == 3, "the static scene wins a tie");
     maudDestroyAcousticScene(scene);
@@ -353,14 +353,14 @@ static void TestRefused(void)
               maudDestroySceneInstance(scene, id) == maud_errorStale,
           "the freed slot taken again, the old id stale");
     t.scale = 1000.0f;
-    CHECK(maudMoveSceneInstance(scene, other, &t) == maud_success, "the largest scale");
+    CHECK(maudSceneInstance_Move(scene, other, &t) == maud_success, "the largest scale");
     t.scale = 1000.5f;
-    CHECK(maudMoveSceneInstance(scene, other, &t) == maud_errorInvalid, "past it");
+    CHECK(maudSceneInstance_Move(scene, other, &t) == maud_errorInvalid, "past it");
     const maudSceneInstanceId none = {0, 0};
     CHECK(maudDestroySceneInstance(scene, none) == maud_errorInvalid &&
-              maudCommitAcousticScene(nullptr) == maud_errorInvalid,
+              maudAcousticScene_Commit(nullptr) == maud_errorInvalid,
           "0 and NULL");
-    CHECK(maudGetAcousticSceneMisuse(scene) == 6,
+    CHECK(maudAcousticScene_GetMisuse(scene) == 6,
           "each invalid argument counted; the capacity and the stale id not");
     maudDestroyAcousticScene(scene);
     def.maxTriangles = 11;

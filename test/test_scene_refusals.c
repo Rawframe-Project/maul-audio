@@ -206,19 +206,19 @@ static void TestInstances(void)
     maudSceneInstanceId zero = {0, 1};
     maudSceneInstanceId past = {2, 1};
     maudSceneInstanceId unborn = {1, 0};
-    CHECK(maudMoveSceneInstance(nullptr, id, &t) == maud_errorInvalid &&
-              maudMoveSceneInstance(scene, zero, &t) == maud_errorInvalid &&
-              maudMoveSceneInstance(scene, past, &t) == maud_errorInvalid &&
-              maudMoveSceneInstance(scene, unborn, &t) == maud_errorInvalid,
+    CHECK(maudSceneInstance_Move(nullptr, id, &t) == maud_errorInvalid &&
+              maudSceneInstance_Move(scene, zero, &t) == maud_errorInvalid &&
+              maudSceneInstance_Move(scene, past, &t) == maud_errorInvalid &&
+              maudSceneInstance_Move(scene, unborn, &t) == maud_errorInvalid,
           "a move for no scene, index 0, past the capacity or generation 0");
-    CHECK(maudMoveSceneInstance(scene, id, nullptr) == maud_errorInvalid &&
-              maudMoveSceneInstance(scene, id, &bad[2]) == maud_errorInvalid,
+    CHECK(maudSceneInstance_Move(scene, id, nullptr) == maud_errorInvalid &&
+              maudSceneInstance_Move(scene, id, &bad[2]) == maud_errorInvalid,
           "a move without a transform or to one out of range");
-    CHECK(maudMoveSceneInstance(scene, small, &t) == maud_errorStale, "a destroyed one's id");
+    CHECK(maudSceneInstance_Move(scene, small, &t) == maud_errorStale, "a destroyed one's id");
     CHECK(maudDestroySceneInstance(nullptr, id) == maud_errorInvalid &&
               maudDestroySceneInstance(scene, zero) == maud_errorInvalid,
           "destroying none");
-    CHECK(maudCommitAcousticScene(nullptr) == maud_errorInvalid, "a commit without a scene");
+    CHECK(maudAcousticScene_Commit(nullptr) == maud_errorInvalid, "a commit without a scene");
     maudDestroyAcousticScene(scene);
 }
 

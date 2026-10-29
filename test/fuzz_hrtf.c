@@ -63,7 +63,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     if (hrtf != nullptr)
     {
         maudHrtfInfo info;
-        Expect(maudGetHrtfInfo(hrtf, &info) == maud_success);
+        Expect(maudHrtf_GetInfo(hrtf, &info) == maud_success);
         Expect(info.directionCount == file.directionCount && info.ringCount == file.ringCount);
         Expect(info.nameLength == file.nameLength && info.licenseLength == file.licenseLength);
         Expect(info.distance == file.distance);

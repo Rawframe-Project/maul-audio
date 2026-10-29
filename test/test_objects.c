@@ -109,9 +109,9 @@ static void TestRefusedDefs(void)
     CHECK(maudDefaultStreamDef().objectCount == 0, "no objects by default");
     maudStreamDef def = ObjectDef(&scene);
     def.objectCount = MAUD_MAX_STREAM_OBJECTS + 1;
-    uint64_t misuse = maudGetContextMisuse(context);
+    uint64_t misuse = maudContext_GetMisuse(context);
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorLimit &&
-              maudGetContextMisuse(context) == misuse + 1,
+              maudContext_GetMisuse(context) == misuse + 1,
           "too many objects, counted as misuse");
     def = ObjectDef(&scene);
     def.direction = maud_directionInput;
@@ -120,8 +120,8 @@ static void TestRefusedDefs(void)
     CHECK(maudCreateStream(context, &def, &stream) == maud_errorInvalid, "a duplex stream");
     def = ObjectDef(&scene);
     def.share = maud_shareExclusive;
-    CHECK(maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &def.device) ==
-                  maud_success &&
+    CHECK(maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                       &def.device) == maud_success &&
               maudCreateStream(context, &def, &stream) == maud_errorInvalid,
           "exclusive use");
     def = ObjectDef(&scene);
@@ -141,7 +141,7 @@ static void TestRendering(void)
     maudStreamDef def = ObjectDef(&scene);
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success,
+              maudStream_Start(context, stream) == maud_success,
           "an object stream");
     static float bed[2 * 2 * PERIOD];
     static float frames[OBJECTS][2 * PERIOD];
@@ -154,8 +154,8 @@ static void TestRendering(void)
         {
             objects[i] = (maudStreamObject){.samples = frames[i] + done};
         }
-        CHECK(maudRenderObjects(context, stream, bed + 2 * done, objects, OBJECTS, sizes[s]) ==
-                  maud_success,
+        CHECK(maudStream_RenderObjects(context, stream, bed + 2 * done, objects, OBJECTS,
+                                       sizes[s]) == maud_success,
               "render");
         CHECK(objects[0].active && objects[0].gain == 0.5f && objects[0].position.x == 2.0f &&
                   objects[0].position.y == 0.0f && objects[0].position.z == -1.0f,
@@ -178,7 +178,7 @@ static void TestRendering(void)
     CHECK(bedRight, "the bed");
     CHECK(framesRight, "each object's frames, a period at a time, silent where unwritten");
     uint64_t position = 0;
-    CHECK(maudGetStreamPosition(context, stream, &position) == maud_success &&
+    CHECK(maudStream_GetPosition(context, stream, &position) == maud_success &&
               position == 2 * PERIOD,
           "the clock");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -198,14 +198,14 @@ static void TestRenderCallsKeptApart(void)
     maudStreamDef def = ObjectDef(&scene);
     maudStreamId objectStream = {0, 0};
     CHECK(maudCreateStream(context, &def, &objectStream) == maud_success &&
-              maudStartStream(context, objectStream) == maud_success,
+              maudStream_Start(context, objectStream) == maud_success,
           "an object stream");
     def = maudDefaultStreamDef();
     def.mode = maud_modePull;
     def.callback = Plain;
     maudStreamId plain = {0, 0};
     CHECK(maudCreateStream(context, &def, &plain) == maud_success &&
-              maudStartStream(context, plain) == maud_success,
+              maudStream_Start(context, plain) == maud_success,
           "an ordinary stream");
     float bed[2 * 8];
     float frames[OBJECTS][8];
@@ -214,25 +214,29 @@ static void TestRenderCallsKeptApart(void)
     {
         objects[i] = (maudStreamObject){.samples = frames[i]};
     }
-    CHECK(maudRenderStream(context, objectStream, bed, 8) == maud_errorInvalid,
+    CHECK(maudStream_Render(context, objectStream, bed, 8) == maud_errorInvalid,
           "an object stream renders its objects");
-    CHECK(maudRenderObjects(context, plain, bed, objects, 0, 8) == maud_errorInvalid,
+    CHECK(maudStream_RenderObjects(context, plain, bed, objects, 0, 8) == maud_errorInvalid,
           "an ordinary stream has none");
-    CHECK(maudRenderObjects(context, objectStream, bed, objects, OBJECTS - 1, 8) ==
+    CHECK(maudStream_RenderObjects(context, objectStream, bed, objects, OBJECTS - 1, 8) ==
               maud_errorInvalid,
           "another count");
-    CHECK(maudRenderObjects(context, objectStream, bed, nullptr, OBJECTS, 0) == maud_errorInvalid,
+    CHECK(maudStream_RenderObjects(context, objectStream, bed, nullptr, OBJECTS, 0) ==
+              maud_errorInvalid,
           "no records");
-    CHECK(maudRenderObjects(context, objectStream, nullptr, objects, OBJECTS, 8) ==
+    CHECK(maudStream_RenderObjects(context, objectStream, nullptr, objects, OBJECTS, 8) ==
               maud_errorInvalid,
           "no bed");
     objects[1].samples = nullptr;
-    CHECK(maudRenderObjects(context, objectStream, bed, objects, OBJECTS, 8) == maud_errorInvalid,
+    CHECK(maudStream_RenderObjects(context, objectStream, bed, objects, OBJECTS, 8) ==
+              maud_errorInvalid,
           "an object without room");
-    CHECK(maudRenderObjects(context, objectStream, nullptr, objects, OBJECTS, 0) == maud_success,
+    CHECK(maudStream_RenderObjects(context, objectStream, nullptr, objects, OBJECTS, 0) ==
+              maud_success,
           "nothing due");
-    CHECK(maudRenderStream(context, plain, bed, 8) == maud_success, "the ordinary one renders");
-    CHECK(maudRenderObjects(nullptr, objectStream, bed, objects, OBJECTS, 8) == maud_errorInvalid,
+    CHECK(maudStream_Render(context, plain, bed, 8) == maud_success, "the ordinary one renders");
+    CHECK(maudStream_RenderObjects(nullptr, objectStream, bed, objects, OBJECTS, 8) ==
+              maud_errorInvalid,
           "no context");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }

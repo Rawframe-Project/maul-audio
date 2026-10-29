@@ -92,12 +92,12 @@ static void PrintDevice(const maudContext* context, maudDeviceId id)
     char name[256];
     size_t length = 0;
     maudDeviceInfo info = {0};
-    if (maudGetDeviceName(context, id, name, sizeof(name) - 1, &length) != maud_success)
+    if (maudDevice_GetName(context, id, name, sizeof(name) - 1, &length) != maud_success)
     {
         length = 0;
     }
     name[length < sizeof(name) - 1 ? length : sizeof(name) - 1] = '\0';
-    if (maudGetDeviceInfo(context, id, &info) != maud_success)
+    if (maudDevice_GetInfo(context, id, &info) != maud_success)
     {
         return;
     }
@@ -110,7 +110,7 @@ static void PrintDevice(const maudContext* context, maudDeviceId id)
                  maudGetLayoutChannelCount(info.nativeLayout));
     }
     char key[256];
-    if (maudGetDeviceKey(context, id, key, sizeof(key) - 1, &length) != maud_success)
+    if (maudDevice_GetKey(context, id, key, sizeof(key) - 1, &length) != maud_success)
     {
         length = 0;
     }
@@ -126,7 +126,7 @@ static maudDeviceId FindOutput(const maudContext* context, const char* key)
 {
     maudDeviceId ids[64];
     uint32_t count = 0;
-    if (maudGetDevices(context, maud_directionOutput, ids, 64, &count) != maud_success)
+    if (maudContext_GetDevices(context, maud_directionOutput, ids, 64, &count) != maud_success)
     {
         return (maudDeviceId){0, 0};
     }
@@ -134,7 +134,7 @@ static maudDeviceId FindOutput(const maudContext* context, const char* key)
     {
         char bytes[256];
         size_t length = 0;
-        if (maudGetDeviceKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
+        if (maudDevice_GetKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
             length == strlen(key) && memcmp(bytes, key, length) == 0)
         {
             return ids[i];
@@ -151,8 +151,8 @@ static void ListDevices(const maudContext* context)
     {
         maudDeviceId ids[64];
         uint32_t count = 0;
-        if (maudGetDevices(context, d == 0 ? maud_directionOutput : maud_directionInput, ids, 64,
-                           &count) != maud_success)
+        if (maudContext_GetDevices(context, d == 0 ? maud_directionOutput : maud_directionInput,
+                                   ids, 64, &count) != maud_success)
         {
             continue;
         }
@@ -211,7 +211,7 @@ static bool Step(void)
 {
     double at = s_tick / 20.0;
     maudNotification record;
-    while (maudNextNotification(s_context, &record) == maud_success)
+    while (maudContext_NextNotification(s_context, &record) == maud_success)
     {
         printf("%6.2f s  %-22s device %u.%u, stream %u, reason %u, %u Hz\n", at,
                KindName(record.kind), record.device.index1, record.device.generation,
@@ -221,7 +221,7 @@ static bool Step(void)
     // The latency when first known, then each time it moves by more
     // than 100 ms: a Bluetooth route adds hundreds, and the web's moves
     // by tens as its buffers fill.
-    if (maudGetStreamClock(s_context, s_stream, &clock) == maud_success &&
+    if (maudStream_GetClock(s_context, s_stream, &clock) == maud_success &&
         clock.hostNanoseconds != 0 &&
         (s_lastLatency < 0 || llabs(clock.latencyNanoseconds - s_lastLatency) > 100000000))
     {
@@ -230,7 +230,7 @@ static bool Step(void)
     }
     // Underruns as the platform reveals them.
     maudStreamStatus status = {0};
-    if (maudGetStreamStatus(s_context, s_stream, &status) == maud_success &&
+    if (maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
         status.underruns != s_lastUnderruns)
     {
         printf("%6.2f s  underruns %llu\n", at, (unsigned long long)status.underruns);
@@ -274,7 +274,7 @@ EMSCRIPTEN_KEEPALIVE void SampleClicked(void);
 
 void SampleClicked(void)
 {
-    (void)maudResumeContext(s_context);
+    (void)maudContext_Unlock(s_context);
 }
 
 EM_JS(void, ListenForClicks, (void),
@@ -283,7 +283,7 @@ EM_JS(void, ListenForClicks, (void),
 
 // Opens and starts a stream on device, or with the null id on the
 // default device of its direction.
-static maudResult Open(maudDirection direction, maudDeviceId device, maudStreamCallback callback,
+static maudResult Open(maudDirection direction, maudDeviceId device, maudStreamFunction* callback,
                        maudStreamId* out)
 {
     maudStreamDef def = maudDefaultStreamDef();
@@ -291,7 +291,7 @@ static maudResult Open(maudDirection direction, maudDeviceId device, maudStreamC
     def.device = device;
     def.callback = callback;
     maudResult result = maudCreateStream(s_context, &def, out);
-    return result == maud_success ? maudStartStream(s_context, *out) : result;
+    return result == maud_success ? maudStream_Start(s_context, *out) : result;
 }
 
 int main(int argc, char** argv)

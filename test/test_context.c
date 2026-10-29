@@ -77,10 +77,10 @@ static void TestOfflineContextLifetime(void)
     maudContext* context = nullptr;
     CHECK(maudCreateContext(&def, &context) == maud_success, "create");
     CHECK(context != nullptr, "context returned");
-    CHECK(maudGetContextBackend(context) == maud_backendOffline, "offline backend");
-    CHECK(maudGetContextMisuse(context) == 0, "no misuse");
-    CHECK(maudResumeContext(context) == maud_success, "resume where no policy holds audio");
-    CHECK(maudResumeContext(nullptr) == maud_errorInvalid, "resume NULL");
+    CHECK(maudContext_GetBackend(context) == maud_backendOffline, "offline backend");
+    CHECK(maudContext_GetMisuse(context) == 0, "no misuse");
+    CHECK(maudContext_Unlock(context) == maud_success, "resume where no policy holds audio");
+    CHECK(maudContext_Unlock(nullptr) == maud_errorInvalid, "resume NULL");
     CHECK(counter.live == 1, "one block");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     CHECK(counter.live == 0, "block returned");
@@ -97,7 +97,7 @@ static void TestNativeContextOrUnsupported(void)
     CHECK(result == maud_success || result == maud_errorUnsupported, "native or unsupported");
     if (result == maud_success)
     {
-        CHECK(maudGetContextBackend(context) != maud_backendNative, "the backend it chose");
+        CHECK(maudContext_GetBackend(context) != maud_backendNative, "the backend it chose");
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
     }
     else
@@ -258,31 +258,34 @@ static void TestFocusUnsupported(void)
     maudContext* context = nullptr;
     CHECK(maudCreateContext(&def, &context) == maud_success, "create");
     maudFocus focus = maud_focusHeld;
-    CHECK(maudGetContextFocus(context, &focus) == maud_success && focus == maud_focusNone,
+    CHECK(maudContext_GetFocus(context, &focus) == maud_success && focus == maud_focusNone,
           "no focus at first");
-    CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleGeneral) == maud_errorUnsupported,
+    CHECK(maudContext_RequestFocus(context, maud_focusLasting, maud_roleGeneral) ==
+              maud_errorUnsupported,
           "no focus offline");
-    CHECK(maudRequestFocus(context, maud_focusRelease, maud_roleGeneral) == maud_errorUnsupported,
+    CHECK(maudContext_RequestFocus(context, maud_focusRelease, maud_roleGeneral) ==
+              maud_errorUnsupported,
           "nothing to release");
-    CHECK(maudRequestFocus(nullptr, maud_focusLasting, maud_roleGeneral) == maud_errorInvalid,
+    CHECK(maudContext_RequestFocus(nullptr, maud_focusLasting, maud_roleGeneral) ==
+              maud_errorInvalid,
           "no context");
-    CHECK(maudRequestFocus(context, maud_focusBriefMixed + 1, maud_roleGeneral) ==
+    CHECK(maudContext_RequestFocus(context, maud_focusBriefMixed + 1, maud_roleGeneral) ==
               maud_errorInvalid,
           "an unknown request");
-    CHECK(maudRequestFocus(context, maud_focusLasting, maud_roleCommunications + 1) ==
+    CHECK(maudContext_RequestFocus(context, maud_focusLasting, maud_roleCommunications + 1) ==
               maud_errorInvalid,
           "an unknown role");
-    CHECK(maudGetContextFocus(context, nullptr) == maud_errorInvalid &&
-              maudGetContextFocus(nullptr, &focus) == maud_errorInvalid,
+    CHECK(maudContext_GetFocus(context, nullptr) == maud_errorInvalid &&
+              maudContext_GetFocus(nullptr, &focus) == maud_errorInvalid,
           "NULL pointers");
     maudNotification record;
     bool focusRecord = false;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         focusRecord = focusRecord || record.kind == maud_notifyFocusChanged;
     }
     CHECK(!focusRecord, "no focus record");
-    CHECK(maudGetContextMisuse(context) == 0, "no misuse");
+    CHECK(maudContext_GetMisuse(context) == 0, "no misuse");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 

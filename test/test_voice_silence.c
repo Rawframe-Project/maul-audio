@@ -100,7 +100,7 @@ int main(void)
         bool last = b >= LOUD + QUIET - LAST;
         memcpy(frames, capture, sizeof(frames));
         Clear();
-        maudResult r = maudSuppressNoise(noise, frames, BLOCK, nullptr);
+        maudResult r = maudNoiseSuppressor_Suppress(noise, frames, BLOCK, nullptr);
         flagged[0] += last && Flagged() ? 1u : 0u;
         for (uint32_t i = 0; i < BLOCK && last; ++i)
         {
@@ -108,14 +108,14 @@ int main(void)
         }
         memcpy(frames, capture, sizeof(frames));
         Clear();
-        r = r != maud_success ? r : maudApplyGainControl(gain, frames, BLOCK, nullptr);
+        r = r != maud_success ? r : maudGainControl_Apply(gain, frames, BLOCK, nullptr);
         flagged[1] += last && Flagged() ? 1u : 0u;
         Clear();
-        r = r != maud_success ? r : maudDetectVoice(detector, capture, BLOCK, nullptr);
+        r = r != maud_success ? r : maudVoiceDetector_Detect(detector, capture, BLOCK, nullptr);
         flagged[2] += last && Flagged() ? 1u : 0u;
         memcpy(frames, capture, sizeof(frames));
         Clear();
-        r = r != maud_success ? r : maudCancelEcho(echo, frames, render, BLOCK, nullptr);
+        r = r != maud_success ? r : maudEchoCanceller_Cancel(echo, frames, render, BLOCK, nullptr);
         flagged[3] += last && Flagged() ? 1u : 0u;
         for (uint32_t i = 0; i < BLOCK && last; ++i)
         {
@@ -123,7 +123,7 @@ int main(void)
         }
         memcpy(frames, capture, sizeof(frames));
         Clear();
-        r = r != maud_success ? r : maudCancelEcho(near, frames, none, BLOCK, nullptr);
+        r = r != maud_success ? r : maudEchoCanceller_Cancel(near, frames, none, BLOCK, nullptr);
         flagged[4] += last && Flagged() ? 1u : 0u;
         for (uint32_t i = 0; i < BLOCK && last; ++i)
         {

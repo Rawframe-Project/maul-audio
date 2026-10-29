@@ -220,8 +220,9 @@ static void Block(maudEchoCanceller* c)
                           c->filter.binsPerBand, c->output);
 }
 
-maudResult maudCancelEcho(maudEchoCanceller* canceller, float* capture, const float* render,
-                          uint32_t frameCount, maudEchoState* stateOut)
+maudResult maudEchoCanceller_Cancel(maudEchoCanceller* canceller, float* capture,
+                                    const float* render, uint32_t frameCount,
+                                    maudEchoState* stateOut)
 {
     // Cleared first, so a failure leaves zero.
     if (stateOut != nullptr)

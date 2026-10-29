@@ -70,7 +70,7 @@ static void Render(bool objects)
     def.callback = Touch;
     maudStreamId stream = {0, 0};
     if (maudCreateStream(context, &def, &stream) != maud_success ||
-        maudStartStream(context, stream) != maud_success)
+        maudStream_Start(context, stream) != maud_success)
     {
         (void)maudDestroyContext(context);
         return;
@@ -86,9 +86,9 @@ static void Render(bool objects)
             {
                 records[i] = (maudStreamObject){.samples = s_objectFrames[i]};
             }
-            maudResult result =
-                objects ? maudRenderObjects(context, stream, s_frames, records, OBJECTS, BLOCK)
-                        : maudRenderStream(context, stream, s_frames, BLOCK);
+            maudResult result = objects ? maudStream_RenderObjects(context, stream, s_frames,
+                                                                   records, OBJECTS, BLOCK)
+                                        : maudStream_Render(context, stream, s_frames, BLOCK);
             if (result != maud_success)
             {
                 (void)maudDestroyContext(context);
@@ -123,7 +123,7 @@ static void Duplex(void)
     def.callback = Touch;
     maudStreamId stream = {0, 0};
     if (maudCreateStream(context, &def, &stream) != maud_success ||
-        maudStartStream(context, stream) != maud_success)
+        maudStream_Start(context, stream) != maud_success)
     {
         (void)maudDestroyContext(context);
         return;
@@ -134,8 +134,8 @@ static void Duplex(void)
         double start = Seconds();
         for (int b = 0; b < BLOCKS; ++b)
         {
-            if (maudFeedStream(context, stream, s_input, BLOCK) != maud_success ||
-                maudRenderStream(context, stream, s_frames, BLOCK) != maud_success)
+            if (maudStream_Feed(context, stream, s_input, BLOCK) != maud_success ||
+                maudStream_Render(context, stream, s_frames, BLOCK) != maud_success)
             {
                 (void)maudDestroyContext(context);
                 return;

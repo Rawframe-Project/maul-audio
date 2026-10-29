@@ -49,7 +49,7 @@ static uint32_t Count(maudContext* context, maudNotificationKind kind)
 {
     uint32_t count = 0;
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         count += record.kind == kind ? 1u : 0u;
     }
@@ -63,7 +63,7 @@ static maudDeviceId Output(maudContext* context, uint32_t rate, const char* key)
     def.key = key;
     def.keyLength = 2;
     maudDeviceId id = {0, 0};
-    CHECK(maudAddOfflineDevice(context, &def, &id) == maud_success, "an output");
+    CHECK(maudCreateOfflineDevice(context, &def, &id) == maud_success, "an output");
     return id;
 }
 
@@ -88,7 +88,7 @@ int main(void)
     sd.callback = Ignore;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &sd, &stream) == maud_success &&
-              maudStartStream(context, stream) == maud_success && s_activations == 1,
+              maudStream_Start(context, stream) == maud_success && s_activations == 1,
           "started: the platform runs it, once");
     (void)Count(context, maud_notifyStreamSuspended);
     maudHoldStreams(context, true);
@@ -106,18 +106,18 @@ int main(void)
     // 44.1 kHz.
     maudDeviceId same = Output(context, 48000, "s1");
     maudDeviceId other = Output(context, 44100, "s2");
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, same) == maud_success &&
+    CHECK(maudDevice_SetOfflineDefault(context, same, maud_roleGeneral) == maud_success &&
               Count(context, maud_notifyStreamMoved) == 1 && s_retargets == 0,
           "moved at the same rate: nothing to reopen");
     maudStreamFormat format = {0};
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, other) == maud_success &&
-              s_retargets == 1 && maudGetStreamFormat(context, stream, &format) == maud_success &&
+    CHECK(maudDevice_SetOfflineDefault(context, other, maud_roleGeneral) == maud_success &&
+              s_retargets == 1 && maudStream_GetFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 44100,
           "moved to another rate: reopened at it");
     // A duplex stream keeps the one rate of its halves: its output, moved
     // to a device at another rate, is converted by the platform instead,
     // with no format change.
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, same) == maud_success,
+    CHECK(maudDevice_SetOfflineDefault(context, same, maud_roleGeneral) == maud_success,
           "back at 48 kHz");
     maudStreamDef dd = maudDefaultStreamDef();
     dd.direction = maud_directionDuplex;
@@ -125,23 +125,23 @@ int main(void)
     dd.callback = Ignore;
     maudStreamId duplex = {0, 0};
     CHECK(maudCreateStream(context, &dd, &duplex) == maud_success &&
-              maudGetStreamFormat(context, duplex, &format) == maud_success &&
+              maudStream_GetFormat(context, duplex, &format) == maud_success &&
               format.sampleRate == 48000 && format.ratePolicy == maud_rateNative,
           "a duplex stream at 48 kHz");
     (void)Count(context, maud_notifyStreamMoved);
     s_retargets = 0;
-    CHECK(maudSetOfflineDefaultDevice(context, maud_roleGeneral, other) == maud_success,
+    CHECK(maudDevice_SetOfflineDefault(context, other, maud_roleGeneral) == maud_success,
           "its output's default moves to 44.1 kHz");
     uint32_t changed = 0;
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         changed +=
             record.kind == maud_notifyStreamFormatChanged && record.stream.index1 == duplex.index1
                 ? 1u
                 : 0u;
     }
-    CHECK(changed == 0 && maudGetStreamFormat(context, duplex, &format) == maud_success &&
+    CHECK(changed == 0 && maudStream_GetFormat(context, duplex, &format) == maud_success &&
               format.sampleRate == 48000 && format.ratePolicy == maud_ratePlatformConverted,
           "the duplex stream keeps 48 kHz, converted");
     CHECK(s_duplexRetargets == 0, "with nothing to reopen where the platform converts in place");
@@ -150,7 +150,7 @@ int main(void)
     // resumes it. A duplex stream says so when its input half fails.
     maudStreamSlot* played = maudFindStream(context, duplex);
     maudStreamSlot* captured = played->duplex->input;
-    CHECK(maudStartStream(context, duplex) == maud_success && maudWantsReopen(captured),
+    CHECK(maudStream_Start(context, duplex) == maud_success && maudWantsReopen(captured),
           "a started duplex stream wants its halves reopened");
     (void)Count(context, maud_notifyStreamSuspended);
     int deactivations = s_deactivations;
@@ -159,7 +159,7 @@ int main(void)
     maudStreamStatus status = {0};
     uint32_t suspended = 0;
     maudSuspendReason reason = maud_suspendNone;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         if (record.kind == maud_notifyStreamSuspended && record.stream.index1 == duplex.index1)
         {
@@ -172,17 +172,17 @@ int main(void)
     CHECK(captured->core.binding.retryWait == 2 * 250000000 && maudWantsReopen(captured) &&
               maudWantsReopen(played),
           "waiting longer, still to be reopened");
-    CHECK(maudGetStreamStatus(context, duplex, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(context, duplex, &status) == maud_success &&
               status.suspension == maud_suspendPlatform,
           "the duplex stream reports its input half's suspension");
     int activations = s_activations;
     maudReportReopen(context, captured, true, 3000);
     CHECK(Count(context, maud_notifyStreamResumed) == 1 && s_activations == activations + 1 &&
               captured->core.binding.retryWait == 0 &&
-              maudGetStreamStatus(context, duplex, &status) == maud_success &&
+              maudStream_GetStatus(context, duplex, &status) == maud_success &&
               status.suspension == maud_suspendNone,
           "a reopen that works resumes it");
-    CHECK(maudStopStream(context, duplex) == maud_success && !maudWantsReopen(captured),
+    CHECK(maudStream_Stop(context, duplex) == maud_success && !maudWantsReopen(captured),
           "a stopped stream is not reopened");
     CHECK(maudDestroyStream(context, duplex) == maud_success, "destroy the duplex stream");
     context->backend = offline;

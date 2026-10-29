@@ -87,7 +87,7 @@ static maudProbeGraph Graph(void)
         points[i] = (maudVector3){(float)i, 1.5f, 0.0f};
         points[4 + i] = (maudVector3){(float)i, 1.5f, 2.0f};
     }
-    maudProbeQueries q = {.anyHit = maudSceneAnyHit,
+    maudProbeQueries q = {.anyHit = maudFindAnyHit,
                           .rayContext = scene,
                           .allocator = &s_allocator,
                           .maxProbes = 8,

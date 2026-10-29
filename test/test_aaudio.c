@@ -78,7 +78,7 @@ static void CountBlocks(const maudStreamBlock* block, void* user)
 static void Drain(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -110,7 +110,7 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
         double start = Now();
         double previous = start;
         double late = 0.0;
-        CHECK(maudGetStreamPosition(context, stream, &first) == maud_success, "position");
+        CHECK(maudStream_GetPosition(context, stream, &first) == maud_success, "position");
         while (Now() - start < 3.0)
         {
             // hygiene: 10 ms steps through a rate window, timing this thread's wakes
@@ -119,7 +119,7 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
             late = now - previous - 0.010 > late ? now - previous - 0.010 : late;
             previous = now;
         }
-        CHECK(maudGetStreamPosition(context, stream, &last) == maud_success, "position");
+        CHECK(maudStream_GetPosition(context, stream, &last) == maud_success, "position");
         double rate = (double)(last - first) / (Now() - start);
         bestOfAll = rate > bestOfAll ? rate : bestOfAll;
         bool counts = late <= 0.050 && !starved;
@@ -175,7 +175,7 @@ static maudDeviceId OnlyDevice(const maudContext* context, maudDirection directi
 {
     maudDeviceId ids[4];
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, direction, ids, 4, &count) == maud_success && count == 1,
+    CHECK(maudContext_GetDevices(context, direction, ids, 4, &count) == maud_success && count == 1,
           "one device each way");
     return count >= 1 ? ids[0] : (maudDeviceId){0, 0};
 }
@@ -190,10 +190,10 @@ static void TestDevices(maudContext* context)
         char name[64] = {0};
         char key[64] = {0};
         size_t length = 0;
-        CHECK(maudGetDeviceInfo(context, device, &info) == maud_success &&
-                  maudGetDeviceName(context, device, name, sizeof(name) - 1, &length) ==
+        CHECK(maudDevice_GetInfo(context, device, &info) == maud_success &&
+                  maudDevice_GetName(context, device, name, sizeof(name) - 1, &length) ==
                       maud_success &&
-                  maudGetDeviceKey(context, device, key, sizeof(key) - 1, &length) == maud_success,
+                  maudDevice_GetKey(context, device, key, sizeof(key) - 1, &length) == maud_success,
               "described");
         printf("%s: %s [%s] %u Hz, layout %u\n",
                direction == maud_directionOutput ? "output" : "input", name, key,
@@ -216,7 +216,8 @@ static void TestDevices(maudContext* context)
         for (maudDeviceRole role = maud_roleGeneral; role <= maud_roleCommunications; ++role)
         {
             maudDeviceId current = {0, 0};
-            CHECK(maudGetDefaultDevice(context, direction, role, &current) == maud_success &&
+            CHECK(maudContext_GetDefaultDevice(context, direction, role, &current) ==
+                          maud_success &&
                       current.index1 == device.index1,
                   "the default for both roles");
         }
@@ -226,20 +227,20 @@ static void TestDevices(maudContext* context)
 static void TestOutputStream(maudContext* context)
 {
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, OnlyDevice(context, maud_directionOutput), &info) ==
+    CHECK(maudDevice_GetInfo(context, OnlyDevice(context, maud_directionOutput), &info) ==
               maud_success,
           "the output");
     Blocks blocks = {0};
     maudStreamDef def = maudDefaultStreamDef();
     maudStreamId stream = OpenStream(context, &def, &blocks);
     maudStreamFormat format;
-    CHECK(maudGetStreamFormat(context, stream, &format) == maud_success &&
+    CHECK(maudStream_GetFormat(context, stream, &format) == maud_success &&
               format.sampleRate == info.nativeSampleRate,
           "native at the device's rate");
     // hygiene: gives a callback before the start 100 ms to show
     Pause(100);
     CHECK(atomic_load(&blocks.count) == 0, "nothing before start");
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(atomic_load(&blocks.onControl) == 0, "on AAudio's thread");
@@ -249,19 +250,19 @@ static void TestOutputStream(maudContext* context)
     // The emulator's backlog, which the lane's gate reads to restart an
     // emulator before it reaches TEST_CLOCK_MAX_LATENCY.
     maudStreamClock heard = {0};
-    CHECK(maudGetStreamClock(context, stream, &heard) == maud_success, "clock");
+    CHECK(maudStream_GetClock(context, stream, &heard) == maud_success, "clock");
     printf("output latency %.3f s\n", (double)heard.latencyNanoseconds / 1e9);
-    CHECK(maudStopStream(context, stream) == maud_success, "stop");
+    CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
     uint32_t stopped = atomic_load(&blocks.count);
     uint64_t before = 0;
     uint64_t after = 0;
-    CHECK(maudGetStreamPosition(context, stream, &before) == maud_success, "position");
+    CHECK(maudStream_GetPosition(context, stream, &before) == maud_success, "position");
     // hygiene: gives a stopped device 200 ms in which its position would move
     Pause(200);
-    CHECK(maudGetStreamPosition(context, stream, &after) == maud_success, "position");
+    CHECK(maudStream_GetPosition(context, stream, &after) == maud_success, "position");
     CHECK(atomic_load(&blocks.count) == stopped, "no callbacks once stopped");
     CHECK(after == before, "the device stops with the stream");
-    CHECK(maudStartStream(context, stream) == maud_success, "start again");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start again");
     CHECK(WaitForBlocks(context, &blocks, stopped + 20), "it runs again");
     CHECK(StreamClockIsSound(context, stream, true, true, Pause), "its clock after a restart");
     // A stream that ran waits a burst, 10 ms at least, before AAudio
@@ -280,10 +281,10 @@ static void TestOutputStream(maudContext* context)
     def.contentSpatialized = true;
     stream = OpenStream(context, &def, &marked);
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success &&
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
               status.spatialMark == maud_markHonored,
           "a marked stream, honored");
-    CHECK(maudStartStream(context, stream) == maud_success && WaitForBlocks(context, &marked, 10),
+    CHECK(maudStream_Start(context, stream) == maud_success && WaitForBlocks(context, &marked, 10),
           "and it plays");
     CHECK(Destroy(context, stream), "destroy");
     double other = info.nativeSampleRate == 44100 ? 48000.0 : 44100.0;
@@ -296,7 +297,7 @@ static void TestOutputStream(maudContext* context)
     Blocks converted = {0};
     def.ratePolicy = maud_ratePlatformConverted;
     stream = OpenStream(context, &def, &converted);
-    CHECK(maudStartStream(context, stream) == maud_success, "start converted");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start converted");
     CHECK(WaitForBlocks(context, &converted, 10), "it runs");
     CHECK(Near(MeasureRate(context, stream), other), "at its own rate");
     CHECK(Destroy(context, stream), "destroy");
@@ -313,11 +314,11 @@ static void TestXruns(maudContext* context)
     Blocks blocks = {.stallAt = 30};
     maudStreamDef def = maudDefaultStreamDef();
     maudStreamId stream = OpenStream(context, &def, &blocks);
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
     maudStreamStatus status = {0};
     POLL_UNTIL(1000, "the stall's underrun",
-               CHECK(maudGetStreamStatus(context, stream, &status) == maud_success, "status"),
+               CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status"),
                status.underruns != 0);
     printf("xruns after a stall: %llu under, %llu over\n", (unsigned long long)status.underruns,
            (unsigned long long)status.overruns);
@@ -355,9 +356,9 @@ static void TestExclusive(maudContext* context)
     if (result == maud_success)
     {
         maudStreamStatus status = {0};
-        CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.exclusive,
+        CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.exclusive,
               "it says so");
-        CHECK(maudStartStream(context, stream) == maud_success &&
+        CHECK(maudStream_Start(context, stream) == maud_success &&
                   WaitForBlocks(context, &blocks, 20),
               "it runs");
         CHECK(Destroy(context, stream), "destroy");
@@ -374,7 +375,7 @@ static void TestExclusive(maudContext* context)
 static void TestCapture(maudContext* context)
 {
     maudDeviceInfo info = {0};
-    CHECK(maudGetDeviceInfo(context, OnlyDevice(context, maud_directionInput), &info) ==
+    CHECK(maudDevice_GetInfo(context, OnlyDevice(context, maud_directionInput), &info) ==
               maud_success,
           "the input");
     Blocks blocks = {0};
@@ -396,10 +397,10 @@ static void TestCapture(maudContext* context)
         return;
     }
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.voiceReported &&
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.voiceReported &&
               status.voiceActive == def.voice,
           "the voice processing asked for, reported");
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     bool captured = WaitForBlocks(context, &blocks, 20);
     printf("capture: %s\n", captured ? "runs" : "silent");
     CHECK(captured || !required, "it captures");
@@ -426,8 +427,9 @@ static void TestDeviceLimit(void)
     maudDeviceId ids[4];
     uint32_t outputs = 0;
     uint32_t inputs = 0;
-    CHECK(maudGetDevices(context, maud_directionOutput, ids, 4, &outputs) == maud_success &&
-              maudGetDevices(context, maud_directionInput, ids, 4, &inputs) == maud_success &&
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, ids, 4, &outputs) == maud_success &&
+              maudContext_GetDevices(context, maud_directionInput, ids, 4, &inputs) ==
+                  maud_success &&
               outputs == 1 && inputs == 0,
           "the default output alone");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -448,7 +450,7 @@ int main(void)
     {
         return 1;
     }
-    CHECK(maudGetContextBackend(context) == maud_backendAaudio, "AAudio chosen");
+    CHECK(maudContext_GetBackend(context) == maud_backendAaudio, "AAudio chosen");
     TestDevices(context);
     TestOutputStream(context);
     TestXruns(context);

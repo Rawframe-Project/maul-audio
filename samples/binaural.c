@@ -143,7 +143,7 @@ int main(int argc, char** argv)
         // Ahead is -Z, right is +X, in the listener's frame.
         maudBinauralParams params = {{(float)(2.0 * sin(angle)), 0.0f, (float)(-2.0 * cos(angle))},
                                      1.0f};
-        result = maudProcessBinaural(effect, &params, in, ears, BLOCK);
+        result = maudBinaural_Process(effect, &params, in, ears, BLOCK);
         for (uint32_t i = 0; i < BLOCK; ++i)
         {
             int16_t frame[2] = {ToPcm(left[i]), ToPcm(right[i])};

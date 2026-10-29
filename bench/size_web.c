@@ -33,7 +33,7 @@ int main(void)
     stream.callback = Silence;
     maudStreamId id = {0, 0};
     int failed = maudCreateStream(context, &stream, &id) != maud_success ||
-                 maudStartStream(context, id) != maud_success;
+                 maudStream_Start(context, id) != maud_success;
     return maudDestroyContext(context) != maud_success || failed;
 }
 
@@ -65,7 +65,7 @@ int main(int argc, char** argv)
     maudBinauralParams params = {{1.0f, 0.0f, 0.0f}, 1.0f};
     float* out[2] = {s_left, s_right};
     int failed = maudCreateBinaural(&effectDef, &effect) != maud_success ||
-                 maudProcessBinaural(effect, &params, s_in, out, 480) != maud_success;
+                 maudBinaural_Process(effect, &params, s_in, out, 480) != maud_success;
     maudDestroyBinaural(effect);
     maudDestroyHrtf(hrtf);
     return failed;
@@ -96,7 +96,7 @@ int main(int argc, char** argv)
     {
         bed[c] = s_bed[c];
     }
-    int failed = maudProcessReverb(reverb, &params, s_in, bed, 480) != maud_success;
+    int failed = maudReverb_Process(reverb, &params, s_in, bed, 480) != maud_success;
     maudDestroyReverb(reverb);
     return failed;
 }
@@ -121,10 +121,10 @@ int main(void)
                  maudCreateGainControl(&agcDef, &agc) != maud_success ||
                  maudCreateNoiseSuppressor(&nsDef, &ns) != maud_success ||
                  maudCreateEchoCanceller(&aecDef, &aec) != maud_success ||
-                 maudCancelEcho(aec, s_capture, s_render, 480, nullptr) != maud_success ||
-                 maudSuppressNoise(ns, s_capture, 480, nullptr) != maud_success ||
-                 maudApplyGainControl(agc, s_capture, 480, nullptr) != maud_success ||
-                 maudDetectVoice(vad, s_capture, 480, nullptr) != maud_success;
+                 maudEchoCanceller_Cancel(aec, s_capture, s_render, 480, nullptr) != maud_success ||
+                 maudNoiseSuppressor_Suppress(ns, s_capture, 480, nullptr) != maud_success ||
+                 maudGainControl_Apply(agc, s_capture, 480, nullptr) != maud_success ||
+                 maudVoiceDetector_Detect(vad, s_capture, 480, nullptr) != maud_success;
     maudDestroyEchoCanceller(aec);
     maudDestroyNoiseSuppressor(ns);
     maudDestroyGainControl(agc);

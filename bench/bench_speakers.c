@@ -74,7 +74,7 @@ static void Pan(void)
             {
                 maudPanSource from = At(i, b);
                 maudPanSource to = At(i, b + 1);
-                if (maudPanToSpeakers(panner, &from, &to, s_in, out, BLOCK) != maud_success)
+                if (maudSpeakerPanner_Pan(panner, &from, &to, s_in, out, BLOCK) != maud_success)
                 {
                     return;
                 }
@@ -119,7 +119,7 @@ static void Decode(void)
         double start = Seconds();
         for (int b = 0; b < BLOCKS; ++b)
         {
-            if (maudDecodeToSpeakers(decoder, bed, out, BLOCK) != maud_success)
+            if (maudSpeakerDecoder_Decode(decoder, bed, out, BLOCK) != maud_success)
             {
                 return;
             }

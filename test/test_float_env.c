@@ -108,7 +108,7 @@ enum
 // switched to the worker's mode for each and back after.
 typedef struct Work
 {
-    maudTaskFn* task;
+    maudTaskFunction* task;
     void* context;
     uint32_t items;
     uint32_t worker;
@@ -135,8 +135,8 @@ static void* Worker(void* argument)
 }
 #endif
 
-static void* Spread(maudTaskFn* task, uint32_t itemCount, uint32_t minRange, void* taskContext,
-                    void* userContext)
+static void* Spread(maudTaskFunction* task, uint32_t itemCount, uint32_t minRange,
+                    void* taskContext, void* userContext)
 {
     (void)minRange;
     Seen();
@@ -264,18 +264,18 @@ static uint64_t Step(maudSpatializer* s, const maudSourceId* sources, maudPose l
                      uint64_t hash)
 {
     TestFloatSetting before = TestFloatGet();
-    CHECK(maudSimulateReverb(s, &listener) == maud_success, "an estimate");
+    CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "an estimate");
     Left(before);
-    CHECK(maudSimulateDirect(s, &listener) == maud_success, "a direct step");
+    CHECK(maudSpatializer_SimulateDirect(s, &listener) == maud_success, "a direct step");
     Left(before);
-    (void)maudLatchResults(s);
+    (void)maudSpatializer_LatchResults(s);
     maudReverbResult reverb = {0};
     maudDirectResult direct[2];
     memset(direct, 0, sizeof(direct));
-    CHECK(maudGetReverbResult(s, &reverb) == maud_success &&
-              maudGetDirectResult(s, sources[0], &direct[0]) == maud_success &&
-              maudGetDirectResult(s, sources[1], &direct[1]) == maud_success && direct[0].pathed &&
-              !direct[1].pathed,
+    CHECK(maudSpatializer_GetReverbResult(s, &reverb) == maud_success &&
+              maudSource_GetDirectResult(s, sources[0], &direct[0]) == maud_success &&
+              maudSource_GetDirectResult(s, sources[1], &direct[1]) == maud_success &&
+              direct[0].pathed && !direct[1].pathed,
           "the results, the source behind the wall pathed");
     hash = Hash(hash, &reverb, sizeof(reverb));
     hash = Hash(hash, &direct[0], offsetof(maudDirectResult, pathed));
@@ -291,15 +291,15 @@ static uint64_t Simulate(bool spread)
     maudRayHit hits[16];
     uint8_t occluded[16];
     TestFloatSetting before = TestFloatGet();
-    maudSceneClosestHit(s_rays, 16, hits, scene);
-    maudSceneAnyHit(s_rays, 16, occluded, scene);
+    maudFindClosestHit(s_rays, 16, hits, scene);
+    maudFindAnyHit(s_rays, 16, occluded, scene);
     Left(before);
     uint64_t hash = Hash(1469598103934665603u, hits, sizeof(hits));
     hash = Hash(hash, occluded, sizeof(occluded));
 
     maudSpatializerDef def = maudDefaultSpatializerDef();
-    def.anyHit = maudSceneAnyHit;
-    def.closestHit = maudSceneClosestHit;
+    def.anyHit = maudFindAnyHit;
+    def.closestHit = maudFindClosestHit;
     def.rayContext = scene;
     def.reverbRays = 256;
     def.probeSetCapacity = 1;
@@ -311,7 +311,7 @@ static uint64_t Simulate(bool spread)
     def.allocator = (maudAllocator){HostAlloc, HostFree, nullptr};
     maudSpatializer* s = nullptr;
     CHECK(maudCreateSpatializer(&def, &s) == maud_success, "a spatializer");
-    CHECK(maudSetMaterials(s, s_materials, 7) == maud_success, "materials");
+    CHECK(maudSpatializer_SetMaterials(s, s_materials, 7) == maud_success, "materials");
     maudProbeSetDef pd = maudDefaultProbeSetDef();
     pd.points = s_points;
     pd.pointCount = 12;
@@ -319,14 +319,14 @@ static uint64_t Simulate(bool spread)
     maudProbeSetId set = {0, 0};
     CHECK(maudCreateProbeSet(s, &pd, &set) == maud_success, "a set");
     Left(before);
-    CHECK(maudSetPathing(s, set) == maud_success, "pathing");
+    CHECK(maudProbeSet_UseForPathing(s, set) == maud_success, "pathing");
     Left(before);
-    CHECK(maudBakeProbeSet(s, set) == maud_success, "a bake");
+    CHECK(maudProbeSet_Bake(s, set) == maud_success, "a bake");
     Left(before);
     size_t size = 0;
-    CHECK(maudSaveProbeSet(s, set, nullptr, 0, &size) == maud_success, "the bake's size");
+    CHECK(maudProbeSet_Save(s, set, nullptr, 0, &size) == maud_success, "the bake's size");
     unsigned char* bytes = malloc(size);
-    CHECK(bytes != nullptr && maudSaveProbeSet(s, set, bytes, size, &size) == maud_success,
+    CHECK(bytes != nullptr && maudProbeSet_Save(s, set, bytes, size, &size) == maud_success,
           "the bake");
     Left(before);
     hash = Hash(hash, bytes, size);
@@ -342,13 +342,13 @@ static uint64_t Simulate(bool spread)
     for (int i = 0; i < 2; ++i)
     {
         CHECK(maudCreateSource(s, &sd, &sources[i]) == maud_success &&
-                  maudSetSourcePose(s, sources[i], &at[i]) == maud_success,
+                  maudSource_SetPose(s, sources[i], &at[i]) == maud_success,
               "a source");
     }
     // Traced, then baked: where it traced, and on z = 0.
     maudPose listener = {{2.0f, 1.5f, -2.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     hash = Step(s, sources, listener, hash);
-    CHECK(maudUseBakedReverb(s, set) == maud_success, "the bake in use");
+    CHECK(maudProbeSet_UseBakedReverb(s, set) == maud_success, "the bake in use");
     hash = Step(s, sources, listener, hash);
     listener.position = (maudVector3){1.5f, 1.5f, 0.0f};
     hash = Step(s, sources, listener, hash);
@@ -371,10 +371,10 @@ static uint32_t Accepted(void)
     CHECK(maudCreateSource(s, &sd, &source) == maud_success, "a source");
     // An orientation of one subnormal: not zero, so a turn.
     maudPose pose = {{0.0f, 0.0f, 0.0f}, {1e-39f, 0.0f, 0.0f, 0.0f}};
-    bits |= maudSetSourcePose(s, source, &pose) == maud_success ? 1u : 0u;
+    bits |= maudSource_SetPose(s, source, &pose) == maud_success ? 1u : 0u;
     // An absorption below 0 by a subnormal: refused.
     maudAcousticMaterial m = {{-1e-39f, 0.5f, 0.5f}, 0.5f, {0.0f, 0.0f, 0.0f}};
-    bits |= maudSetMaterials(s, &m, 1) == maud_success ? 2u : 0u;
+    bits |= maudSpatializer_SetMaterials(s, &m, 1) == maud_success ? 2u : 0u;
     // A volumetric source of a subnormal radius: above 0, so accepted.
     sd.occlusion = maud_occlusionVolumetric;
     sd.occlusionRadius = 1e-39f;
@@ -399,7 +399,7 @@ static uint32_t Accepted(void)
     maudSceneInstanceId instance = {0, 0};
     bits |= maudCreateSceneInstance(scene, 0, &tiny, &instance) == maud_success ? 8u : 0u;
     CHECK(maudCreateSceneInstance(scene, 0, &plain, &instance) == maud_success, "an instance");
-    bits |= maudMoveSceneInstance(scene, instance, &tiny) == maud_success ? 16u : 0u;
+    bits |= maudSceneInstance_Move(scene, instance, &tiny) == maud_success ? 16u : 0u;
     maudDestroyAcousticScene(scene);
     Left(before);
     return bits;

@@ -146,7 +146,8 @@ static void Destroyed(struct pw_proxy* proxy)
 static maudDeviceForm FormOf(const maudContext* context, maudDeviceId device)
 {
     maudDeviceInfo info = {0};
-    return maudGetDeviceInfo(context, device, &info) == maud_success ? info.form : maud_formUnknown;
+    return maudDevice_GetInfo(context, device, &info) == maud_success ? info.form
+                                                                      : maud_formUnknown;
 }
 
 // A jack switch on a card reaches the device of the node on its profile
@@ -158,8 +159,8 @@ static void TestApply(void)
     maudContext* context = nullptr;
     maudDeviceId device = {0, 0};
     CHECK(maudCreateContext(&def, &context) == maud_success &&
-              maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
-                  maud_success,
+              maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                           &device) == maud_success,
           "a device");
     maudPipewireNode node = {.device = device,
                              .direction = maud_directionOutput,
@@ -253,8 +254,8 @@ static void TestAdd(void)
     maudContext* context = nullptr;
     maudDeviceId device = {0, 0};
     CHECK(maudCreateContext(&def, &context) == maud_success &&
-              maudGetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &device) ==
-                  maud_success,
+              maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral,
+                                           &device) == maud_success,
           "a device");
     spa_hook_list_init(&s_deviceHooks);
     struct spa_interface registry = SPA_INTERFACE_INIT(

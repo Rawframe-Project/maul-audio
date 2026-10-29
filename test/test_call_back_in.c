@@ -50,21 +50,24 @@ static int TryAll(void)
     float frames[2 * PERIOD];
     refused += maudCreateStream(s_context, &def, &stream) == maud_errorBusy;
     refused += maudDestroyStream(s_context, s_self) == maud_errorBusy;
-    refused += maudStartStream(s_context, s_self) == maud_errorBusy;
-    refused += maudStopStream(s_context, s_self) == maud_errorBusy;
-    refused += maudRenderStream(s_context, s_self, frames, PERIOD) == maud_errorBusy;
-    refused += maudResumeContext(s_context) == maud_errorBusy;
-    refused += maudSetContextSuspended(s_context, true) == maud_errorBusy;
-    refused += maudNextNotification(s_context, &record) == maud_errorBusy;
-    refused += maudRequestFocus(s_context, maud_focusLasting, maud_roleGeneral) == maud_errorBusy;
-    refused += maudAddOfflineDevice(s_context, &deviceDef, &device) == maud_errorBusy;
-    refused += maudRemoveOfflineDevice(s_context, s_device) == maud_errorBusy;
-    refused += maudSetOfflineDefaultDevice(s_context, maud_roleGeneral, s_device) == maud_errorBusy;
-    refused += maudSetOfflineDeviceForm(s_context, s_device, maud_formHeadphones) == maud_errorBusy;
+    refused += maudStream_Start(s_context, s_self) == maud_errorBusy;
+    refused += maudStream_Stop(s_context, s_self) == maud_errorBusy;
+    refused += maudStream_Render(s_context, s_self, frames, PERIOD) == maud_errorBusy;
+    refused += maudContext_Unlock(s_context) == maud_errorBusy;
+    refused += maudContext_SetSuspended(s_context, true) == maud_errorBusy;
+    refused += maudContext_NextNotification(s_context, &record) == maud_errorBusy;
     refused +=
-        maudSetOfflineDeviceFormat(s_context, s_device, maud_layoutMono, 44100) == maud_errorBusy;
-    refused += maudSetOfflineDeviceSpatializer(s_context, s_device, maud_spatializerUnknown, false,
-                                               0) == maud_errorBusy;
+        maudContext_RequestFocus(s_context, maud_focusLasting, maud_roleGeneral) == maud_errorBusy;
+    refused += maudCreateOfflineDevice(s_context, &deviceDef, &device) == maud_errorBusy;
+    refused += maudDestroyOfflineDevice(s_context, s_device) == maud_errorBusy;
+    refused +=
+        maudDevice_SetOfflineDefault(s_context, s_device, maud_roleGeneral) == maud_errorBusy;
+    refused +=
+        maudDevice_SetOfflineForm(s_context, s_device, maud_formHeadphones) == maud_errorBusy;
+    refused +=
+        maudDevice_SetOfflineFormat(s_context, s_device, maud_layoutMono, 44100) == maud_errorBusy;
+    refused += maudDevice_SetOfflineSpatializer(s_context, s_device, maud_spatializerUnknown, false,
+                                                0) == maud_errorBusy;
     refused += maudDestroyContext(s_context) == maud_errorBusy;
     return refused;
 }
@@ -76,11 +79,11 @@ static bool TryAllowed(void)
     uint64_t frames = 0;
     maudStreamClock clock;
     float other[2 * PERIOD];
-    return maudGetStreamFormat(s_context, s_self, &format) == maud_success &&
-           maudGetStreamPosition(s_context, s_self, &frames) == maud_success &&
-           maudGetStreamClock(s_context, s_self, &clock) == maud_success &&
-           maudGetHostNanoseconds() > 0 && maudGetContextMisuse(s_context) > 0 &&
-           maudRenderStream(s_context, s_other, other, PERIOD) == maud_success;
+    return maudStream_GetFormat(s_context, s_self, &format) == maud_success &&
+           maudStream_GetPosition(s_context, s_self, &frames) == maud_success &&
+           maudStream_GetClock(s_context, s_self, &clock) == maud_success &&
+           maudGetHostNanoseconds() > 0 && maudContext_GetMisuse(s_context) > 0 &&
+           maudStream_Render(s_context, s_other, other, PERIOD) == maud_success;
 }
 
 static void Fill(const maudStreamBlock* block, void* user)
@@ -139,27 +142,27 @@ static maudStreamId Open(void* user)
     def.user = user;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(s_context, &def, &stream) == maud_success &&
-              maudStartStream(s_context, stream) == maud_success,
+              maudStream_Start(s_context, stream) == maud_success,
           "a running stream");
     return stream;
 }
 
 static void TestFromCallback(void)
 {
-    uint64_t before = maudGetContextMisuse(s_context);
+    uint64_t before = maudContext_GetMisuse(s_context);
     float frames[2 * PERIOD];
     s_fromCallback = true;
     s_refused = 0;
-    CHECK(maudRenderStream(s_context, s_self, frames, PERIOD) == maud_success,
+    CHECK(maudStream_Render(s_context, s_self, frames, PERIOD) == maud_success,
           "the outer render goes on");
     CHECK(s_refused == CALLS, "every call that changes the context refused from the callback");
-    CHECK(maudGetContextMisuse(s_context) == before + CALLS, "each counted once");
+    CHECK(maudContext_GetMisuse(s_context) == before + CALLS, "each counted once");
     CHECK(s_allowed, "the calls it may make work");
 }
 
 static void TestFromAllocator(void)
 {
-    uint64_t before = maudGetContextMisuse(s_context);
+    uint64_t before = maudContext_GetMisuse(s_context);
     maudStreamDef def = maudDefaultStreamDef();
     def.mode = maud_modePull;
     def.periodFrames = PERIOD;
@@ -173,9 +176,9 @@ static void TestFromAllocator(void)
     s_refused = 0;
     CHECK(maudDestroyStream(s_context, stream) == maud_success, "the outer destruction goes on");
     CHECK(s_refused == CALLS, "and from the allocator releasing it");
-    CHECK(maudGetContextMisuse(s_context) == before + 2 * CALLS, "each counted once");
+    CHECK(maudContext_GetMisuse(s_context) == before + 2 * CALLS, "each counted once");
     float frames[2 * PERIOD];
-    CHECK(maudRenderStream(s_context, s_self, frames, PERIOD) == maud_success,
+    CHECK(maudStream_Render(s_context, s_self, frames, PERIOD) == maud_success,
           "the context renders as before");
 }
 
@@ -185,8 +188,8 @@ int main(void)
     def.backend = maud_backendOffline;
     def.allocator = (maudAllocator){Alloc, Free, nullptr};
     CHECK(maudCreateContext(&def, &s_context) == maud_success, "context");
-    CHECK(maudGetDefaultDevice(s_context, maud_directionOutput, maud_roleGeneral, &s_device) ==
-              maud_success,
+    CHECK(maudContext_GetDefaultDevice(s_context, maud_directionOutput, maud_roleGeneral,
+                                       &s_device) == maud_success,
           "the default output");
     s_self = Open(&s_self);
     s_other = Open(&s_other);

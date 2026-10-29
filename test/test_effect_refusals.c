@@ -74,7 +74,7 @@ static void TestReverb(void)
     float b3[16];
     float* bed[4] = {b0, b1, b2, b3};
     maudReverbParams good = ReverbParams();
-    CHECK(maudProcessReverb(r, &good, in, bed, 16) == maud_success, "valid parameters");
+    CHECK(maudReverb_Process(r, &good, in, bed, 16) == maud_success, "valid parameters");
     maudReverbParams params[11];
     for (int i = 0; i < 11; ++i)
     {
@@ -94,7 +94,7 @@ static void TestReverb(void)
     refused = true;
     for (int i = 0; i < 11; ++i)
     {
-        bool one = maudProcessReverb(r, &params[i], in, bed, 16) == maud_errorInvalid;
+        bool one = maudReverb_Process(r, &params[i], in, bed, 16) == maud_errorInvalid;
         if (!one)
         {
             printf("reverb parameters %d not refused\n", i);
@@ -110,17 +110,17 @@ static void TestReverb(void)
         bounds.tailTime[b] = b == 2 ? 0.0f : 0.1f;
         bounds.tailLevel[b] = b == 1 ? -96.0f : 24.0f;
     }
-    CHECK(maudProcessReverb(r, &bounds, in, bed, 16) == maud_success, "the bounds taken");
+    CHECK(maudReverb_Process(r, &bounds, in, bed, 16) == maud_success, "the bounds taken");
     float* holed[4] = {b0, b1, nullptr, b3};
-    CHECK(maudProcessReverb(nullptr, &good, in, bed, 16) == maud_errorInvalid &&
-              maudProcessReverb(r, nullptr, in, bed, 16) == maud_errorInvalid &&
-              maudProcessReverb(r, &good, nullptr, bed, 16) == maud_errorInvalid &&
-              maudProcessReverb(r, &good, in, nullptr, 16) == maud_errorInvalid &&
-              maudProcessReverb(r, &good, in, holed, 16) == maud_errorInvalid,
+    CHECK(maudReverb_Process(nullptr, &good, in, bed, 16) == maud_errorInvalid &&
+              maudReverb_Process(r, nullptr, in, bed, 16) == maud_errorInvalid &&
+              maudReverb_Process(r, &good, nullptr, bed, 16) == maud_errorInvalid &&
+              maudReverb_Process(r, &good, in, nullptr, 16) == maud_errorInvalid &&
+              maudReverb_Process(r, &good, in, holed, 16) == maud_errorInvalid,
           "no reverb, parameters, input, bed or a bed channel");
-    CHECK(maudProcessReverb(r, &good, nullptr, nullptr, 0) == maud_success,
+    CHECK(maudReverb_Process(r, &good, nullptr, nullptr, 0) == maud_success,
           "no frames need no buffers");
-    CHECK(maudResetReverb(nullptr) == maud_errorInvalid && maudResetReverb(r) == maud_success,
+    CHECK(maudReverb_Reset(nullptr) == maud_errorInvalid && maudReverb_Reset(r) == maud_success,
           "a reset needs a reverb");
     maudDestroyReverb(r);
 }
@@ -162,7 +162,7 @@ static void TestDirect(void)
     maudDirectParams good = maudDefaultDirectParams();
     float in[16] = {0};
     float out[16];
-    CHECK(maudProcessDirect(e, &good, in, out, 16) == maud_success, "valid parameters");
+    CHECK(maudDirectEffect_Process(e, &good, in, out, 16) == maud_success, "valid parameters");
     maudDirectParams params[9];
     for (int i = 0; i < 9; ++i)
     {
@@ -180,7 +180,7 @@ static void TestDirect(void)
     refused = true;
     for (int i = 0; i < 9; ++i)
     {
-        bool one = maudProcessDirect(e, &params[i], in, out, 16) == maud_errorInvalid;
+        bool one = maudDirectEffect_Process(e, &params[i], in, out, 16) == maud_errorInvalid;
         if (!one)
         {
             printf("direct parameters %d not refused\n", i);
@@ -188,12 +188,12 @@ static void TestDirect(void)
         refused = refused && one;
     }
     CHECK(refused, "gain, distance, occlusion and each band out of range");
-    CHECK(maudProcessDirect(nullptr, &good, in, out, 16) == maud_errorInvalid &&
-              maudProcessDirect(e, nullptr, in, out, 16) == maud_errorInvalid &&
-              maudProcessDirect(e, &good, nullptr, out, 16) == maud_errorInvalid &&
-              maudProcessDirect(e, &good, in, nullptr, 16) == maud_errorInvalid,
+    CHECK(maudDirectEffect_Process(nullptr, &good, in, out, 16) == maud_errorInvalid &&
+              maudDirectEffect_Process(e, nullptr, in, out, 16) == maud_errorInvalid &&
+              maudDirectEffect_Process(e, &good, nullptr, out, 16) == maud_errorInvalid &&
+              maudDirectEffect_Process(e, &good, in, nullptr, 16) == maud_errorInvalid,
           "no effect, parameters, input or output");
-    CHECK(maudProcessDirect(e, &good, nullptr, nullptr, 0) == maud_success,
+    CHECK(maudDirectEffect_Process(e, &good, nullptr, nullptr, 0) == maud_success,
           "no frames need no buffers");
     maudDestroyDirectEffect(e);
     maudDirectivityPattern pattern = {{0.5f, 0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}};

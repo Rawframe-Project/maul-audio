@@ -192,7 +192,9 @@ extern "C"
     /// resume holds audio until this is called. Streams held meanwhile are
     /// suspended with maud_suspendPolicy and resume, with a notification,
     /// once the platform lets the context run. Where no policy holds audio
-    /// it does nothing.
+    /// it does nothing. On the web it is what Web Audio calls resume():
+    /// the unlock after a gesture. It does not undo maudContext_SetSuspended,
+    /// the host's own suspension, which only that call ends.
     ///
     /// @param context  The context.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL context;
@@ -201,7 +203,7 @@ extern "C"
     ///         as misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudResumeContext(maudContext* context);
+    MAUD_NODISCARD MAUD_API maudResult maudContext_Unlock(maudContext* context);
 
     /// Suspends a context for the host's lifecycle, or resumes it: the
     /// application went to the background, its tab was hidden or the
@@ -221,8 +223,8 @@ extern "C"
     ///         as misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudSetContextSuspended(maudContext* context,
-                                                               bool suspended);
+    MAUD_NODISCARD MAUD_API maudResult maudContext_SetSuspended(maudContext* context,
+                                                                bool suspended);
 
     /// Returns the backend a context talks to: the one its def named, or
     /// for maud_backendNative the one it chose.
@@ -231,7 +233,7 @@ extern "C"
     /// @return The backend kind, never maud_backendNative.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API maudBackendKind maudGetContextBackend(const maudContext* context);
+    MAUD_API maudBackendKind maudContext_GetBackend(const maudContext* context);
 
     /// Returns how many calls the context refused as misuse: invalid
     /// arguments against it, and calls refused because they came from
@@ -243,7 +245,7 @@ extern "C"
     /// @return The count since the context was created.
     /// @par Thread safety
     /// Safe from any thread.
-    MAUD_API uint64_t maudGetContextMisuse(const maudContext* context);
+    MAUD_API uint64_t maudContext_GetMisuse(const maudContext* context);
 
 #ifdef __cplusplus
 }

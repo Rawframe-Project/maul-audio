@@ -330,7 +330,7 @@ static void RunTransport(bool isolated)
     {
         return;
     }
-    CHECK(maudGetContextBackend(context) == maud_backendWeb, "the web backend");
+    CHECK(maudContext_GetBackend(context) == maud_backendWeb, "the web backend");
     maudStreamDef def = maudDefaultStreamDef();
     def.layout = maud_layoutStereo;
     def.callback = Ramp;
@@ -339,7 +339,7 @@ static void RunTransport(bool isolated)
     DeliverToWorklet();
     CHECK(Target() == BASE + 2 * QUANTUM, "the target starts two quanta past the base latency");
     CHECK(Held() == Target(), "the worklet holds the target from the start");
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
 
     // Steady pulls: refilled to the target after each, nothing short.
     ForgetPlayed();
@@ -352,7 +352,7 @@ static void RunTransport(bool isolated)
     CHECK(s_rendered == 20u * BASE, "rendered what was played");
     CHECK(InOrder(), "the samples play in order");
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
     // On the ring, what plays first is read as the frames are written:
     // the two quanta left after the pull. Posted, it is what the report
     // being answered said, one quantum into the pull.
@@ -375,7 +375,7 @@ static void RunTransport(bool isolated)
     {
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 26000000LL;
-        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
         if (clock.latencyNanoseconds < expected - 2 || clock.latencyNanoseconds > expected + 2)
         {
             printf("report %d: latency %lld ns, expected %lld\n", report,
@@ -398,7 +398,7 @@ static void RunTransport(bool isolated)
     {
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
-        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
         CHECK(Holds(&clock, report, expected, &first),
               "the output timestamp places every report's frames");
     }
@@ -415,7 +415,7 @@ static void RunTransport(bool isolated)
     {
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 40000000LL;
-        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
         CHECK(Holds(&clock, report, expected, &first),
               "a timestamp drifting late is held at the earliest");
     }
@@ -429,7 +429,7 @@ static void RunTransport(bool isolated)
     {
         int64_t frames = isolated ? 2 * QUANTUM : (2 + report) * QUANTUM;
         int64_t expected = frames * 1000000000LL / RATE + 26000000LL;
-        CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+        CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
         if (clock.latencyNanoseconds < expected - 2 || clock.latencyNanoseconds > expected + 2)
         {
             printf("stale report %d: latency %lld ns, expected %lld\n", report,
@@ -448,7 +448,7 @@ static void RunTransport(bool isolated)
     // The first report answered now is older than the whole buffer: the
     // worklet ran dry, so nothing plays before the frames it brings.
     DeliverOneToMain();
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success &&
               clock.latencyNanoseconds >= 26000000LL - 2 &&
               clock.latencyNanoseconds <= 26000000LL + 2,
           "after running dry, only the base and output latencies");
@@ -457,7 +457,7 @@ static void RunTransport(bool isolated)
     CHECK(Target() == BASE + 6 * QUANTUM, "the target grew a quantum for each short one");
     CHECK(Held() == Target(), "refilled to the grown target");
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamStatus(context, stream, &status) == maud_success && status.underruns == 4,
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.underruns == 4,
           "each short quantum an underrun");
 
     // Missed refills until the target reaches the ring's capacity.
@@ -486,7 +486,7 @@ static void RunTransport(bool isolated)
     }
 
     // Stopping drops what the worklet holds and refills with silence.
-    CHECK(maudStopStream(context, stream) == maud_success, "stop");
+    CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
     DeliverToWorklet();
     CHECK(Held() == 0, "the stop drops the buffer");
     DeliverToMain();
@@ -528,7 +528,7 @@ static double FilterRun(bool isolated, int kind, bool route)
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
     DeliverToWorklet();
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     for (int i = 0; i < 4; ++i)
     {
         Cycle();
@@ -554,7 +554,7 @@ static double FilterRun(bool isolated, int kind, bool route)
         // and with no quantum short, so frame 0 moves 11 ms later, under
         // the bound past which frames count as lost; started again, one
         // pull's first report is measured.
-        CHECK(maudStopStream(context, stream) == maud_success, "stop");
+        CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
         DeliverToWorklet();
         DeliverToMain();
         DeliverToWorklet();
@@ -562,7 +562,7 @@ static double FilterRun(bool isolated, int kind, bool route)
         {
             Cycle();
         }
-        CHECK(maudStartStream(context, stream) == maud_success, "start again");
+        CHECK(maudStream_Start(context, stream) == maud_success, "start again");
         Pull(BASE / QUANTUM);
     }
     if (route)
@@ -571,7 +571,7 @@ static double FilterRun(bool isolated, int kind, bool route)
     }
     DeliverOneToMain();
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
     // When frame 0 is heard, from where the page's clock stood at frame 0
     // when the timestamp was given: the pulls and the drift decide it.
     double heard =
@@ -604,8 +604,8 @@ static void Watch(maudContext* context, maudStreamId stream, double* heard, uint
 {
     maudStreamClock clock = {0};
     maudStreamStatus status = {0};
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success &&
-              maudGetStreamStatus(context, stream, &status) == maud_success,
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success &&
+              maudStream_GetStatus(context, stream, &status) == maud_success,
           "the clock and status");
     *heard = Heard(&clock);
     *underruns = status.underruns;
@@ -632,7 +632,7 @@ static void RunLoss(bool isolated)
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
     DeliverToWorklet();
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     Cycle();
     NewRoute();
     Stamp(1);
@@ -702,11 +702,11 @@ static void RunWindow(void)
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
     DeliverToWorklet();
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     Stamp(1);
     Cycle();
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
     double before = Heard(&clock);
     Jump(30.0);
     // A cycle is 16 ms of the device's frames.
@@ -714,13 +714,13 @@ static void RunWindow(void)
     {
         Cycle();
     }
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
     CHECK(Heard(&clock) <= before + 1000.0, "10 s on, the earliest is held");
     for (int i = 0; i < 1563; ++i)
     {
         Cycle();
     }
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
     if (Heard(&clock) < before + 30e6 - 1000.0 || Heard(&clock) > before + 30e6 + 1000.0)
     {
         printf("35 s on: frame 0 %.0f ns from the earliest\n", Heard(&clock) - before);
@@ -736,7 +736,7 @@ static void RunWindow(void)
 static int64_t ToldLatency(maudContext* context, maudStreamId stream)
 {
     maudStreamClock clock = {0};
-    CHECK(maudGetStreamClock(context, stream, &clock) == maud_success, "the clock");
+    CHECK(maudStream_GetClock(context, stream, &clock) == maud_success, "the clock");
     return clock.latencyNanoseconds;
 }
 
@@ -761,7 +761,7 @@ static void RunGuards(bool isolated)
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "a stream");
     DeliverToWorklet();
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     StampAged(0.0);
     Cycle();
     CHECK(ToldLatency(context, stream) < 50000000, "a tenth of a second in: no stamp counts");

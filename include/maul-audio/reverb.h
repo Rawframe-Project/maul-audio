@@ -132,10 +132,10 @@ extern "C"
     ///         too); nothing is written then.
     /// @par Thread safety
     /// Safe from any thread; the reverb is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudProcessReverb(maudReverb* reverb,
-                                                         const maudReverbParams* params,
-                                                         const float* in, float* const* bed,
-                                                         uint32_t frames);
+    MAUD_NODISCARD MAUD_API maudResult maudReverb_Process(maudReverb* reverb,
+                                                          const maudReverbParams* params,
+                                                          const float* in, float* const* bed,
+                                                          uint32_t frames);
 
     /// Silences a reverb's tail.
     ///
@@ -143,7 +143,7 @@ extern "C"
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
     /// @par Thread safety
     /// Safe from any thread; the reverb is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudResetReverb(maudReverb* reverb);
+    MAUD_NODISCARD MAUD_API maudResult maudReverb_Reset(maudReverb* reverb);
 
 #ifdef __cplusplus
 }

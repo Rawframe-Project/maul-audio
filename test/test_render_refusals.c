@@ -107,9 +107,9 @@ static void TestSpeakers(void)
     float gains[12];
     maudVector3 ahead = {0.0f, 0.0f, -1.0f};
     maudVector3 lost = {0.0f, 0.0f, NAN};
-    CHECK(maudGetSpeakerGains(nullptr, ahead, gains) == maud_errorInvalid &&
-              maudGetSpeakerGains(panner, ahead, nullptr) == maud_errorInvalid &&
-              maudGetSpeakerGains(panner, lost, gains) == maud_errorInvalid,
+    CHECK(maudSpeakerPanner_GetGains(nullptr, ahead, gains) == maud_errorInvalid &&
+              maudSpeakerPanner_GetGains(panner, ahead, nullptr) == maud_errorInvalid &&
+              maudSpeakerPanner_GetGains(panner, lost, gains) == maud_errorInvalid,
           "gains without a panner, nowhere, or a direction not finite");
     maudPanSource source = {ahead, 1.0f};
     maudPanSource badGain = {ahead, INFINITY};
@@ -118,13 +118,15 @@ static void TestSpeakers(void)
                      s_buffers[3], s_buffers[4], s_buffers[5]};
     float* holed[6] = {s_buffers[0], s_buffers[1], s_buffers[2],
                        s_buffers[3], nullptr,      s_buffers[5]};
-    CHECK(maudPanToSpeakers(panner, &source, &source, in, out, 64) == maud_success, "a pan");
-    CHECK(maudPanToSpeakers(nullptr, &source, &source, in, out, 64) == maud_errorInvalid &&
-              maudPanToSpeakers(panner, nullptr, &source, in, out, 64) == maud_errorInvalid &&
-              maudPanToSpeakers(panner, &source, &badGain, in, out, 64) == maud_errorInvalid &&
-              maudPanToSpeakers(panner, &source, &source, nullptr, out, 64) == maud_errorInvalid &&
-              maudPanToSpeakers(panner, &source, &source, in, nullptr, 64) == maud_errorInvalid &&
-              maudPanToSpeakers(panner, &source, &source, in, holed, 64) == maud_errorInvalid,
+    CHECK(maudSpeakerPanner_Pan(panner, &source, &source, in, out, 64) == maud_success, "a pan");
+    CHECK(maudSpeakerPanner_Pan(nullptr, &source, &source, in, out, 64) == maud_errorInvalid &&
+              maudSpeakerPanner_Pan(panner, nullptr, &source, in, out, 64) == maud_errorInvalid &&
+              maudSpeakerPanner_Pan(panner, &source, &badGain, in, out, 64) == maud_errorInvalid &&
+              maudSpeakerPanner_Pan(panner, &source, &source, nullptr, out, 64) ==
+                  maud_errorInvalid &&
+              maudSpeakerPanner_Pan(panner, &source, &source, in, nullptr, 64) ==
+                  maud_errorInvalid &&
+              maudSpeakerPanner_Pan(panner, &source, &source, in, holed, 64) == maud_errorInvalid,
           "a pan without a panner, a source, a finite gain, input or every output");
     maudDestroySpeakerPanner(panner);
     maudSpeakerDecoderDef decoderDef = maudDefaultSpeakerDecoderDef();
@@ -154,16 +156,16 @@ static void TestSpeakers(void)
     decoderDef.order = 1;
     CHECK(maudCreateSpeakerDecoder(&decoderDef, &decoder) == maud_success, "a decoder");
     float matrix[6 * 4];
-    CHECK(maudGetSpeakerDecoderMatrix(nullptr, matrix) == maud_errorInvalid &&
-              maudGetSpeakerDecoderMatrix(decoder, nullptr) == maud_errorInvalid,
+    CHECK(maudSpeakerDecoder_GetMatrix(nullptr, matrix) == maud_errorInvalid &&
+              maudSpeakerDecoder_GetMatrix(decoder, nullptr) == maud_errorInvalid,
           "a matrix without a decoder or nowhere to put it");
     const float* bed[4] = {s_buffers[8], s_buffers[9], s_buffers[10], s_buffers[11]};
     const float* holedBed[4] = {s_buffers[8], s_buffers[9], nullptr, s_buffers[11]};
-    CHECK(maudDecodeToSpeakers(decoder, bed, out, 64) == maud_success, "a decode");
-    CHECK(maudDecodeToSpeakers(nullptr, bed, out, 64) == maud_errorInvalid &&
-              maudDecodeToSpeakers(decoder, holedBed, out, 64) == maud_errorInvalid &&
-              maudDecodeToSpeakers(decoder, bed, holed, 64) == maud_errorInvalid &&
-              maudDecodeToSpeakers(decoder, nullptr, nullptr, 0) == maud_success,
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, out, 64) == maud_success, "a decode");
+    CHECK(maudSpeakerDecoder_Decode(nullptr, bed, out, 64) == maud_errorInvalid &&
+              maudSpeakerDecoder_Decode(decoder, holedBed, out, 64) == maud_errorInvalid &&
+              maudSpeakerDecoder_Decode(decoder, bed, holed, 64) == maud_errorInvalid &&
+              maudSpeakerDecoder_Decode(decoder, nullptr, nullptr, 0) == maud_success,
           "a decode without a decoder or a channel, and none of no frames");
     maudDestroySpeakerDecoder(decoder);
 }
@@ -215,8 +217,8 @@ static void TestHrtfParts(void)
     def.sampleRate = 0;
     CHECK(maudLoadHrtf(&def, &hrtf) == maud_success, "the set");
     maudHrtfInfo info;
-    CHECK(maudGetHrtfInfo(nullptr, &info) == maud_errorInvalid &&
-              maudGetHrtfInfo(hrtf, nullptr) == maud_errorInvalid,
+    CHECK(maudHrtf_GetInfo(nullptr, &info) == maud_errorInvalid &&
+              maudHrtf_GetInfo(hrtf, nullptr) == maud_errorInvalid,
           "info without a set or nowhere to put it");
     maudBinauralDef effectDef = maudDefaultBinauralDef();
     effectDef.hrtf = hrtf;
@@ -263,16 +265,16 @@ static void TestHrtfParts(void)
     const float* in = s_buffers[8];
     float* ears[2] = {s_buffers[0], s_buffers[1]};
     float* oneEar[2] = {s_buffers[0], nullptr};
-    CHECK(maudProcessBinaural(effect, &params, in, ears, 64) == maud_success, "a block");
-    CHECK(maudProcessBinaural(nullptr, &params, in, ears, 64) == maud_errorInvalid &&
-              maudProcessBinaural(effect, nullptr, in, ears, 64) == maud_errorInvalid &&
-              maudProcessBinaural(effect, &params, in, nullptr, 64) == maud_errorInvalid &&
-              maudProcessBinaural(effect, &params, nullptr, ears, 64) == maud_errorInvalid &&
-              maudProcessBinaural(effect, &params, in, oneEar, 64) == maud_errorInvalid &&
-              maudProcessBinaural(effect, &lost, in, ears, 64) == maud_errorInvalid &&
-              maudProcessBinaural(effect, &loud, in, ears, 64) == maud_errorInvalid,
+    CHECK(maudBinaural_Process(effect, &params, in, ears, 64) == maud_success, "a block");
+    CHECK(maudBinaural_Process(nullptr, &params, in, ears, 64) == maud_errorInvalid &&
+              maudBinaural_Process(effect, nullptr, in, ears, 64) == maud_errorInvalid &&
+              maudBinaural_Process(effect, &params, in, nullptr, 64) == maud_errorInvalid &&
+              maudBinaural_Process(effect, &params, nullptr, ears, 64) == maud_errorInvalid &&
+              maudBinaural_Process(effect, &params, in, oneEar, 64) == maud_errorInvalid &&
+              maudBinaural_Process(effect, &lost, in, ears, 64) == maud_errorInvalid &&
+              maudBinaural_Process(effect, &loud, in, ears, 64) == maud_errorInvalid,
           "a block without an effect, parameters, ears or input, or with a value not finite");
-    CHECK(maudProcessBinaural(effect, &params, in, ears, 65) == maud_errorCapacity,
+    CHECK(maudBinaural_Process(effect, &params, in, ears, 65) == maud_errorCapacity,
           "a block past the def's frames");
     maudDestroyBinaural(effect);
     maudBinauralDecoderDef decoderDef = maudDefaultBinauralDecoderDef();
@@ -312,15 +314,15 @@ static void TestHrtfParts(void)
     CHECK(maudCreateBinauralDecoder(&decoderDef, &decoder) == maud_success, "a decoder");
     const float* bed[4] = {s_buffers[8], s_buffers[9], s_buffers[10], s_buffers[11]};
     const float* holedBed[4] = {s_buffers[8], nullptr, s_buffers[10], s_buffers[11]};
-    CHECK(maudDecodeBinaural(decoder, bed, ears, 64) == maud_success, "a decode");
-    CHECK(maudDecodeBinaural(nullptr, bed, ears, 64) == maud_errorInvalid &&
-              maudDecodeBinaural(decoder, nullptr, ears, 64) == maud_errorInvalid &&
-              maudDecodeBinaural(decoder, bed, nullptr, 64) == maud_errorInvalid &&
-              maudDecodeBinaural(decoder, bed, oneEar, 64) == maud_errorInvalid &&
-              maudDecodeBinaural(decoder, holedBed, ears, 64) == maud_errorInvalid &&
-              maudDecodeBinaural(decoder, nullptr, nullptr, 0) == maud_success,
+    CHECK(maudBinauralDecoder_Decode(decoder, bed, ears, 64) == maud_success, "a decode");
+    CHECK(maudBinauralDecoder_Decode(nullptr, bed, ears, 64) == maud_errorInvalid &&
+              maudBinauralDecoder_Decode(decoder, nullptr, ears, 64) == maud_errorInvalid &&
+              maudBinauralDecoder_Decode(decoder, bed, nullptr, 64) == maud_errorInvalid &&
+              maudBinauralDecoder_Decode(decoder, bed, oneEar, 64) == maud_errorInvalid &&
+              maudBinauralDecoder_Decode(decoder, holedBed, ears, 64) == maud_errorInvalid &&
+              maudBinauralDecoder_Decode(decoder, nullptr, nullptr, 0) == maud_success,
           "a decode without a decoder, a bed or both ears, and none of no frames");
-    CHECK(maudDecodeBinaural(decoder, bed, ears, 65) == maud_errorCapacity,
+    CHECK(maudBinauralDecoder_Decode(decoder, bed, ears, 65) == maud_errorCapacity,
           "a decode past the def's frames");
     maudDestroyBinauralDecoder(decoder);
     maudDestroyHrtf(hrtf);

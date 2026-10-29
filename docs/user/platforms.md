@@ -23,7 +23,7 @@ The library needs nothing from the program's threads: every WASAPI call runs on 
 
 ## macOS and iOS
 
-On iOS the context manages the audio session: the category follows the streams there are (playback, recording or both, the speaker the default output with Bluetooth allowed), and other applications' audio mixes with the program's until it asks for focus. `iosSilencedBySwitch` in the context def lets the Ring/Silent switch silence output that is not recording, as a game's sound effects should be. An interruption (a call, an alarm) suspends streams with `maud_suspendPolicy`; one that ends without the hint to resume waits for `maudResumeContext` or a focus request.
+On iOS the context manages the audio session: the category follows the streams there are (playback, recording or both, the speaker the default output with Bluetooth allowed), and other applications' audio mixes with the program's until it asks for focus. `iosSilencedBySwitch` in the context def lets the Ring/Silent switch silence output that is not recording, as a game's sound effects should be. An interruption (a call, an alarm) suspends streams with `maud_suspendPolicy`; one that ends without the hint to resume waits for `maudContext_Unlock` or a focus request.
 
 An iOS application that captures needs `NSMicrophoneUsageDescription` in its `Info.plist`, or the system ends it at the first capture.
 
@@ -41,8 +41,8 @@ An application targeting Android 15 may ask for audio focus only while it is the
 
 Build with Emscripten. Each stream plays through an AudioWorklet; the library renders ahead on the page's main thread, from the browser's event loop. Four things are the page's to do:
 
-- **A gesture.** Browsers hold audio until the user acts. Call `maudResumeContext` from a click's or a key's handler; until then streams are suspended with `maud_suspendPolicy`. A loopback stream is made in such a handler too, since it opens the browser's picker of what to share.
-- **Isolation, where it can.** A page served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` is cross-origin isolated, and the library then hands frames to the worklet through shared memory. Elsewhere it posts them, which on a loaded machine needs more latency to avoid dropouts. `maudGetStreamClock` reports the latency a stream actually has.
+- **A gesture.** Browsers hold audio until the user acts. Call `maudContext_Unlock` from a click's or a key's handler; until then streams are suspended with `maud_suspendPolicy`. A loopback stream is made in such a handler too, since it opens the browser's picker of what to share.
+- **Isolation, where it can.** A page served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` is cross-origin isolated, and the library then hands frames to the worklet through shared memory. Elsewhere it posts them, which on a loaded machine needs more latency to avoid dropouts. `maudStream_GetClock` reports the latency a stream actually has.
 - **Memory.** An allocation the module cannot hold must fail rather than abort, or `maud_errorCapacity` never reaches the program: with Emscripten's defaults the module aborts before the library sees it. A program that links `maul-audio` through CMake gets `-sABORTING_MALLOC=0` from the library's target. Any other build links with it, or with `-sALLOW_MEMORY_GROWTH=1`.
 - **Files.** The library opens no files: the page fetches the HRTF set (854 KB, 636 KB gzipped) and hands its bytes to `maudLoadHrtf`.
 
@@ -51,9 +51,9 @@ The microphone needs the page served from `https` or `localhost`. Until the user
 ## When there is no sound
 
 - **Creation fails with `maud_errorUnsupported`.** No backend answered: on Linux no sound server is running and libasound is missing, or the build left the platform's backend out.
-- **A stream is started but silent.** Read `maudGetStreamStatus`: its `suspension` says why (see [Devices and streams](devices-and-streams.md#why-a-stream-is-suspended)). On the web the usual reason is a missing gesture.
+- **A stream is started but silent.** Read `maudStream_GetStatus`: its `suspension` says why (see [Devices and streams](devices-and-streams.md#why-a-stream-is-suspended)). On the web the usual reason is a missing gesture.
 - **Clicks and gaps.** The status counts underruns and overruns the platform revealed. On ALSA through a sound server (its default device), an output whose sink stops taking frames mid-stream and resumes later also counts an underrun, since the server reports it as it reports a starved stream. A callback that allocates, locks, logs or waits misses its deadline; so does one that does more work than a period allows.
-- **Calls fail with `maud_errorBusy`.** The call came from the stream's callback, or from the allocator or a hook the object was running; `maudGetContextMisuse` and `maudGetSpatializerMisuse` count such calls.
+- **Calls fail with `maud_errorBusy`.** The call came from the stream's callback, or from the allocator or a hook the object was running; `maudContext_GetMisuse` and `maudSpatializer_GetMisuse` count such calls.
 - **`maud_errorVersion`.** The program was built against headers of another version than the library it runs with. Rebuild it against the library's headers.
 - **`maud_errorFormat` from `maudLoadHrtf` or `maudLoadProbeSet`.** The bytes are not a well-formed file of that kind: damaged, cut short, or another file. A file of another format version gives `maud_errorVersion` instead.
 - **The device list is stale.** Drain the notification queue regularly: on PipeWire and PulseAudio the drain is what takes in the server's reports.

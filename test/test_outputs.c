@@ -72,60 +72,62 @@ static void TestContextCalls(maudContext* context)
 
         maudDeviceInfo info;
         FILL(info);
-        CHECK(maudGetDeviceInfo(owner, stale, &info) != maud_success && Zero(&info, sizeof(info)),
-              "maudGetDeviceInfo clears its info");
+        CHECK(maudDevice_GetInfo(owner, stale, &info) != maud_success && Zero(&info, sizeof(info)),
+              "maudDevice_GetInfo clears its info");
         maudDeviceId device;
         FILL(device);
-        CHECK(maudGetDefaultDevice(owner, (maudDirection)7, maud_roleGeneral, &device) !=
+        CHECK(maudContext_GetDefaultDevice(owner, (maudDirection)7, maud_roleGeneral, &device) !=
                       maud_success &&
                   Zero(&device, sizeof(device)),
-              "maudGetDefaultDevice clears its device");
+              "maudContext_GetDefaultDevice clears its device");
         size_t length;
         FILL(length);
         char name[8];
-        CHECK(maudGetDeviceName(owner, stale, name, sizeof(name), &length) != maud_success &&
+        CHECK(maudDevice_GetName(owner, stale, name, sizeof(name), &length) != maud_success &&
                   length == 0,
-              "maudGetDeviceName clears its length");
+              "maudDevice_GetName clears its length");
         FILL(length);
-        CHECK(maudGetDeviceKey(owner, stale, name, sizeof(name), &length) != maud_success &&
+        CHECK(maudDevice_GetKey(owner, stale, name, sizeof(name), &length) != maud_success &&
                   length == 0,
-              "maudGetDeviceKey clears its length");
+              "maudDevice_GetKey clears its length");
         uint32_t count;
         FILL(count);
         maudDeviceId ids[2];
-        CHECK(maudGetDevices(owner, (maudDirection)7, ids, 2, &count) != maud_success && count == 0,
-              "maudGetDevices clears its count");
+        CHECK(maudContext_GetDevices(owner, (maudDirection)7, ids, 2, &count) != maud_success &&
+                  count == 0,
+              "maudContext_GetDevices clears its count");
 
         maudStreamFormat format;
         FILL(format);
-        CHECK(maudGetStreamFormat(owner, staleStream, &format) != maud_success &&
+        CHECK(maudStream_GetFormat(owner, staleStream, &format) != maud_success &&
                   Zero(&format, sizeof(format)),
-              "maudGetStreamFormat clears its format");
+              "maudStream_GetFormat clears its format");
         maudStreamStatus status;
         FILL(status);
-        CHECK(maudGetStreamStatus(owner, staleStream, &status) != maud_success &&
+        CHECK(maudStream_GetStatus(owner, staleStream, &status) != maud_success &&
                   Zero(&status, sizeof(status)),
-              "maudGetStreamStatus clears its status");
+              "maudStream_GetStatus clears its status");
         uint64_t frames;
         FILL(frames);
-        CHECK(maudGetStreamPosition(owner, staleStream, &frames) != maud_success && frames == 0,
-              "maudGetStreamPosition clears its frames");
+        CHECK(maudStream_GetPosition(owner, staleStream, &frames) != maud_success && frames == 0,
+              "maudStream_GetPosition clears its frames");
         maudStreamClock clock;
         FILL(clock);
-        CHECK(maudGetStreamClock(owner, staleStream, &clock) != maud_success &&
+        CHECK(maudStream_GetClock(owner, staleStream, &clock) != maud_success &&
                   Zero(&clock, sizeof(clock)),
-              "maudGetStreamClock clears its clock");
+              "maudStream_GetClock clears its clock");
         if (pass == 0)
         {
             maudFocus focus;
             FILL(focus);
-            CHECK(maudGetContextFocus(owner, &focus) != maud_success && Zero(&focus, sizeof(focus)),
-                  "maudGetContextFocus clears its focus");
+            CHECK(maudContext_GetFocus(owner, &focus) != maud_success &&
+                      Zero(&focus, sizeof(focus)),
+                  "maudContext_GetFocus clears its focus");
             maudNotification record;
             FILL(record);
-            CHECK(maudNextNotification(nullptr, &record) != maud_success &&
+            CHECK(maudContext_NextNotification(nullptr, &record) != maud_success &&
                       Zero(&record, sizeof(record)),
-                  "maudNextNotification clears its record");
+                  "maudContext_NextNotification clears its record");
             maudStreamId stream;
             FILL(stream);
             maudStreamDef def = maudDefaultStreamDef();
@@ -135,18 +137,19 @@ static void TestContextCalls(maudContext* context)
             maudDeviceId added;
             FILL(added);
             maudOfflineDeviceDef offline = maudDefaultOfflineDeviceDef();
-            CHECK(maudAddOfflineDevice(nullptr, &offline, &added) != maud_success &&
+            CHECK(maudCreateOfflineDevice(nullptr, &offline, &added) != maud_success &&
                       Zero(&added, sizeof(added)),
-                  "maudAddOfflineDevice clears its device");
+                  "maudCreateOfflineDevice clears its device");
         }
         (void)what;
     }
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
     }
     FILL(record);
-    CHECK(maudNextNotification(context, &record) == maud_empty && Zero(&record, sizeof(record)),
+    CHECK(maudContext_NextNotification(context, &record) == maud_empty &&
+              Zero(&record, sizeof(record)),
           "an empty queue clears the record");
 }
 
@@ -162,18 +165,18 @@ static void TestSpatializerCalls(void)
         maudSpatializer* owner = pass == 0 ? nullptr : spatializer;
         maudDirectResult direct;
         FILL(direct);
-        CHECK(maudGetDirectResult(owner, staleSource, &direct) != maud_success &&
+        CHECK(maudSource_GetDirectResult(owner, staleSource, &direct) != maud_success &&
                   Zero(&direct, sizeof(direct)),
-              "maudGetDirectResult clears its result");
+              "maudSource_GetDirectResult clears its result");
         maudProbeSetInfo info;
         FILL(info);
-        CHECK(maudGetProbeSet(owner, staleSet, &info, 0, 0, nullptr) != maud_success &&
+        CHECK(maudProbeSet_GetInfo(owner, staleSet, 0, &info, nullptr, 0) != maud_success &&
                   Zero(&info, sizeof(info)),
-              "maudGetProbeSet clears its info");
+              "maudProbeSet_GetInfo clears its info");
         size_t size;
         FILL(size);
-        CHECK(maudSaveProbeSet(owner, staleSet, nullptr, 0, &size) != maud_success && size == 0,
-              "maudSaveProbeSet clears its size");
+        CHECK(maudProbeSet_Save(owner, staleSet, nullptr, 0, &size) != maud_success && size == 0,
+              "maudProbeSet_Save clears its size");
         maudProbeSetId set;
         FILL(set);
         CHECK(maudLoadProbeSet(owner, "x", 1, &set) != maud_success && Zero(&set, sizeof(set)),
@@ -188,9 +191,9 @@ static void TestSpatializerCalls(void)
                   "maudCreateSource clears its source");
             maudReverbResult reverb;
             FILL(reverb);
-            CHECK(maudGetReverbResult(owner, &reverb) != maud_success &&
+            CHECK(maudSpatializer_GetReverbResult(owner, &reverb) != maud_success &&
                       Zero(&reverb, sizeof(reverb)),
-                  "maudGetReverbResult clears its result");
+                  "maudSpatializer_GetReverbResult clears its result");
             maudProbeSetDef setDef = maudDefaultProbeSetDef();
             FILL(set);
             CHECK(maudCreateProbeSet(owner, &setDef, &set) != maud_success &&
@@ -205,29 +208,29 @@ static void TestOtherOwners(void)
 {
     maudHrtfInfo hrtf;
     FILL(hrtf);
-    CHECK(maudGetHrtfInfo(nullptr, &hrtf) != maud_success && Zero(&hrtf, sizeof(hrtf)),
-          "maudGetHrtfInfo clears its info");
+    CHECK(maudHrtf_GetInfo(nullptr, &hrtf) != maud_success && Zero(&hrtf, sizeof(hrtf)),
+          "maudHrtf_GetInfo clears its info");
     float frames[4] = {0};
     maudVoiceState voice;
     FILL(voice);
-    CHECK(maudDetectVoice(nullptr, frames, 4, &voice) != maud_success &&
+    CHECK(maudVoiceDetector_Detect(nullptr, frames, 4, &voice) != maud_success &&
               Zero(&voice, sizeof(voice)),
-          "maudDetectVoice clears its state");
+          "maudVoiceDetector_Detect clears its state");
     maudGainState gain;
     FILL(gain);
-    CHECK(maudApplyGainControl(nullptr, frames, 4, &gain) != maud_success &&
+    CHECK(maudGainControl_Apply(nullptr, frames, 4, &gain) != maud_success &&
               Zero(&gain, sizeof(gain)),
-          "maudApplyGainControl clears its state");
+          "maudGainControl_Apply clears its state");
     maudNoiseState noise;
     FILL(noise);
-    CHECK(maudSuppressNoise(nullptr, frames, 4, &noise) != maud_success &&
+    CHECK(maudNoiseSuppressor_Suppress(nullptr, frames, 4, &noise) != maud_success &&
               Zero(&noise, sizeof(noise)),
-          "maudSuppressNoise clears its state");
+          "maudNoiseSuppressor_Suppress clears its state");
     maudEchoState echo;
     FILL(echo);
-    CHECK(maudCancelEcho(nullptr, frames, frames, 4, &echo) != maud_success &&
+    CHECK(maudEchoCanceller_Cancel(nullptr, frames, frames, 4, &echo) != maud_success &&
               Zero(&echo, sizeof(echo)),
-          "maudCancelEcho clears its state");
+          "maudEchoCanceller_Cancel clears its state");
     maudSceneInstanceId instance;
     FILL(instance);
     CHECK(maudCreateSceneInstance(nullptr, 0, nullptr, &instance) != maud_success &&
@@ -256,21 +259,21 @@ static void TestArrays(void)
     CHECK(maudInterleave(nullptr, 2, 4, gains) != maud_success && Untouched(gains, 8),
           "maudInterleave leaves its samples");
     FILL(gains);
-    CHECK(maudGetSpeakerGains(nullptr, ahead, gains) != maud_success && Untouched(gains, 64),
-          "maudGetSpeakerGains leaves its gains without a panner");
+    CHECK(maudSpeakerPanner_GetGains(nullptr, ahead, gains) != maud_success && Untouched(gains, 64),
+          "maudSpeakerPanner_GetGains leaves its gains without a panner");
     maudSpeakerPannerDef def = maudDefaultSpeakerPannerDef();
     maudSpeakerPanner* panner = nullptr;
     if (maudCreateSpeakerPanner(&def, &panner) == maud_success)
     {
         FILL(gains);
-        CHECK(maudGetSpeakerGains(panner, bad, gains) != maud_success &&
+        CHECK(maudSpeakerPanner_GetGains(panner, bad, gains) != maud_success &&
                   Zero(gains, 2 * sizeof(float)),
               "and clears them with one");
         maudDestroySpeakerPanner(panner);
     }
     FILL(gains);
-    CHECK(maudGetSpeakerDecoderMatrix(nullptr, gains) != maud_success && Untouched(gains, 64),
-          "maudGetSpeakerDecoderMatrix leaves its matrix without a decoder");
+    CHECK(maudSpeakerDecoder_GetMatrix(nullptr, gains) != maud_success && Untouched(gains, 64),
+          "maudSpeakerDecoder_GetMatrix leaves its matrix without a decoder");
 }
 
 int main(void)

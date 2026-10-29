@@ -22,8 +22,8 @@
 
 typedef struct maudReverbTrace
 {
-    maudClosestHitFn* closestHit;
-    maudAnyHitFn* anyHit;
+    maudClosestHitFunction* closestHit;
+    maudAnyHitFunction* anyHit;
     void* context;
     const maudAcousticMaterial* materials;
     uint32_t materialCount;

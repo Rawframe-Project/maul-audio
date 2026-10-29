@@ -44,7 +44,7 @@ static maudStreamId Open(maudContext* context, maudDeviceId device, Blocks* bloc
     def.user = blocks;
     maudStreamId stream = {0, 0};
     CHECK(maudCreateStream(context, &def, &stream) == maud_success, "create");
-    CHECK(maudStartStream(context, stream) == maud_success, "start");
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
     return stream;
 }
 
@@ -56,7 +56,7 @@ static bool SameStream(maudStreamId a, maudStreamId b)
 static void Drain(maudContext* context)
 {
     maudNotification ignored;
-    while (maudNextNotification(context, &ignored) == maud_success)
+    while (maudContext_NextNotification(context, &ignored) == maud_success)
     {
     }
 }
@@ -70,7 +70,7 @@ static bool WaitForBlocks(maudContext* context, Blocks* blocks, uint32_t count)
 static uint32_t OutputCount(const maudContext* context)
 {
     uint32_t count = 0;
-    CHECK(maudGetDevices(context, maud_directionOutput, nullptr, 0, &count) == maud_success,
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, nullptr, 0, &count) == maud_success,
           "count outputs");
     return count;
 }
@@ -85,7 +85,7 @@ static maudDeviceId FindByKey(const maudContext* context, const char* key)
 {
     maudDeviceId ids[16];
     uint32_t count = 0;
-    if (maudGetDevices(context, maud_directionOutput, ids, 16, &count) != maud_success)
+    if (maudContext_GetDevices(context, maud_directionOutput, ids, 16, &count) != maud_success)
     {
         return (maudDeviceId){0, 0};
     }
@@ -93,7 +93,7 @@ static maudDeviceId FindByKey(const maudContext* context, const char* key)
     {
         char bytes[64];
         size_t length = 0;
-        if (maudGetDeviceKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
+        if (maudDevice_GetKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
             length == strlen(key) && memcmp(bytes, key, length) == 0)
         {
             return ids[i];
@@ -119,7 +119,7 @@ typedef struct Seen
 static void Note(maudContext* context, Seen* seen)
 {
     maudNotification record;
-    while (maudNextNotification(context, &record) == maud_success)
+    while (maudContext_NextNotification(context, &record) == maud_success)
     {
         for (int i = 0; i < 3; ++i)
         {
@@ -156,7 +156,7 @@ int main(void)
     {
         return 1;
     }
-    CHECK(maudGetContextBackend(context) == maud_backendPipewire, "the context is on PipeWire");
+    CHECK(maudContext_GetBackend(context) == maud_backendPipewire, "the context is on PipeWire");
     CHECK(system("pactl load-module module-null-sink sink_name=maud-test-gone >/dev/null") == 0,
           "a sink the restart will not bring back");
     Seen seen = {0};
@@ -172,7 +172,7 @@ int main(void)
           "playing before");
     Blocks idle = {0};
     maudStreamId stopped = Open(context, (maudDeviceId){0, 0}, &idle);
-    CHECK(WaitForBlocks(context, &idle, 5) && maudStopStream(context, stopped) == maud_success,
+    CHECK(WaitForBlocks(context, &idle, 5) && maudStream_Stop(context, stopped) == maud_success,
           "a third plays, then stops");
     Note(context, &seen);
     uint32_t outputs = OutputCount(context);
@@ -203,7 +203,7 @@ int main(void)
           "both play on the new daemon");
     CHECK(WaitForBlocks(context, &during, 20), "the late stream plays too");
     uint32_t idled = atomic_load(&idle.count);
-    CHECK(maudStartStream(context, stopped) == maud_success &&
+    CHECK(maudStream_Start(context, stopped) == maud_success &&
               WaitForBlocks(context, &idle, idled + 20),
           "the stopped one starts on the new daemon");
     // A second sink, loaded now, takes a node slot below the test sink's
@@ -255,7 +255,7 @@ int main(void)
     CHECK(WaitForBlocks(context, &blocks[0], 20) && WaitForBlocks(context, &blocks[1], 20),
           "two more play");
     Note(context, &host);
-    CHECK(maudSetContextSuspended(context, true) == maud_success, "the host suspends");
+    CHECK(maudContext_SetSuspended(context, true) == maud_success, "the host suspends");
     NOTE_UNTIL(context, &host, 1000, host.reason[0] != 0 && host.reason[1] != 0);
     CHECK(host.reason[0] == maud_suspendHost && host.reason[1] == maud_suspendHost,
           "both suspended for the host");
@@ -275,7 +275,7 @@ int main(void)
               host.reason[0] == maud_suspendHost && host.reason[1] == maud_suspendHost &&
               !host.resumed[0] && !host.resumed[1],
           "across a restart they stay suspended for the host");
-    CHECK(maudSetContextSuspended(context, false) == maud_success, "the host resumes");
+    CHECK(maudContext_SetSuspended(context, false) == maud_success, "the host resumes");
     NOTE_UNTIL(context, &host, 5000, host.resumed[0] && host.resumed[1]);
     counts[0] = atomic_load(&blocks[0].count);
     counts[1] = atomic_load(&blocks[1].count);

@@ -185,9 +185,10 @@ extern "C"
     ///         maxFrames. Nothing is written on failure.
     /// @par Thread safety
     /// Safe from any thread; the decoder is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudDecodeBinaural(maudBinauralDecoder* decoder,
-                                                          const float* const* bed,
-                                                          float* const out[2], uint32_t frames);
+    MAUD_NODISCARD MAUD_API maudResult maudBinauralDecoder_Decode(maudBinauralDecoder* decoder,
+                                                                  const float* const* bed,
+                                                                  float* const out[2],
+                                                                  uint32_t frames);
 
     /// Forgets the bed a decoder has heard.
     ///
@@ -195,7 +196,7 @@ extern "C"
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
     /// @par Thread safety
     /// Safe from any thread; the decoder is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudResetBinauralDecoder(maudBinauralDecoder* decoder);
+    MAUD_NODISCARD MAUD_API maudResult maudBinauralDecoder_Reset(maudBinauralDecoder* decoder);
 
     // A speaker decoder: a bed's channels to a speaker layout's.
     typedef struct maudSpeakerDecoder maudSpeakerDecoder;
@@ -281,7 +282,7 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_NODISCARD MAUD_API maudResult
-    maudGetSpeakerDecoderMatrix(const maudSpeakerDecoder* decoder, float* matrixOut);
+    maudSpeakerDecoder_GetMatrix(const maudSpeakerDecoder* decoder, float* matrixOut);
 
     /// Decodes frames of a bed to the layout's channels, written over
     /// out. The decoder holds no state between calls.
@@ -295,9 +296,10 @@ extern "C"
     ///         nothing is written then.
     /// @par Thread safety
     /// Safe from any thread; the output is used by one thread at a time.
-    MAUD_NODISCARD MAUD_API maudResult maudDecodeToSpeakers(const maudSpeakerDecoder* decoder,
-                                                            const float* const* bed,
-                                                            float* const* out, uint32_t frames);
+    MAUD_NODISCARD MAUD_API maudResult maudSpeakerDecoder_Decode(const maudSpeakerDecoder* decoder,
+                                                                 const float* const* bed,
+                                                                 float* const* out,
+                                                                 uint32_t frames);
 
 #ifdef __cplusplus
 }
