@@ -54,8 +54,8 @@ jobs:
 
   assets:
     needs: release-please
-    # A tag given by hand attaches the files to a release made outside this run.
-    if: needs.release-please.outputs.created == 'true' || inputs.tag != ''
+    # A tag given by hand, from main, attaches the files to a release made outside this run.
+    if: needs.release-please.outputs.created == 'true' || (inputs.tag != '' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -65,9 +65,12 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - name: A release tag
+        run: '[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG"; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.TAG }}
+          # The tag itself, never a branch of the same name.
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
       - name: Build the release files into dist/
         # The library ships as source: the tagged tree with the HRTF set, the
@@ -75,7 +78,6 @@ jobs:
         # needs. GitHub's own source archives are not promised byte-stable;
         # this one is checksummed and attested.
         run: |
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG"; exit 1; }
           mkdir -p dist
           git archive --format=tar.gz --prefix="${GITHUB_REPOSITORY#*/}-${TAG#v}/" -o "dist/${GITHUB_REPOSITORY#*/}-${TAG#v}.tar.gz" HEAD
       # Without a source name syft names the document after its path, ".".
