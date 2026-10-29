@@ -798,7 +798,7 @@ static void PlaceObject(const maudStreamBlock* block, void* user)
     Placed* placed = user;
     maudStreamObject* object = &block->objects[0];
     object->active = true;
-    object->position[0] = 2.0f;
+    object->position.x = 2.0f;
     for (uint32_t i = 0; i < block->frameCount; ++i)
     {
         float value = (i & 32u) != 0 ? 0.1f : -0.1f;

@@ -1042,7 +1042,7 @@ static void PlaceTone(const maudStreamBlock* block, void* user)
     Placed* placed = user;
     maudStreamObject* object = &block->objects[0];
     object->active = true;
-    object->position[0] = placed->x;
+    object->position.x = placed->x;
     double step = 2.0 * 3.141592653589793 * 440.0 / (double)block->sampleRate;
     for (uint32_t i = 0; i < block->frameCount; ++i)
     {

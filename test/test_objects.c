@@ -49,14 +49,14 @@ static void Place(const maudStreamBlock* block, void* user)
         for (uint32_t i = 0; i < OBJECTS; ++i)
         {
             scene->startedClean = scene->startedClean && !objects[i].active &&
-                                  objects[i].gain == 1.0f && objects[i].position[0] == 0.0f &&
-                                  objects[i].position[1] == 0.0f &&
-                                  objects[i].position[2] == 0.0f && objects[i].samples[0] == 0.0f;
+                                  objects[i].gain == 1.0f && objects[i].position.x == 0.0f &&
+                                  objects[i].position.y == 0.0f && objects[i].position.z == 0.0f &&
+                                  objects[i].samples[0] == 0.0f;
         }
         objects[0].active = true;
         objects[0].gain = 0.5f;
-        objects[0].position[0] = 2.0f;
-        objects[0].position[2] = -1.0f;
+        objects[0].position.x = 2.0f;
+        objects[0].position.z = -1.0f;
     }
     else
     {
@@ -157,8 +157,8 @@ static void TestRendering(void)
         CHECK(maudRenderObjects(context, stream, bed + 2 * done, objects, OBJECTS, sizes[s]) ==
                   maud_success,
               "render");
-        CHECK(objects[0].active && objects[0].gain == 0.5f && objects[0].position[0] == 2.0f &&
-                  objects[0].position[1] == 0.0f && objects[0].position[2] == -1.0f,
+        CHECK(objects[0].active && objects[0].gain == 0.5f && objects[0].position.x == 2.0f &&
+                  objects[0].position.y == 0.0f && objects[0].position.z == -1.0f,
               "object 0 placed once, kept");
         CHECK(!objects[1].active && objects[1].gain == 1.0f, "object 1 untouched");
         done += sizes[s];
