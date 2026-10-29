@@ -242,7 +242,7 @@ static void TestDevices(maudContext* context, maudDeviceId* speaker)
               maudDevice_GetInfo(context, current, &info) == maud_success,
           "the default output");
     printf("spatializer %u, head tracking %d\n", (unsigned)info.spatializer, info.headTracking);
-    CHECK(info.spatializer != maud_spatializerUnknown && info.spatialObjects == 0,
+    CHECK(info.spatializer != maud_spatializerUnknown && info.spatialObjectCount == 0,
           "with the Spatializer's state, and no objects");
     // The emulator's route has none at any API level, so its state is
     // exactly none there.

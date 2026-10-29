@@ -307,7 +307,7 @@ static void Probes(maudScene* scene)
     double start = Seconds();
     if (maudCreateProbeSet(s, &pd, &set) != maud_success ||
         maudProbeSet_Bake(s, set) != maud_success ||
-        maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) != maud_success || info.probes == 0)
+        maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) != maud_success || info.probeCount == 0)
     {
         return;
     }
@@ -337,9 +337,10 @@ static void Probes(maudScene* scene)
     }
     printf("probes: %u probes, %u links, %zu bytes; baked in %.0f ms a probe, loaded in %.1f us "
            "a probe\n",
-           info.probes, info.links, size, bake / info.probes * 1e3, best / info.probes * 1e6);
-    Against("probes.bake.ms", bake / info.probes * 1e3, false);
-    Against("probes.load.us", best / info.probes * 1e6, false);
+           info.probeCount, info.linkCount, size, bake / info.probeCount * 1e3,
+           best / info.probeCount * 1e6);
+    Against("probes.bake.ms", bake / info.probeCount * 1e3, false);
+    Against("probes.load.us", best / info.probeCount * 1e6, false);
     Pathing(s, set);
     free(bytes);
     maudDestroySpatializer(loader);

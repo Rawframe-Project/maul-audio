@@ -192,7 +192,7 @@ maudResult maudHrtf_GetInfo(const maudHrtf* hrtf, maudHrtfInfo* infoOut)
     }
     *infoOut = (maudHrtfInfo){
         .sampleRate = hrtf->sampleRate,
-        .taps = hrtf->taps,
+        .tapCount = hrtf->taps,
         .directionCount = hrtf->directionCount,
         .ringCount = hrtf->ringCount,
         .distance = hrtf->distance,

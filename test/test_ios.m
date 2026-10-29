@@ -402,7 +402,7 @@ static void PlaceObject(const maudStreamBlock* block, void* user)
     {
         object->samples[i] = (i & 32u) != 0 ? 0.25f : -0.25f;
     }
-    atomic_store(&placed->offered, block->objectsAvailable);
+    atomic_store(&placed->offered, block->availableObjectCount);
     atomic_fetch_add(&placed->count, 1);
 }
 
@@ -417,7 +417,7 @@ static void TestObjects(maudContext* context)
                   maud_success &&
               maudDevice_GetInfo(context, output, &info) == maud_success &&
               info.spatializer == maud_spatializerOn &&
-              info.spatialObjects == MAUD_MAX_STREAM_OBJECTS,
+              info.spatialObjectCount == MAUD_MAX_STREAM_OBJECTS,
           "the output takes objects");
     Placed placed = {0};
     maudStreamDef def = maudDefaultStreamDef();

@@ -91,7 +91,7 @@ extern "C"
         // takes this period; the bed is output. NULL and 0 otherwise.
         maudStreamObject* objects;
         uint32_t objectCount;
-        uint32_t objectsAvailable;
+        uint32_t availableObjectCount;
     } maudStreamBlock;
 
     // The host's real-time callback. It must not allocate, lock or wait.

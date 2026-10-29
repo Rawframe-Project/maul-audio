@@ -4,7 +4,7 @@
 // Object streams: an output stream whose callback places mono objects
 // around the listener beside the stream's ordinary output, the bed, for
 // a platform renderer to spatialize (Windows' spatial sound objects,
-// Apple's spatial mixer). A device's spatializer and spatialObjects say
+// Apple's spatial mixer). A device's spatializer and spatialObjectCount say
 // what the platform takes there. The host still computes what the path
 // does to each source (distance, occlusion, air) and applies it to an
 // object's frames; only the binaural or panning step moves to the
@@ -42,7 +42,7 @@ extern "C"
         float gain;
         // Whether it sounds. Objects start inactive; the platform's object
         // is given back while one is not, and active objects past the
-        // block's objectsAvailable are not heard.
+        // block's availableObjectCount are not heard.
         bool active;
     };
 
@@ -50,7 +50,7 @@ extern "C"
     /// which stands in for the platform's renderer: the bed into bedOut and
     /// each object's frames into the buffer its samples point to, with the
     /// position, gain and activity the callback last gave it. The block
-    /// offers every object (objectsAvailable is the stream's objectCount).
+    /// offers every object (availableObjectCount is the stream's objectCount).
     /// The stream's clock advances by frameCount.
     ///
     /// @param context      The context.

@@ -46,7 +46,7 @@ static maudDeviceSpec DefaultSpec(const maudIos* ios, maudDirection direction, m
                 // An object stream renders through the system's spatial
                 // mixer, which takes any number of objects.
                 .spatializer = output ? maud_spatializerOn : maud_spatializerUnknown,
-                .spatialObjects = output ? MAUD_MAX_STREAM_OBJECTS : 0,
+                .spatialObjectCount = output ? MAUD_MAX_STREAM_OBJECTS : 0,
             },
         .name = name,
         .nameLength = maudCutUtf8(name, ios->context->def.limits.deviceTextBytes),

@@ -264,8 +264,8 @@ extern "C"
     // What a probe set holds.
     typedef struct maudProbeSetInfo
     {
-        uint32_t probes;
-        uint32_t links;
+        uint32_t probeCount;
+        uint32_t linkCount;
         // Whether it holds a bake.
         bool baked;
     } maudProbeSetInfo;
@@ -288,7 +288,7 @@ extern "C"
         float transmission[MAUD_BANDS];
         // The surfaces the walk crossed; the spatializer's maxSurfaces
         // when the limit stopped it, more surfaces perhaps uncounted.
-        uint32_t surfaces;
+        uint32_t surfaceCount;
         // Whether a path around the obstacles was found. Then distance is
         // the path's length; direction and directivity blend the path's
         // with the straight line's by the energy each brings; and
@@ -306,7 +306,7 @@ extern "C"
         // maudReverbParams; 0.1 s before the first estimate.
         float reverbTime[MAUD_BANDS];
         // The estimates made before the step; 0 for none.
-        uint32_t estimates;
+        uint32_t estimateCount;
         // For maudReverbParams: the send's level per band (dB) and delay
         // (s) that give the reverb the traced energy. Without reflections
         // it matches at 100 ms with no delay; with them, the tail begins

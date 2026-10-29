@@ -307,7 +307,7 @@ static void TestHooks(void)
               maudSpatializer_LatchResults(s) > 0 &&
               maudSource_GetDirectResult(s, id, &r) == maud_success,
           "a result");
-    CHECK(r.occlusion == 1.0f && r.surfaces == 2 && fabsf(r.transmission[0] - 0.09f) < 1e-6f &&
+    CHECK(r.occlusion == 1.0f && r.surfaceCount == 2 && fabsf(r.transmission[0] - 0.09f) < 1e-6f &&
               fabsf(r.transmission[2] - 0.01f) < 1e-6f,
           "the wall occludes, its two faces transmit");
     maudDestroySpatializer(s);

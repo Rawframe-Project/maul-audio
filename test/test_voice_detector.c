@@ -289,7 +289,7 @@ static void TestDefs(void)
     def.aggressiveness = 4;
     CHECK(maudCreateVoiceDetector(&def, &detector) == maud_errorInvalid, "aggressiveness past 3");
     def = maudDefaultVoiceDetectorDef();
-    def.hangoverMilliseconds = 10001;
+    def.hangover = 10.01f;
     CHECK(maudCreateVoiceDetector(&def, &detector) == maud_errorInvalid, "a hangover too long");
     def = maudDefaultVoiceDetectorDef();
     def.layout = maud_layoutNone;

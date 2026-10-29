@@ -95,20 +95,20 @@ static void TestEstimate(void)
     CHECK(maudSpatializer_SimulateDirect(plain, &s_listener) == maud_success, "a direct step");
     CHECK(maudSpatializer_LatchResults(plain) == 1, "latched");
     CHECK(maudSpatializer_GetReverbResult(plain, &result) == maud_success &&
-              result.estimates == 0 && result.reverbTime[1] == 0.1f,
+              result.estimateCount == 0 && result.reverbTime[1] == 0.1f,
           "before an estimate: 0.1 s, none counted");
     CHECK(maudSpatializer_SimulateReverb(plain, &s_listener) == maud_success, "an estimate");
     CHECK(maudSpatializer_LatchResults(plain) == 1 &&
               maudSpatializer_GetReverbResult(plain, &result) == maud_success &&
-              result.estimates == 0,
+              result.estimateCount == 0,
           "it waits for the next direct step");
     CHECK(maudSpatializer_SimulateDirect(plain, &s_listener) == maud_success, "a direct step");
     CHECK(maudSpatializer_LatchResults(plain) == 2 &&
               maudSpatializer_GetReverbResult(plain, &result) == maud_success,
           "latched");
     printf("office: %.3f / %.3f / %.3f s after %u estimate\n", (double)result.reverbTime[0],
-           (double)result.reverbTime[1], (double)result.reverbTime[2], result.estimates);
-    CHECK(result.estimates == 1, "one estimate");
+           (double)result.reverbTime[1], (double)result.reverbTime[2], result.estimateCount);
+    CHECK(result.estimateCount == 1, "one estimate");
     for (int b = 0; b < MAUD_BANDS; ++b)
     {
         CHECK(fabs((double)result.reverbTime[b] / 0.99 - 1.0) < 0.03, "the office's time");
@@ -217,7 +217,8 @@ static void TestMisuse(void)
     maudReverbResult result;
     CHECK(maudSpatializer_LatchResults(s) == 1 &&
               maudSpatializer_GetReverbResult(s, &result) == maud_success &&
-              result.estimates == 1 && result.reverbTime[0] == 0.1f && result.reverbTime[2] == 0.1f,
+              result.estimateCount == 1 && result.reverbTime[0] == 0.1f &&
+              result.reverbTime[2] == 0.1f,
           "no geometry: 0.1 s");
     maudPose bad = s_listener;
     bad.position.x = NAN;

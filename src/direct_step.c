@@ -80,7 +80,7 @@ void maudDirectGeometry(const maudPose* listener, const maudPose* source,
         }
     }
     result->occlusion = 0.0f;
-    result->surfaces = 0;
+    result->surfaceCount = 0;
     result->pathed = false;
     for (int b = 0; b < MAUD_BANDS; ++b)
     {

@@ -382,7 +382,7 @@ static void TestDevices(maudContext* context)
             endpoint[length < sizeof(endpoint) - 1 ? length : sizeof(endpoint) - 1] = '\0';
             UINT formFactor = FormFactorOf(enumerator, endpoint);
             printf("endpoint %s: form factor %u, form %u, spatializer %u (%u objects)\n", endpoint,
-                   formFactor, info.form, (unsigned)info.spatializer, info.spatialObjects);
+                   formFactor, info.form, (unsigned)info.spatializer, info.spatialObjectCount);
             CHECK(FormMatches(info.form, formFactor), "and the form its form factor names");
             char name[512];
             size_t named = 0;
@@ -400,7 +400,8 @@ static void TestDevices(maudContext* context)
             // exactly when a spatial format is on; Windows tracks no head.
             bool output = flows[f].direction == maud_directionOutput;
             CHECK(output ? info.spatializer != maud_spatializerUnknown &&
-                               (info.spatialObjects > 0) == (info.spatializer == maud_spatializerOn)
+                               (info.spatialObjectCount > 0) ==
+                                   (info.spatializer == maud_spatializerOn)
                          : info.spatializer == maud_spatializerUnknown,
                   "and its spatializer's state");
             CHECK(!info.headTracking, "no head tracking");
@@ -808,9 +809,9 @@ static void PlaceObject(const maudStreamBlock* block, void* user)
         block->output[2 * i] = value;
         block->output[2 * i + 1] = value;
     }
-    if (block->objectsAvailable > atomic_load(&placed->mostOffered))
+    if (block->availableObjectCount > atomic_load(&placed->mostOffered))
     {
-        atomic_store(&placed->mostOffered, block->objectsAvailable);
+        atomic_store(&placed->mostOffered, block->availableObjectCount);
     }
     atomic_fetch_add(&placed->count, 1);
 }
@@ -835,12 +836,12 @@ static void TestObjects(maudContext* context)
     maudStreamId stream = {0, 0};
     maudResult result = maudCreateStream(context, &def, &stream);
     printf("object stream: %s, the endpoint takes %u objects\n", maudResultName(result),
-           info.spatialObjects);
+           info.spatialObjectCount);
     CHECK(result == maud_success && maudStream_Start(context, stream) == maud_success,
           "an object stream runs");
     POLL_UNTIL(3000, "the object stream's blocks", (void)0, atomic_load(&placed.count) >= 20);
     CHECK(atomic_load(&placed.count) >= 20, "its callback runs");
-    CHECK(atomic_load(&placed.mostOffered) <= info.spatialObjects,
+    CHECK(atomic_load(&placed.mostOffered) <= info.spatialObjectCount,
           "offered no more objects than the endpoint takes");
     uint64_t position = 0;
     CHECK(maudStream_GetPosition(context, stream, &position) == maud_success && position > 0,

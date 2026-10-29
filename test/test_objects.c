@@ -41,7 +41,7 @@ static void Place(const maudStreamBlock* block, void* user)
 {
     Scene* scene = user;
     scene->sawObjects = block->objects != nullptr && block->objectCount == OBJECTS &&
-                        block->objectsAvailable == OBJECTS && block->frameCount == PERIOD;
+                        block->availableObjectCount == OBJECTS && block->frameCount == PERIOD;
     maudStreamObject* objects = block->objects;
     if (scene->blocks == 0)
     {
@@ -187,7 +187,7 @@ static void TestRendering(void)
 static void Plain(const maudStreamBlock* block, void* user)
 {
     (void)user;
-    CHECK(block->objects == nullptr && block->objectCount == 0 && block->objectsAvailable == 0,
+    CHECK(block->objects == nullptr && block->objectCount == 0 && block->availableObjectCount == 0,
           "an ordinary stream's block has no objects");
 }
 

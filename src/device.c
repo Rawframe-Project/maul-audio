@@ -283,13 +283,13 @@ void maudSetDeviceSpatializer(maudContext* context, maudDeviceSlot* slot,
 {
     if (slot->info.spatializer == info->spatializer &&
         slot->info.headTracking == info->headTracking &&
-        slot->info.spatialObjects == info->spatialObjects)
+        slot->info.spatialObjectCount == info->spatialObjectCount)
     {
         return;
     }
     slot->info.spatializer = info->spatializer;
     slot->info.headTracking = info->headTracking;
-    slot->info.spatialObjects = info->spatialObjects;
+    slot->info.spatialObjectCount = info->spatialObjectCount;
     maudPostNotification(context, &(maudNotification){
                                       .kind = maud_notifySpatializerChanged,
                                       .direction = slot->info.direction,

@@ -126,7 +126,7 @@ static void TestShippedSet(void)
     CHECK(Load(bytes, count, 0, &hrtf) == maud_success, "loads");
     maudHrtfInfo info = {0};
     CHECK(maudHrtf_GetInfo(hrtf, &info) == maud_success && info.sampleRate == 48000 &&
-              info.taps == 128 && info.directionCount == 1652 && info.ringCount == 37 &&
+              info.tapCount == 128 && info.directionCount == 1652 && info.ringCount == 37 &&
               info.distance == 1.2f,
           "at 48 kHz, 128 taps, 1,652 directions on 37 rings, measured at 1.2 m");
     CHECK(info.nameLength > 8 && memcmp(info.name, "SADIE II", 8) == 0, "named");

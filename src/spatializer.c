@@ -545,7 +545,7 @@ static void Cross(maudSpatializer* s, const maudPose* listener, Entry* entries, 
             if (maudCrossSurface(&s->hits[k], &s->rays[k], s->materials, s->materialCount,
                                  r->transmission, &s->walked[i]))
             {
-                r->surfaces += 1;
+                r->surfaceCount += 1;
                 s->walkers[kept++] = i;
             }
         }
@@ -713,7 +713,7 @@ static void Clear(const maudRay* rays, uint32_t count, uint8_t* occluded, void* 
 // A reverberation step's estimate, from the baked set in use or traced.
 static void EstimateReverb(maudSpatializer* s, const maudPose* listener)
 {
-    s->reverb.estimates += 1;
+    s->reverb.estimateCount += 1;
     if (maudBakedReverb(s, listener->position))
     {
         return;

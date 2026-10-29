@@ -48,7 +48,7 @@ extern "C"
         maud_notifyFocusChanged = 10,
         // What the platform's spatializer does on device, an output,
         // changed (maudDeviceInfo's spatializer, headTracking and
-        // spatialObjects).
+        // spatialObjectCount).
         maud_notifySpatializerChanged = 11,
         // device, of direction, now runs natively at another format
         // (maudDeviceInfo's nativeLayout or its rates), as when a user

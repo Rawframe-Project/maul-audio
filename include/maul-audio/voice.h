@@ -33,8 +33,9 @@ extern "C"
         // How much evidence speech needs, from 0 to 3: a higher value
         // admits less noise and misses more quiet speech.
         uint8_t aggressiveness;
-        // How long the detector stays active after speech ends.
-        uint32_t hangoverMilliseconds;
+        // How long the detector stays active after speech ends, in
+        // seconds, from 0 to 10, rounded to its 10 ms steps.
+        float hangover;
         // Where its memory comes from; all zero for the library's default.
         maudAllocator allocator;
     } maudVoiceDetectorDef;
@@ -81,7 +82,7 @@ extern "C"
         def.sampleRate = 48000;
         def.layout = maud_layoutMono;
         def.aggressiveness = 1;
-        def.hangoverMilliseconds = 200;
+        def.hangover = 0.2f;
         return def;
     }
 
@@ -378,7 +379,7 @@ extern "C"
         // The frames' rate, from 8,000 to 384,000.
         uint32_t sampleRate;
         // The longest echo path it learns, in seconds, from 0.05 to 1.
-        float tailSeconds;
+        float tailTime;
         // The most it takes noise down, in dB, from -40 to -6 (the echo
         // left, down to -40 dB where no one speaks).
         float floorDb;
@@ -424,7 +425,7 @@ extern "C"
         def.cookie = MAUD_ECHO_CANCELLER_DEF_COOKIE;
         def.version = MAUD_ABI_VERSION;
         def.sampleRate = 48000;
-        def.tailSeconds = 0.2f;
+        def.tailTime = 0.2f;
         def.floorDb = -15.0f;
         return def;
     }

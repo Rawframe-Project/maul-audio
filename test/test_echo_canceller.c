@@ -323,9 +323,9 @@ static void TestRefused(void)
     def.sampleRate = 7999;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a rate too low");
     def = maudDefaultEchoCancellerDef();
-    def.tailSeconds = 1.5f;
+    def.tailTime = 1.5f;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a path too long");
-    def.tailSeconds = NAN;
+    def.tailTime = NAN;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_errorInvalid, "a path not a number");
     def = maudDefaultEchoCancellerDef();
     def.floorDb = -50.0f;
@@ -333,7 +333,7 @@ static void TestRefused(void)
     // The highest rate, the longest path and the shallowest floor.
     def = maudDefaultEchoCancellerDef();
     def.sampleRate = 384000;
-    def.tailSeconds = 1.0f;
+    def.tailTime = 1.0f;
     def.floorDb = -6.0f;
     CHECK(maudCreateEchoCanceller(&def, &c) == maud_success, "every bound's upper end taken");
     maudDestroyEchoCanceller(c);

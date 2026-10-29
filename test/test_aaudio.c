@@ -211,7 +211,7 @@ static void TestDevices(maudContext* context)
             direction == maud_directionOutput && android_get_device_api_level() < 32
                 ? maud_spatializerNone
                 : maud_spatializerUnknown;
-        CHECK(info.spatializer == expected && !info.headTracking && info.spatialObjects == 0,
+        CHECK(info.spatializer == expected && !info.headTracking && info.spatialObjectCount == 0,
               "the Spatializer's state where Android says it");
         for (maudDeviceRole role = maud_roleGeneral; role <= maud_roleCommunications; ++role)
         {

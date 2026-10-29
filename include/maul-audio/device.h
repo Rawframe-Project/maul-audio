@@ -130,7 +130,7 @@ extern "C"
         // reads these.
         maudPlatformSpatializer spatializer;
         bool headTracking;
-        uint32_t spatialObjects;
+        uint32_t spatialObjectCount;
     } maudDeviceInfo;
 
     /// Lists the devices of one direction, in a stable order.

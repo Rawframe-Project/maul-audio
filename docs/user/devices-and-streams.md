@@ -180,6 +180,6 @@ On platforms with audio focus (Android with the Java half, iOS), `maudContext_Re
 
 ## Object streams
 
-An output stream with `objectCount` above 0 places mono objects around the listener next to its ordinary output, the bed, for the platform's renderer to spatialize: Windows' spatial sound objects, Apple's spatial mixer. A device's `spatializer` and `spatialObjects` say what the platform takes there. The program still applies what the path does to each source (distance, occlusion, air) to the object's frames; only the binaural or panning step moves to the platform. Where the backend has no object renderer, such a stream is refused with `maud_errorUnsupported`. A stream takes at most `MAUD_MAX_STREAM_OBJECTS` objects; more is refused with `maud_errorLimit`.
+An output stream with `objectCount` above 0 places mono objects around the listener next to its ordinary output, the bed, for the platform's renderer to spatialize: Windows' spatial sound objects, Apple's spatial mixer. A device's `spatializer` and `spatialObjectCount` say what the platform takes there. The program still applies what the path does to each source (distance, occlusion, air) to the object's frames; only the binaural or panning step moves to the platform. Where the backend has no object renderer, such a stream is refused with `maud_errorUnsupported`. A stream takes at most `MAUD_MAX_STREAM_OBJECTS` objects; more is refused with `maud_errorLimit`.
 
 Streams run in callback mode on every native backend; pull mode, where the program's own thread renders, is the offline backend's.

@@ -1051,7 +1051,7 @@ static void PlaceTone(const maudStreamBlock* block, void* user)
         object->samples[i] = (float)(0.25 * sin(placed->phase));
         placed->phase = fmod(placed->phase + step, 2.0 * 3.141592653589793);
     }
-    atomic_store(&placed->offered, block->objectsAvailable);
+    atomic_store(&placed->offered, block->availableObjectCount);
     atomic_fetch_add(&placed->blocks, 1);
 }
 
@@ -1147,7 +1147,7 @@ static void TestObjects(maudContext* context)
     maudDeviceInfo info = {0};
     CHECK(maudDevice_GetInfo(context, output, &info) == maud_success &&
               info.spatializer == maud_spatializerOn &&
-              info.spatialObjects == MAUD_MAX_STREAM_OBJECTS,
+              info.spatialObjectCount == MAUD_MAX_STREAM_OBJECTS,
           "outputs take objects");
     int live = s_live;
     double right = RightOverLeft(context, 2.0f);

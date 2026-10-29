@@ -205,7 +205,7 @@ maudResult maudDevice_SetOfflineSpatializer(maudContext* context, maudDeviceId d
     maudDeviceInfo info = slot->info;
     info.spatializer = spatializer;
     info.headTracking = headTracking;
-    info.spatialObjects = objects;
+    info.spatialObjectCount = objects;
     maudSetDeviceSpatializer(context, slot, &info);
     return maud_success;
 }

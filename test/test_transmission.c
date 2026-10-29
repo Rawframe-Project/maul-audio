@@ -143,10 +143,10 @@ static void TestWalk(void)
     maudSpatializer* s = Create(4, false, true);
     maudSourceId id = Source(s, true);
     maudDirectResult r = Result(s, id, -2.0f, -10.0f);
-    CHECK(r.occlusion == 1.0f && r.surfaces == 2 && Bands(&r, 0.45f, 0.32f, 0.21f),
+    CHECK(r.occlusion == 1.0f && r.surfaceCount == 2 && Bands(&r, 0.45f, 0.32f, 0.21f),
           "two walls: the product of both");
     r = Result(s, id, 2.0f, -10.0f);
-    CHECK(r.surfaces == 1 && Bands(&r, 0.9f, 0.8f, 0.7f), "beside the half-wall: one wall");
+    CHECK(r.surfaceCount == 1 && Bands(&r, 0.9f, 0.8f, 0.7f), "beside the half-wall: one wall");
     s_closest = 0;
     r = Result(s, id, 2.0f, -6.0f);
     CHECK(r.occlusion == 0.0f && Bands(&r, 1.0f, 1.0f, 1.0f) && s_closest == 0,
@@ -168,7 +168,8 @@ static void TestWalk(void)
     s = Create(1, false, true);
     id = Source(s, true);
     r = Result(s, id, -2.0f, -10.0f);
-    CHECK(r.surfaces == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "the limit stops the walk, and says so");
+    CHECK(r.surfaceCount == 1 && Bands(&r, 0.5f, 0.4f, 0.3f),
+          "the limit stops the walk, and says so");
     maudDestroySpatializer(s);
     // A hit before the ray's minimum distance is no hit: a careless host
     // returning the first wall again ends the walk rather than counting
@@ -178,7 +179,7 @@ static void TestWalk(void)
     s_careless = true;
     r = Result(s, id, -2.0f, -10.0f);
     s_careless = false;
-    CHECK(r.surfaces == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "a surface is not crossed twice");
+    CHECK(r.surfaceCount == 1 && Bands(&r, 0.5f, 0.4f, 0.3f), "a surface is not crossed twice");
     maudDestroySpatializer(s);
     s = Create(4, false, false);
     id = Source(s, true);

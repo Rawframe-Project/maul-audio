@@ -443,7 +443,7 @@ maudResult maudStream_RenderObjects(maudContext* context, maudStreamId stream, f
     {
         return result;
     }
-    core->period.objectsAvailable = objectCount;
+    core->period.availableObjectCount = objectCount;
     maudPullObjects(&core->period, bedOut, objectsOut, frameCount);
     EndRender(core, frameCount);
     return maud_success;

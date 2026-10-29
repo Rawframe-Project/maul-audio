@@ -421,7 +421,7 @@ static void TestSpatializerChanges(void)
     maudDeviceInfo info = {0};
     CHECK(maudDevice_GetInfo(context, output, &info) == maud_success &&
               info.spatializer == maud_spatializerNone && !info.headTracking &&
-              info.spatialObjects == 0,
+              info.spatialObjectCount == 0,
           "an offline output has none");
     CHECK(maudDevice_GetInfo(context, input, &info) == maud_success &&
               info.spatializer == maud_spatializerUnknown,
@@ -437,7 +437,7 @@ static void TestSpatializerChanges(void)
           "naming the device");
     CHECK(maudDevice_GetInfo(context, output, &info) == maud_success &&
               info.spatializer == maud_spatializerOn && info.headTracking &&
-              info.spatialObjects == 128,
+              info.spatialObjectCount == 128,
           "which its info reports");
     CHECK(maudDevice_SetOfflineSpatializer(context, output, maud_spatializerOn, true, 128) ==
               maud_success,

@@ -91,8 +91,8 @@ static void TestPoints(maudSpatializer* s)
     maudProbeSetInfo info = {0};
     maudVector3 copied[2];
     CHECK(maudProbeSet_GetInfo(s, set, 1, &info, copied, 2) == maud_success, "its info");
-    printf("points: %u probes, %u links\n", info.probes, info.links);
-    CHECK(info.probes == 3 && info.links == 1, "only the probes on one side linked");
+    printf("points: %u probes, %u links\n", info.probeCount, info.linkCount);
+    CHECK(info.probeCount == 3 && info.linkCount == 1, "only the probes on one side linked");
     CHECK(copied[0].x == 8.0f && copied[1].z == 7.0f, "its points copied");
     CHECK(maudProbeSet_GetInfo(s, set, 2, &info, copied, 2) == maud_errorInvalid,
           "probes past the set's");
@@ -126,15 +126,15 @@ static void TestGenerated(maudSpatializer* s)
     maudProbeSetInfo info = {0};
     maudVector3 points[16];
     CHECK(maudProbeSet_GetInfo(s, set, 0, &info, points, 16) == maud_success, "its probes");
-    bool floor = info.probes == 16;
+    bool floor = info.probeCount == 16;
     for (uint32_t i = 0; i < 16 && floor; ++i)
     {
         floor = fabsf(points[i].y - 1.5f) < 1e-5f;
     }
     // The wall's top is 0.2 m wide, under the spacing's columns.
-    printf("generated: %u probes, %u links\n", info.probes, info.links);
+    printf("generated: %u probes, %u links\n", info.probeCount, info.linkCount);
     CHECK(floor, "16 probes 1.5 m over the floor");
-    CHECK(info.links > 0, "linked on each side");
+    CHECK(info.linkCount > 0, "linked on each side");
     CHECK(maudDestroyProbeSet(s, set) == maud_success, "destroyed");
     def.spacing = 0.25f;
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_errorCapacity, "past maxProbes");

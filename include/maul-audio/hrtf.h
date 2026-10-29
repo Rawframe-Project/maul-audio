@@ -52,7 +52,7 @@ extern "C"
     typedef struct maudHrtfInfo
     {
         uint32_t sampleRate;
-        uint32_t taps;
+        uint32_t tapCount;
         uint32_t directionCount;
         uint32_t ringCount;
         // The metres from the head's centre at which the set was measured.
