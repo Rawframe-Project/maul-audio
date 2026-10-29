@@ -5,6 +5,15 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.4.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.3.0...v0.4.0) (2026-10-29)
+
+0.4.0 makes a refused call leave silence or zeros behind, never data from an earlier call. It changes no backend. Successful calls, the golden renders and the office bake are unchanged. The device checklist on real hardware is waived by the owner for releases through 2026-10-29, so 0.4.0 ships on its other gates, and the checklist runs in [#161](https://github.com/Rawframe-Project/maul-audio/issues/161).
+
+### Changed
+
+- **Breaking:** the binaural effect, the direct effect and the binaural and speaker decoders write silence over their output on any failure, where they used to leave it as it was (`maudBinaural_Process`, `maudDirectEffect_Process`, `maudBinauralDecoder_Decode`, `maudSpeakerDecoder_Decode`). A host that played the buffer after an error it did not check heard the previous block again; it now hears silence. A refused call writes no more than a successful one could: at most the def's `maxFrames` per ear for the binaural effect and decoder (`MAUD_MAX_BINAURAL_FRAMES` when the effect or decoder is NULL), nothing through a NULL buffer or channel pointer, and nothing from a NULL speaker decoder, which gives no channel count. A direct effect run in place silences the block it was given. A buffer a call adds into (the reverb's, encoder's and reflections' bed, a panner's channels) keeps what it held. A host that checks every status hears no difference ([#170](https://github.com/Rawframe-Project/maul-audio/pull/170)).
+- **Breaking:** `maudProbeSet_Save` writes `capacity` zero bytes over the caller's buffer on any failure, where it used to leave the buffer as it was. A buffer that held an earlier save kept it after a refusal, so a host that stored the buffer without checking the status wrote a stale bake that loads without complaint. When the capacity is short, `sizeOut` still gives the size the file needs ([#174](https://github.com/Rawframe-Project/maul-audio/pull/174)).
+
 ## [0.3.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.2.0...v0.3.0) (2026-10-29)
 
 0.3.0 settles the names of the API before 1.0.0. It changes how web programs link ([#163](https://github.com/Rawframe-Project/maul-audio/pull/163)), and the Core Audio and WASAPI object renderers read the new position type ([#152](https://github.com/Rawframe-Project/maul-audio/pull/152)); the other backends change only by name. The device checklist on real hardware is waived by the owner for releases through 2026-10-29, so 0.3.0 ships on its other gates, and the checklist runs against it in [#161](https://github.com/Rawframe-Project/maul-audio/issues/161). The golden renders and the office bake are unchanged.
