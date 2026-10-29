@@ -138,7 +138,7 @@ maudResult maudDestroyProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
     return result;
 }
 
-maudResult maudProbeSet_UseForPathing(maudSpatializer* spatializer, maudProbeSetId set)
+maudResult maudSpatializer_SetPathingProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
 {
     if (spatializer == nullptr)
     {
@@ -279,7 +279,7 @@ maudResult maudProbeSet_Bake(maudSpatializer* spatializer, maudProbeSetId set)
     return result;
 }
 
-maudResult maudProbeSet_UseBakedReverb(maudSpatializer* spatializer, maudProbeSetId set)
+maudResult maudSpatializer_SetReverbProbeSet(maudSpatializer* spatializer, maudProbeSetId set)
 {
     if (spatializer == nullptr)
     {
