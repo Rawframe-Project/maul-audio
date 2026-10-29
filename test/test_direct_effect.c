@@ -414,7 +414,21 @@ static void TestMisuse(void)
     params = maudDefaultDirectParams();
     params.transmission[2] = NAN;
     CHECK(maudDirectEffect_Process(effect, &params, in, out, 8) == maud_errorInvalid, "NaN");
-    CHECK(out[0] == 9.0f, "nothing written by a bad call");
+    bool silent = true;
+    for (int n = 0; n < 8; ++n)
+    {
+        silent = silent && out[n] == 0.0f;
+    }
+    CHECK(silent, "a bad call silences its output");
+    // In place, a refused call silences the block it was given.
+    params.transmission[2] = NAN;
+    CHECK(maudDirectEffect_Process(effect, &params, in, in, 8) == maud_errorInvalid &&
+              in[0] == 0.0f && in[7] == 0.0f,
+          "a bad call in place silences the block");
+    for (int n = 0; n < 8; ++n)
+    {
+        in[n] = (float)(n + 1);
+    }
     CHECK(maudDirectEffect_Process(effect, nullptr, in, out, 8) == maud_errorInvalid, "no params");
     params = maudDefaultDirectParams();
     CHECK(maudDirectEffect_Process(effect, &params, nullptr, nullptr, 0) == maud_success,

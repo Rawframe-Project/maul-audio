@@ -171,20 +171,21 @@ extern "C"
     /// first call after creation or a reset starts at these. Band shapes
     /// are refitted only when a band moves by 0.05 dB or more.
     ///
-    /// @param effect  The effect.
-    /// @param params  This call's params.
-    /// @param in      frames samples.
-    /// @param out     frames samples.
-    /// @param frames  The frames; 0 does nothing.
+    /// @param effect      The effect.
+    /// @param params      This call's params.
+    /// @param in          frames samples.
+    /// @param samplesOut  frames samples; may be in itself.
+    /// @param frames      The frames; 0 does nothing.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer, a
     ///         value that is not finite, a negative gain or distance, or an
-    ///         occlusion, transmission or directivity outside 0 to 1;
-    ///         nothing is written then.
+    ///         occlusion, transmission or directivity outside 0 to 1. On
+    ///         failure samplesOut, unless NULL, is silenced over frames
+    ///         samples, and so is in when it is samplesOut.
     /// @par Thread safety
     /// Safe from any thread; the effect is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudDirectEffect_Process(maudDirectEffect* effect,
                                                                 const maudDirectParams* params,
-                                                                const float* in, float* out,
+                                                                const float* in, float* samplesOut,
                                                                 uint32_t frames);
 
     /// Forgets the signal and the params an effect has seen.

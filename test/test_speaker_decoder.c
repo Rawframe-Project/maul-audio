@@ -205,6 +205,40 @@ static void TestSilenceAndMirror(void)
     maudDestroySpeakerDecoder(decoder);
 }
 
+// A refused decode silences each output channel it was given, and a NULL
+// decoder, which gives no channel count, writes nothing.
+static void TestFailureSilence(void)
+{
+    maudSpeakerDecoder* decoder = Create(maud_layout5Point1, 1);
+    float channels[4][5] = {{0}};
+    const float* bed[4] = {channels[0], channels[1], channels[2], nullptr};
+    float speakers[6][5];
+    float* out[6];
+    for (int s = 0; s < 6; ++s)
+    {
+        out[s] = speakers[s];
+        for (int n = 0; n < 5; ++n)
+        {
+            speakers[s][n] = 9.0f;
+        }
+    }
+    CHECK(maudSpeakerDecoder_Decode(nullptr, bed, out, 5) == maud_errorInvalid &&
+              speakers[0][0] == 9.0f && speakers[5][4] == 9.0f,
+          "no decoder writes nothing");
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, out, 5) == maud_errorInvalid,
+          "a missing bed channel");
+    bool silent = true;
+    for (int s = 0; s < 6; ++s)
+    {
+        for (int n = 0; n < 5; ++n)
+        {
+            silent = silent && speakers[s][n] == 0.0f;
+        }
+    }
+    CHECK(silent, "a bad call silences every speaker");
+    maudDestroySpeakerDecoder(decoder);
+}
+
 static void TestDecode(void)
 {
     maudSpeakerDecoder* decoder = Create(maud_layout5Point1, 2);
@@ -249,7 +283,7 @@ static void TestDecode(void)
     speakers[0][0] = 7.0f;
     CHECK(maudSpeakerDecoder_Decode(decoder, bed, missing, 5) == maud_errorInvalid,
           "a missing speaker");
-    CHECK(speakers[0][0] == 7.0f, "nothing written by a bad call");
+    CHECK(speakers[0][0] == 0.0f, "a bad call silences the speakers it has");
     const float* gap[9] = {bed[0], bed[1], bed[2], bed[3], bed[4], bed[5], bed[6], bed[7], nullptr};
     CHECK(maudSpeakerDecoder_Decode(decoder, gap, out, 5) == maud_errorInvalid &&
               maudSpeakerDecoder_Decode(decoder, nullptr, out, 5) == maud_errorInvalid &&
@@ -281,5 +315,6 @@ int main(void)
     TestLocalization();
     TestSilenceAndMirror();
     TestDecode();
+    TestFailureSilence();
     return s_failures == 0 ? 0 : 1;
 }
