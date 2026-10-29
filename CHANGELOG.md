@@ -5,6 +5,19 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.4.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.3.0...v0.4.0) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **bake:** maudProbeSet_Save writes capacity zero bytes over bytesOut on any failure, where it used to leave the buffer as it was. sizeOut still gives the needed size when the capacity is short.
+* maudBinaural_Process, maudDirectEffect_Process, maudBinauralDecoder_Decode and maudSpeakerDecoder_Decode write silence over their output on any failure, where they used to leave it as it was. They write at most what a successful call could: the def's maxFrames for the binaural effect and decoder, and nothing through a NULL pointer. Their output parameter is named samplesOut.
+
+### Fixed
+
+* **bake:** zero a refused save's buffer, never leave an earlier file ([#174](https://github.com/Rawframe-Project/maul-audio/issues/174)) ([8f027c2](https://github.com/Rawframe-Project/maul-audio/commit/8f027c29d069daa390368cea7d71478b833bc114))
+* write silence over a failed effect or decoder's output ([#170](https://github.com/Rawframe-Project/maul-audio/issues/170)) ([3388c5f](https://github.com/Rawframe-Project/maul-audio/commit/3388c5f14435901a86eecf75c9fa5e5c09381357))
+
 ## [0.3.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.2.0...v0.3.0) (2026-10-29)
 
 0.3.0 settles the names of the API before 1.0.0. It changes how web programs link ([#163](https://github.com/Rawframe-Project/maul-audio/pull/163)), and the Core Audio and WASAPI object renderers read the new position type ([#152](https://github.com/Rawframe-Project/maul-audio/pull/152)); the other backends change only by name. The device checklist on real hardware is waived by the owner for releases through 2026-10-29, so 0.3.0 ships on its other gates, and the checklist runs against it in [#161](https://github.com/Rawframe-Project/maul-audio/issues/161). The golden renders and the office bake are unchanged.
