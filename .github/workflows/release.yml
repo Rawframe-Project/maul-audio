@@ -54,8 +54,9 @@ jobs:
 
   assets:
     needs: release-please
-    # A tag given by hand, from main, attaches the files to a release made outside this run.
-    if: needs.release-please.outputs.created == 'true' || (inputs.tag != '' && github.ref == 'refs/heads/main')
+    # A tag given by hand, from main, attaches the files to a release made outside this run,
+    # also when release-please fails in it.
+    if: ${{ !cancelled() && ((inputs.tag != '' && github.ref == 'refs/heads/main') || (needs.release-please.result == 'success' && needs.release-please.outputs.created == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -65,8 +66,13 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      # A run that both creates a release and is given another tag takes neither.
       - name: A release tag
-        run: '[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG"; exit 1; }'
+        env:
+          CREATED: ${{ needs.release-please.outputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG"; exit 1; }
+          [ -z "$CREATED" ] || [ "$CREATED" = "$TAG" ] || { echo "release-please created $CREATED, not $TAG"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The tag itself, never a branch of the same name.
