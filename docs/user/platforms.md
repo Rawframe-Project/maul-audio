@@ -39,10 +39,11 @@ An application targeting Android 15 may ask for audio focus only while it is the
 
 ## The web
 
-Build with Emscripten. Each stream plays through an AudioWorklet; the library renders ahead on the page's main thread, from the browser's event loop. Three things are the page's to do:
+Build with Emscripten. Each stream plays through an AudioWorklet; the library renders ahead on the page's main thread, from the browser's event loop. Four things are the page's to do:
 
 - **A gesture.** Browsers hold audio until the user acts. Call `maudResumeContext` from a click's or a key's handler; until then streams are suspended with `maud_suspendPolicy`. A loopback stream is made in such a handler too, since it opens the browser's picker of what to share.
 - **Isolation, where it can.** A page served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` is cross-origin isolated, and the library then hands frames to the worklet through shared memory. Elsewhere it posts them, which on a loaded machine needs more latency to avoid dropouts. `maudGetStreamClock` reports the latency a stream actually has.
+- **Memory.** An allocation the module cannot hold must fail rather than abort, or `maud_errorCapacity` never reaches the program: with Emscripten's defaults the module aborts before the library sees it. A program that links `maul-audio` through CMake gets `-sABORTING_MALLOC=0` from the library's target. Any other build links with it, or with `-sALLOW_MEMORY_GROWTH=1`.
 - **Files.** The library opens no files: the page fetches the HRTF set (854 KB, 636 KB gzipped) and hands its bytes to `maudLoadHrtf`.
 
 The microphone needs the page served from `https` or `localhost`. Until the user allows it, capture streams wait with `maud_suspendPermission`.
