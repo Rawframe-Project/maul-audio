@@ -184,6 +184,7 @@ static const maudBackend s_alsa = {
     .attachStream = maudAlsaAttachStream,
     .exclusive = true,
     .detachStream = maudAlsaDetachStream,
+    .releaseStream = maudAlsaReleaseStream,
     .setStreamActive = maudAlsaSetStreamActive,
     .retargetStream = nullptr,
     .rendersOnCaller = false,

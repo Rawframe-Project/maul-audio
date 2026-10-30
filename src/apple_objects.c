@@ -266,7 +266,7 @@ maudResult maudOpenAppleObjects(maudContext* context, maudStreamCore* core, maud
     return maud_success;
 }
 
-void maudCloseAppleObjects(maudContext* context, maudAppleObjects* objects)
+void maudShutAppleObjects(maudAppleObjects* objects)
 {
     if (objects->mixer != nullptr)
     {
@@ -275,12 +275,25 @@ void maudCloseAppleObjects(maudContext* context, maudAppleObjects* objects)
         (void)uninitialized;
         (void)disposed;
     }
+    void* storage = objects->storage;
+    size_t storageBytes = objects->storageBytes;
+    *objects = (maudAppleObjects){.storage = storage, .storageBytes = storageBytes};
+}
+
+void maudFreeAppleObjects(maudContext* context, maudAppleObjects* objects)
+{
     if (objects->storage != nullptr)
     {
         maudContextRelease(context, objects->storage, objects->storageBytes,
                            alignof(maudStreamObject));
     }
     *objects = (maudAppleObjects){0};
+}
+
+void maudCloseAppleObjects(maudContext* context, maudAppleObjects* objects)
+{
+    maudShutAppleObjects(objects);
+    maudFreeAppleObjects(context, objects);
 }
 
 // Sets an object's bus from its record: the library's frame (+x right,

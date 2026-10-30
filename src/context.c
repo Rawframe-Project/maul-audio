@@ -377,9 +377,10 @@ maudStreamId maudStreamIdOf(const maudContext* context, const maudStreamSlot* sl
     return (maudStreamId){index + 1, slot->generation};
 }
 
-// Takes a half out of use: its id is stale from here. Its storage stays
-// for the release, and the slot cannot be taken again before then, since
-// host code the release runs is refused a creation.
+// Takes a half out of use: the backend stops it, without giving back
+// any memory, and its id is stale from here. Its storage stays for the
+// release, and the slot cannot be taken again before then, since host
+// code the release runs is refused a creation.
 static void RetireHalf(maudContext* context, maudStreamSlot* slot)
 {
     if (context->backend->detachStream != nullptr)
@@ -393,8 +394,13 @@ static void RetireHalf(maudContext* context, maudStreamSlot* slot)
     slot->generation = slot->generation == UINT32_MAX ? 1 : slot->generation + 1;
 }
 
-static void ReleaseStorage(maudContext* context, const maudStreamSlot* slot)
+// Gives back a retired half's memory: the backend's, then its samples.
+static void ReleaseStorage(maudContext* context, maudStreamSlot* slot)
 {
+    if (context->backend->releaseStream != nullptr)
+    {
+        context->backend->releaseStream(context, slot);
+    }
     maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes,
                        MAUD_STREAM_STORAGE_ALIGN);
 }

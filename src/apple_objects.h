@@ -56,8 +56,15 @@ bool maudAppleObjectsFit(const maudStreamCore* core);
 maudResult maudOpenAppleObjects(maudContext* context, maudStreamCore* core, maudDeviceForm form,
                                 maudAppleObjects* objects);
 
-// Disposes of the mixer and gives the block back.
+// Disposes of the mixer and gives the block back: maudShutAppleObjects,
+// then maudFreeAppleObjects.
 void maudCloseAppleObjects(maudContext* context, maudAppleObjects* objects);
+
+// Disposes of the mixer, keeping the block.
+void maudShutAppleObjects(maudAppleObjects* objects);
+
+// Gives the block back, once shut.
+void maudFreeAppleObjects(maudContext* context, maudAppleObjects* objects);
 
 // On the IO thread: pulls frames of the stream's bed and objects, places
 // each object's bus, and renders the mixer into out (frames of the

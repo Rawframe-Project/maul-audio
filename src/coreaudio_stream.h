@@ -15,6 +15,9 @@ maudResult maudCoreAudioAttachStream(maudContext* context, maudStreamSlot* slot)
 // longer touches the stream.
 void maudCoreAudioDetachStream(maudContext* context, maudStreamSlot* slot);
 
+// Gives back the stream's buffers, once detached.
+void maudCoreAudioReleaseStream(maudContext* context, maudStreamSlot* slot);
+
 // Starts or stops the stream's unit.
 void maudCoreAudioSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active);
 

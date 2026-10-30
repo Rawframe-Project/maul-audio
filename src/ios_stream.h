@@ -15,6 +15,9 @@ maudResult maudIosAttachStream(maudContext* context, maudStreamSlot* slot);
 // longer touches the stream.
 void maudIosDetachStream(maudContext* context, maudStreamSlot* slot);
 
+// Gives back the stream's buffers, once detached.
+void maudIosReleaseStream(maudContext* context, maudStreamSlot* slot);
+
 // Starts or stops the stream's unit, setting the session for what runs.
 void maudIosSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active);
 

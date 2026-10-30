@@ -32,9 +32,15 @@ struct maudBackend
     // Connects a stream's platform side once its slot's core is set up.
     // May be NULL.
     maudResult (*attachStream)(maudContext* context, maudStreamSlot* slot);
-    // Releases what attachStream set up; afterwards no platform thread
-    // touches the core. May be NULL.
+    // Stops what attachStream set up: afterwards no platform thread
+    // touches the core. It gives nothing back to the context's allocator,
+    // since it runs while the stream's id still names the stream. May be
+    // NULL.
     void (*detachStream)(maudContext* context, maudStreamSlot* slot);
+    // Gives back what attachStream took from the context's allocator,
+    // after detachStream and once the stream's id is stale, so host code
+    // the allocator runs finds the stream gone. May be NULL.
+    void (*releaseStream)(maudContext* context, maudStreamSlot* slot);
     // Lets the platform run the stream or holds it. May be NULL.
     void (*setStreamActive)(maudContext* context, maudStreamSlot* slot, bool active);
     // Offers the stream's format again after a move changed its rate, or,

@@ -285,6 +285,7 @@ static const maudBackend s_ios = {
     .openStream = OpenStream,
     .attachStream = maudIosAttachStream,
     .detachStream = maudIosDetachStream,
+    .releaseStream = maudIosReleaseStream,
     .setStreamActive = maudIosSetStreamActive,
     .resumeContext = ResumeContext,
     .requestFocus = RequestFocus,

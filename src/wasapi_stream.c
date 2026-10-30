@@ -258,9 +258,11 @@ static void RunStream(void* user)
     }
 }
 
-static void Disconnect(maudContext* context, maudWasapiStream* entry)
+// Releases the client, its services and events; the buffers stay for
+// Free.
+static void Shut(maudWasapiStream* entry)
 {
-    maudWasapiCloseObjects(context, &entry->objects);
+    maudWasapiShutObjects(&entry->objects);
     if (entry->render != nullptr)
     {
         IAudioRenderClient_Release(entry->render);
@@ -285,6 +287,24 @@ static void Disconnect(maudContext* context, maudWasapiStream* entry)
     {
         CloseHandle(entry->stopEvent);
     }
+    maudStreamCore* core = entry->core;
+    maudWasapiObjects objects = entry->objects;
+    float* zeros = entry->zeros;
+    size_t zeroBytes = entry->zeroBytes;
+    float* scratch = entry->scratch;
+    size_t scratchBytes = entry->scratchBytes;
+    *entry = (maudWasapiStream){.core = core,
+                                .objects = objects,
+                                .zeros = zeros,
+                                .zeroBytes = zeroBytes,
+                                .scratch = scratch,
+                                .scratchBytes = scratchBytes};
+}
+
+// Gives back the buffers, once shut.
+static void Free(maudContext* context, maudWasapiStream* entry)
+{
+    maudWasapiFreeObjects(context, &entry->objects);
     if (entry->zeros != nullptr)
     {
         maudContextRelease(context, entry->zeros, entry->zeroBytes, alignof(float));
@@ -295,6 +315,12 @@ static void Disconnect(maudContext* context, maudWasapiStream* entry)
     }
     maudStreamCore* core = entry->core;
     *entry = (maudWasapiStream){.core = core};
+}
+
+static void Disconnect(maudContext* context, maudWasapiStream* entry)
+{
+    Shut(entry);
+    Free(context, entry);
 }
 
 // The stream's device as an IMMDevice, or NULL.
@@ -567,12 +593,18 @@ void maudWasapiDetachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudWasapiStream* entry = EntryOf(context, slot);
     Stop(entry);
-    Disconnect(context, entry);
+    Shut(entry);
+}
+
+void maudWasapiReleaseStream(maudContext* context, maudStreamSlot* slot)
+{
+    Free(context, EntryOf(context, slot));
 }
 
 void maudWasapiRetargetStream(maudContext* context, maudStreamSlot* slot)
 {
     maudWasapiDetachStream(context, slot);
+    maudWasapiReleaseStream(context, slot);
     // A failure leaves the stream without a client; the drain tries
     // again while it runs.
     if (Open(context, slot) == maud_success && Running(slot))
