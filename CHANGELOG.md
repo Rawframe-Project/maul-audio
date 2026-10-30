@@ -5,6 +5,20 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.5.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.4.0...v0.5.0) (2026-10-30)
+
+0.5.0 ends the review of the API before 1.0.0 ([#150](https://github.com/Rawframe-Project/maul-audio/issues/150)): the last calls and defs that did not follow the Maul family's rules are renamed or corrected. No backend changes what it does (the offline backend's setters are only renamed), so the device checklist on real hardware, which runs before a release that changes a backend, is not run for it. Successful calls, the golden renders and the office bake are unchanged.
+
+### Changed
+
+- **Breaking:** the two calls that choose the spatializer's probe sets are named after the spatializer: `maudProbeSet_UseForPathing` is `maudSpatializer_SetPathingProbeSet` and `maudProbeSet_UseBakedReverb` is `maudSpatializer_SetReverbProbeSet`. Their parameters, results and errors are the same, and the null id still takes a set out of use ([#183](https://github.com/Rawframe-Project/maul-audio/pull/183)).
+- **Breaking:** the four calls that script an offline device are named after it: `maudDevice_SetOfflineDefault`, `maudDevice_SetOfflineForm`, `maudDevice_SetOfflineFormat` and `maudDevice_SetOfflineSpatializer` are `maudOfflineDevice_SetDefault`, `maudOfflineDevice_SetForm`, `maudOfflineDevice_SetFormat` and `maudOfflineDevice_SetSpatializer`, with the same parameters and results ([#191](https://github.com/Rawframe-Project/maul-audio/pull/191)).
+- **Breaking:** `maudBinauralDef` and `maudBinauralDecoderDef` have no `version` field, and their creations no longer return `maud_errorVersion`. Both take an HRTF set, and `maudLoadHrtf` already refuses headers of another release. A program that builds them with `maudDefaultBinauralDef` and `maudDefaultBinauralDecoderDef` changes nothing; one that set `version` itself removes that line. The two defaults are library functions now, and `MAUD_BINAURAL_DEF_COOKIE` and `MAUD_BINAURAL_DECODER_DEF_COOKIE` are gone ([#190](https://github.com/Rawframe-Project/maul-audio/pull/190)).
+
+### Fixed
+
+- **Breaking:** `maudSource_GetDirectResult` and `maudSpatializer_GetReverbResult` return `maud_errorState` instead of `maud_errorInvalid` before the spatializer has latched its first step. An audio thread that starts before the first step was told on its first blocks that it had passed a bad argument; it now reads that the results are not there yet. The results still read zero. A host that recognized those early blocks by `maud_errorInvalid` checks for `maud_errorState` ([#189](https://github.com/Rawframe-Project/maul-audio/pull/189)).
+
 ## [0.4.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.3.0...v0.4.0) (2026-10-29)
 
 0.4.0 makes a refused call leave silence or zeros behind, never data from an earlier call. It changes no backend. Successful calls, the golden renders and the office bake are unchanged. The device checklist on real hardware is waived by the owner for releases through 2026-10-29, so 0.4.0 ships on its other gates, and the checklist runs in [#161](https://github.com/Rawframe-Project/maul-audio/issues/161).
