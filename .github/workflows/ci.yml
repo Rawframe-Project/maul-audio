@@ -396,11 +396,13 @@ jobs:
   # application built by R8 without Gradle. The emulator plays without a
   # host audio connection and refuses the shell's recording, so capture is
   # tested to its refusal. The runner carries the SDK and the NDK. The
-  # emulator and its system image are pinned, and a cache keyed by the
-  # pins holds them as the SDK manager installed them: a run downloads
-  # them from the SDK repository only on a miss, which main's runs then
-  # save. A miss that installs other revisions than the pins fails, naming
-  # them, so the pins move in a pull request of their own.
+  # emulator and its system image are pinned to their archives in the SDK
+  # repository, by URL and sha256, and a cache keyed by the pins holds
+  # them unpacked: a run downloads the archives only on a miss, checks
+  # their sums, and main's runs then save them. The SDK manager would
+  # install whatever its channel holds that day, so it installs neither.
+  # Moving a pin takes the new archive's URL and sha256 (its index,
+  # repository2-3.xml, gives the sha1 to check the download against).
   android-emulator:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -414,7 +416,11 @@ jobs:
       ANDROID_AVD_HOME: /home/runner/.android/avd
       MAUD_REQUIRE_AAUDIO: 1
       EMULATOR_REVISION: 37.2.13
+      EMULATOR_ARCHIVE: https://dl.google.com/android/repository/emulator-linux_x64-16740729.zip
+      EMULATOR_SHA256: cbc7c3cfb83220b8a0f9c513fdab557712e74d339ec19ddffa43f23350ae9bdd
       SYSTEM_IMAGE_REVISION: "16"
+      SYSTEM_IMAGE_ARCHIVE: https://dl.google.com/android/repository/sys-img/google_apis/x86_64-30_r16.zip
+      SYSTEM_IMAGE_SHA256: daae27654be74ae83a484daea4db2c0c77b4f4ad661a645bd5f36d96ce03e4d5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -433,7 +439,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images/android-30/google_apis/x86_64
-          key: android-emulator-${{ env.EMULATOR_REVISION }}-android-30-google_apis-x86_64-${{ env.SYSTEM_IMAGE_REVISION }}
+          key: android-emulator-${{ env.EMULATOR_SHA256 }}-${{ env.SYSTEM_IMAGE_SHA256 }}
       - name: Boot the emulator
         timeout-minutes: 15
         env:
@@ -452,13 +458,19 @@ jobs:
           mkdir -p "$ANDROID_AVD_HOME"
           image="$ANDROID_HOME/system-images/android-30/google_apis/x86_64"
           if [ "$SDK_CACHE_HIT" != true ]; then
-            "$tools/sdkmanager" --install emulator "system-images;android-30;google_apis;x86_64" >/dev/null
+            unpack() { # archive URL, its sha256, the directory it unpacks into
+              curl -fsSL -o "$RUNNER_TEMP/package.zip" "$1"
+              echo "$2  $RUNNER_TEMP/package.zip" | sha256sum -c --quiet ||
+                { echo "::error::$1 is not the archive pinned by its sha256"; exit 1; }
+              mkdir -p "$3"
+              unzip -q "$RUNNER_TEMP/package.zip" -d "$3"
+              rm "$RUNNER_TEMP/package.zip"
+            }
+            rm -rf "$image"
+            unpack "$EMULATOR_ARCHIVE" "$EMULATOR_SHA256" "$ANDROID_HOME"
+            unpack "$SYSTEM_IMAGE_ARCHIVE" "$SYSTEM_IMAGE_SHA256" "${image%/*}"
           fi
-          revision() {
-            python3 -c 'import sys, xml.etree.ElementTree as E
-          r = next(E.parse(sys.argv[1]).getroot().iter("revision"))
-          print(".".join(x.text for x in r if x.tag in ("major", "minor", "micro")))' "$1/package.xml"
-          }
+          revision() { sed -n 's/^Pkg.Revision=//p' "$1/source.properties"; }
           emulator_revision=$(revision "$ANDROID_HOME/emulator")
           image_revision=$(revision "$image")
           if [ "$emulator_revision" != "$EMULATOR_REVISION" ] || [ "$image_revision" != "$SYSTEM_IMAGE_REVISION" ]; then
@@ -486,7 +498,7 @@ jobs:
           path: |
             /usr/local/lib/android/sdk/emulator
             /usr/local/lib/android/sdk/system-images/android-30/google_apis/x86_64
-          key: android-emulator-${{ env.EMULATOR_REVISION }}-android-30-google_apis-x86_64-${{ env.SYSTEM_IMAGE_REVISION }}
+          key: android-emulator-${{ env.EMULATOR_SHA256 }}-${{ env.SYSTEM_IMAGE_SHA256 }}
       - name: Build
         run: |
           cmake --preset android-emulator
