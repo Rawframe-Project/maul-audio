@@ -137,8 +137,9 @@ extern "C"
     ///
     /// @param context     The context.
     /// @param direction   Output or input devices.
-    /// @param idsOut      Receives up to capacity ids. May be NULL when
-    ///                    capacity is 0.
+    /// @param idsOut      Receives up to capacity ids, the null id in the
+    ///                    room past them and in all of it on failure. May
+    ///                    be NULL when capacity is 0.
     /// @param capacity    The room in idsOut.
     /// @param countOut    Receives the number of devices, which may exceed
     ///                    capacity; 0 on failure.
@@ -169,12 +170,14 @@ extern "C"
     ///
     /// @param context    The context.
     /// @param device     The device.
-    /// @param bytesOut   Receives the name. May be NULL when capacity is 0.
+    /// @param bytesOut   Receives the name, zeros in the room past it and
+    ///                   in all of it on failure. May be NULL when capacity
+    ///                   is 0.
     /// @param capacity   The room in bytesOut.
     /// @param lengthOut  Receives the name's length in bytes: the length
     ///                   needed when it does not fit, 0 on other failures.
     /// @return `maud_success`; `maud_errorCapacity` when the name does not
-    ///         fit, with nothing copied and lengthOut set; `maud_errorStale`;
+    ///         fit, with zeros copied and lengthOut set; `maud_errorStale`;
     ///         `maud_errorInvalid` for a NULL pointer where one is required.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
@@ -189,12 +192,14 @@ extern "C"
     ///
     /// @param context    The context.
     /// @param device     The device.
-    /// @param bytesOut   Receives the key. May be NULL when capacity is 0.
+    /// @param bytesOut   Receives the key, zeros in the room past it and in
+    ///                   all of it on failure. May be NULL when capacity is
+    ///                   0.
     /// @param capacity   The room in bytesOut.
     /// @param lengthOut  Receives the key's length in bytes: the length
     ///                   needed when it does not fit, 0 on other failures.
     /// @return `maud_success`; `maud_errorCapacity` when the key does not
-    ///         fit, with nothing copied and lengthOut set; `maud_errorStale`;
+    ///         fit, with zeros copied and lengthOut set; `maud_errorStale`;
     ///         `maud_errorInvalid` for a NULL pointer where one is required.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.

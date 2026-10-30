@@ -128,10 +128,15 @@ void maudSetDefaultDevice(maudContext* context, maudDeviceRole role, maudDeviceI
 maudResult maudContext_GetDevices(const maudContext* context, maudDirection direction,
                                   maudDeviceId* idsOut, uint32_t capacity, uint32_t* countOut)
 {
-    // Cleared first, so a failure leaves zero.
+    // Cleared first, so a failure leaves zero, and so does every id past
+    // the devices listed.
     if (countOut != nullptr)
     {
         *countOut = 0;
+    }
+    if (idsOut != nullptr && capacity != 0)
+    {
+        memset(idsOut, 0, (size_t)capacity * sizeof(*idsOut));
     }
     if (context == nullptr || countOut == nullptr || (idsOut == nullptr && capacity != 0) ||
         direction > maud_directionInput)
@@ -182,6 +187,12 @@ maudResult maudDevice_GetInfo(const maudContext* context, maudDeviceId device,
 static maudResult CopyText(const maudContext* context, maudDeviceId device, bool key,
                            char* bytesOut, size_t capacity, size_t* lengthOut)
 {
+    // Cleared first, so a failure leaves zero, and so does every byte past
+    // the text.
+    if (bytesOut != nullptr && capacity != 0)
+    {
+        memset(bytesOut, 0, capacity);
+    }
     if (context == nullptr || lengthOut == nullptr || (bytesOut == nullptr && capacity != 0))
     {
         return maud_errorInvalid;
