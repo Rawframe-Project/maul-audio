@@ -5,6 +5,23 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.6.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.5.0...v0.6.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **stream:** maudStream_Render and maudStream_RenderObjects write silence over their frames on any failure but a call back in and a NULL context or stale stream, and maudStream_RenderObjects clears each record but its samples pointer, with silence in its frames, on any failure but a call back in.
+* **context:** a maud_errorBusy refusal of maudContext_NextNotification leaves its record as it was instead of zeroing it.
+* **device:** maudContext_GetDevices writes the null id over all of idsOut's capacity, and maudDevice_GetName and maudDevice_GetKey write zeros over all of bytesOut's capacity, before they answer; maud_errorCapacity leaves zeros where it left the bytes as they were.
+* **spatializer:** maudProbeSet_GetInfo writes count zero points over pointsOut on any failure, where it used to leave them as they were.
+
+### Fixed
+
+* **context:** keep a notification record on a call back in ([#215](https://github.com/Rawframe-Project/maul-audio/issues/215)) ([e33d6f1](https://github.com/Rawframe-Project/maul-audio/commit/e33d6f1da7a817a366afa52b280aeec8709d3fb9))
+* **device:** clear the device list and its names before answering ([#207](https://github.com/Rawframe-Project/maul-audio/issues/207)) ([55f9c56](https://github.com/Rawframe-Project/maul-audio/commit/55f9c5677be2b55cf0a6f96f50a611c3e3fd903f)), closes [#206](https://github.com/Rawframe-Project/maul-audio/issues/206)
+* **spatializer:** clear a probe set's points when reading them fails ([#204](https://github.com/Rawframe-Project/maul-audio/issues/204)) ([af727d9](https://github.com/Rawframe-Project/maul-audio/commit/af727d9e64bb432b27a63ab3165ee79cff5ee0b7)), closes [#199](https://github.com/Rawframe-Project/maul-audio/issues/199)
+* **stream:** silence the frames of a refused render ([#216](https://github.com/Rawframe-Project/maul-audio/issues/216)) ([a8179cd](https://github.com/Rawframe-Project/maul-audio/commit/a8179cd0419ac07a70497b4cb2272c025be8781a)), closes [#208](https://github.com/Rawframe-Project/maul-audio/issues/208)
+
 ## [0.5.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.4.0...v0.5.0) (2026-10-30)
 
 0.5.0 ends the review of the API before 1.0.0 ([#150](https://github.com/Rawframe-Project/maul-audio/issues/150)): the last calls and defs that did not follow the Maul family's rules are renamed or corrected. No backend changes what it does (the offline backend's setters are only renamed), so the device checklist on real hardware, which runs before a release that changes a backend, is not run for it. Successful calls, the golden renders and the office bake are unchanged.
