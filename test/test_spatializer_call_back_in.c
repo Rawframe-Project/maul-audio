@@ -8,9 +8,11 @@
 // that changes the spatializer is refused with maud_errorBusy and
 // counted as misuse, maudDestroySpatializer does nothing, and the outer
 // call goes on as if nothing happened. The calls the hooks may make (the
-// rendering side, the misuse count) work from them. Each invalid
-// argument to the functions that change it counts once; a stale id, a
-// malformed bake and the queries do not.
+// rendering side, the misuse count) work from them. A set being
+// destroyed is stale before its memory goes back to the host, so a free
+// hook that reads it back finds it gone. Each invalid argument to the
+// functions that change it counts once; a stale id, a malformed bake and
+// the queries do not.
 
 #include "test_harness.h"
 
@@ -48,6 +50,11 @@ static Hook s_armed;
 static int s_refused;
 static uint64_t s_counted;
 static bool s_allowed;
+// A set the free hook reads back once, after freeing a block, and what
+// the read returned.
+static maudProbeSetId s_readSet;
+static bool s_readBack;
+static maudResult s_readResult;
 
 static maudProbeSetDef SetDef(void)
 {
@@ -157,6 +164,14 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
     void* raw;
     memcpy(&raw, (unsigned char*)memory - sizeof(void*), sizeof(void*));
     free(raw);
+    // As a hook that reports what it released might.
+    if (s_readBack)
+    {
+        s_readBack = false;
+        maudProbeSetInfo info;
+        maudVector3 points[4];
+        s_readResult = maudProbeSet_GetInfo(s_s, s_readSet, 0, &info, points, 4);
+    }
 }
 
 static maudScene* Office(void)
@@ -246,6 +261,19 @@ static void TestAllocator(void)
     CHECK(maudLoadProbeSet(s_s, s_bytes, s_size, &set) == maud_success && Fired(),
           "loading a bake");
     CHECK(maudDestroyProbeSet(s_s, set) == maud_success, "the loaded set destroyed");
+}
+
+// The first block a set's destruction frees is its points; read back
+// after that, a set still live would give them from freed memory.
+static void TestReadBack(void)
+{
+    maudProbeSetDef def = SetDef();
+    CHECK(maudCreateProbeSet(s_s, &def, &s_readSet) == maud_success, "a set to destroy");
+    s_readBack = true;
+    s_readResult = maud_success;
+    CHECK(maudDestroyProbeSet(s_s, s_readSet) == maud_success && !s_readBack &&
+              s_readResult == maud_errorStale,
+          "a free hook reading the set it frees back finds it stale");
 }
 
 // Each invalid argument to a function that changes a spatializer,
@@ -361,6 +389,7 @@ int main(void)
     CHECK(maudSpatializer_GetMisuse(s_s) == 0, "no misuse yet");
     TestHooks();
     TestAllocator();
+    TestReadBack();
     TestEachCounted();
     TestCounts();
     TestDestroy();
