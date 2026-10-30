@@ -107,7 +107,7 @@ maudResult maudDestroyOfflineDevice(maudContext* context, maudDeviceId device)
     return maud_success;
 }
 
-maudResult maudDevice_SetOfflineDefault(maudContext* context, maudDeviceId device,
+maudResult maudOfflineDevice_SetDefault(maudContext* context, maudDeviceId device,
                                         maudDeviceRole role)
 {
     maudResult result = CheckOffline(context);
@@ -128,7 +128,7 @@ maudResult maudDevice_SetOfflineDefault(maudContext* context, maudDeviceId devic
     return maud_success;
 }
 
-maudResult maudDevice_SetOfflineForm(maudContext* context, maudDeviceId device, maudDeviceForm form)
+maudResult maudOfflineDevice_SetForm(maudContext* context, maudDeviceId device, maudDeviceForm form)
 {
     maudResult result = CheckOffline(context);
     if (result != maud_success)
@@ -149,7 +149,7 @@ maudResult maudDevice_SetOfflineForm(maudContext* context, maudDeviceId device, 
     return maud_success;
 }
 
-maudResult maudDevice_SetOfflineFormat(maudContext* context, maudDeviceId device,
+maudResult maudOfflineDevice_SetFormat(maudContext* context, maudDeviceId device,
                                        maudChannelLayout layout, uint32_t sampleRate)
 {
     maudResult result = CheckOffline(context);
@@ -178,7 +178,7 @@ maudResult maudDevice_SetOfflineFormat(maudContext* context, maudDeviceId device
     return maud_success;
 }
 
-maudResult maudDevice_SetOfflineSpatializer(maudContext* context, maudDeviceId device,
+maudResult maudOfflineDevice_SetSpatializer(maudContext* context, maudDeviceId device,
                                             maudPlatformSpatializer spatializer, bool headTracking,
                                             uint32_t objectCount)
 {

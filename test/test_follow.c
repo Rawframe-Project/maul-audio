@@ -106,18 +106,18 @@ int main(void)
     // 44.1 kHz.
     maudDeviceId same = Output(context, 48000, "s1");
     maudDeviceId other = Output(context, 44100, "s2");
-    CHECK(maudDevice_SetOfflineDefault(context, same, maud_roleGeneral) == maud_success &&
+    CHECK(maudOfflineDevice_SetDefault(context, same, maud_roleGeneral) == maud_success &&
               Count(context, maud_notifyStreamMoved) == 1 && s_retargets == 0,
           "moved at the same rate: nothing to reopen");
     maudStreamFormat format = {0};
-    CHECK(maudDevice_SetOfflineDefault(context, other, maud_roleGeneral) == maud_success &&
+    CHECK(maudOfflineDevice_SetDefault(context, other, maud_roleGeneral) == maud_success &&
               s_retargets == 1 && maudStream_GetFormat(context, stream, &format) == maud_success &&
               format.sampleRate == 44100,
           "moved to another rate: reopened at it");
     // A duplex stream keeps the one rate of its halves: its output, moved
     // to a device at another rate, is converted by the platform instead,
     // with no format change.
-    CHECK(maudDevice_SetOfflineDefault(context, same, maud_roleGeneral) == maud_success,
+    CHECK(maudOfflineDevice_SetDefault(context, same, maud_roleGeneral) == maud_success,
           "back at 48 kHz");
     maudStreamDef dd = maudDefaultStreamDef();
     dd.direction = maud_directionDuplex;
@@ -130,7 +130,7 @@ int main(void)
           "a duplex stream at 48 kHz");
     (void)Count(context, maud_notifyStreamMoved);
     s_retargets = 0;
-    CHECK(maudDevice_SetOfflineDefault(context, other, maud_roleGeneral) == maud_success,
+    CHECK(maudOfflineDevice_SetDefault(context, other, maud_roleGeneral) == maud_success,
           "its output's default moves to 44.1 kHz");
     uint32_t changed = 0;
     maudNotification record;

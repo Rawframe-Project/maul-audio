@@ -61,12 +61,12 @@ static int TryAll(void)
     refused += maudCreateOfflineDevice(s_context, &deviceDef, &device) == maud_errorBusy;
     refused += maudDestroyOfflineDevice(s_context, s_device) == maud_errorBusy;
     refused +=
-        maudDevice_SetOfflineDefault(s_context, s_device, maud_roleGeneral) == maud_errorBusy;
+        maudOfflineDevice_SetDefault(s_context, s_device, maud_roleGeneral) == maud_errorBusy;
     refused +=
-        maudDevice_SetOfflineForm(s_context, s_device, maud_formHeadphones) == maud_errorBusy;
+        maudOfflineDevice_SetForm(s_context, s_device, maud_formHeadphones) == maud_errorBusy;
     refused +=
-        maudDevice_SetOfflineFormat(s_context, s_device, maud_layoutMono, 44100) == maud_errorBusy;
-    refused += maudDevice_SetOfflineSpatializer(s_context, s_device, maud_spatializerUnknown, false,
+        maudOfflineDevice_SetFormat(s_context, s_device, maud_layoutMono, 44100) == maud_errorBusy;
+    refused += maudOfflineDevice_SetSpatializer(s_context, s_device, maud_spatializerUnknown, false,
                                                 0) == maud_errorBusy;
     refused += maudDestroyContext(s_context) == maud_errorBusy;
     return refused;

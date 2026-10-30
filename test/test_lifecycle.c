@@ -119,7 +119,7 @@ static void TestLostDevice(void)
     deviceDef.keyLength = 7;
     maudDeviceId device = {0, 0};
     CHECK(maudCreateOfflineDevice(s_context, &deviceDef, &device) == maud_success, "plug another");
-    CHECK(maudDevice_SetOfflineDefault(s_context, device, maud_roleGeneral) == maud_success,
+    CHECK(maudOfflineDevice_SetDefault(s_context, device, maud_roleGeneral) == maud_success,
           "make it the default");
     CHECK(ReasonOf(stream) == maud_suspendHost, "back while suspended, it waits for the host");
     CHECK(maudContext_SetSuspended(s_context, false) == maud_success, "resume");

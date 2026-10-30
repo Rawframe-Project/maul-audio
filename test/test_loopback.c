@@ -120,11 +120,11 @@ static void TestDevices(void)
               maudStream_GetStatus(context, stream, &status) == maud_success &&
               SameDevice(status.device, initial),
           "the null id takes the default output");
-    CHECK(maudDevice_SetOfflineDefault(context, second, maud_roleGeneral) == maud_success &&
+    CHECK(maudOfflineDevice_SetDefault(context, second, maud_roleGeneral) == maud_success &&
               maudStream_GetStatus(context, stream, &status) == maud_success &&
               SameDevice(status.device, second),
           "and follows it");
-    CHECK(maudDevice_SetOfflineDefault(context, microphone, maud_roleGeneral) == maud_success &&
+    CHECK(maudOfflineDevice_SetDefault(context, microphone, maud_roleGeneral) == maud_success &&
               maudStream_GetStatus(context, stream, &status) == maud_success &&
               SameDevice(status.device, second),
           "not the default input");
@@ -143,7 +143,7 @@ static void TestLost(void)
               maud_success,
           "the default output");
     maudDeviceId second = AddDevice(context, maud_directionOutput);
-    CHECK(maudDevice_SetOfflineDefault(context, second, maud_roleGeneral) == maud_success,
+    CHECK(maudOfflineDevice_SetDefault(context, second, maud_roleGeneral) == maud_success,
           "the second output is the default");
     Recorder pinnedHeard = {0};
     Recorder followerHeard = {0};
