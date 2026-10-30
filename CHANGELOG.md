@@ -7,20 +7,14 @@ may change the API, the ABI and every file format.
 
 ## [0.6.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.5.0...v0.6.0) (2026-10-30)
 
+0.6.0 makes four more calls leave zeros or silence behind when they fail, never data from an earlier call, as the Maul family's rule for outputs asks. A call refused as busy because the object's own callback made it is the exception: it writes none of its outputs, since the call it interrupted may still be filling them. No backend changes what it does, so the device checklist on real hardware, which runs before a release that changes a backend, is not run for it. The golden renders and the office bake are unchanged.
 
-### ⚠ BREAKING CHANGES
+### Changed
 
-* **stream:** maudStream_Render and maudStream_RenderObjects write silence over their frames on any failure but a call back in and a NULL context or stale stream, and maudStream_RenderObjects clears each record but its samples pointer, with silence in its frames, on any failure but a call back in.
-* **context:** a maud_errorBusy refusal of maudContext_NextNotification leaves its record as it was instead of zeroing it.
-* **device:** maudContext_GetDevices writes the null id over all of idsOut's capacity, and maudDevice_GetName and maudDevice_GetKey write zeros over all of bytesOut's capacity, before they answer; maud_errorCapacity leaves zeros where it left the bytes as they were.
-* **spatializer:** maudProbeSet_GetInfo writes count zero points over pointsOut on any failure, where it used to leave them as they were.
-
-### Fixed
-
-* **context:** keep a notification record on a call back in ([#215](https://github.com/Rawframe-Project/maul-audio/issues/215)) ([e33d6f1](https://github.com/Rawframe-Project/maul-audio/commit/e33d6f1da7a817a366afa52b280aeec8709d3fb9))
-* **device:** clear the device list and its names before answering ([#207](https://github.com/Rawframe-Project/maul-audio/issues/207)) ([55f9c56](https://github.com/Rawframe-Project/maul-audio/commit/55f9c5677be2b55cf0a6f96f50a611c3e3fd903f)), closes [#206](https://github.com/Rawframe-Project/maul-audio/issues/206)
-* **spatializer:** clear a probe set's points when reading them fails ([#204](https://github.com/Rawframe-Project/maul-audio/issues/204)) ([af727d9](https://github.com/Rawframe-Project/maul-audio/commit/af727d9e64bb432b27a63ab3165ee79cff5ee0b7)), closes [#199](https://github.com/Rawframe-Project/maul-audio/issues/199)
-* **stream:** silence the frames of a refused render ([#216](https://github.com/Rawframe-Project/maul-audio/issues/216)) ([a8179cd](https://github.com/Rawframe-Project/maul-audio/commit/a8179cd0419ac07a70497b4cb2272c025be8781a)), closes [#208](https://github.com/Rawframe-Project/maul-audio/issues/208)
+- **Breaking:** `maudStream_Render` writes silence over `frameCount` frames of the stream's channels on any failure but a call back in, where it used to leave the frames as they were. A program that missed one status, on a stopped stream or a call of the wrong kind, played the previous block again; it now hears silence. A call back in is a `maud_errorBusy` refusal of a render made from the stream's own callback or from the context's allocator. A render refused because another thread holds the stream is silenced, even when it comes from inside another stream's callback. A NULL context or a stale stream leaves the frames as they were, since no stream gives their size. `maudStream_RenderObjects` silences the bed the same way. On any failure but a call back in, NULL and stale included, it clears each object record and the frames its `samples` points to, keeping the pointer ([#216](https://github.com/Rawframe-Project/maul-audio/pull/216)).
+- **Breaking:** `maudContext_NextNotification` leaves its record as it was when it is refused as busy from one of the context's own callbacks (a stream's callback or the allocator), where it used to zero it. The interrupted code may still be reading that record. Every other failure still zeroes it ([#215](https://github.com/Rawframe-Project/maul-audio/pull/215)).
+- **Breaking:** `maudContext_GetDevices` writes the null id over all of `idsOut`'s capacity before it answers, so the ids past the devices listed, and every id after a failure, are null instead of an earlier call's. `maudDevice_GetName` and `maudDevice_GetKey` write zeros over all of `bytesOut`'s capacity first. A stale device leaves zeros instead of an earlier device's name or key, and a text longer than the room (`maud_errorCapacity`) leaves zeros, with the length it needs in `lengthOut` ([#207](https://github.com/Rawframe-Project/maul-audio/pull/207)).
+- **Breaking:** `maudProbeSet_GetInfo` writes `count` zero points over `pointsOut` on any failure, where it used to leave them as they were. A caller that reads a set's points into a buffer it reuses, and misses one refused call, no longer takes the previous read's points for this set's ([#204](https://github.com/Rawframe-Project/maul-audio/pull/204)).
 
 ## [0.5.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.4.0...v0.5.0) (2026-10-30)
 
