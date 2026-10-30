@@ -55,6 +55,12 @@ void maudDestroyProbeSets(maudProbeSets* sets)
     {
         return;
     }
+    // Every set is stale before any of their memory goes back to the
+    // host, so a free hook that reads one back finds it gone.
+    for (uint32_t i = 0; i < sets->capacity; ++i)
+    {
+        sets->slots[i].live = false;
+    }
     for (uint32_t i = 0; i < sets->capacity; ++i)
     {
         maudReleaseProbeGraph(&sets->allocator, &sets->slots[i].graph);
@@ -125,11 +131,13 @@ maudResult maudRemoveProbeSet(maudProbeSets* sets, maudProbeSetId set)
     {
         return result;
     }
-    maudReleaseProbeGraph(&sets->allocator, &slot->graph);
-    maudReleaseProbeBake(&sets->allocator, &slot->bake);
+    // Stale before its memory goes back to the host, so a free hook that
+    // reads the set back finds it gone, not the blocks it is freeing.
     slot->live = false;
     slot->generation = slot->generation == UINT32_MAX ? 1 : slot->generation + 1;
     sets->free[sets->freeCount++] = set.index1 - 1;
+    maudReleaseProbeGraph(&sets->allocator, &slot->graph);
+    maudReleaseProbeBake(&sets->allocator, &slot->bake);
     return maud_success;
 }
 

@@ -630,7 +630,9 @@ extern "C"
                                                           const maudProbeSetDef* def,
                                                           maudProbeSetId* setOut);
 
-    /// Destroys a probe set.
+    /// Destroys a probe set. Its id is stale before its memory goes back to
+    /// the allocator, so the allocator's free finds the set gone if it
+    /// reads it back.
     ///
     /// @param spatializer  The spatializer.
     /// @param set          The set.
