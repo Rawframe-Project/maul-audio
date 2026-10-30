@@ -5,8 +5,8 @@
 // backend: from a stream's callback and from the context's allocator,
 // every call that changes the context is refused with maud_errorBusy
 // and counted as misuse, rendering the stream again from its own
-// callback included, a refused notification leaving its record as it
-// was, and the outer call goes on as if nothing happened.
+// callback included, its frames and a refused notification's record
+// kept as they were, and the outer call goes on as if nothing happened.
 // The calls the callback may make (the stream queries, the misuse count,
 // the host clock, rendering another stream) work from it.
 
@@ -53,7 +53,17 @@ static int TryAll(void)
     refused += maudDestroyStream(s_context, s_self) == maud_errorBusy;
     refused += maudStream_Start(s_context, s_self) == maud_errorBusy;
     refused += maudStream_Stop(s_context, s_self) == maud_errorBusy;
-    refused += maudStream_Render(s_context, s_self, frames, PERIOD) == maud_errorBusy;
+    // A call back in keeps the frames, from the allocator too.
+    for (uint32_t i = 0; i < 2 * PERIOD; ++i)
+    {
+        frames[i] = 0.5f;
+    }
+    bool framesKept = maudStream_Render(s_context, s_self, frames, PERIOD) == maud_errorBusy;
+    for (uint32_t i = 0; i < 2 * PERIOD; ++i)
+    {
+        framesKept = framesKept && frames[i] == 0.5f;
+    }
+    refused += framesKept;
     refused += maudContext_Unlock(s_context) == maud_errorBusy;
     refused += maudContext_SetSuspended(s_context, true) == maud_errorBusy;
     memset(&record, 0xa5, sizeof(record));
