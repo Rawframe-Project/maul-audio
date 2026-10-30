@@ -395,8 +395,12 @@ jobs:
   # takes) on x86_64 with KVM: the suites through adb, the Java half as an
   # application built by R8 without Gradle. The emulator plays without a
   # host audio connection and refuses the shell's recording, so capture is
-  # tested to its refusal. The runner carries the SDK and the NDK; the
-  # emulator and its system image come from the SDK manager.
+  # tested to its refusal. The runner carries the SDK and the NDK. The
+  # emulator and its system image are pinned, and a cache keyed by the
+  # pins holds them as the SDK manager installed them: a run downloads
+  # them from the SDK repository only on a miss, which main's runs then
+  # save. A miss that installs other revisions than the pins fails, naming
+  # them, so the pins move in a pull request of their own.
   android-emulator:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -409,12 +413,31 @@ jobs:
       ANDROID_SERIAL: emulator-5554
       ANDROID_AVD_HOME: /home/runner/.android/avd
       MAUD_REQUIRE_AAUDIO: 1
+      EMULATOR_REVISION: 37.2.13
+      SYSTEM_IMAGE_REVISION: "16"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The runner's own emulator goes first, so a restore never mixes
+      # with it.
+      - name: Clear the runner's emulator
+        run: |
+          [ "$ANDROID_HOME" = /usr/local/lib/android/sdk ] ||
+            { echo "::error::the SDK moved to $ANDROID_HOME; move the cache paths with it"; exit 1; }
+          rm -rf "$ANDROID_HOME/emulator"
+      - name: Restore the emulator and its system image
+        id: sdk-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/system-images/android-30/google_apis/x86_64
+          key: android-emulator-${{ env.EMULATOR_REVISION }}-android-30-google_apis-x86_64-${{ env.SYSTEM_IMAGE_REVISION }}
       - name: Boot the emulator
         timeout-minutes: 15
+        env:
+          SDK_CACHE_HIT: ${{ steps.sdk-cache.outputs.cache-hit }}
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
             sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
@@ -427,7 +450,21 @@ jobs:
           [ -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ] ||
             "$tools/sdkmanager" --install "ndk;${ANDROID_NDK_HOME##*/}" >/dev/null
           mkdir -p "$ANDROID_AVD_HOME"
-          "$tools/sdkmanager" --install emulator "system-images;android-30;google_apis;x86_64" >/dev/null
+          image="$ANDROID_HOME/system-images/android-30/google_apis/x86_64"
+          if [ "$SDK_CACHE_HIT" != true ]; then
+            "$tools/sdkmanager" --install emulator "system-images;android-30;google_apis;x86_64" >/dev/null
+          fi
+          revision() {
+            python3 -c 'import sys, xml.etree.ElementTree as E
+          r = next(E.parse(sys.argv[1]).getroot().iter("revision"))
+          print(".".join(x.text for x in r if x.tag in ("major", "minor", "micro")))' "$1/package.xml"
+          }
+          emulator_revision=$(revision "$ANDROID_HOME/emulator")
+          image_revision=$(revision "$image")
+          if [ "$emulator_revision" != "$EMULATOR_REVISION" ] || [ "$image_revision" != "$SYSTEM_IMAGE_REVISION" ]; then
+            echo "::error::emulator $emulator_revision and system image $image_revision installed, $EMULATOR_REVISION and $SYSTEM_IMAGE_REVISION pinned: move the pins"
+            exit 1
+          fi
           echo no | "$tools/avdmanager" create avd -n maud30 -k "system-images;android-30;google_apis;x86_64" -d pixel_5 >/dev/null
           nohup "$ANDROID_HOME/emulator/emulator" -avd maud30 -no-window -no-boot-anim \
             -no-snapshot -gpu swiftshader_indirect -port 5554 > emulator.log 2>&1 &
@@ -440,6 +477,16 @@ jobs:
           done
           "$adb" shell getprop sys.boot_completed | grep -q 1 || { tail -50 emulator.log; exit 1; }
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+      # Only main's runs save, as the fuzz corpus does: a pull request's
+      # cache would hold another copy for its branch alone.
+      - name: Save the emulator and its system image
+        if: steps.sdk-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/system-images/android-30/google_apis/x86_64
+          key: android-emulator-${{ env.EMULATOR_REVISION }}-android-30-google_apis-x86_64-${{ env.SYSTEM_IMAGE_REVISION }}
       - name: Build
         run: |
           cmake --preset android-emulator
