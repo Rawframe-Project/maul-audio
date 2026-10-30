@@ -472,9 +472,15 @@ extern "C"
     /// @param stream      A started, running output stream of an offline
     ///                    context.
     /// @param framesOut   Room for frameCount interleaved frames. May be NULL
-    ///                    when frameCount is 0. Left as it was on failure:
-    ///                    a call back in from the stream's own callback
-    ///                    fails while the outer call fills these frames.
+    ///                    when frameCount is 0. Silence on failure, except
+    ///                    as the family conventions' rule on outputs
+    ///                    allows (docs/internals/maul-conventions.md): left
+    ///                    as it was when maud_errorBusy refuses a call back
+    ///                    in, from the stream's own callback while this
+    ///                    thread renders it or from the context's
+    ///                    allocator, since the outer call may be filling
+    ///                    these frames; and with a NULL context or a stale
+    ///                    id, when no stream gives their size.
     /// @param frameCount  The number of frames.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
     ///         NULL pointer where frames are due, an input stream or a total

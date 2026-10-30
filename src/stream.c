@@ -383,6 +383,48 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
     return maud_success;
 }
 
+// Whether a busy refusal turned away a call the context's own callbacks
+// made: from its allocator hooks, or from the stream's callback while
+// this thread renders the stream. Such a call's frames may be the ones an
+// outer call is filling. A render another thread holds is not one.
+static bool CalledBackIn(const maudContext* context, maudStreamId stream, maudResult result)
+{
+    if (result != maud_errorBusy || context == nullptr)
+    {
+        return false;
+    }
+    if (maudIsAllocatingThread(context))
+    {
+        return true;
+    }
+    const maudStreamSlot* slot = maudFindStream(context, stream);
+    return slot != nullptr && atomic_load_explicit(&slot->core.renderingThread,
+                                                   memory_order_acquire) == maudCurrentThread();
+}
+
+// Silences the frames of a render the stream refused, so a caller that
+// misses the status plays nothing stale: frameCount frames of the
+// stream's channels. A call back in keeps them. Without the stream (a
+// NULL context, a stale id) nothing knows where the caller's frames end,
+// and nothing is written.
+static void SilenceRefused(const maudContext* context, maudStreamId stream, bool calledBackIn,
+                           float* frames, uint32_t frameCount)
+{
+    if (calledBackIn || context == nullptr || frames == nullptr || frameCount == 0)
+    {
+        return;
+    }
+    const maudStreamSlot* slot = maudFindStream(context, stream);
+    size_t bytes;
+    if (slot == nullptr ||
+        ckd_mul(&bytes, (size_t)frameCount, (size_t)slot->core.period.channelCount) ||
+        ckd_mul(&bytes, bytes, sizeof(float)))
+    {
+        return;
+    }
+    memset(frames, 0, bytes);
+}
+
 static void EndRender(maudStreamCore* core, uint32_t frameCount)
 {
     atomic_fetch_add_explicit(&core->position, frameCount, memory_order_release);
@@ -397,6 +439,8 @@ maudResult maudStream_Render(maudContext* context, maudStreamId stream, float* f
                                     frameCount, &core);
     if (result != maud_success)
     {
+        SilenceRefused(context, stream, CalledBackIn(context, stream, result), framesOut,
+                       frameCount);
         return result;
     }
     maudPullPeriod(&core->period, framesOut, frameCount);
@@ -427,6 +471,7 @@ maudResult maudStream_RenderObjects(maudContext* context, maudStreamId stream, f
     if (context != nullptr && objectsOut == nullptr)
     {
         maudCountMisuse(context);
+        SilenceRefused(context, stream, false, bedOut, frameCount);
         return maud_errorInvalid;
     }
     bool haveFrames = bedOut != nullptr;
@@ -441,6 +486,20 @@ maudResult maudStream_RenderObjects(maudContext* context, maudStreamId stream, f
                     objectCount == 0 ? UINT32_MAX : objectCount, haveFrames, frameCount, &core);
     if (result != maud_success)
     {
+        bool calledBackIn = CalledBackIn(context, stream, result);
+        SilenceRefused(context, stream, calledBackIn, bedOut, frameCount);
+        // The records and their frames have the size the caller gave, so
+        // they clear without the stream; each samples pointer is the
+        // caller's and stays.
+        for (uint32_t i = 0; !calledBackIn && objectsOut != nullptr && i < objectCount; ++i)
+        {
+            float* samples = objectsOut[i].samples;
+            if (samples != nullptr && frameCount != 0)
+            {
+                memset(samples, 0, (size_t)frameCount * sizeof(float));
+            }
+            objectsOut[i] = (maudStreamObject){.samples = samples};
+        }
         return result;
     }
     core->period.availableObjectCount = objectCount;

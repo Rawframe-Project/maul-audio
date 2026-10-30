@@ -43,6 +43,8 @@ if (result == maud_success)
 
 The frame count of a call need not be a multiple of the period: the stream keeps what is left of a period for the next call. Its position and clock advance by exactly the frames rendered.
 
+A refused render writes silence over the frames, so a program that misses a status writes nothing stale. A stopped stream or a call of the wrong kind is refused this way. Two refusals leave the frames as they were. One is a call back in: `maud_errorBusy` for a render from the stream's own callback while the same thread renders it, or from the context's allocator, since the outer call may be filling those frames. A render another thread holds is not one, and its frames are silenced. The other is a NULL context or a stale stream id, when no stream says how many frames the buffer holds. `maudStream_RenderObjects` silences the bed the same way, and on any refusal but a call back in clears each object's record and its frames, keeping its `samples` pointer.
+
 ## Capture and loopback
 
 `maudStream_Feed` hands frames to an input stream, and a loopback stream takes what its device played the same way:
