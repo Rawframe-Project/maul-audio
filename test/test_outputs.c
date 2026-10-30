@@ -173,6 +173,12 @@ static void TestSpatializerCalls(void)
         CHECK(maudProbeSet_GetInfo(owner, staleSet, 0, &info, nullptr, 0) != maud_success &&
                   Zero(&info, sizeof(info)),
               "maudProbeSet_GetInfo clears its info");
+        maudVector3 points[4];
+        FILL(info);
+        FILL(points);
+        CHECK(maudProbeSet_GetInfo(owner, staleSet, 0, &info, points, 4) != maud_success &&
+                  Zero(&info, sizeof(info)) && Zero(points, sizeof(points)),
+              "maudProbeSet_GetInfo clears its info and points");
         size_t size;
         FILL(size);
         CHECK(maudProbeSet_Save(owner, staleSet, nullptr, 0, &size) != maud_success && size == 0,
