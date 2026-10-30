@@ -45,7 +45,13 @@ void maudPostNotification(maudContext* context, const maudNotification* record)
 
 maudResult maudContext_NextNotification(maudContext* context, maudNotification* notificationOut)
 {
-    // Cleared first, so a failure leaves zero.
+    // A call back in writes nothing: the record may be the one the call it
+    // interrupts is filling or its host is reading.
+    if (context != nullptr && maudRefuseControl(context))
+    {
+        return maud_errorBusy;
+    }
+    // Cleared next, so any other failure leaves zero.
     if (notificationOut != nullptr)
     {
         memset(notificationOut, 0, sizeof(*notificationOut));
@@ -53,10 +59,6 @@ maudResult maudContext_NextNotification(maudContext* context, maudNotification* 
     if (context == nullptr || notificationOut == nullptr)
     {
         return maud_errorInvalid;
-    }
-    if (maudRefuseControl(context))
-    {
-        return maud_errorBusy;
     }
     if (context->backend->pump != nullptr)
     {

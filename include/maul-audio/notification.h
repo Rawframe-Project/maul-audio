@@ -82,7 +82,9 @@ extern "C"
     ///
     /// @param context          The context.
     /// @param notificationOut  Receives the record; all zero when the
-    ///                         queue is empty and on failure.
+    ///                         queue is empty and on failure, except a
+    ///                         `maud_errorBusy` refusal, which leaves it as
+    ///                         it was.
     /// @return `maud_success`; `maud_empty` when the queue is drained;
     ///         `maud_errorInvalid` for a NULL pointer; `maud_errorBusy` on a
     ///         thread rendering one of the context's streams or running its

@@ -5,7 +5,8 @@
 // backend: from a stream's callback and from the context's allocator,
 // every call that changes the context is refused with maud_errorBusy
 // and counted as misuse, rendering the stream again from its own
-// callback included, and the outer call goes on as if nothing happened.
+// callback included, a refused notification leaving its record as it
+// was, and the outer call goes on as if nothing happened.
 // The calls the callback may make (the stream queries, the misuse count,
 // the host clock, rendering another stream) work from it.
 
@@ -55,7 +56,10 @@ static int TryAll(void)
     refused += maudStream_Render(s_context, s_self, frames, PERIOD) == maud_errorBusy;
     refused += maudContext_Unlock(s_context) == maud_errorBusy;
     refused += maudContext_SetSuspended(s_context, true) == maud_errorBusy;
-    refused += maudContext_NextNotification(s_context, &record) == maud_errorBusy;
+    memset(&record, 0xa5, sizeof(record));
+    maudNotification kept = record;
+    refused += maudContext_NextNotification(s_context, &record) == maud_errorBusy &&
+               memcmp(&record, &kept, sizeof(record)) == 0;
     refused +=
         maudContext_RequestFocus(s_context, maud_focusLasting, maud_roleGeneral) == maud_errorBusy;
     refused += maudCreateOfflineDevice(s_context, &deviceDef, &device) == maud_errorBusy;
