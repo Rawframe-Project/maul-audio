@@ -438,7 +438,6 @@ jobs:
         with:
           path: |
             /usr/local/lib/android/sdk/emulator
-            !/usr/local/lib/android/sdk/emulator/package.xml
             /usr/local/lib/android/sdk/system-images/android-30/google_apis/x86_64
           key: android-emulator-${{ env.EMULATOR_SHA256 }}-${{ env.SYSTEM_IMAGE_SHA256 }}
       - name: Boot the emulator
@@ -476,8 +475,8 @@ jobs:
           # They still read a system image's source.properties, but
           # avdmanager refuses an emulator without a package.xml: this is
           # the one the SDK manager writes, but the license text. Every run
-          # writes it, hit or miss, so it comes from this text and the cache
-          # holds only what the archives hold.
+          # writes it, hit or miss, so it always comes from this text: a
+          # copy the cache holds is overwritten before anything reads it.
           IFS=. read -r major minor micro <<<"$EMULATOR_REVISION"
           cat >"$ANDROID_HOME/emulator/package.xml" <<XML
           <?xml version="1.0" encoding="UTF-8"?>
@@ -518,7 +517,6 @@ jobs:
         with:
           path: |
             /usr/local/lib/android/sdk/emulator
-            !/usr/local/lib/android/sdk/emulator/package.xml
             /usr/local/lib/android/sdk/system-images/android-30/google_apis/x86_64
           key: android-emulator-${{ env.EMULATOR_SHA256 }}-${{ env.SYSTEM_IMAGE_SHA256 }}
       - name: Build
