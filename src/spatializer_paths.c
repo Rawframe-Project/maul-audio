@@ -214,15 +214,24 @@ static uint32_t FieldFloats(const maudSpatializer* s)
 }
 
 // Bakes a set's estimates, and its fields with reflections, from each
-// probe; false when the allocator fails.
-static bool Bake(maudSpatializer* s, const maudProbeGraph* graph, maudProbeBake* bake)
+// probe; false when the allocator fails, with no bake left. The new bake
+// is built apart and takes the earlier one's place only when whole, and
+// the earlier one is released from a copy after that: host code the
+// work runs, its release among them, reads one whole bake or none, never
+// one being filled or freed.
+static bool Bake(maudSpatializer* s, const maudProbeGraph* graph, maudProbeBake* setBake)
 {
-    maudReleaseProbeBake(&s->allocator, bake);
     uint32_t fieldFloats = FieldFloats(s);
-    if (!maudCreateProbeBake(&s->allocator, graph->count, fieldFloats, bake))
+    maudProbeBake made;
+    bool allocated = maudCreateProbeBake(&s->allocator, graph->count, fieldFloats, &made);
+    maudProbeBake earlier = *setBake;
+    if (!allocated)
     {
+        *setBake = (maudProbeBake){0};
+        maudReleaseProbeBake(&s->allocator, &earlier);
         return false;
     }
+    maudProbeBake* bake = &made;
     for (uint32_t p = 0; p < graph->count; ++p)
     {
         maudReverbResult estimate = {0};
@@ -241,6 +250,8 @@ static bool Bake(maudSpatializer* s, const maudProbeGraph* graph, maudProbeBake*
                    (size_t)fieldFloats * sizeof(float));
         }
     }
+    *setBake = made;
+    maudReleaseProbeBake(&s->allocator, &earlier);
     return true;
 }
 
