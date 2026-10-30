@@ -8,7 +8,9 @@
 // callback included, its frames and a refused notification's record
 // kept as they were, and the outer call goes on as if nothing happened.
 // The calls the callback may make (the stream queries, the misuse count,
-// the host clock, rendering another stream) work from it.
+// the host clock, rendering another stream) work from it. A stream being
+// destroyed is stale before its storage goes back to the allocator, so a
+// free that reads it back finds it gone.
 
 #include "test_harness.h"
 
@@ -36,6 +38,11 @@ static bool s_fromCallback;
 static bool s_fromAllocator;
 static int s_refused;
 static bool s_allowed;
+// A stream the next free reads back, after freeing its block, and what
+// the read returned.
+static maudStreamId s_readBack;
+static bool s_readArmed;
+static maudResult s_readResult;
 
 // Makes every call that changes the context, each one expected to be
 // refused; returns how many were.
@@ -145,6 +152,13 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
     void* raw;
     memcpy(&raw, (unsigned char*)memory - sizeof(void*), sizeof(void*));
     free(raw);
+    // As a free that reports what it released might.
+    if (s_readArmed)
+    {
+        s_readArmed = false;
+        maudStreamStatus status;
+        s_readResult = maudStream_GetStatus(s_context, s_readBack, &status);
+    }
 }
 
 static maudStreamId Open(void* user)
@@ -196,6 +210,20 @@ static void TestFromAllocator(void)
           "the context renders as before");
 }
 
+static void TestReadBack(void)
+{
+    maudStreamDef def = maudDefaultStreamDef();
+    def.mode = maud_modePull;
+    def.periodFrames = PERIOD;
+    def.callback = Fill;
+    CHECK(maudCreateStream(s_context, &def, &s_readBack) == maud_success, "a stream to destroy");
+    s_readArmed = true;
+    s_readResult = maud_success;
+    CHECK(maudDestroyStream(s_context, s_readBack) == maud_success && !s_readArmed &&
+              s_readResult == maud_errorStale,
+          "a free reading the stream it releases back finds it stale");
+}
+
 int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -209,6 +237,7 @@ int main(void)
     s_other = Open(&s_other);
     TestFromCallback();
     TestFromAllocator();
+    TestReadBack();
     CHECK(maudDestroyContext(s_context) == maud_success, "destroy the context");
     return s_failures == 0 ? 0 : 1;
 }

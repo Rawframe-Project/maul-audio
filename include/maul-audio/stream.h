@@ -345,8 +345,10 @@ extern "C"
                                                         const maudStreamDef* def,
                                                         maudStreamId* streamOut);
 
-    /// Destroys a stream. Its id becomes stale. On a platform backend its
-    /// callback has returned for the last time when this returns.
+    /// Destroys a stream. Its id becomes stale, before the stream's memory
+    /// goes back to the allocator, so the allocator's free finds the stream
+    /// gone if it reads it back. On a platform backend its callback has
+    /// returned for the last time when this returns.
     ///
     /// @param context  The context.
     /// @param stream   The stream.
