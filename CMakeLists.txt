@@ -565,10 +565,17 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         add_test(NAME pulse_rate COMMAND test_pulse rate)
         set_tests_properties(pulse_rate PROPERTIES LABELS pulse)
         maul_quarantine(pulse_rate)
+        # The tests that change the server's default, which once stopped
+        # reaching the context for the rest of a run on main (#196):
+        # quarantined likewise, and left out of pulse.
+        add_test(NAME pulse_defaults COMMAND test_pulse defaults)
+        set_tests_properties(pulse_defaults PROPERTIES LABELS pulse)
+        maul_quarantine(pulse_defaults)
         # The test server is the PipeWire daemon's pulse service.
-        set_tests_properties(pulse pulse_rate PROPERTIES RESOURCE_LOCK pipewire-daemon)
+        set_tests_properties(pulse pulse_rate pulse_defaults PROPERTIES RESOURCE_LOCK
+            pipewire-daemon)
         if(MAUL_AUDIO_TSAN)
-            set_tests_properties(pulse pulse_rate PROPERTIES ENVIRONMENT
+            set_tests_properties(pulse pulse_rate pulse_defaults PROPERTIES ENVIRONMENT
                 "TSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/tsan-pulse.supp")
         endif()
     endif()
@@ -797,7 +804,8 @@ endif()
 # when a change reaches it by name.
 if(MAUL_AUDIO_BUILD_TESTS)
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
-                 pulse_rate alsa stall stall_blocks guide_device coreaudio wasapi wasapi_sta ios
+                 pulse_rate pulse_defaults alsa stall stall_blocks guide_device coreaudio wasapi
+                 wasapi_sta ios
                  ios_capture
                  aaudio android_java)
         if(TEST ${name})
@@ -807,8 +815,8 @@ if(MAUL_AUDIO_BUILD_TESTS)
     # The suites that skip where their platform is absent
     # (PlatformAbsent, test/test_wait.h).
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
-                 pulse_rate alsa stall stall_blocks guide_device coreaudio wasapi wasapi_sta
-                 aaudio)
+                 pulse_rate pulse_defaults alsa stall stall_blocks guide_device coreaudio wasapi
+                 wasapi_sta aaudio)
         if(TEST ${name})
             # hygiene: exit 77 means the suite's platform is absent, never a failure
             set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
@@ -816,7 +824,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     endforeach()
     # The suites whose rate measures can be starved (RateSuiteResult,
     # test/test_clock.h): CI fails the skip as a test that did not run.
-    foreach(name pipewire pipewire_move pipewire_defaults pulse pulse_rate alsa)
+    foreach(name pipewire pipewire_move pipewire_defaults pulse pulse_rate pulse_defaults alsa)
         if(TEST ${name})
             # hygiene: an inconclusive line means the rate measures judged nothing
             set_property(TEST ${name} PROPERTY SKIP_REGULAR_EXPRESSION "inconclusive: ")
@@ -840,7 +848,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
     get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
     set(maul_audio_server_tests "")
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
-                 pulse_rate alsa stall stall_blocks guide_device)
+                 pulse_rate pulse_defaults alsa stall stall_blocks guide_device)
         if(TEST ${name})
             list(APPEND maul_audio_server_tests ${name})
         endif()
