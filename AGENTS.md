@@ -13,7 +13,7 @@ It never compromises on:
 ## Commands
 
 ```sh
-tools/check.sh changed          # before every push: rules, format, the suites the changes reach (< 2 min)
+tools/check.sh changed          # before every push: rules, format, tidy on changed sources, the suites the changes reach (< 2 min)
 tools/check.sh pr               # what the pull request check runs on Linux (< 10 min)
 tools/check.sh full             # adds TSan, shared, each part alone, the private backend, Clang Release, longer fuzzing (< 20 min)
 cmake --preset linux-clang-20-asan && cmake --build --preset linux-clang-20-asan   # one CI cell

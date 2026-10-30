@@ -8,7 +8,7 @@ What runs before a push, on a pull request, on `main` and every night, and the b
 
 | Tier | What it runs | Budget |
 |---|---|---|
-| `changed` | The source, module, length, documentation, snippet, API and test hygiene rules, the cost table, the organization's documentation check, the family sync check, `clang-format` on the changed files, and in `linux-clang-20-asan` the suites the changed files reach, an integration suite only when a change reaches it by name, against the sound-server fixture. | Under 2 minutes |
+| `changed` | The source, module, length, documentation, snippet, API and test hygiene rules, the cost table, the organization's documentation check, the family sync check, `clang-format` on the changed files, clang-tidy in Release and in Debug on the changed files among the Linux build's sources under `src/` (none when no such file changed), and in `linux-clang-20-asan` the suites the changed files reach, an integration suite only when a change reaches it by name, against the sound-server fixture. | Under 2 minutes |
 | `pr` | Every rule, `clang-format` on every file, `clang-tidy` over the Linux build's sources, the `linux-gcc-14` and `linux-clang-20-asan` presets with the sound-server suites, and 10 seconds of fuzzing per target. | Under 10 minutes |
 | `full` | Also the TSan, shared, Device-only, Spatial-only, private-backend and Clang Release presets, and a minute of fuzzing per target. | Under 20 minutes |
 

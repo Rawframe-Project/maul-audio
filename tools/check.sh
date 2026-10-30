@@ -6,8 +6,10 @@
 #
 #   tools/check.sh changed   the files changed against origin/main: the
 #                            source rules, the test hygiene check,
-#                            formatting, the documentation checks, and in
-#                            the linux-clang-20-asan preset
+#                            formatting, the documentation checks,
+#                            clang-tidy in Release and in Debug on the
+#                            changed sources, and in the
+#                            linux-clang-20-asan preset
 #                            (assertions on) the suites the changes reach.
 #                            An integration suite runs only when a change
 #                            reaches it by name (its own file, the daemon
@@ -221,6 +223,36 @@ source_checks() {
 
 all_c_files() { git ls-files 'include/*.h' 'src/*.[chm]' 'test/*.[chm]' 'tools/*.[ch]' 'bench/*.[ch]' 'samples/*.[ch]'; }
 
+# clang-tidy as CI's checks job runs it: on the Release preset, where the
+# assertions compile out, and with them live. Each hides findings the
+# other shows. It checks the Linux build's sources under src/: every one
+# for "all", otherwise those among the paths given, and none when no path
+# given is one of them.
+tidy() { # "all", or the paths to check
+    local build tree files
+    for build in Release Debug; do
+        tree=$out/check-tidy-$build
+        cmake --preset linux-clang-20 -B "$tree" -DCMAKE_BUILD_TYPE=$build \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DMAUL_AUDIO_BUILD_TESTS=OFF >"$tree.log"
+        mapfile -t files < <(python3 -c '
+import json, os, sys
+tree, root, *paths = sys.argv[1:]
+files = {e["file"] for e in json.load(open(tree + "/compile_commands.json")) if "/src/" in e["file"]}
+if paths != ["all"]:
+    given = {os.path.realpath(os.path.join(root, p)) for p in paths}
+    files = {f for f in files if os.path.realpath(f) in given}
+sys.stdout.write("".join(f + "\n" for f in sorted(files)))' "$tree" "$root" "$@")
+        if [ "$1" = all ] && [ ${#files[@]} -eq 0 ]; then
+            echo "no sources for clang-tidy" >&2
+            exit 1
+        fi
+        step "clang-tidy, $build, on ${#files[@]} of the Linux build's sources"
+        [ ${#files[@]} -gt 0 ] || continue
+        printf '%s\n' "${files[@]}" | xargs -P "$jobs" -n 1 clang-tidy-20 -p "$tree" --quiet \
+            --warnings-as-errors='*' 2>/dev/null
+    done
+}
+
 if [ "$tier" = changed ]; then
     merge_base=$(git merge-base HEAD origin/main 2>/dev/null || echo HEAD)
     mapfile -t changed < <({
@@ -238,6 +270,11 @@ if [ "$tier" = changed ]; then
     if [ ${#present[@]} -gt 0 ]; then
         step "clang-format on ${#present[@]} changed files"
         clang-format --dry-run -Werror "${present[@]}"
+    fi
+    sources=()
+    for f in "${present[@]+"${present[@]}"}"; do [[ $f == src/* ]] && sources+=("$f"); done
+    if [ ${#sources[@]} -gt 0 ]; then
+        tidy "${sources[@]}"
     fi
     labels=""
     for f in "${changed[@]}"; do labels="$labels $(labels_for "$f")"; done
@@ -266,18 +303,7 @@ mapfile -t files < <(all_c_files)
 [ ${#files[@]} -gt 0 ] || { echo "no C files found" >&2; exit 1; }
 clang-format --dry-run -Werror "${files[@]}"
 
-# As CI's checks job: on the Release preset, where the assertions compile
-# out, and with them live. Each hides findings the other shows.
-for build in Release Debug; do
-    step "clang-tidy over the Linux build's sources, $build"
-    tree=$out/check-tidy-$build
-    cmake --preset linux-clang-20 -B "$tree" -DCMAKE_BUILD_TYPE=$build \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DMAUL_AUDIO_BUILD_TESTS=OFF >"$tree.log"
-    mapfile -t tidy < <(python3 -c "import json; print('\n'.join(sorted({e['file'] for e in json.load(open('$tree/compile_commands.json')) if '/src/' in e['file']})))")
-    [ ${#tidy[@]} -gt 0 ] || { echo "no sources for clang-tidy" >&2; exit 1; }
-    printf '%s\n' "${tidy[@]}" | xargs -P "$jobs" -n 1 clang-tidy-20 -p "$tree" --quiet \
-        --warnings-as-errors='*' 2>/dev/null
-done
+tidy all
 
 preset linux-gcc-14
 preset linux-clang-20-asan
