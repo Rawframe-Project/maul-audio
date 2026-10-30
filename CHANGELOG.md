@@ -7,24 +7,17 @@ may change the API, the ABI and every file format.
 
 ## [0.5.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.4.0...v0.5.0) (2026-10-30)
 
-
-### ⚠ BREAKING CHANGES
-
-* **offline:** maudDevice_SetOfflineDefault, maudDevice_SetOfflineForm, maudDevice_SetOfflineFormat and maudDevice_SetOfflineSpatializer are maudOfflineDevice_SetDefault, maudOfflineDevice_SetForm, maudOfflineDevice_SetFormat and maudOfflineDevice_SetSpatializer, with the same parameters and results.
-* **binaural:** maudBinauralDef and maudBinauralDecoderDef have no version field, maudDefaultBinauralDef and maudDefaultBinauralDecoderDef are library functions, and MAUD_BINAURAL_DEF_COOKIE and MAUD_BINAURAL_DECODER_DEF_COOKIE are gone.
-* **spatializer:** maudSource_GetDirectResult and maudSpatializer_GetReverbResult return maud_errorState, not maud_errorInvalid, before the first latched step.
-* **spatializer:** maudProbeSet_UseForPathing is maudSpatializer_SetPathingProbeSet and maudProbeSet_UseBakedReverb is maudSpatializer_SetReverbProbeSet, with the same parameters and results.
-
-### Fixed
-
-* **spatializer:** refuse results before the first latch as a state ([#189](https://github.com/Rawframe-Project/maul-audio/issues/189)) ([fbcc8c3](https://github.com/Rawframe-Project/maul-audio/commit/fbcc8c3fdcd81a3b7dcb1ab3ec0a053913ce0c35))
-
+0.5.0 ends the review of the API before 1.0.0 ([#150](https://github.com/Rawframe-Project/maul-audio/issues/150)): the last calls and defs that did not follow the Maul family's rules are renamed or corrected. No backend changes what it does (the offline backend's setters are only renamed), so the device checklist on real hardware, which runs before a release that changes a backend, is not run for it. Successful calls, the golden renders and the office bake are unchanged.
 
 ### Changed
 
-* **binaural:** drop the version stamp from defs that take an HRTF ([#190](https://github.com/Rawframe-Project/maul-audio/issues/190)) ([d8648f5](https://github.com/Rawframe-Project/maul-audio/commit/d8648f5d5eb67bd77b6ace7a3674528724faefea))
-* **offline:** name the setters after the offline device ([#191](https://github.com/Rawframe-Project/maul-audio/issues/191)) ([09ae17f](https://github.com/Rawframe-Project/maul-audio/commit/09ae17feadba2afc1b5ef2f4149fbf023c64750f))
-* **spatializer:** name the probe set setters after the spatializer ([#183](https://github.com/Rawframe-Project/maul-audio/issues/183)) ([217b5dd](https://github.com/Rawframe-Project/maul-audio/commit/217b5dd64a0f9ca6569b6a85afc211732fc705f8))
+- **Breaking:** the two calls that choose the spatializer's probe sets are named after the spatializer: `maudProbeSet_UseForPathing` is `maudSpatializer_SetPathingProbeSet` and `maudProbeSet_UseBakedReverb` is `maudSpatializer_SetReverbProbeSet`. Their parameters, results and errors are the same, and the null id still takes a set out of use ([#183](https://github.com/Rawframe-Project/maul-audio/pull/183)).
+- **Breaking:** the four calls that script an offline device are named after it: `maudDevice_SetOfflineDefault`, `maudDevice_SetOfflineForm`, `maudDevice_SetOfflineFormat` and `maudDevice_SetOfflineSpatializer` are `maudOfflineDevice_SetDefault`, `maudOfflineDevice_SetForm`, `maudOfflineDevice_SetFormat` and `maudOfflineDevice_SetSpatializer`, with the same parameters and results ([#191](https://github.com/Rawframe-Project/maul-audio/pull/191)).
+- **Breaking:** `maudBinauralDef` and `maudBinauralDecoderDef` have no `version` field, and their creations no longer return `maud_errorVersion`. Both take an HRTF set, and `maudLoadHrtf` already refuses headers of another release. A program that builds them with `maudDefaultBinauralDef` and `maudDefaultBinauralDecoderDef` changes nothing; one that set `version` itself removes that line. The two defaults are library functions now, and `MAUD_BINAURAL_DEF_COOKIE` and `MAUD_BINAURAL_DECODER_DEF_COOKIE` are gone ([#190](https://github.com/Rawframe-Project/maul-audio/pull/190)).
+
+### Fixed
+
+- **Breaking:** `maudSource_GetDirectResult` and `maudSpatializer_GetReverbResult` return `maud_errorState` instead of `maud_errorInvalid` before the spatializer has latched its first step. An audio thread that starts before the first step was told on its first blocks that it had passed a bad argument; it now reads that the results are not there yet. The results still read zero. A host that recognized those early blocks by `maud_errorInvalid` checks for `maud_errorState` ([#189](https://github.com/Rawframe-Project/maul-audio/pull/189)).
 
 ## [0.4.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.3.0...v0.4.0) (2026-10-29)
 
