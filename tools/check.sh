@@ -160,6 +160,10 @@ labels_for() {
     test/test_harness.h | test/test_signals.h | test/test_names.h | test/test_clock.h | \
         CMakeLists.txt | CMakePresets.json | cmake/* | src/base.c | src/allocator.* | \
         include/maul-audio/base.h) echo all ;;
+    # Suites built only for another platform, or only with the private
+    # backend: no Linux build here has them, and their own builds run them.
+    test/test_aaudio.c | test/test_android_java.c | test/test_coreaudio*.c | test/test_wasapi.c | \
+        test/test_wasapi_voice.c | test/test_web_*.c | test/test_private_backend.c) ;;
     test/test_*.c) echo "${name#test_}" ;;
     src/buffer.* | src/layout.* | src/fft.* | src/real_fft.* | include/maul-audio/buffer.h | \
         include/maul-audio/layout.h) echo "$base $voice $effects $simulation" ;;
