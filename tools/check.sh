@@ -162,8 +162,10 @@ labels_for() {
         include/maul-audio/base.h) echo all ;;
     # Suites built only for another platform, or only with the private
     # backend: no Linux build here has them, and their own builds run them.
-    test/test_aaudio.c | test/test_android_java.c | test/test_coreaudio*.c | test/test_wasapi.c | \
-        test/test_wasapi_voice.c | test/test_web_*.c | test/test_private_backend.c) ;;
+    test/test_aaudio.c | test/test_android_java.c | test/test_coreaudio.c | \
+        test/test_coreaudio_form.c | test/test_coreaudio_listen.c | test/test_wasapi.c | \
+        test/test_wasapi_voice.c | test/test_web_capture.c | test/test_web_transport.c | \
+        test/test_private_backend.c) ;;
     test/test_*.c) echo "${name#test_}" ;;
     src/buffer.* | src/layout.* | src/fft.* | src/real_fft.* | include/maul-audio/buffer.h | \
         include/maul-audio/layout.h) echo "$base $voice $effects $simulation" ;;

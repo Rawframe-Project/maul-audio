@@ -615,10 +615,12 @@ static void Watch(maudContext* context, maudStreamId stream, double* heard, uint
 // held, uncounted. 70 ms for one cycle and then back is a report the
 // browser placed late: held, uncounted. A batch a busy page delays (one
 // report 131 ms late, the rest of it 70 ms for 3.8 s) and then back loses
-// no frame either: held, and nothing counted once 5 s have passed. 70 ms
+// no frame either: held, and nothing counted once 5 s have passed. Nor
+// does 70 ms for 4.9 s, just under the span, then back. 70 ms
 // for good is frames the
 // browser played without the stream: still held and uncounted 2.5 s on,
-// then one underrun once it has lasted 5 s, and the clock follows it.
+// then one underrun by 5.1 s, once it has lasted the span, and the clock
+// follows it. The span is so pinned at 5 s from both sides.
 static void RunLoss(bool isolated)
 {
     InstallWeb(isolated ? 1 : 0);
@@ -675,6 +677,20 @@ static void RunLoss(bool isolated)
     Watch(context, stream, &heard, &counted);
     CHECK(heard <= before + 1000.0 && counted == underruns,
           "a batch the page delayed for 3.8 s, then back: held, nothing counted");
+    // 306 cycles late: the last 4.88 s after the first.
+    Jump(70.0);
+    for (int i = 0; i < 306; ++i)
+    {
+        Cycle();
+    }
+    Jump(0.0);
+    for (int i = 0; i < 400; ++i)
+    {
+        Cycle();
+    }
+    Watch(context, stream, &heard, &counted);
+    CHECK(heard <= before + 1000.0 && counted == underruns,
+          "70 ms later for 4.9 s, then back: held, nothing counted");
     // A cycle is 16 ms of the device's frames.
     Jump(70.0);
     for (int i = 0; i < 156; ++i)
@@ -684,14 +700,15 @@ static void RunLoss(bool isolated)
     Watch(context, stream, &heard, &counted);
     CHECK(heard <= before + 1000.0 && counted == underruns,
           "70 ms later for 2.5 s: still held, nothing counted yet");
-    for (int i = 0; i < 188; ++i)
+    // 319 cycles late in all: the last 5.09 s after the first.
+    for (int i = 0; i < 163; ++i)
     {
         Cycle();
     }
     Watch(context, stream, &heard, &counted);
     if (heard < before + 60e6 || counted != underruns + 1)
     {
-        printf("70 ms later for 5.5 s: frame 0 %.0f ns from before, %llu underruns, %llu before\n",
+        printf("70 ms later for 5.1 s: frame 0 %.0f ns from before, %llu underruns, %llu before\n",
                heard - before, (unsigned long long)counted, (unsigned long long)underruns);
         CHECK(false, "70 ms later for good is frames lost: one underrun, and the clock follows");
     }

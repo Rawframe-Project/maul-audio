@@ -519,10 +519,11 @@ static void FilterGranted(void* user)
     // placed 70 ms late once, then back, is not a loss: held, uncounted.
     // Nor is a batch a busy page delays (every delivery 70 ms late for
     // 3.8 s, 1,430 quanta) and then back: held, and nothing counted once 5 s
-    // have passed.
+    // have passed; nor 70 ms for 4.9 s (1,837 quanta), just under the span.
     // 32 ms more lost (12 quanta, 61 ms in all) for good: held and
-    // uncounted 2.5 s on (940 quanta), then one overrun once it has lasted
-    // 5 s, and the clock follows it.
+    // uncounted 2.5 s on (940 quanta), then one overrun by 5.1 s (1,912
+    // quanta), once it has lasted the span, and the clock follows it. The
+    // span is so pinned at 5 s from both sides.
     Stamp(4);
     NewRoute();
     double steady = Settle();
@@ -552,16 +553,26 @@ static void FilterGranted(void* user)
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     CHECK(delayed <= steady + 1000.0 && status.overruns == overruns,
           "a batch the page delayed for 3.8 s, then back: held, nothing counted");
+    for (int i = 0; i < 1837; ++i)
+    {
+        Late(70.0);
+        Pull(1);
+        (void)TakeAll();
+    }
+    double under = Run(2000);
+    CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
+    CHECK(under <= steady + 1000.0 && status.overruns == overruns,
+          "70 ms later for 4.9 s, then back: held, nothing counted");
     Skip(12);
     double waiting = Run(940);
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     CHECK(waiting <= steady + 1000.0 && status.overruns == overruns,
           "61 ms later for 2.5 s: still held, nothing counted yet");
-    double lost = Run(1124);
+    double lost = Run(972);
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
     if (lost < steady + 55e6 || status.overruns != overruns + 1)
     {
-        printf("61 ms later for 5.5 s: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
+        printf("61 ms later for 5.1 s: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
                lost - steady, (unsigned long long)status.overruns, (unsigned long long)overruns);
         CHECK(false, "61 ms later for good is frames lost: one overrun, and the clock follows");
     }
