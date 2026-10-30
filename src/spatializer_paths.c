@@ -169,10 +169,15 @@ maudResult maudProbeSet_GetInfo(const maudSpatializer* spatializer, maudProbeSet
                                 uint32_t first, maudProbeSetInfo* infoOut, maudVector3* pointsOut,
                                 uint32_t count)
 {
-    // Cleared first, so a failure leaves zero.
+    // Cleared first, so a failure leaves zero: the points too, as many as
+    // a success writes.
     if (infoOut != nullptr)
     {
         memset(infoOut, 0, sizeof(*infoOut));
+    }
+    if (pointsOut != nullptr && count > 0)
+    {
+        memset(pointsOut, 0, (size_t)count * sizeof(maudVector3));
     }
     if (spatializer == nullptr || infoOut == nullptr)
     {
