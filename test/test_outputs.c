@@ -22,6 +22,7 @@
 #include "maul-audio/focus.h"
 #include "maul-audio/hrtf.h"
 #include "maul-audio/notification.h"
+#include "maul-audio/objects.h"
 #include "maul-audio/offline.h"
 #include "maul-audio/scene.h"
 #include "maul-audio/spatializer.h"
@@ -304,6 +305,126 @@ static void TestArrays(void)
           "maudSpeakerDecoder_GetMatrix leaves its matrix without a decoder");
 }
 
+// A stream that renders itself again from its own callback, into frames
+// and records filled with the pattern: refused as busy, they keep it.
+typedef struct Reentry
+{
+    maudContext* context;
+    maudStreamId stream;
+    bool objects;
+    bool tried;
+    bool kept;
+} Reentry;
+
+static void RenderAgain(const maudStreamBlock* block, void* user)
+{
+    (void)block;
+    Reentry* again = user;
+    if (again->tried)
+    {
+        return;
+    }
+    again->tried = true;
+    float frames[2 * 8];
+    float samples[8];
+    maudStreamObject record = {.samples = samples};
+    FILL(frames);
+    FILL(samples);
+    maudResult result =
+        again->objects
+            ? maudStream_RenderObjects(again->context, again->stream, frames, &record, 1, 8)
+            : maudStream_Render(again->context, again->stream, frames, 8);
+    again->kept = result == maud_errorBusy && Untouched(frames, 16) && Untouched(samples, 8) &&
+                  record.samples == samples;
+}
+
+// Renders refused on an offline context: silence where the stream gives
+// the frames' size, the frames left where no stream does (a NULL context,
+// a stale id) or where a busy refusal turns away a call back in from the
+// stream's own callback, and the object records cleared but for their
+// samples pointers, whose frames the caller sized.
+static void TestRefusedRenders(void)
+{
+    maudContextDef cdef = maudDefaultContextDef();
+    cdef.backend = maud_backendOffline;
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&cdef, &context) == maud_success, "an offline context");
+    if (context == nullptr)
+    {
+        return;
+    }
+    Reentry plainAgain = {.context = context};
+    Reentry objectsAgain = {.context = context, .objects = true};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.mode = maud_modePull;
+    def.layout = maud_layoutStereo;
+    def.periodFrames = 8;
+    def.callback = RenderAgain;
+    def.user = &plainAgain;
+    maudStreamId plain = {0, 0};
+    CHECK(maudCreateStream(context, &def, &plain) == maud_success, "a stereo stream");
+    plainAgain.stream = plain;
+    def.objectCount = 1;
+    def.user = &objectsAgain;
+    maudStreamId objects = {0, 0};
+    CHECK(maudCreateStream(context, &def, &objects) == maud_success, "an object stream");
+    objectsAgain.stream = objects;
+    maudStreamId stale = {77, 3};
+    float frames[2 * 8];
+    float samples[8];
+    maudStreamObject record = {.samples = samples};
+
+    FILL(frames);
+    CHECK(maudStream_Render(context, plain, frames, 8) == maud_errorState && Zero(frames, 64),
+          "a stopped stream's render leaves silence");
+    CHECK(maudStream_Start(context, plain) == maud_success &&
+              maudStream_Start(context, objects) == maud_success,
+          "both started");
+    FILL(frames);
+    CHECK(maudStream_Render(context, objects, frames, 8) == maud_errorInvalid && Zero(frames, 64),
+          "an object stream's plain render leaves silence");
+    FILL(frames);
+    CHECK(maudStream_Render(nullptr, plain, frames, 8) == maud_errorInvalid &&
+              Untouched(frames, 16),
+          "no context, no size: the frames are left");
+    FILL(frames);
+    CHECK(maudStream_Render(context, stale, frames, 8) == maud_errorStale && Untouched(frames, 16),
+          "a stale stream, no size: the frames are left");
+
+    FILL(frames);
+    FILL(samples);
+    FILL(record.position);
+    FILL(record.gain);
+    record.active = true;
+    CHECK(maudStream_RenderObjects(context, plain, frames, &record, 1, 8) == maud_errorInvalid &&
+              Zero(frames, 64) && Zero(samples, sizeof(samples)) && record.samples == samples &&
+              Zero(&record.position, sizeof(record.position)) && record.gain == 0.0f &&
+              !record.active,
+          "objects from a plain stream: the bed and the record cleared");
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        maudContext* owner = pass == 0 ? nullptr : context;
+        maudStreamId id = pass == 0 ? objects : stale;
+        FILL(frames);
+        FILL(samples);
+        FILL(record.position);
+        FILL(record.gain);
+        CHECK(maudStream_RenderObjects(owner, id, frames, &record, 1, 8) != maud_success &&
+                  Untouched(frames, 16) && Zero(samples, sizeof(samples)) &&
+                  record.samples == samples && record.gain == 0.0f,
+              "no stream: the bed is left, the record and its frames cleared");
+    }
+
+    CHECK(maudStream_Render(context, plain, frames, 8) == maud_success && plainAgain.tried &&
+              plainAgain.kept,
+          "a render called back in from the callback keeps its frames");
+    maudStreamObject outer = {.samples = samples};
+    CHECK(maudStream_RenderObjects(context, objects, frames, &outer, 1, 8) == maud_success &&
+              objectsAgain.tried && objectsAgain.kept,
+          "an object render called back in keeps its bed and records");
+    CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+}
+
 int main(void)
 {
     maudContextDef def = maudDefaultContextDef();
@@ -318,5 +439,6 @@ int main(void)
     TestSpatializerCalls();
     TestOtherOwners();
     TestArrays();
+    TestRefusedRenders();
     return s_failures == 0 ? 0 : 1;
 }

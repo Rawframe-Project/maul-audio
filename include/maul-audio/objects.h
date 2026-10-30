@@ -60,9 +60,13 @@ extern "C"
     ///                     stream's layout. May be NULL when frameCount is 0.
     /// @param objectsOut   objectCount records, each samples pointing to
     ///                     room for frameCount frames (or NULL when
-    ///                     frameCount is 0); the rest is written. The bed,
-    ///                     the records and their samples are left as they
-    ///                     were on failure, as maudStream_Render's frames.
+    ///                     frameCount is 0); the rest is written. On
+    ///                     failure the bed is silenced as maudStream_Render's
+    ///                     frames are, and each record reads zero but its
+    ///                     samples pointer, with silence in its frames,
+    ///                     whatever the context; all of them are left as
+    ///                     they were when maud_errorBusy refuses a call back
+    ///                     in, as maudStream_Render's frames are.
     /// @param objectCount  The stream's objectCount.
     /// @param frameCount   The number of frames.
     /// @return `maud_success`; `maud_errorStale`; `maud_errorInvalid` for a
