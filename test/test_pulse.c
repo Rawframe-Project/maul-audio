@@ -8,8 +8,10 @@
 // follows the default reopened at a new default's rate, a context of
 // one device (refusing scripted devices) and one whose allocator
 // refuses, and the server restarted where the sound-server fixture runs
-// (test_daemon.h). Without a server the test is skipped, unless
-// MAUD_REQUIRE_PULSE is set.
+// (test_daemon.h). The tests that change the server's default run as
+// pulse_defaults ("test_pulse defaults"), and a default that never
+// arrives prints the context's and the server's view of it. Without a
+// server the test is skipped, unless MAUD_REQUIRE_PULSE is set.
 
 #include "test_clock.h"
 #include "test_daemon.h"
@@ -121,12 +123,82 @@ static bool WaitFor(maudContext* context, maudNotificationKind kind, maudDeviceI
     return WaitForWithin(context, kind, device, recordOut, 5000);
 }
 
+// Set once a default the server was told to change has not reached the
+// context in a full wait: every later wait for a default fails at once,
+// since the first one printed why and waiting again tells nothing more.
+static bool s_defaultsLost;
+
+// Prints what the context and the server say the outputs and the
+// default are, when a default never arrives: the server's own answer,
+// the default metadata the session manager keeps behind it, and whether
+// the session manager is still the process the fixture started. Which
+// of them missed the change shows in which disagrees with pactl's.
+static void PrintDefaults(const maudContext* context)
+{
+    maudDeviceId ids[32];
+    uint32_t count = 0;
+    maudDeviceId general = {0, 0};
+    (void)maudContext_GetDefaultDevice(context, maud_directionOutput, maud_roleGeneral, &general);
+    if (maudContext_GetDevices(context, maud_directionOutput, ids, 32, &count) == maud_success)
+    {
+        for (uint32_t i = 0; i < count && i < 32; ++i)
+        {
+            char key[64];
+            size_t length = 0;
+            if (maudDevice_GetKey(context, ids[i], key, sizeof(key), &length) != maud_success)
+            {
+                length = 0;
+            }
+            printf("the context's output %u: %.*s%s\n", ids[i].index1, (int)length, key,
+                   ids[i].index1 == general.index1 ? " (its default)" : "");
+        }
+    }
+    fflush(stdout);
+    int status = system("echo \"the server's default sink: $(pactl get-default-sink)\";"
+                        " echo \"the server's sinks:\"; pactl list short sinks;"
+                        " echo \"the daemon's default metadata:\"; pw-metadata -n default 0;"
+                        " echo \"the daemon's metadata objects:\";"
+                        " pw-cli ls Metadata | grep -E '^[[:space:]]*id |metadata.name'");
+    if (status != 0)
+    {
+        printf("the server's view could not be read (status %d)\n", status);
+    }
+    if (HaveDaemon())
+    {
+        printf("the fixture's session manager is %s\n",
+               DriveDaemon("signal", "wireplumber 0") ? "still the process it started"
+                                                      : "gone: it exited or was started again");
+    }
+    fflush(stdout);
+}
+
+// After a wait for a default ran out: prints why, once.
+static void DefaultLost(const maudContext* context)
+{
+    if (!s_defaultsLost)
+    {
+        printf("a default the server was told to change never reached the context in %d s\n",
+               SESSION_MANAGER_MS / 1000);
+        PrintDefaults(context);
+        s_defaultsLost = true;
+    }
+}
+
 // The same for a notification that follows a default the server
 // changed, which waits on the session manager (SESSION_MANAGER_MS).
 static bool WaitAfterDefault(maudContext* context, maudNotificationKind kind, maudDeviceId device,
                              maudNotification* recordOut)
 {
-    return WaitForWithin(context, kind, device, recordOut, SESSION_MANAGER_MS);
+    if (s_defaultsLost)
+    {
+        return false;
+    }
+    bool arrived = WaitForWithin(context, kind, device, recordOut, SESSION_MANAGER_MS);
+    if (!arrived)
+    {
+        DefaultLost(context);
+    }
+    return arrived;
 }
 
 // Drains notifications until a stream is suspended for reason (with a
@@ -177,9 +249,18 @@ static bool DefaultsAre(const maudContext* context, maudDeviceId device)
 // (SESSION_MANAGER_MS).
 static bool WaitForDefaults(maudContext* context, maudDeviceId device)
 {
+    if (s_defaultsLost)
+    {
+        return false;
+    }
     POLL_UNTIL(SESSION_MANAGER_MS, "both roles' output default to be the device", Drain(context),
                DefaultsAre(context, device));
-    return DefaultsAre(context, device);
+    bool arrived = DefaultsAre(context, device);
+    if (!arrived)
+    {
+        DefaultLost(context);
+    }
+    return arrived;
 }
 
 // The thread that runs the test, which no callback may run on.
@@ -1284,9 +1365,11 @@ static void TestExclusiveRefused(maudContext* context)
 
 int main(int argc, char** argv)
 {
-    // The quarantined run, pulse_rate ("test_pulse rate"): the output
-    // stream's rate alone.
+    // The quarantined runs: pulse_rate ("test_pulse rate"), the output
+    // stream's rate alone, and pulse_defaults ("test_pulse defaults"),
+    // the tests that change the server's default.
     bool rateOnly = argc > 1 && strcmp(argv[1], "rate") == 0;
+    bool defaultsOnly = argc > 1 && strcmp(argv[1], "defaults") == 0;
     s_control = pthread_self();
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendPulse;
@@ -1301,19 +1384,24 @@ int main(int argc, char** argv)
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
         return RateSuiteResult();
     }
+    if (defaultsOnly)
+    {
+        TestHotplug(context);
+        TestListedDefault(context);
+        TestFollowRate(context);
+        TestLoopback(context);
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        return RateSuiteResult();
+    }
     TestDevices(context);
-    TestHotplug(context);
-    TestListedDefault(context);
     TestMark(context);
     TestOutputStream(context);
     TestMono(context);
     TestUnderrun(context);
     TestExclusiveRefused(context);
     TestInputStream(context);
-    TestLoopback(context);
     TestDuplexConverted(context);
     TestPinnedStream(context);
-    TestFollowRate(context);
     TestServerEnded(context);
     TestRebuildFails(context);
     TestRebuildPacing(context);
