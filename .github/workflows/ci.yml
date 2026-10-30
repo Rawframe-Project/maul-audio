@@ -130,7 +130,7 @@ jobs:
             echo "::group::clang-tidy, $build"
             cmake --preset linux-clang-20 -B "out/tidy-$build" -DCMAKE_BUILD_TYPE=$build \
               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -D${PREFIX}_BUILD_TESTS=OFF
-            mapfile -t files < <(python3 -c "import json; print('\n'.join(sorted({e['file'] for e in json.load(open('out/tidy-$build/compile_commands.json')) if '/src/' in e['file']})))")
+            mapfile -t files < <(python3 -c "import json, sys; sys.stdout.write(''.join(f + '\n' for f in sorted({e['file'] for e in json.load(open('out/tidy-$build/compile_commands.json')) if '/src/' in e['file']})))")
             [ ${#files[@]} -gt 0 ] || { echo "::error::no sources for clang-tidy"; exit 1; }
             printf '%s\n' "${files[@]}" | xargs -P "$(nproc)" -n 1 clang-tidy-20 -p "out/tidy-$build" \
               --quiet --warnings-as-errors='*'
