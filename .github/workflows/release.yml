@@ -17,6 +17,7 @@ on:
         required: false
         default: ""
 
+# Every job sets the least it needs.
 permissions: {}
 
 defaults:
@@ -61,19 +62,20 @@ jobs:
     if: ${{ !cancelled() && ((inputs.tag != '' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (needs.release-please.result == 'success' && needs.release-please.outputs.created == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      TAG: ${{ inputs.tag || needs.release-please.outputs.tag }}
     permissions:
       contents: write
       id-token: write
       attestations: write
+    env:
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag }}
     steps:
       # A run that both creates a release and is given another tag takes neither.
       # The attestation names this workflow on the default branch, so the files
       # must come from a commit the default branch holds: a tag pushed on any
       # other commit is refused. A release that already has files keeps them;
-      # nothing here replaces a published file. The commit checked is the one
-      # built: a tag moved after this step changes nothing.
+      # nothing here replaces a published file. The files are built from the
+      # commit checked here, never from the tag read again, which could have
+      # moved in between.
       - name: A release tag
         id: tag
         env:
@@ -92,11 +94,9 @@ jobs:
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The commit the tag named when it was checked, never a branch of
-          # the tag's name.
           ref: ${{ steps.tag.outputs.commit }}
           persist-credentials: false
-      - name: The commit checked
+      - name: The checked commit
         env:
           COMMIT: ${{ steps.tag.outputs.commit }}
         run: '[ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "checked out $(git rev-parse HEAD), not $COMMIT"; exit 1; }'
