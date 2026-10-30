@@ -5,6 +5,27 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.5.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.4.0...v0.5.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **offline:** maudDevice_SetOfflineDefault, maudDevice_SetOfflineForm, maudDevice_SetOfflineFormat and maudDevice_SetOfflineSpatializer are maudOfflineDevice_SetDefault, maudOfflineDevice_SetForm, maudOfflineDevice_SetFormat and maudOfflineDevice_SetSpatializer, with the same parameters and results.
+* **binaural:** maudBinauralDef and maudBinauralDecoderDef have no version field, maudDefaultBinauralDef and maudDefaultBinauralDecoderDef are library functions, and MAUD_BINAURAL_DEF_COOKIE and MAUD_BINAURAL_DECODER_DEF_COOKIE are gone.
+* **spatializer:** maudSource_GetDirectResult and maudSpatializer_GetReverbResult return maud_errorState, not maud_errorInvalid, before the first latched step.
+* **spatializer:** maudProbeSet_UseForPathing is maudSpatializer_SetPathingProbeSet and maudProbeSet_UseBakedReverb is maudSpatializer_SetReverbProbeSet, with the same parameters and results.
+
+### Fixed
+
+* **spatializer:** refuse results before the first latch as a state ([#189](https://github.com/Rawframe-Project/maul-audio/issues/189)) ([fbcc8c3](https://github.com/Rawframe-Project/maul-audio/commit/fbcc8c3fdcd81a3b7dcb1ab3ec0a053913ce0c35))
+
+
+### Changed
+
+* **binaural:** drop the version stamp from defs that take an HRTF ([#190](https://github.com/Rawframe-Project/maul-audio/issues/190)) ([d8648f5](https://github.com/Rawframe-Project/maul-audio/commit/d8648f5d5eb67bd77b6ace7a3674528724faefea))
+* **offline:** name the setters after the offline device ([#191](https://github.com/Rawframe-Project/maul-audio/issues/191)) ([09ae17f](https://github.com/Rawframe-Project/maul-audio/commit/09ae17feadba2afc1b5ef2f4149fbf023c64750f))
+* **spatializer:** name the probe set setters after the spatializer ([#183](https://github.com/Rawframe-Project/maul-audio/issues/183)) ([217b5dd](https://github.com/Rawframe-Project/maul-audio/commit/217b5dd64a0f9ca6569b6a85afc211732fc705f8))
+
 ## [0.4.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.3.0...v0.4.0) (2026-10-29)
 
 0.4.0 makes a refused call leave silence or zeros behind, never data from an earlier call. It changes no backend. Successful calls, the golden renders and the office bake are unchanged. The device checklist on real hardware is waived by the owner for releases through 2026-10-29, so 0.4.0 ships on its other gates, and the checklist runs in [#161](https://github.com/Rawframe-Project/maul-audio/issues/161).
