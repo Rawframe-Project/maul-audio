@@ -8,6 +8,9 @@
 // itself defines, which it writes. Each call here runs with its outputs
 // filled with a pattern, once with a NULL owner and once with a valid
 // owner and a stale or unknown id, and each output must read zero after.
+// A caller's array reads zero over its whole room on failure, and past
+// the answer when the call answers less than the room holds: an empty
+// queue, fewer devices, a name that does not fit.
 
 #include "test_harness.h"
 
@@ -83,19 +86,22 @@ static void TestContextCalls(maudContext* context)
         size_t length;
         FILL(length);
         char name[8];
+        FILL(name);
         CHECK(maudDevice_GetName(owner, stale, name, sizeof(name), &length) != maud_success &&
-                  length == 0,
-              "maudDevice_GetName clears its length");
+                  length == 0 && Zero(name, sizeof(name)),
+              "maudDevice_GetName clears its length and bytes");
         FILL(length);
+        FILL(name);
         CHECK(maudDevice_GetKey(owner, stale, name, sizeof(name), &length) != maud_success &&
-                  length == 0,
-              "maudDevice_GetKey clears its length");
+                  length == 0 && Zero(name, sizeof(name)),
+              "maudDevice_GetKey clears its length and bytes");
         uint32_t count;
         FILL(count);
         maudDeviceId ids[2];
+        FILL(ids);
         CHECK(maudContext_GetDevices(owner, (maudDirection)7, ids, 2, &count) != maud_success &&
-                  count == 0,
-              "maudContext_GetDevices clears its count");
+                  count == 0 && Zero(ids, sizeof(ids)),
+              "maudContext_GetDevices clears its count and ids");
 
         maudStreamFormat format;
         FILL(format);
@@ -151,6 +157,22 @@ static void TestContextCalls(maudContext* context)
     CHECK(maudContext_NextNotification(context, &record) == maud_empty &&
               Zero(&record, sizeof(record)),
           "an empty queue clears the record");
+    // Fewer devices than the room: the ids past them read zero. A name
+    // longer than the room: the bytes read zero.
+    maudDeviceId room[16];
+    uint32_t listed = 0;
+    FILL(room);
+    CHECK(maudContext_GetDevices(context, maud_directionOutput, room, 16, &listed) ==
+                  maud_success &&
+              listed >= 1 && listed < 16 && Zero(room + listed, (16 - listed) * sizeof(room[0])),
+          "the ids past the devices listed read zero");
+    char shortName[1];
+    size_t needed = 0;
+    FILL(shortName);
+    CHECK(maudDevice_GetName(context, room[0], shortName, sizeof(shortName), &needed) ==
+                  maud_errorCapacity &&
+              needed > sizeof(shortName) && shortName[0] == 0,
+          "a name past the room leaves zeros");
 }
 
 static void TestSpatializerCalls(void)
@@ -173,6 +195,12 @@ static void TestSpatializerCalls(void)
         CHECK(maudProbeSet_GetInfo(owner, staleSet, 0, &info, nullptr, 0) != maud_success &&
                   Zero(&info, sizeof(info)),
               "maudProbeSet_GetInfo clears its info");
+        maudVector3 points[4];
+        FILL(info);
+        FILL(points);
+        CHECK(maudProbeSet_GetInfo(owner, staleSet, 0, &info, points, 4) != maud_success &&
+                  Zero(&info, sizeof(info)) && Zero(points, sizeof(points)),
+              "maudProbeSet_GetInfo clears its info and points");
         size_t size;
         FILL(size);
         CHECK(maudProbeSet_Save(owner, staleSet, nullptr, 0, &size) != maud_success && size == 0,

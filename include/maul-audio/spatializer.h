@@ -651,7 +651,8 @@ extern "C"
     /// @param set          The set.
     /// @param first        The first probe to copy.
     /// @param infoOut      Receives the counts; all zero on failure.
-    /// @param pointsOut    Receives them, or NULL.
+    /// @param pointsOut    Receives them, or NULL; count zero points on
+    ///                     failure.
     /// @param count        The probes to copy.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL spatializer
     ///         or info, a 0 or unknown id, or probes past the set's;
