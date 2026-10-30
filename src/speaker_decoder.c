@@ -16,6 +16,7 @@
 #include "maul-audio/ambisonics.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 #define MAX_CHANNELS     12
@@ -243,6 +244,29 @@ static bool PointersValid(const maudSpeakerDecoder* decoder, const float* const*
     return true;
 }
 
+// Whether a speaker's frames share a byte with a channel of the bed. Each
+// speaker is cleared and summed from every channel in turn, so one over a
+// channel would clear input not yet read. Compared as addresses, since
+// the caller's arrays are different objects.
+static bool OverlapsBed(const maudSpeakerDecoder* decoder, const float* const* bed,
+                        float* const* out, uint32_t frames)
+{
+    size_t bytes = (size_t)frames * sizeof(float);
+    for (uint32_t s = 0; s < decoder->speakers; ++s)
+    {
+        uintptr_t speaker = (uintptr_t)out[s];
+        for (uint32_t c = 0; c < decoder->channels; ++c)
+        {
+            uintptr_t channel = (uintptr_t)bed[c];
+            if (speaker < channel + bytes && channel < speaker + bytes)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // Writes silence over each channel a caller gave, for a failed call: at
 // most what a successful call would have written.
 static void Silence(float* const* channels, uint32_t count, uint32_t frames)
@@ -259,7 +283,8 @@ static void Silence(float* const* channels, uint32_t count, uint32_t frames)
 static maudResult Run(const maudSpeakerDecoder* decoder, const float* const* bed, float* const* out,
                       uint32_t frames)
 {
-    if (decoder == nullptr || (frames > 0 && !PointersValid(decoder, bed, out)))
+    if (decoder == nullptr || (frames > 0 && (!PointersValid(decoder, bed, out) ||
+                                              OverlapsBed(decoder, bed, out, frames))))
     {
         return maud_errorInvalid;
     }

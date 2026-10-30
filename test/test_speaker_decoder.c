@@ -8,7 +8,8 @@
 // horizontal: 7.1 degrees at order 1); energy averages 1 and varies
 // within 3.2 dB; the
 // LFE stays silent; a mirrored source gets mirrored speakers; decoding
-// is the matrix, written over the output; bad calls write nothing.
+// is the matrix, written over the output; a speaker over any frame of a
+// bed channel is refused; bad calls write nothing.
 
 #include "test_harness.h"
 
@@ -289,6 +290,20 @@ static void TestDecode(void)
               maudSpeakerDecoder_Decode(decoder, nullptr, out, 5) == maud_errorInvalid &&
               maudSpeakerDecoder_Decode(decoder, bed, nullptr, 5) == maud_errorInvalid,
           "a missing channel, no bed, no output");
+    // Each speaker is cleared before the channels are summed into it, so
+    // one written over a channel, whole or in part, would clear input not
+    // yet read.
+    float* over[6] = {out[0], channels[3], out[2], out[3], out[4], out[5]};
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, over, 5) == maud_errorInvalid,
+          "a speaker over a bed channel");
+    float* partly[6] = {out[0], out[1], channels[7] + 3, out[3], out[4], out[5]};
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, partly, 5) == maud_errorInvalid,
+          "a speaker over the last frames of a bed channel");
+    float* after[6] = {out[0], out[1], channels[8] + 5, out[3], out[4], out[5]};
+    float spare[5];
+    after[2] = spare;
+    CHECK(maudSpeakerDecoder_Decode(decoder, bed, after, 5) == maud_success,
+          "speakers apart from the bed");
     CHECK(maudSpeakerDecoder_Decode(decoder, nullptr, nullptr, 0) == maud_success, "no frames");
     CHECK(maudSpeakerDecoder_GetMatrix(decoder, nullptr) == maud_errorInvalid, "no matrix");
     maudDestroySpeakerDecoder(decoder);

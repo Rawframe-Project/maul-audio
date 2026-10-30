@@ -7,7 +7,8 @@
 // 16 kHz; 3.9, 4.5 and 5.5 dB RMS at orders 3, 2 and 1 over every
 // direction); a source on the left is louder on the left and
 // ahead there at low frequencies; one
-// call or many decode the same samples; decoding never allocates, and
+// call or many decode the same samples; each ear written over a channel
+// of the bed decodes the same samples as apart; decoding never allocates, and
 // the set may go once the decoder exists; bad calls write nothing. The
 // build's parts alone: the FFT against a direct DFT, the weighted least
 // squares by its defining properties, the directions' weights by the
@@ -258,6 +259,30 @@ static void TestBlocks(const maudHrtf* hrtf)
     CHECK(s_allocations == before, "decoding allocates nothing");
     maudDestroyBinauralDecoder(whole);
     maudDestroyBinauralDecoder(parts);
+}
+
+// The decoder reads the whole bed before it writes, so either ear may be
+// one of the bed's channels.
+static void TestInPlace(const maudHrtf* hrtf)
+{
+    maudBinauralDecoder* apart = Create(hrtf, 1, FRAMES);
+    maudBinauralDecoder* inPlace = Create(hrtf, 1, FRAMES);
+    static float channels[4][FRAMES];
+    const float* bed[4];
+    for (uint32_t c = 0; c < 4; ++c)
+    {
+        Noise(channels[c], FRAMES, 11 + c);
+        bed[c] = channels[c];
+    }
+    float* out[2] = {s_left, s_right};
+    CHECK(maudBinauralDecoder_Decode(apart, bed, out, FRAMES) == maud_success, "decode apart");
+    float* over[2] = {channels[2], channels[0]};
+    CHECK(maudBinauralDecoder_Decode(inPlace, bed, over, FRAMES) == maud_success &&
+              memcmp(channels[2], s_left, sizeof(s_left)) == 0 &&
+              memcmp(channels[0], s_right, sizeof(s_right)) == 0,
+          "each ear written over a bed channel: the same samples");
+    maudDestroyBinauralDecoder(apart);
+    maudDestroyBinauralDecoder(inPlace);
 }
 
 static void SetAll(float* samples, uint32_t count, float value)
@@ -530,6 +555,7 @@ int main(void)
     TestAccuracy(hrtf);
     TestEars(hrtf);
     TestBlocks(hrtf);
+    TestInPlace(hrtf);
     TestMisuse(hrtf);
     TestFailureSilence(hrtf);
     // The decoder keeps its own filters: the set may go first.
