@@ -40,7 +40,7 @@ env:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@89f98d8066ba5deec132332fba9f0b0347aecc01 # v0.0.40
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@3044ba71d36f3e3eb370b8915ca1b02f337fda8c # v0.0.41
     permissions:
       pull-requests: read
 
@@ -55,12 +55,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@89f98d8066ba5deec132332fba9f0b0347aecc01 # v0.0.40
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@3044ba71d36f3e3eb370b8915ca1b02f337fda8c # v0.0.41
         with:
           exclude: data/hrtf/apache-2.0
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@89f98d8066ba5deec132332fba9f0b0347aecc01 # v0.0.40
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@3044ba71d36f3e3eb370b8915ca1b02f337fda8c # v0.0.41
     permissions:
       contents: read
 
@@ -160,7 +160,7 @@ jobs:
           - { preset: linux-private-backend }
           - { preset: macos-clang, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@89f98d8066ba5deec132332fba9f0b0347aecc01 # v0.0.40
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@3044ba71d36f3e3eb370b8915ca1b02f337fda8c # v0.0.41
     permissions:
       contents: read
     with:
@@ -184,7 +184,7 @@ jobs:
           - { preset: linux-gcc-14, runner: ubuntu-24.04-arm }
           - { preset: macos-clang-asan, runner: macos-15, setup: tools/ci_blackhole.sh }
           - { preset: macos-clang-tsan, runner: macos-15, setup: tools/ci_blackhole.sh }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@89f98d8066ba5deec132332fba9f0b0347aecc01 # v0.0.40
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@3044ba71d36f3e3eb370b8915ca1b02f337fda8c # v0.0.41
     permissions:
       contents: read
     with:
@@ -257,9 +257,11 @@ jobs:
   # The two loaders of hostile files under libFuzzer, one cell per target,
   # from the committed seeds and the shipped files (tools/fuzz_seeds.sh):
   # briefly on a pull request, longer on main, ten minutes at night. Each
-  # target's corpus carries from run to run in a cache of its own, restored
-  # first (the newest of that target's), minimized with libFuzzer's merge
-  # and saved from main only.
+  # target's corpus carries from run to run in a cache of its own. Every
+  # run restores it first (the newest of that target's), a pull request's
+  # included, so a change that breaks a harness's promise fails on its own
+  # pull request. A pull request neither minimizes it with libFuzzer's
+  # merge nor saves it, and only main saves it.
   fuzz:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -280,7 +282,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Restore the corpus
-        if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/corpus/${{ matrix.target }}
