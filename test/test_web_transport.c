@@ -613,7 +613,10 @@ static void Watch(maudContext* context, maudStreamId stream, double* heard, uint
 
 // Frame 0 heard later: 30 ms is within the estimate's drift and stays
 // held, uncounted. 70 ms for one cycle and then back is a report the
-// browser placed late: held, uncounted. 70 ms for good is frames the
+// browser placed late: held, uncounted. A batch a busy page delays (one
+// report 131 ms late, the rest of it 70 ms for 3.8 s) and then back loses
+// no frame either: held, and nothing counted once 5 s have passed. 70 ms
+// for good is frames the
 // browser played without the stream: still held and uncounted 2.5 s on,
 // then one underrun once it has lasted 5 s, and the clock follows it.
 static void RunLoss(bool isolated)
@@ -657,6 +660,21 @@ static void RunLoss(bool isolated)
     Watch(context, stream, &heard, &counted);
     CHECK(heard <= before + 1000.0 && counted == underruns,
           "70 ms late once is a report placed late: held, nothing counted");
+    Jump(131.0);
+    Cycle();
+    Jump(70.0);
+    for (int i = 0; i < 240; ++i)
+    {
+        Cycle();
+    }
+    Jump(0.0);
+    for (int i = 0; i < 400; ++i)
+    {
+        Cycle();
+    }
+    Watch(context, stream, &heard, &counted);
+    CHECK(heard <= before + 1000.0 && counted == underruns,
+          "a batch the page delayed for 3.8 s, then back: held, nothing counted");
     // A cycle is 16 ms of the device's frames.
     Jump(70.0);
     for (int i = 0; i < 156; ++i)
