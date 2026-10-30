@@ -469,6 +469,25 @@ jobs:
             rm -rf "$image"
             unpack "$EMULATOR_ARCHIVE" "$EMULATOR_SHA256" "$ANDROID_HOME"
             unpack "$SYSTEM_IMAGE_ARCHIVE" "$SYSTEM_IMAGE_SHA256" "${image%/*}"
+            # The SDK's tools know a package by the package.xml the SDK
+            # manager writes as it installs one, which an archive lacks.
+            # They still read a system image's source.properties, but
+            # avdmanager refuses an emulator without a package.xml: this is
+            # the one the SDK manager writes, but the license text, and the
+            # cache keeps it.
+            IFS=. read -r major minor micro <<<"$EMULATOR_REVISION"
+            cat >"$ANDROID_HOME/emulator/package.xml" <<XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02"
+              xmlns:ns3="http://schemas.android.com/repository/android/generic/02">
+            <localPackage path="emulator" obsolete="false">
+              <type-details xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:type="ns3:genericDetailsType"/>
+              <revision><major>$major</major><minor>$minor</minor><micro>$micro</micro></revision>
+              <display-name>Android Emulator</display-name>
+            </localPackage>
+          </ns2:repository>
+          XML
           fi
           revision() { sed -n 's/^Pkg.Revision=//p' "$1/source.properties"; }
           emulator_revision=$(revision "$ANDROID_HOME/emulator")
