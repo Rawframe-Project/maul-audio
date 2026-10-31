@@ -93,18 +93,24 @@ static bool WaitForBlocks(maudContext* context, const Blocks* blocks, uint32_t c
     return atomic_load(&blocks->count) >= count;
 }
 
-// The stream's rate: the best of three windows of three seconds, since
-// a stall that lowers a window's count is the machine's. AAudio moves
-// frames in bursts (882 on the emulator, 20 ms): a window this long
-// holds one burst more or less within 0.7%. A window in which the test's
-// own thread woke more than 50 ms late, and the one after it, where the
-// emulator catches up, do not count: on a loaded machine the starved
+// The stream's rate: all the frames of three windows of three seconds
+// over all their time. AAudio moves frames in bursts (882 on the
+// emulator, 20 ms): nine seconds hold one burst more or less within
+// 0.3%. A window in which the emulator's audio stalls reads slow and the
+// one in which it catches up reads fast, and the test sees neither
+// stall, which happens in the emulator's process: taken together they
+// read the true rate, where the fastest window alone read the catch-up.
+// A window in which the test's own thread woke more than 50 ms late, and
+// the one after it, do not count: on a loaded machine the starved
 // emulator moves frames slow, then fast. After ten windows with fewer
-// than three that count, every window counts, as before.
+// than three that count, every window counts. Each window's rate is
+// printed, so that a failed run shows which one strayed.
 static double MeasureRate(const maudContext* context, maudStreamId stream)
 {
-    double best = 0.0;
-    double bestOfAll = 0.0;
+    double frames = 0.0;
+    double seconds = 0.0;
+    double framesOfAll = 0.0;
+    double secondsOfAll = 0.0;
     int counted = 0;
     bool starved = false;
     for (int window = 0; window < 10 && counted < 3; ++window)
@@ -124,22 +130,26 @@ static double MeasureRate(const maudContext* context, maudStreamId stream)
             previous = now;
         }
         CHECK(maudStream_GetPosition(context, stream, &last) == maud_success, "position");
-        double rate = (double)(last - first) / (Now() - start);
-        bestOfAll = rate > bestOfAll ? rate : bestOfAll;
+        double moved = (double)(last - first);
+        double elapsed = Now() - start;
+        framesOfAll += moved;
+        secondsOfAll += elapsed;
         bool counts = late <= 0.050 && !starved;
         starved = late > 0.050;
         if (counts)
         {
-            best = rate > best ? rate : best;
+            frames += moved;
+            seconds += elapsed;
             counted += 1;
+            fprintf(stderr, "window %d: %.0f frames/s\n", window, moved / elapsed);
         }
         else
         {
             fprintf(stderr, "window %d left out: %.0f frames/s, the test's thread %.0f ms late\n",
-                    window, rate, late * 1000.0);
+                    window, moved / elapsed, late * 1000.0);
         }
     }
-    return counted >= 3 ? best : bestOfAll;
+    return counted >= 3 ? frames / seconds : framesOfAll / secondsOfAll;
 }
 
 // At most 2% above the expected rate and 6% below; printed when not.
@@ -266,8 +276,9 @@ static void TestOutputStream(maudContext* context)
     CHECK(atomic_load(&blocks.onControl) == 0, "on AAudio's thread");
     CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
-    // The emulator's backlog, which the lane's gate reads to restart an
-    // emulator before it reaches TEST_CLOCK_MAX_LATENCY.
+    // The emulator's backlog, for a failed run's log: it grows with an
+    // emulator's uptime under a starved host, toward the clock check's
+    // TEST_CLOCK_MAX_LATENCY, and CI boots a fresh emulator per job.
     maudStreamClock heard = {0};
     CHECK(maudStream_GetClock(context, stream, &heard) == maud_success, "clock");
     printf("output latency %.3f s\n", (double)heard.latencyNanoseconds / 1e9);
