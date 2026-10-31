@@ -10,9 +10,11 @@
 // call goes on as if nothing happened. The calls the hooks may make (the
 // rendering side, the misuse count) work from them. A set being
 // destroyed is stale before its memory goes back to the host, so a free
-// hook that reads it back finds it gone. Each invalid argument to the
-// functions that change it counts once; a stale id, a malformed bake and
-// the queries do not.
+// hook that reads it back finds it gone. A set re-baked keeps its earlier
+// bake until the new one is in place, so a free hook that saves the set
+// reads a whole bake, never the one being freed. Each invalid argument
+// to the functions that change it counts once; a stale id, a malformed
+// bake and the queries do not.
 
 #include "test_harness.h"
 
@@ -55,6 +57,11 @@ static bool s_allowed;
 static maudProbeSetId s_readSet;
 static bool s_readBack;
 static maudResult s_readResult;
+// Armed to save s_set once from the free hook, after freeing a block,
+// and what the save gave.
+static bool s_saveBack;
+static maudResult s_saveResult;
+static uint8_t* s_saved;
 
 static maudProbeSetDef SetDef(void)
 {
@@ -172,6 +179,13 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
         maudVector3 points[4];
         s_readResult = maudProbeSet_GetInfo(s_s, s_readSet, 0, &info, points, 4);
     }
+    // As a hook that keeps a copy of what it sees might.
+    if (s_saveBack)
+    {
+        s_saveBack = false;
+        size_t needed = 0;
+        s_saveResult = maudProbeSet_Save(s_s, s_set, s_saved, s_size, &needed);
+    }
 }
 
 static maudScene* Office(void)
@@ -274,6 +288,21 @@ static void TestReadBack(void)
     CHECK(maudDestroyProbeSet(s_s, s_readSet) == maud_success && !s_readBack &&
               s_readResult == maud_errorStale,
           "a free hook reading the set it frees back finds it stale");
+}
+
+// Re-baking s_set gives the same bits as its first bake, so a save from
+// the hook freeing the earlier bake must match the first save.
+static void TestSaveDuringRebake(void)
+{
+    s_saved = malloc(s_size);
+    CHECK(s_saved != nullptr, "room for a save");
+    s_saveBack = true;
+    s_saveResult = maud_errorInvalid;
+    CHECK(maudProbeSet_Bake(s_s, s_set) == maud_success && !s_saveBack &&
+              s_saveResult == maud_success && memcmp(s_saved, s_bytes, s_size) == 0,
+          "a free hook saving a set during its re-bake reads a whole bake");
+    free(s_saved);
+    s_saved = nullptr;
 }
 
 // Each invalid argument to a function that changes a spatializer,
@@ -390,6 +419,7 @@ int main(void)
     TestHooks();
     TestAllocator();
     TestReadBack();
+    TestSaveDuringRebake();
     TestEachCounted();
     TestCounts();
     TestDestroy();

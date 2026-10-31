@@ -689,7 +689,9 @@ extern "C"
     /// bits on every platform, however the tasks run and whatever the
     /// threads' floating-point modes. Its memory: 24
     /// bytes a probe, and with reflections 12 times the bed's channels
-    /// times the response's 10 ms bins in bytes more.
+    /// times the response's 10 ms bins in bytes more. A re-bake builds the
+    /// new bake beside the earlier one, which the set keeps until the new
+    /// one is whole, so both are held for that time.
     ///
     /// @param spatializer  The spatializer.
     /// @param set          The set.
