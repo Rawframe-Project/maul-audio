@@ -18,7 +18,7 @@ extern "C"
     // the order WAV files use; backends reorder them for platforms that
     // differ. Positions are the nominal ones of Recommendation ITU-R
     // BS.2051.
-    typedef uint8_t maudChannelLayout;
+    typedef int32_t maudChannelLayout;
 
     enum
     {
@@ -44,7 +44,7 @@ extern "C"
     };
 
     // The speaker a channel feeds.
-    typedef uint8_t maudSpeaker;
+    typedef int32_t maudSpeaker;
 
     enum
     {

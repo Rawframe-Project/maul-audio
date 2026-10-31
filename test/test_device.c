@@ -279,7 +279,7 @@ static void TestOverflowRecordCountsDropped(void)
     Expect(context, maud_notifyDeviceAdded, "second record");
     Expect(context, maud_notifyDeviceRemoved, "third record");
     maudNotification record = Expect(context, maud_notifyOverflow, "overflow takes the last");
-    CHECK(record.droppedCount == 2, "the dropped records are counted");
+    CHECK(record.notificationDropped == 2, "the dropped records are counted");
     ExpectDrained(context, "drained");
     AddDevice(context, maud_directionInput, 48000, "D");
     Expect(context, maud_notifyDeviceAdded, "records flow again");

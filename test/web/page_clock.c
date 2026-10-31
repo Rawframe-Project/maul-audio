@@ -130,7 +130,7 @@ static void Sample(Watch* watch)
     {
         return;
     }
-    uint64_t faults = status.underruns + status.overruns;
+    uint64_t faults = status.underrunCount + status.overrunCount;
     if (faults != watch->faults)
     {
         watch->faults = faults;

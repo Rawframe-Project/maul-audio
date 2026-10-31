@@ -384,7 +384,8 @@ static void TestXrun(maudContext* context)
     CHECK(WaitForBlocks(&blocks, 31), "past the stall");
     CHECK(WaitForBlocks(&blocks, 80), "it runs on");
     maudStreamStatus status = {0};
-    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.underruns > 0,
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
+              status.underrunCount > 0,
           "the stall counted as an underrun");
     CHECK(RateHolds(MeasureRate(context, stream), 44100.0), "at its rate");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");

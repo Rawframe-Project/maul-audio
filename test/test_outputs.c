@@ -8,9 +8,10 @@
 // itself defines, which it writes. Each call here runs with its outputs
 // filled with a pattern, once with a NULL owner and once with a valid
 // owner and a stale or unknown id, and each output must read zero after.
-// A caller's array reads zero over its whole room on failure, and past
-// the answer when the call answers less than the room holds: an empty
-// queue, fewer devices, a name that does not fit.
+// A caller's array reads zero over its whole room on a failure that
+// defines none of its items (an empty queue, a name that does not fit);
+// a success writes only the items it reports and leaves the room past
+// them as it was (fewer devices, a short name).
 
 #include "test_harness.h"
 
@@ -41,6 +42,20 @@ static bool Untouched(const float* values, size_t count)
     for (size_t i = 0; i < count; ++i)
     {
         if (memcmp(&values[i], &pattern, sizeof(pattern)) != 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether bytes all read the fill pattern.
+static bool Filled(const void* bytes, size_t size)
+{
+    const unsigned char* p = bytes;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (p[i] != 0xAB)
         {
             return false;
         }
@@ -158,15 +173,26 @@ static void TestContextCalls(maudContext* context)
     CHECK(maudContext_NextNotification(context, &record) == maud_empty &&
               Zero(&record, sizeof(record)),
           "an empty queue clears the record");
-    // Fewer devices than the room: the ids past them read zero. A name
-    // longer than the room: the bytes read zero.
+    // Fewer devices than the room: the ids past them are left. A name
+    // shorter than the room: the bytes past it are left. A name longer
+    // than the room: the bytes read zero.
     maudDeviceId room[16];
     uint32_t listed = 0;
     FILL(room);
     CHECK(maudContext_GetDevices(context, maud_directionOutput, room, 16, &listed) ==
                   maud_success &&
-              listed >= 1 && listed < 16 && Zero(room + listed, (16 - listed) * sizeof(room[0])),
-          "the ids past the devices listed read zero");
+              listed >= 1 && listed < 16 && Filled(room + listed, (16 - listed) * sizeof(room[0])),
+          "the ids past the devices listed are left");
+    char text[256];
+    size_t length = 0;
+    FILL(text);
+    CHECK(maudDevice_GetName(context, room[0], text, sizeof(text), &length) == maud_success &&
+              length < sizeof(text) && Filled(text + length, sizeof(text) - length),
+          "the bytes past a name are left");
+    FILL(text);
+    CHECK(maudDevice_GetKey(context, room[0], text, sizeof(text), &length) == maud_success &&
+              length < sizeof(text) && Filled(text + length, sizeof(text) - length),
+          "the bytes past a key are left");
     char shortName[1];
     size_t needed = 0;
     FILL(shortName);

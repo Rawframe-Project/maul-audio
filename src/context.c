@@ -22,7 +22,7 @@ static bool DefValid(const maudContextDef* def)
            def->limits.deviceTextBytes != 0 && def->offlineSampleRate >= MIN_RATE &&
            def->offlineSampleRate <= MAX_RATE &&
            (def->androidJavaVm == nullptr) == (def->androidContext == nullptr) &&
-           def->backend <= maud_backendPrivate;
+           (uint32_t)def->backend <= maud_backendPrivate;
 }
 
 // The backend of a kind in this build, or NULL.

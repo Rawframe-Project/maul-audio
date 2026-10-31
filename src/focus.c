@@ -28,7 +28,8 @@ void maudReportFocus(maudContext* context, maudFocus focus)
 maudResult maudContext_RequestFocus(maudContext* context, maudFocusRequest request,
                                     maudDeviceRole role)
 {
-    if (context == nullptr || request > maud_focusBriefMixed || role > maud_roleCommunications)
+    if (context == nullptr || (uint32_t)request > maud_focusBriefMixed ||
+        (uint32_t)role > maud_roleCommunications)
     {
         return maud_errorInvalid;
     }

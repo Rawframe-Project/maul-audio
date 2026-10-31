@@ -14,7 +14,7 @@
 static inline void maudCountXrun(maudStreamCore* core)
 {
     _Atomic(uint64_t)* counter =
-        core->def.direction == maud_directionOutput ? &core->underruns : &core->overruns;
+        core->def.direction == maud_directionOutput ? &core->underrunCount : &core->overrunCount;
     atomic_fetch_add_explicit(counter, 1, memory_order_relaxed);
 }
 

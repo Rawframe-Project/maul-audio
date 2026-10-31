@@ -86,7 +86,7 @@ static uint64_t Overruns(const maudContext* context, maudStreamId stream)
 {
     maudStreamStatus status = {0};
     CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
-    return status.overruns;
+    return status.overrunCount;
 }
 
 // The best rate over windows of 2 s.
@@ -286,7 +286,7 @@ static void TestPinnedInput(maudContext* context)
                 "pinned capture: %u blocks; status %s, started %d, suspension %d, overruns "
                 "%llu; routed input %s\n",
                 (unsigned)atomic_load(&blocks.count), maudGetResultName(read), status.started,
-                (int)status.suspension, (unsigned long long)status.overruns, routed.UTF8String);
+                (int)status.suspension, (unsigned long long)status.overrunCount, routed.UTF8String);
         CHECK(false, "captures");
     }
     NSString* preferred = [AVAudioSession sharedInstance].preferredInput.UID;

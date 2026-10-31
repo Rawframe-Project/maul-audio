@@ -561,15 +561,15 @@ static void CheckXruns(void)
     maudStreamStatus played = {0};
     maudStreamStatus heard = {0};
     CHECK(maudStream_GetStatus(s_context, s_stream, &played) == maud_success &&
-              played.underruns == (uint64_t)Shorts() && played.underruns >= 1,
+              played.underrunCount == (uint64_t)Shorts() && played.underrunCount >= 1,
           "every short quantum is an underrun");
     CHECK(maudStream_GetStatus(s_context, s_capture, &heard) == maud_success, "capture status");
     if (s_denied)
     {
-        CHECK(heard.overruns == 0, "a refused capture loses nothing");
+        CHECK(heard.overrunCount == 0, "a refused capture loses nothing");
         return;
     }
-    CHECK(Isolated() ? heard.overruns >= 1 : heard.overruns == 0,
+    CHECK(Isolated() ? heard.overrunCount >= 1 : heard.overrunCount == 0,
           "the stall overflows the capture ring, and only the ring");
 }
 

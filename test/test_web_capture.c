@@ -447,7 +447,7 @@ static void Granted(void* user)
     Pull(CAPACITY / QUANTUM + 3);
     (void)DeliverOneToMain();
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    CHECK(status.overruns == (s_isolated ? 3u : 0u),
+    CHECK(status.overrunCount == (s_isolated ? 3u : 0u),
           "quanta past the ring's capacity counted as overruns");
 
     CHECK(maudDestroyStream(s_context, s_stream) == maud_success, "destroy the capture");
@@ -529,19 +529,19 @@ static void FilterGranted(void* user)
     double steady = Settle();
     maudStreamStatus status = {0};
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    uint64_t overruns = status.overruns;
+    uint64_t overruns = status.overrunCount;
     Skip(11);
     Pull(1);
     double near = TakeAll();
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    CHECK(near <= steady + 1000.0 && status.overruns == overruns,
+    CHECK(near <= steady + 1000.0 && status.overrunCount == overruns,
           "29 ms later is drift: held, nothing counted");
     Late(70.0);
     Pull(1);
     (void)TakeAll();
     double settled = Run(400);
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    CHECK(settled <= steady + 1000.0 && status.overruns == overruns,
+    CHECK(settled <= steady + 1000.0 && status.overrunCount == overruns,
           "70 ms late once is a delivery placed late: held, nothing counted");
     for (int i = 0; i < 1430; ++i)
     {
@@ -551,7 +551,7 @@ static void FilterGranted(void* user)
     }
     double delayed = Run(2000);
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    CHECK(delayed <= steady + 1000.0 && status.overruns == overruns,
+    CHECK(delayed <= steady + 1000.0 && status.overrunCount == overruns,
           "a batch the page delayed for 3.8 s, then back: held, nothing counted");
     for (int i = 0; i < 1837; ++i)
     {
@@ -561,19 +561,20 @@ static void FilterGranted(void* user)
     }
     double under = Run(2000);
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    CHECK(under <= steady + 1000.0 && status.overruns == overruns,
+    CHECK(under <= steady + 1000.0 && status.overrunCount == overruns,
           "70 ms later for 4.9 s, then back: held, nothing counted");
     Skip(12);
     double waiting = Run(940);
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    CHECK(waiting <= steady + 1000.0 && status.overruns == overruns,
+    CHECK(waiting <= steady + 1000.0 && status.overrunCount == overruns,
           "61 ms later for 2.5 s: still held, nothing counted yet");
     double lost = Run(972);
     CHECK(maudStream_GetStatus(s_context, s_stream, &status) == maud_success, "status");
-    if (lost < steady + 55e6 || status.overruns != overruns + 1)
+    if (lost < steady + 55e6 || status.overrunCount != overruns + 1)
     {
         printf("61 ms later for 5.1 s: frame 0 %.0f ns from before, %llu overruns, %llu before\n",
-               lost - steady, (unsigned long long)status.overruns, (unsigned long long)overruns);
+               lost - steady, (unsigned long long)status.overrunCount,
+               (unsigned long long)overruns);
         CHECK(false, "61 ms later for good is frames lost: one overrun, and the clock follows");
     }
     // The output latency 2 ms higher in one delivery of five, as Chrome's

@@ -104,8 +104,8 @@ static maudResult OpenCore(maudContext* context, const maudStreamDef* def,
                                                        : maud_markUnknown;
     }
     atomic_store_explicit(&core->spatialMark, mark, memory_order_release);
-    atomic_store_explicit(&core->underruns, 0, memory_order_relaxed);
-    atomic_store_explicit(&core->overruns, 0, memory_order_relaxed);
+    atomic_store_explicit(&core->underrunCount, 0, memory_order_relaxed);
+    atomic_store_explicit(&core->overrunCount, 0, memory_order_relaxed);
     if (context->backend->hasNoVoice && def->direction == maud_directionInput)
     {
         maudReportVoice(core, maud_voiceNone);

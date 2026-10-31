@@ -563,7 +563,8 @@ static void TestUnderrun(maudContext* context)
     CHECK(maudStream_Start(context, stream) == maud_success, "start");
     CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
     maudStreamStatus status = {0};
-    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.underruns >= 1,
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
+              status.underrunCount >= 1,
           "the stall counted as an underrun");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
@@ -1103,7 +1104,7 @@ static void TestRestart(maudContext* context)
                 "suspension %d, device %u, underruns %llu\n",
                 atomic_load(&idle.count) - before, (double)(maudGetHostNanoseconds() - asked) / 1e6,
                 (int)result, (int)status.started, (int)status.suspension, status.device.index1,
-                (unsigned long long)status.underruns);
+                (unsigned long long)status.underrunCount);
     }
     CHECK(started, "the stopped one starts on the new server");
     CHECK(maudDestroyStream(context, stopped) == maud_success, "destroy it");

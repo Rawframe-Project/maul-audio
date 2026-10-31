@@ -457,7 +457,8 @@ static void RunTransport(bool isolated)
     CHECK(Target() == BASE + 6 * QUANTUM, "the target grew a quantum for each short one");
     CHECK(Held() == Target(), "refilled to the grown target");
     maudStreamStatus status = {0};
-    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.underruns == 4,
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
+              status.underrunCount == 4,
           "each short quantum an underrun");
 
     // Missed refills until the target reaches the ring's capacity.
@@ -608,7 +609,7 @@ static void Watch(maudContext* context, maudStreamId stream, double* heard, uint
               maudStream_GetStatus(context, stream, &status) == maud_success,
           "the clock and status");
     *heard = Heard(&clock);
-    *underruns = status.underruns;
+    *underruns = status.underrunCount;
 }
 
 // Frame 0 heard later: 30 ms is within the estimate's drift and stays

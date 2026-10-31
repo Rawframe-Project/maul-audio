@@ -946,8 +946,8 @@ static void TestXruns(maudContext* context)
         CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
         maudStreamStatus status = {0};
         CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
-        CHECK(input ? status.overruns >= 1 && status.underruns == 0
-                    : status.underruns >= 1 && status.overruns == 0,
+        CHECK(input ? status.overrunCount >= 1 && status.underrunCount == 0
+                    : status.underrunCount >= 1 && status.overrunCount == 0,
               "the stall counted by the stream's direction");
         CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
     }
@@ -963,14 +963,14 @@ static void TestXruns(maudContext* context)
     {
         CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 20), "it runs");
         CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
-        uint64_t before = status.underruns;
+        uint64_t before = status.underrunCount;
         CHECK(maudStream_Stop(context, stream) == maud_success, "stop");
         // hygiene: a stop's gap of 100 ms, which the underrun count must not take
         Pause(100);
         CHECK(maudStream_Start(context, stream) == maud_success, "start again");
         CHECK(WaitForBlocks(context, &calm, atomic_load(&calm.count) + 5), "it runs again");
         CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
-        jumped += status.underruns != before ? 1u : 0u;
+        jumped += status.underrunCount != before ? 1u : 0u;
     }
     if (jumped > 6)
     {
@@ -1033,13 +1033,13 @@ static void TestDuplexStream(maudContext* context)
     int windows = 0;
     while (windows < RATE_MAX_WINDOWS && clean < RATE_CLEAN_WINDOWS)
     {
-        uint64_t before = status.slippedFrames;
+        uint64_t before = status.slippedFrameCount;
         bool kept = GraphWindow(&watch);
         CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
         windows += 1;
         if (kept)
         {
-            slips[clean++] = status.slippedFrames - before;
+            slips[clean++] = status.slippedFrameCount - before;
         }
     }
     for (int i = 1; i < clean; ++i)
@@ -1070,8 +1070,8 @@ static void TestDuplexStream(maudContext* context)
     Blocks stalled = {.stallAt = 30};
     stream = OpenStream(context, maud_directionDuplex, (maudDeviceId){0, 0}, &stalled);
     CHECK(WaitForBlocks(context, &stalled, 80), "past the duplex stall");
-    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.underruns >= 1 &&
-              status.overruns >= 1,
+    CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
+              status.underrunCount >= 1 && status.overrunCount >= 1,
           "both halves count the stall");
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy the stalled duplex");
 }

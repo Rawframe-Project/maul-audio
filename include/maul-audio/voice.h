@@ -52,7 +52,7 @@ extern "C"
         float levelDbfs;
         float noiseDbfs;
         // The 10 ms frames analyzed so far.
-        uint64_t frames;
+        uint64_t frameCount;
     } maudVoiceState;
 
     typedef struct maudVoiceDetector maudVoiceDetector;
@@ -170,7 +170,7 @@ extern "C"
         // Whether its detector hears voice.
         bool voiceActive;
         // The 10 ms frames analyzed so far.
-        uint64_t frames;
+        uint64_t frameCount;
     } maudGainState;
 
     typedef struct maudGainControl maudGainControl;
@@ -283,7 +283,7 @@ extern "C"
         // The noise it estimates under the input, in dBFS.
         float noiseDbfs;
         // The 10 ms frames analyzed so far.
-        uint64_t frames;
+        uint64_t frameCount;
     } maudNoiseState;
 
     typedef struct maudNoiseSuppressor maudNoiseSuppressor;
@@ -397,7 +397,7 @@ extern "C"
         // The probability that the last frame held speech, 0.1 to 1.
         float speechProbability;
         // The frames processed so far.
-        uint64_t frames;
+        uint64_t frameCount;
     } maudEchoState;
 
     typedef struct maudEchoCanceller maudEchoCanceller;

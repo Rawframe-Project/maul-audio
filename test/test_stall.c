@@ -224,7 +224,7 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
     maudStreamStatus status;
     if (maudStream_GetStatus(shared->context, shared->stream, &status) == maud_success)
     {
-        shared->underrunsBefore = status.underruns;
+        shared->underrunsBefore = status.underrunCount;
     }
     shared->blocksBefore = atomic_load(&shared->blocks);
     atomic_store(&shared->stalling, true);
@@ -351,7 +351,7 @@ int main(int argc, char** argv)
     printf("stall: %u blocks of %.1f ms, the longest %.3f ms; latched step %u; underruns %llu "
            "before, %llu after\n",
            during, periodMs, (double)longest / 1e6, shared->latchedInStall,
-           (unsigned long long)shared->underrunsBefore, (unsigned long long)status.underruns);
+           (unsigned long long)shared->underrunsBefore, (unsigned long long)status.underrunCount);
     // A block that waited would finish only after the stall: with a block
     // started two periods before its end, one must have finished inside.
     long long firstStart = atomic_load(&shared->firstInStall);
@@ -394,7 +394,7 @@ int main(int argc, char** argv)
         CHECK(shared->latchedInStall == STALLED_STEP - 1, "the last whole step stayed latched");
         if (underruns)
         {
-            CHECK(status.underruns == 0, "no underrun over the stall");
+            CHECK(status.underrunCount == 0, "no underrun over the stall");
         }
     }
     CHECK(maudStream_Stop(context, shared->stream) == maud_success, "stopped");

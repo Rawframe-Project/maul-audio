@@ -128,19 +128,19 @@ void maudSetDefaultDevice(maudContext* context, maudDeviceRole role, maudDeviceI
 maudResult maudContext_GetDevices(const maudContext* context, maudDirection direction,
                                   maudDeviceId* idsOut, uint32_t capacity, uint32_t* countOut)
 {
-    // Cleared first, so a failure leaves zero, and so does every id past
-    // the devices listed.
+    // A failure clears the whole array; a success writes only the ids it
+    // lists and leaves the room past them as it was.
     if (countOut != nullptr)
     {
         *countOut = 0;
     }
-    if (idsOut != nullptr && capacity != 0)
-    {
-        memset(idsOut, 0, (size_t)capacity * sizeof(*idsOut));
-    }
     if (context == nullptr || countOut == nullptr || (idsOut == nullptr && capacity != 0) ||
-        direction > maud_directionInput)
+        (uint32_t)direction > maud_directionInput)
     {
+        if (idsOut != nullptr && capacity != 0)
+        {
+            memset(idsOut, 0, (size_t)capacity * sizeof(*idsOut));
+        }
         return maud_errorInvalid;
     }
     uint32_t count = 0;
@@ -187,32 +187,37 @@ maudResult maudDevice_GetInfo(const maudContext* context, maudDeviceId device,
 static maudResult CopyText(const maudContext* context, maudDeviceId device, bool key,
                            char* bytesOut, size_t capacity, size_t* lengthOut)
 {
-    // Cleared first, so a failure leaves zero, and so does every byte past
-    // the text.
-    if (bytesOut != nullptr && capacity != 0)
+    // A failure clears the whole buffer, the text being none of it; a
+    // success writes only the text's bytes and leaves the room past them.
+    maudResult result = maud_success;
+    const maudDeviceSlot* slot = nullptr;
+    if (context == nullptr || lengthOut == nullptr || (bytesOut == nullptr && capacity != 0))
+    {
+        result = maud_errorInvalid;
+    }
+    else
+    {
+        slot = maudFindDevice(context, device);
+        result = slot == nullptr ? maud_errorStale : maud_success;
+    }
+    if (result == maud_success)
+    {
+        const maudDeviceText* text = key ? &slot->key : &slot->name;
+        *lengthOut = text->length;
+        if (text->length > capacity)
+        {
+            result = maud_errorCapacity;
+        }
+        else if (text->length != 0)
+        {
+            memcpy(bytesOut, text->bytes, text->length);
+        }
+    }
+    if (result != maud_success && bytesOut != nullptr && capacity != 0)
     {
         memset(bytesOut, 0, capacity);
     }
-    if (context == nullptr || lengthOut == nullptr || (bytesOut == nullptr && capacity != 0))
-    {
-        return maud_errorInvalid;
-    }
-    const maudDeviceSlot* slot = maudFindDevice(context, device);
-    if (slot == nullptr)
-    {
-        return maud_errorStale;
-    }
-    const maudDeviceText* text = key ? &slot->key : &slot->name;
-    *lengthOut = text->length;
-    if (text->length > capacity)
-    {
-        return maud_errorCapacity;
-    }
-    if (text->length != 0)
-    {
-        memcpy(bytesOut, text->bytes, text->length);
-    }
-    return maud_success;
+    return result;
 }
 
 maudResult maudDevice_GetName(const maudContext* context, maudDeviceId device, char* bytesOut,
@@ -245,8 +250,8 @@ maudResult maudContext_GetDefaultDevice(const maudContext* context, maudDirectio
     {
         memset(deviceOut, 0, sizeof(*deviceOut));
     }
-    if (context == nullptr || deviceOut == nullptr || direction > maud_directionInput ||
-        role > maud_roleCommunications)
+    if (context == nullptr || deviceOut == nullptr || (uint32_t)direction > maud_directionInput ||
+        (uint32_t)role > maud_roleCommunications)
     {
         return maud_errorInvalid;
     }

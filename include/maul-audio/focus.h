@@ -16,7 +16,7 @@ extern "C"
 #endif
 
     // Where the context stands with the platform's audio focus.
-    typedef uint8_t maudFocus;
+    typedef int32_t maudFocus;
 
     enum
     {
@@ -36,7 +36,7 @@ extern "C"
     };
 
     // What a focus request asks for.
-    typedef uint8_t maudFocusRequest;
+    typedef int32_t maudFocusRequest;
 
     enum
     {

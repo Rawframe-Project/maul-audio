@@ -27,7 +27,7 @@ extern "C"
     } maudDeviceId;
 
     // Which way samples move.
-    typedef uint8_t maudDirection;
+    typedef int32_t maudDirection;
 
     enum
     {
@@ -50,7 +50,7 @@ extern "C"
     };
 
     // What a default device is the default for.
-    typedef uint8_t maudDeviceRole;
+    typedef int32_t maudDeviceRole;
 
     enum
     {
@@ -61,7 +61,7 @@ extern "C"
     };
 
     // What the platform's own spatializer does on an output device.
-    typedef uint8_t maudPlatformSpatializer;
+    typedef int32_t maudPlatformSpatializer;
 
     enum
     {
@@ -80,7 +80,7 @@ extern "C"
     // What a device's active port leads to, as the platform reports it.
     // Connections that say nothing of the far end, such as USB and
     // Bluetooth, are unknown.
-    typedef uint8_t maudDeviceForm;
+    typedef int32_t maudDeviceForm;
 
     enum
     {
@@ -137,9 +137,9 @@ extern "C"
     ///
     /// @param context     The context.
     /// @param direction   Output or input devices.
-    /// @param idsOut      Receives up to capacity ids, the null id in the
-    ///                    room past them and in all of it on failure. May
-    ///                    be NULL when capacity is 0.
+    /// @param idsOut      Receives up to capacity ids; the room past them
+    ///                    is left as it was, and all of it holds the null
+    ///                    id on failure. May be NULL when capacity is 0.
     /// @param capacity    The room in idsOut.
     /// @param countOut    Receives the number of devices, which may exceed
     ///                    capacity; 0 on failure.
@@ -170,9 +170,9 @@ extern "C"
     ///
     /// @param context    The context.
     /// @param device     The device.
-    /// @param bytesOut   Receives the name, zeros in the room past it and
-    ///                   in all of it on failure. May be NULL when capacity
-    ///                   is 0.
+    /// @param bytesOut   Receives the name; the room past it is left as it
+    ///                   was, and all of it holds zeros on failure. May be
+    ///                   NULL when capacity is 0.
     /// @param capacity   The room in bytesOut.
     /// @param lengthOut  Receives the name's length in bytes: the length
     ///                   needed when it does not fit, 0 on other failures.
@@ -192,9 +192,9 @@ extern "C"
     ///
     /// @param context    The context.
     /// @param device     The device.
-    /// @param bytesOut   Receives the key, zeros in the room past it and in
-    ///                   all of it on failure. May be NULL when capacity is
-    ///                   0.
+    /// @param bytesOut   Receives the key; the room past it is left as it
+    ///                   was, and all of it holds zeros on failure. May be
+    ///                   NULL when capacity is 0.
     /// @param capacity   The room in bytesOut.
     /// @param lengthOut  Receives the key's length in bytes: the length
     ///                   needed when it does not fit, 0 on other failures.

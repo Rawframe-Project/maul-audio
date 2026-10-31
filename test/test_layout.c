@@ -66,7 +66,7 @@ static void TestLayoutForCount(void)
     for (uint32_t layout = maud_layoutMono; layout <= maud_layout7Point1Point4; ++layout)
     {
         uint32_t channels = maudGetLayoutChannelCount(layout);
-        each = each && maudLayoutWithChannels(channels) == layout;
+        each = each && (uint32_t)maudLayoutWithChannels(channels) == layout;
     }
     CHECK(each && maudLayoutWithChannels(12) == maud_layout7Point1Point4 &&
               maudLayoutWithChannels(3) == maud_layoutNone,

@@ -48,8 +48,9 @@ maudStreamDef maudDefaultStreamDef(void)
 static bool DefValid(const maudStreamDef* def)
 {
     if (def->cookie != STREAM_DEF_COOKIE || def->callback == nullptr ||
-        def->direction > maud_directionLoopback || def->mode > maud_modePull ||
-        def->ratePolicy > maud_ratePlatformConverted || def->role > maud_roleCommunications ||
+        (uint32_t)def->direction > maud_directionLoopback || (uint32_t)def->mode > maud_modePull ||
+        (uint32_t)def->ratePolicy > maud_ratePlatformConverted ||
+        (uint32_t)def->role > maud_roleCommunications ||
         maudGetLayoutChannelCount(def->layout) == 0)
     {
         return false;
@@ -62,7 +63,7 @@ static bool DefValid(const maudStreamDef* def)
     {
         return false;
     }
-    if (def->share > maud_shareExclusive ||
+    if ((uint32_t)def->share > maud_shareExclusive ||
         (def->share == maud_shareExclusive && def->device.index1 == 0) ||
         (def->contentSpatialized && (def->direction == maud_directionInput || loopback)) ||
         (def->loopbackExcludesSelf && !loopback))
@@ -236,12 +237,12 @@ maudResult maudStream_GetStatus(const maudContext* context, maudStreamId stream,
         .device = binding->current,
         .drift =
             duplex == nullptr || SharesClock(context, duplex) ? maud_driftNone : maud_driftSlip,
-        .slippedFrames =
+        .slippedFrameCount =
             duplex != nullptr ? atomic_load_explicit(&duplex->slipped, memory_order_relaxed) : 0,
         .voiceReported = atomic_load_explicit(&captured->voiceReported, memory_order_acquire),
         .voiceActive = atomic_load_explicit(&captured->voiceActive, memory_order_relaxed),
-        .underruns = atomic_load_explicit(&slot->core.underruns, memory_order_relaxed),
-        .overruns = atomic_load_explicit(&captured->overruns, memory_order_relaxed),
+        .underrunCount = atomic_load_explicit(&slot->core.underrunCount, memory_order_relaxed),
+        .overrunCount = atomic_load_explicit(&captured->overrunCount, memory_order_relaxed),
         .exclusive = slot->core.exclusive,
         .spatialMark = atomic_load_explicit(&slot->core.spatialMark, memory_order_acquire),
     };

@@ -79,7 +79,7 @@ static const LayoutTable s_layouts[] = {
 
 static const LayoutChannel* FindChannel(maudChannelLayout layout, uint32_t channel)
 {
-    if (layout >= sizeof(s_layouts) / sizeof(s_layouts[0]))
+    if ((uint32_t)layout >= sizeof(s_layouts) / sizeof(s_layouts[0]))
     {
         return nullptr;
     }
@@ -93,7 +93,7 @@ static const LayoutChannel* FindChannel(maudChannelLayout layout, uint32_t chann
 
 uint32_t maudGetLayoutChannelCount(maudChannelLayout layout)
 {
-    if (layout >= sizeof(s_layouts) / sizeof(s_layouts[0]))
+    if ((uint32_t)layout >= sizeof(s_layouts) / sizeof(s_layouts[0]))
     {
         return 0;
     }
