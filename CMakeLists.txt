@@ -667,6 +667,12 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     endif()
     if(MAUL_AUDIO_AAUDIO)
         maul_add_test(aaudio THREADS)
+        # The output stream's rate, which read fast once when the
+        # emulator's audio caught up after a stall of its own (#251):
+        # quarantined, so it runs at night, and left out of aaudio.
+        add_test(NAME aaudio_rate COMMAND test_aaudio rate)
+        set_tests_properties(aaudio_rate PROPERTIES LABELS aaudio)
+        maul_quarantine(aaudio_rate)
     endif()
     # The Java half, as an application in the emulator, built by
     # tools/build_android_app.sh without Gradle and run by
@@ -812,7 +818,7 @@ endif()
 if(MAUL_AUDIO_BUILD_TESTS)
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
                  pulse_rate pulse_defaults alsa stall stall_blocks stall_underruns guide_device
-                 coreaudio wasapi wasapi_sta ios ios_capture aaudio android_java)
+                 coreaudio wasapi wasapi_sta ios ios_capture aaudio aaudio_rate android_java)
         if(TEST ${name})
             set_property(TEST ${name} APPEND PROPERTY LABELS integration)
         endif()
@@ -821,7 +827,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     # (PlatformAbsent, test/test_wait.h).
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
                  pulse_rate pulse_defaults alsa stall stall_blocks stall_underruns guide_device
-                 coreaudio wasapi wasapi_sta aaudio)
+                 coreaudio wasapi wasapi_sta aaudio aaudio_rate)
         if(TEST ${name})
             # hygiene: exit 77 means the suite's platform is absent, never a failure
             set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
