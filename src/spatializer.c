@@ -349,7 +349,7 @@ static MAUD_NOINLINE maudResult CreateSource(maudSpatializer* spatializer, const
         return maud_errorBusy;
     }
     if (def == nullptr || sourceOut == nullptr || def->cookie != SOURCE_DEF_COOKIE ||
-        !PatternValid(&def->directivity) || def->occlusion > maud_occlusionVolumetric ||
+        !PatternValid(&def->directivity) || (uint32_t)def->occlusion > maud_occlusionVolumetric ||
         (def->occlusion == maud_occlusionVolumetric &&
          (!(def->occlusionRadius > 0.0f) || !isfinite(def->occlusionRadius) ||
           def->occlusionSamples == 0 || def->occlusionSamples > spatializer->maxSamples)))

@@ -56,11 +56,11 @@ static Run Detect(const Signal* signal, uint8_t aggressiveness, uint32_t chunk)
         CHECK(maudVoiceDetector_Detect(detector, &signal->samples[at], count, &state) ==
                   maud_success,
               "detect");
-        if (state.frames > run.frames)
+        if (state.frameCount > run.frames)
         {
-            run.active[state.frames - 1] = state.active;
-            run.probability[state.frames - 1] = state.probability;
-            run.frames = (uint32_t)state.frames;
+            run.active[state.frameCount - 1] = state.active;
+            run.probability[state.frameCount - 1] = state.probability;
+            run.frames = (uint32_t)state.frameCount;
         }
     }
     maudDestroyVoiceDetector(detector);
@@ -352,8 +352,8 @@ static void TestLayoutAndChunks(void)
         CHECK(maudVoiceDetector_Detect(detector, stereo + 2 * (size_t)at, count, &state) ==
                   maud_success,
               "detect stereo");
-        if (state.frames > 0 && (state.active != mono.active[state.frames - 1] ||
-                                 state.probability != mono.probability[state.frames - 1]))
+        if (state.frameCount > 0 && (state.active != mono.active[state.frameCount - 1] ||
+                                     state.probability != mono.probability[state.frameCount - 1]))
         {
             mismatches++;
         }

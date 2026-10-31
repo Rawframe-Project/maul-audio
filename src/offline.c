@@ -50,8 +50,9 @@ static maudResult CheckOffline(maudContext* context)
 
 static bool DefValid(const maudOfflineDeviceDef* def)
 {
-    return def->cookie == OFFLINE_DEVICE_DEF_COOKIE && def->direction <= maud_directionInput &&
-           def->form <= maud_formDigital && maudGetLayoutChannelCount(def->layout) != 0 &&
+    return def->cookie == OFFLINE_DEVICE_DEF_COOKIE &&
+           (uint32_t)def->direction <= maud_directionInput &&
+           (uint32_t)def->form <= maud_formDigital && maudGetLayoutChannelCount(def->layout) != 0 &&
            def->sampleRate >= OFFLINE_MIN_RATE && def->sampleRate <= OFFLINE_MAX_RATE &&
            (def->name != nullptr || def->nameLength == 0) &&
            (def->key != nullptr || def->keyLength == 0);
@@ -115,7 +116,7 @@ maudResult maudOfflineDevice_SetDefault(maudContext* context, maudDeviceId devic
     {
         return result;
     }
-    if (role > maud_roleCommunications)
+    if ((uint32_t)role > maud_roleCommunications)
     {
         maudCountMisuse(context);
         return maud_errorInvalid;
@@ -135,7 +136,7 @@ maudResult maudOfflineDevice_SetForm(maudContext* context, maudDeviceId device, 
     {
         return result;
     }
-    if (form > maud_formDigital)
+    if ((uint32_t)form > maud_formDigital)
     {
         maudCountMisuse(context);
         return maud_errorInvalid;
@@ -187,7 +188,8 @@ maudResult maudOfflineDevice_SetSpatializer(maudContext* context, maudDeviceId d
     {
         return result;
     }
-    if (spatializer > maud_spatializerOn || (objectCount > 0 && spatializer != maud_spatializerOn))
+    if ((uint32_t)spatializer > maud_spatializerOn ||
+        (objectCount > 0 && spatializer != maud_spatializerOn))
     {
         maudCountMisuse(context);
         return maud_errorInvalid;

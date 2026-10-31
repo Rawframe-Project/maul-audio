@@ -11,8 +11,8 @@
 static void InitCore(maudStreamCore* core, maudDirection direction)
 {
     core->def.direction = direction;
-    atomic_init(&core->underruns, 0);
-    atomic_init(&core->overruns, 0);
+    atomic_init(&core->underrunCount, 0);
+    atomic_init(&core->overrunCount, 0);
 }
 
 static void TestDirection(void)
@@ -20,12 +20,12 @@ static void TestDirection(void)
     maudStreamCore output = {0};
     InitCore(&output, maud_directionOutput);
     maudCountXrun(&output);
-    CHECK(atomic_load(&output.underruns) == 1 && atomic_load(&output.overruns) == 0,
+    CHECK(atomic_load(&output.underrunCount) == 1 && atomic_load(&output.overrunCount) == 0,
           "an output's xrun is an underrun");
     maudStreamCore input = {0};
     InitCore(&input, maud_directionInput);
     maudCountXrun(&input);
-    CHECK(atomic_load(&input.overruns) == 1 && atomic_load(&input.underruns) == 0,
+    CHECK(atomic_load(&input.overrunCount) == 1 && atomic_load(&input.underrunCount) == 0,
           "an input's is an overrun");
 }
 
@@ -35,13 +35,13 @@ static void TestRunningTotal(void)
     InitCore(&core, maud_directionOutput);
     int32_t counted = 0;
     maudCountXrunsTo(&core, &counted, 0);
-    CHECK(atomic_load(&core.underruns) == 0 && counted == 0, "a total of none counts none");
+    CHECK(atomic_load(&core.underrunCount) == 0 && counted == 0, "a total of none counts none");
     maudCountXrunsTo(&core, &counted, 3);
-    CHECK(atomic_load(&core.underruns) == 3 && counted == 3, "a total of three counts three");
+    CHECK(atomic_load(&core.underrunCount) == 3 && counted == 3, "a total of three counts three");
     maudCountXrunsTo(&core, &counted, 3);
-    CHECK(atomic_load(&core.underruns) == 3 && counted == 3, "and none again while it stays");
+    CHECK(atomic_load(&core.underrunCount) == 3 && counted == 3, "and none again while it stays");
     maudCountXrunsTo(&core, &counted, 5);
-    CHECK(atomic_load(&core.underruns) == 5 && counted == 5, "two more as it grows by two");
+    CHECK(atomic_load(&core.underrunCount) == 5 && counted == 5, "two more as it grows by two");
 }
 
 int main(void)

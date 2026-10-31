@@ -560,11 +560,12 @@ static void TestUnderrun(maudContext* context)
     CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
     if (UnderWine())
     {
-        printf("underruns after a stall under Wine: %llu\n", (unsigned long long)status.underruns);
+        printf("underruns after a stall under Wine: %llu\n",
+               (unsigned long long)status.underrunCount);
     }
     else
     {
-        CHECK(status.underruns >= 1, "the stall counted as an underrun");
+        CHECK(status.underrunCount >= 1, "the stall counted as an underrun");
     }
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }

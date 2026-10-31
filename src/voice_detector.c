@@ -109,7 +109,7 @@ maudResult maudVoiceDetector_Detect(maudVoiceDetector* detector, const float* fr
             .probability = core->probability,
             .levelDbfs = core->level,
             .noiseDbfs = core->noise[MAUD_VAD_BANDS],
-            .frames = core->frames,
+            .frameCount = core->frames,
         };
     }
     return maud_success;

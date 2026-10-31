@@ -251,7 +251,7 @@ maudResult maudEchoCanceller_Cancel(maudEchoCanceller* canceller, float* capture
         *stateOut = (maudEchoState){.leakage = (float)c->filter.leak,
                                     .adapted = c->filter.adapted,
                                     .speechProbability = (float)c->suppressor.frameProbability,
-                                    .frames = c->frames};
+                                    .frameCount = c->frames};
     }
     return maud_success;
 }

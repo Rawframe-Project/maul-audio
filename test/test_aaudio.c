@@ -319,11 +319,13 @@ static void TestXruns(maudContext* context)
     maudStreamStatus status = {0};
     POLL_UNTIL(1000, "the stall's underrun",
                CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status"),
-               status.underruns != 0);
-    printf("xruns after a stall: %llu under, %llu over\n", (unsigned long long)status.underruns,
-           (unsigned long long)status.overruns);
-    CHECK(status.underruns >= 1 && status.overruns == 0, "the stall counted as an underrun");
-    CHECK(status.underruns < atomic_load(&blocks.count) / 2, "underruns counted, not callbacks");
+               status.underrunCount != 0);
+    printf("xruns after a stall: %llu under, %llu over\n", (unsigned long long)status.underrunCount,
+           (unsigned long long)status.overrunCount);
+    CHECK(status.underrunCount >= 1 && status.overrunCount == 0,
+          "the stall counted as an underrun");
+    CHECK(status.underrunCount < atomic_load(&blocks.count) / 2,
+          "underruns counted, not callbacks");
     CHECK(Destroy(context, stream), "destroy");
 }
 

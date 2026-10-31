@@ -34,7 +34,7 @@ extern "C"
 #define MAUD_MAX_DEVICE_TEXT_BYTES 65535u
 
     // Which backend a context talks to.
-    typedef uint8_t maudBackendKind;
+    typedef int32_t maudBackendKind;
 
     enum
     {

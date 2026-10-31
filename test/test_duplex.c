@@ -98,7 +98,7 @@ static uint64_t Slipped(const maudContext* context, maudStreamId stream)
     CHECK(maudStream_GetStatus(context, stream, &status) == maud_success &&
               status.drift == maud_driftSlip,
           "a duplex stream declares its slip");
-    return status.slippedFrames;
+    return status.slippedFrameCount;
 }
 
 static void TestBothInOneCallback(void)
@@ -123,7 +123,7 @@ static void TestBothInOneCallback(void)
     CHECK(maudStream_GetStatus(context, stream, &status) == maud_success && status.voiceReported &&
               status.voiceActive == maud_voiceNone,
           "its input half's voice report");
-    CHECK(status.underruns == 0 && status.overruns == 0,
+    CHECK(status.underrunCount == 0 && status.overrunCount == 0,
           "the offline backend counts no xruns: its caller drives it");
     Feed(context, stream, 0, PERIOD);
     CHECK(maudStream_Render(context, stream, out, PERIOD) == maud_success, "render");

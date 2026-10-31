@@ -105,7 +105,7 @@ static inline uint64_t StreamXruns(const GraphWatch* watch)
         return 0;
     }
     return maudStream_GetStatus(watch->context, watch->stream, &status) == maud_success
-               ? status.underruns + status.overruns
+               ? status.underrunCount + status.overrunCount
                : UINT64_MAX;
 }
 

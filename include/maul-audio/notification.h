@@ -16,7 +16,7 @@ extern "C"
 #endif
 
     // What a notification reports.
-    typedef uint8_t maudNotificationKind;
+    typedef int32_t maudNotificationKind;
 
     enum
     {
@@ -35,7 +35,7 @@ extern "C"
         maud_notifyStreamResumed = 6,
         // stream now runs at sampleRate.
         maud_notifyStreamFormatChanged = 7,
-        // droppedCount records did not fit in the queue and were lost.
+        // notificationDropped records did not fit in the queue and were lost.
         // Query the devices and stream statuses again.
         maud_notifyOverflow = 8,
         // device, of direction, now leads to form: its route changed,
@@ -68,7 +68,7 @@ extern "C"
         maudDeviceId device;
         maudStreamId stream;
         uint32_t sampleRate;
-        uint32_t droppedCount;
+        uint32_t notificationDropped;
         maudDeviceForm form;
         maudFocus focus;
     } maudNotification;

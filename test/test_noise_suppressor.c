@@ -98,7 +98,7 @@ static void TestSteadyNoise(void)
            early, late, (double)state.noiseDbfs, (double)state.speechProbability);
     CHECK(early > 12.0 && late > 14.0, "taken down within a second");
     CHECK(fabsf(state.noiseDbfs + 30.0f) < 3.0f, "its level reported");
-    CHECK(state.frames == FRAMES / HOP, "every 10 ms analysed");
+    CHECK(state.frameCount == FRAMES / HOP, "every 10 ms analysed");
     maudDestroyNoiseSuppressor(s);
 }
 

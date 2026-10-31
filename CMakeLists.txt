@@ -440,6 +440,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     # The C snippets of docs/user/, as written there: both parts'.
     if(MAUL_AUDIO_SPATIAL)
         maul_add_test(refusals)
+        maul_add_test(kinds)
         maul_add_test(versions)
         maul_audio_test_data(refusals)
         maul_add_test(guide)

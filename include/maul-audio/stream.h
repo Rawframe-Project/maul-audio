@@ -25,7 +25,7 @@ extern "C"
     } maudStreamId;
 
     // Which thread runs the stream's period loop.
-    typedef uint8_t maudStreamMode;
+    typedef int32_t maudStreamMode;
 
     enum
     {
@@ -43,7 +43,7 @@ extern "C"
     };
 
     // How a stream's rate is chosen.
-    typedef uint8_t maudRatePolicy;
+    typedef int32_t maudRatePolicy;
 
     enum
     {
@@ -105,7 +105,7 @@ extern "C"
 
     // Parts of the platform's voice processing, as flags: asked for by an
     // input or duplex stream, and reported as active.
-    typedef uint8_t maudVoiceProcessing;
+    typedef uint32_t maudVoiceProcessing;
 
     enum
     {
@@ -119,7 +119,7 @@ extern "C"
 
     // Whether a stream shares its device with other streams and
     // applications.
-    typedef uint8_t maudShareMode;
+    typedef int32_t maudShareMode;
 
     enum
     {
@@ -132,7 +132,7 @@ extern "C"
 
     // What the platform does with an output stream marked as already
     // spatialized (contentSpatialized).
-    typedef uint8_t maudSpatialMark;
+    typedef int32_t maudSpatialMark;
 
     enum
     {
@@ -218,7 +218,7 @@ extern "C"
     } maudStreamFormat;
 
     // Why a stream cannot run.
-    typedef uint8_t maudSuspendReason;
+    typedef int32_t maudSuspendReason;
 
     enum
     {
@@ -259,7 +259,7 @@ extern "C"
 
     // Where a stream stands.
     // How a duplex stream keeps its input in step with its output.
-    typedef uint8_t maudDriftPolicy;
+    typedef int32_t maudDriftPolicy;
 
     enum
     {
@@ -288,7 +288,7 @@ extern "C"
         maudDriftPolicy drift;
         // Input frames a duplex stream has slipped: dropped, or played as
         // silence, under maud_driftSlip.
-        uint64_t slippedFrames;
+        uint64_t slippedFrameCount;
         // Whether the platform has said which voice processing runs on an
         // input or duplex stream; false while it has not, or where it
         // never says. Platforms may ignore a request.
@@ -296,14 +296,14 @@ extern "C"
         // The parts it said are active, once reported.
         maudVoiceProcessing voiceActive;
         // Times the platform revealed that an output played without the
-        // stream's frames (underruns) or that an input lost frames before
-        // the stream got them (overruns). A duplex stream's are its
+        // stream's frames (underrunCount) or that an input lost frames before
+        // the stream got them (overrunCount). A duplex stream's are its
         // output's and its input's; its slips are counted apart. On ALSA
         // through a sound server, an output whose sink stops taking frames
         // mid-stream and resumes later also counts an underrun: the server
         // reports it as it reports a starved stream.
-        uint64_t underruns;
-        uint64_t overruns;
+        uint64_t underrunCount;
+        uint64_t overrunCount;
         // Whether the stream keeps other streams and applications off its
         // device: an exclusive stream, or an ALSA hardware PCM, which does
         // so even when opened shared.

@@ -288,7 +288,7 @@ maudResult maudGainControl_Apply(maudGainControl* gain, float* frames, uint32_t 
             .speechReliable = gain->reliable,
             .noiseDbfs = gain->vad.noise[MAUD_VAD_BANDS],
             .voiceActive = gain->vad.active,
-            .frames = gain->vad.frames,
+            .frameCount = gain->vad.frames,
         };
     }
     return maud_success;

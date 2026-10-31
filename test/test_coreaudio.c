@@ -761,13 +761,14 @@ static void TestXruns(maudContext* context)
         CHECK(WaitForBlocks(context, &blocks, 80), "past the stall");
         maudStreamStatus status = {0};
         CHECK(maudStream_GetStatus(context, stream, &status) == maud_success, "status");
-        if (input ? status.overruns == 0 : status.underruns == 0)
+        if (input ? status.overrunCount == 0 : status.underrunCount == 0)
         {
             fprintf(stderr, "xruns after a stall: %llu under, %llu over\n",
-                    (unsigned long long)status.underruns, (unsigned long long)status.overruns);
+                    (unsigned long long)status.underrunCount,
+                    (unsigned long long)status.overrunCount);
         }
-        CHECK(input ? status.overruns >= 1 && status.underruns == 0
-                    : status.underruns >= 1 && status.overruns == 0,
+        CHECK(input ? status.overrunCount >= 1 && status.underrunCount == 0
+                    : status.underrunCount >= 1 && status.overrunCount == 0,
               "the stall counted by the stream's direction");
         CHECK(Destroy(context, stream), "destroy");
     }

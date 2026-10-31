@@ -60,8 +60,8 @@ typedef struct maudStreamCore
     _Atomic(uint8_t) voiceActive;
     atomic_bool voiceReported;
     // Underruns and overruns the platform revealed (xrun.h).
-    _Atomic(uint64_t) underruns;
-    _Atomic(uint64_t) overruns;
+    _Atomic(uint64_t) underrunCount;
+    _Atomic(uint64_t) overrunCount;
     // What the platform does with the stream's spatialized mark
     // (maudSpatialMark), as the backend says.
     _Atomic(uint8_t) spatialMark;

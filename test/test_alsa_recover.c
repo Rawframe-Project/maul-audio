@@ -56,8 +56,8 @@ static void Reset(maudStreamCore* core, maudDirection direction, int recoverResu
 {
     *core = (maudStreamCore){0};
     core->def.direction = direction;
-    atomic_init(&core->underruns, 0);
-    atomic_init(&core->overruns, 0);
+    atomic_init(&core->underrunCount, 0);
+    atomic_init(&core->overrunCount, 0);
     s_recoverResult = recoverResult;
     s_recovered = 0;
     s_recoveredError = 0;
@@ -107,7 +107,7 @@ static uint64_t WriteWith(maudAlsaStream* entry, snd_pcm_sframes_t delay, int pa
     s_avail = FRAMES;
     s_delay = delay;
     CHECK(maudAlsaTransfer(entry), "a write");
-    return atomic_load(&entry->core->underruns);
+    return atomic_load(&entry->core->underrunCount);
 }
 
 // The gaps a running output counts from its PCM's queue.
@@ -151,7 +151,7 @@ static void TestSilentGaps(void)
     CHECK(WriteWith(&entry, 0, 10) == 2, "nor the first fill once it runs again");
     CHECK(WriteWith(&entry, 0, 10) == 3, "then a gap counts");
     s_avail = -EPIPE;
-    CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underruns) == 4,
+    CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underrunCount) == 4,
           "an -EPIPE: recovered, one underrun");
     CHECK(WriteWith(&entry, 0, 10) == 4, "the first fill after the recovery: none");
     // Half a second's frames queued, then a queue reported empty at once
@@ -180,7 +180,7 @@ static void TestSilentGaps(void)
     // stream started late and played no gap. Once it plays, a stall is a
     // gap again.
     s_avail = -EPIPE;
-    CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underruns) == 7,
+    CHECK(maudAlsaTransfer(&entry) && atomic_load(&core.underrunCount) == 7,
           "another -EPIPE: one underrun");
     CHECK(WriteWith(&entry, 0, 0) == 7, "the fill after the recovery: none");
     CHECK(WriteWith(&entry, FRAMES, 10) == 7, "a sink that starts late: none");
@@ -197,20 +197,20 @@ int main(void)
 
     Reset(&core, maud_directionOutput, 0);
     CHECK(maudAlsaRecover(&api, pcm, &core, -EPIPE), "a playback underrun recovers");
-    CHECK(atomic_load(&core.underruns) == 1 && atomic_load(&core.overruns) == 0,
+    CHECK(atomic_load(&core.underrunCount) == 1 && atomic_load(&core.overrunCount) == 0,
           "counted as an underrun");
     CHECK(s_recovered == 1 && s_recoveredError == -EPIPE && s_started == 0,
           "recovered with its error, and not started again");
 
     Reset(&core, maud_directionInput, 0);
     CHECK(maudAlsaRecover(&api, pcm, &core, -EPIPE), "a capture overrun recovers");
-    CHECK(atomic_load(&core.overruns) == 1 && atomic_load(&core.underruns) == 0,
+    CHECK(atomic_load(&core.overrunCount) == 1 && atomic_load(&core.underrunCount) == 0,
           "counted as an overrun");
     CHECK(s_recovered == 1 && s_started == 1, "and the capture is started again");
 
     Reset(&core, maud_directionOutput, 0);
     CHECK(maudAlsaRecover(&api, pcm, &core, -ESTRPIPE), "a suspended PCM recovers");
-    CHECK(atomic_load(&core.underruns) == 0, "with no xrun counted");
+    CHECK(atomic_load(&core.underrunCount) == 0, "with no xrun counted");
 
     Reset(&core, maud_directionInput, -ENODEV);
     CHECK(!maudAlsaRecover(&api, pcm, &core, -ENODEV), "a PCM gone past recovery");
@@ -222,7 +222,7 @@ int main(void)
     s_avail = -EAGAIN;
     CHECK(maudAlsaTransfer(&entry) && s_recovered == 0, "nothing to move now: left as it is");
     s_avail = -EPIPE;
-    CHECK(maudAlsaTransfer(&entry) && s_recovered == 1 && atomic_load(&core.underruns) == 1,
+    CHECK(maudAlsaTransfer(&entry) && s_recovered == 1 && atomic_load(&core.underrunCount) == 1,
           "a playback run dry: recovered, an underrun counted");
     Reset(&core, maud_directionOutput, -ENODEV);
     s_avail = -ENODEV;

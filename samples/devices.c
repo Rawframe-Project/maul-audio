@@ -231,10 +231,10 @@ static bool Step(void)
     // Underruns as the platform reveals them.
     maudStreamStatus status = {0};
     if (maudStream_GetStatus(s_context, s_stream, &status) == maud_success &&
-        status.underruns != s_lastUnderruns)
+        status.underrunCount != s_lastUnderruns)
     {
-        printf("%6.2f s  underruns %llu\n", at, (unsigned long long)status.underruns);
-        s_lastUnderruns = status.underruns;
+        printf("%6.2f s  underruns %llu\n", at, (unsigned long long)status.underrunCount);
+        s_lastUnderruns = status.underrunCount;
     }
     if (s_capture.index1 != 0 && s_tick % 20 == 19)
     {

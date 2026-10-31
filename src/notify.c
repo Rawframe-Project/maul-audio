@@ -31,15 +31,15 @@ void maudPostNotification(maudContext* context, const maudNotification* record)
     if (queue->count + 1 == queue->capacity)
     {
         *At(queue, queue->count) =
-            (maudNotification){.kind = maud_notifyOverflow, .droppedCount = 1};
+            (maudNotification){.kind = maud_notifyOverflow, .notificationDropped = 1};
         queue->count++;
         return;
     }
     maudNotification* overflow = At(queue, queue->count - 1);
     MAUD_ASSERT(overflow->kind == maud_notifyOverflow);
-    if (overflow->droppedCount < UINT32_MAX)
+    if (overflow->notificationDropped < UINT32_MAX)
     {
-        overflow->droppedCount++;
+        overflow->notificationDropped++;
     }
 }
 

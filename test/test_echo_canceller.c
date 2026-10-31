@@ -150,7 +150,8 @@ static void TestConverges(uint32_t rate, uint32_t block)
                                Energy(s_capture, 3 * rate, frames));
     printf("%u Hz: %.1f dB taken from the echo, leakage %.4f\n", rate, erle, (double)state.leakage);
     CHECK(erle > 50.0, "the echo taken down 50 dB or more");
-    CHECK(state.adapted && state.leakage < 0.05f && state.frames == frames, "adapted, little left");
+    CHECK(state.adapted && state.leakage < 0.05f && state.frameCount == frames,
+          "adapted, little left");
     maudDestroyEchoCanceller(c);
 }
 

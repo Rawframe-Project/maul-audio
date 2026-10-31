@@ -48,7 +48,7 @@ if (maudContext_GetDevices(context, maud_directionOutput, ids, 16, &count) == ma
 }
 ```
 
-A count larger than the room given says how many devices there are. Names and keys are UTF-8 with a length and no terminator.
+A count larger than the room given says how many devices there are. Names and keys are UTF-8 with a length and no terminator. A success writes only the ids it counts within the room, or the bytes of the name or key, and leaves the rest of the array as it was; a failure clears the whole array.
 
 - `maudContext_GetDefaultDevice` gives the default device of a direction for a role: `maud_roleGeneral` for games and media, `maud_roleCommunications` for calls.
 - `maudDevice_GetKey` gives a key that stays the same when the device is unplugged and plugged in again, and across restarts where the platform allows. Store the key to remember a user's choice; an id does not survive the device leaving.
@@ -163,7 +163,7 @@ Each change of state posts `maud_notifyStreamSuspended` or `maud_notifyStreamRes
 ## Capture, duplex and loopback
 
 - **Input** streams deliver frames in `block->input`. An input or duplex stream may ask for the platform's voice processing (`def.voice`); the status says which parts the platform reports active, since platforms ignore requests. See [Voice processing](voice-processing.md).
-- **Duplex** streams capture and play in one callback, on a device of each direction (`def.device` and `def.inputDevice`). The input arrives in step with the output. On one clock nothing drifts; on two, the input waits in a ring held near two periods, and frames dropped or filled with silence are counted in the status (`slippedFrames`). A duplex stream keeps the one rate it opened at: when its output follows the default to a device at another rate, the platform converts it and its policy reads `maud_ratePlatformConverted`.
+- **Duplex** streams capture and play in one callback, on a device of each direction (`def.device` and `def.inputDevice`). The input arrives in step with the output. On one clock nothing drifts; on two, the input waits in a ring held near two periods, and frames dropped or filled with silence are counted in the status (`slippedFrameCount`). A duplex stream keeps the one rate it opened at: when its output follows the default to a device at another rate, the platform converts it and its policy reads `maud_ratePlatformConverted`.
 - **Loopback** streams capture what an output device plays, as an input stream's blocks: the reference an echo canceller needs when the far end plays in another application. PipeWire, PulseAudio, WASAPI and the web have them; ALSA, Core Audio, iOS and Android refuse them with `maud_errorUnsupported`. On the web the user picks what to share in the browser's picker, so the stream is made in a gesture's handler. On Windows its blocks pause while the device plays nothing.
 
 ## Exclusive streams

@@ -80,7 +80,7 @@ extern "C"
     } maudPose;
 
     // How a source's occlusion is found.
-    typedef uint8_t maudOcclusionMethod;
+    typedef int32_t maudOcclusionMethod;
     enum
     {
         // Not at all: the path is clear.
