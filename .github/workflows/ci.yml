@@ -450,6 +450,14 @@ jobs:
             sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          # The emulator refuses to start when the disk has less room than
+          # its 6 GB userdata partition, which neither the AVD's config.ini
+          # nor -partition-size shrinks for this image, and a hosted runner
+          # may have less free. This job uses none of these toolchains.
+          df -h "$HOME"
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL
+          df -h "$HOME"
           tools="$ANDROID_HOME/cmdline-tools/latest/bin"
           yes | "$tools/sdkmanager" --licenses >/dev/null 2>&1 || true
           # Runner images move to newer NDKs: the pinned one is installed
@@ -509,6 +517,7 @@ jobs:
             sleep 5
           done
           "$adb" shell getprop sys.boot_completed | grep -q 1 || { tail -50 emulator.log; exit 1; }
+          "$adb" shell df -h /data
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
       # Only main's runs save, as the fuzz corpus does: a pull request's
       # cache would hold another copy for its branch alone.
