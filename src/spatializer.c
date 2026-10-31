@@ -303,6 +303,10 @@ void maudDestroySpatializer(maudSpatializer* spatializer)
 
 uint64_t maudSpatializer_GetMisuse(const maudSpatializer* spatializer)
 {
+    if (spatializer == nullptr)
+    {
+        return 0;
+    }
     return atomic_load_explicit(&spatializer->misuse, memory_order_relaxed);
 }
 

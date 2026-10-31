@@ -144,7 +144,7 @@ extern "C"
     /// are not misuse.
     ///
     /// @param scene  The scene.
-    /// @return The count since the scene was created.
+    /// @return The count since the scene was created; 0 for a NULL scene.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_API uint64_t maudScene_GetMisuse(const maudScene* scene);
@@ -155,7 +155,9 @@ extern "C"
     ///
     /// @param rays         count rays.
     /// @param count        The rays.
-    /// @param occludedOut  Receives 1 or 0 per ray.
+    /// @param occludedOut  Receives 1 or 0 per ray; 0 for every ray when
+    ///                     scene is NULL. Nothing is written when rays or
+    ///                     occludedOut is NULL.
     /// @param scene        The scene.
     /// @par Thread safety
     /// Safe from any thread.
@@ -170,7 +172,9 @@ extern "C"
     ///
     /// @param rays     count rays.
     /// @param count    The rays.
-    /// @param hitsOut  Receives a hit per ray.
+    /// @param hitsOut  Receives a hit per ray; a miss for every ray when
+    ///                 scene is NULL. Nothing is written when rays or
+    ///                 hitsOut is NULL.
     /// @param scene    The scene.
     /// @par Thread safety
     /// Safe from any thread.

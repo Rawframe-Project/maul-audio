@@ -264,11 +264,19 @@ maudResult maudDestroyContext(maudContext* context)
 
 maudBackendKind maudContext_GetBackend(const maudContext* context)
 {
+    if (context == nullptr)
+    {
+        return maud_backendNative;
+    }
     return context->backend->kind;
 }
 
 uint64_t maudContext_GetMisuse(const maudContext* context)
 {
+    if (context == nullptr)
+    {
+        return 0;
+    }
     return atomic_load_explicit(&context->misuse, memory_order_relaxed);
 }
 

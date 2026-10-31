@@ -15,6 +15,7 @@
 #include "scene_state.h"
 
 #include <math.h>
+#include <string.h>
 
 static bool MeshValid(const maudMesh* mesh)
 {
@@ -239,6 +240,10 @@ void maudDestroyScene(maudScene* scene)
 
 uint64_t maudScene_GetMisuse(const maudScene* scene)
 {
+    if (scene == nullptr)
+    {
+        return 0;
+    }
     return atomic_load_explicit(&scene->misuse, memory_order_relaxed);
 }
 
@@ -255,6 +260,16 @@ static void Unpack(const maudRay* ray, float* origin, float* direction)
 static MAUD_NOINLINE void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded,
                                  void* scene)
 {
+    // A NULL scene occludes nothing; NULL rays or answers get no answer.
+    if (rays == nullptr || occluded == nullptr)
+    {
+        return;
+    }
+    if (scene == nullptr)
+    {
+        memset(occluded, 0, count);
+        return;
+    }
     const maudScene* s = scene;
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -300,6 +315,20 @@ maudVector3 maudTriangleNormal(const maudTriangle* t)
 static MAUD_NOINLINE void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits,
                                      void* scene)
 {
+    // A NULL scene is a miss for every ray; NULL rays or hits get no
+    // answer.
+    if (rays == nullptr || hits == nullptr)
+    {
+        return;
+    }
+    if (scene == nullptr)
+    {
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            hits[i] = (maudRayHit){INFINITY, {0.0f, 0.0f, 0.0f}, 0};
+        }
+        return;
+    }
     const maudScene* s = scene;
     for (uint32_t i = 0; i < count; ++i)
     {

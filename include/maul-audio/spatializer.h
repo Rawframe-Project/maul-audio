@@ -410,7 +410,8 @@ extern "C"
     /// spatializer was running made them. Stale ids are not misuse.
     ///
     /// @param spatializer  The spatializer.
-    /// @return The count since the spatializer was created.
+    /// @return The count since the spatializer was created; 0 for a NULL
+    ///         spatializer.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_API uint64_t maudSpatializer_GetMisuse(const maudSpatializer* spatializer);
