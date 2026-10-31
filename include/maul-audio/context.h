@@ -232,7 +232,8 @@ extern "C"
     /// for maud_backendNative the one it chose.
     ///
     /// @param context  The context.
-    /// @return The backend kind, never maud_backendNative.
+    /// @return The backend kind, never maud_backendNative for a context;
+    ///         maud_backendNative for a NULL context.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_API maudBackendKind maudContext_GetBackend(const maudContext* context);
@@ -244,7 +245,8 @@ extern "C"
     /// rendered again from its own callback). Stale ids are not misuse.
     ///
     /// @param context  The context.
-    /// @return The count since the context was created.
+    /// @return The count since the context was created; 0 for a NULL
+    ///         context.
     /// @par Thread safety
     /// Safe from any thread.
     MAUD_API uint64_t maudContext_GetMisuse(const maudContext* context);
