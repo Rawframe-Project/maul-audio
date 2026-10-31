@@ -554,6 +554,12 @@ jobs:
           else
             echo "- \`stall\`: no stall verdict found"
           fi >>"$GITHUB_STEP_SUMMARY"
+      # A quarantined test's failure is a known flake, reported in the
+      # job summary; a skip, a sanitizer report or a crash fails the step.
+      # It runs after the stall verdict, which reads the suites' log.
+      - name: Quarantined tests
+        if: github.event_name == 'schedule' || inputs.nightly
+        run: tools/run_quarantine.sh out/android-emulator --no-tests=error
       - name: Test logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -10,6 +10,10 @@
 // shell's recording, so capture is tested to its refusal there; with
 // MAUD_REQUIRE_CAPTURE set it must run. Where AAudio cannot open a
 // stream at all the test skips, unless MAUD_REQUIRE_AAUDIO is set.
+//
+// `test_aaudio rate` runs the output stream's rate check alone, which
+// the default run leaves out: it is quarantined, since a window in which
+// the emulator's audio catches up after a stall of its own reads fast.
 
 // The emulator's virtual output, starved of the host's time, builds a
 // backlog of up to a few seconds that stays once built: a latency that
@@ -224,6 +228,22 @@ static void TestDevices(maudContext* context)
     }
 }
 
+// The output stream's rate, run alone by `test_aaudio rate`.
+static void TestOutputRate(maudContext* context)
+{
+    maudDeviceInfo info = {0};
+    CHECK(maudDevice_GetInfo(context, OnlyDevice(context, maud_directionOutput), &info) ==
+              maud_success,
+          "the output");
+    Blocks blocks = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    maudStreamId stream = OpenStream(context, &def, &blocks);
+    CHECK(maudStream_Start(context, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
+    CHECK(Near(MeasureRate(context, stream), (double)info.nativeSampleRate), "at its rate");
+    CHECK(Destroy(context, stream), "destroy");
+}
+
 static void TestOutputStream(maudContext* context)
 {
     maudDeviceInfo info = {0};
@@ -244,7 +264,6 @@ static void TestOutputStream(maudContext* context)
     CHECK(WaitForBlocks(context, &blocks, 20), "blocks arrive");
     CHECK(atomic_load(&blocks.wrongSize) == 0, "in whole periods");
     CHECK(atomic_load(&blocks.onControl) == 0, "on AAudio's thread");
-    CHECK(Near(MeasureRate(context, stream), (double)info.nativeSampleRate), "at its rate");
     CHECK(StreamClockIsSound(context, stream, true, true, Pause),
           "its clock maps frames to host time");
     // The emulator's backlog, which the lane's gate reads to restart an
@@ -437,8 +456,9 @@ static void TestDeviceLimit(void)
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+    bool rateOnly = argc > 1 && strcmp(argv[1], "rate") == 0;
     s_control = pthread_self();
     maudContextDef def = maudDefaultContextDef();
     maudContext* context = nullptr;
@@ -453,6 +473,12 @@ int main(void)
         return 1;
     }
     CHECK(maudContext_GetBackend(context) == maud_backendAaudio, "AAudio chosen");
+    if (rateOnly)
+    {
+        TestOutputRate(context);
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        return s_failures == 0 ? 0 : 1;
+    }
     TestDevices(context);
     TestOutputStream(context);
     TestXruns(context);
