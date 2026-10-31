@@ -155,7 +155,9 @@ extern "C"
     /// @param decoder     The decoder.
     /// @param bed         The decoder's order's channel count of channels,
     ///                    frameCount each.
-    /// @param samplesOut  Two channels of frameCount samples each.
+    /// @param samplesOut  Two channels of frameCount samples each. Either
+    ///                    may be one of the bed's channels: the decoder
+    ///                    reads the whole bed before it writes.
     /// @param frameCount  0 to the def's maxFrames; 0 does nothing.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer;
     ///         `maud_errorCapacity` for more frames than the def's
@@ -272,9 +274,11 @@ extern "C"
     /// @param bed         The decoder's order's channel count of channels,
     ///                    frameCount each.
     /// @param samplesOut  The layout's channel count of channels, frames
-    ///                    each.
+    ///                    each, apart from the bed's channels.
     /// @param frameCount  The frames; 0 does nothing.
-    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
+    ///         a channel of samplesOut that shares any frame with one of
+    ///         the bed's.
     ///         On failure each channel of samplesOut that is not NULL is
     ///         silenced over frameCount samples; a NULL decoder, which gives no
     ///         channel count, writes nothing.
