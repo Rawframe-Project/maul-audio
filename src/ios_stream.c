@@ -209,7 +209,9 @@ static bool Configure(maudIosStream* entry)
                                 kAudioUnitScope_Global, 0, &slice, sizeof(slice)) == noErr;
 }
 
-static void Disconnect(maudContext* context, maudIosStream* entry)
+// Stops and disposes of the unit and the mixer; the buffers stay for
+// Free.
+static void Shut(maudIosStream* entry)
 {
     if (entry->unit != nullptr)
     {
@@ -223,20 +225,42 @@ static void Disconnect(maudContext* context, maudIosStream* entry)
         (void)uninitialized;
         (void)disposed;
     }
-    if (entry->captured != nullptr)
-    {
-        maudContextRelease(context, entry->captured, entry->capturedBytes,
-                           alignof(AudioBufferList));
-    }
     if (entry->voicePartner != nullptr)
     {
         entry->voicePartner->voicePartner = nullptr;
     }
     // The unit is gone, so the mixer renders no more.
-    maudCloseAppleObjects(context, &entry->objects);
+    maudShutAppleObjects(&entry->objects);
+    maudStreamCore* core = entry->core;
+    const maudIos* owner = entry->owner;
+    AudioBufferList* captured = entry->captured;
+    size_t capturedBytes = entry->capturedBytes;
+    maudAppleObjects objects = entry->objects;
+    *entry = (maudIosStream){.core = core,
+                             .owner = owner,
+                             .captured = captured,
+                             .capturedBytes = capturedBytes,
+                             .objects = objects};
+}
+
+// Gives back the buffers, once shut.
+static void Free(maudContext* context, maudIosStream* entry)
+{
+    if (entry->captured != nullptr)
+    {
+        maudContextRelease(context, entry->captured, entry->capturedBytes,
+                           alignof(AudioBufferList));
+    }
+    maudFreeAppleObjects(context, &entry->objects);
     maudStreamCore* core = entry->core;
     const maudIos* owner = entry->owner;
     *entry = (maudIosStream){.core = core, .owner = owner};
+}
+
+static void Disconnect(maudContext* context, maudIosStream* entry)
+{
+    Shut(entry);
+    Free(context, entry);
 }
 
 // One buffer of interleaved frames for an input, after the list's
@@ -479,6 +503,27 @@ void maudIosDetachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudIosStream* entry = EntryOf(context, slot);
     // The unit plays the output half's frames: it goes before they do.
+    // The partner is the stream's other half, whose release frees its
+    // buffers.
+    if (entry->unit == nullptr && entry->voicePartner != nullptr)
+    {
+        Shut(entry->voicePartner);
+    }
+    Shut(entry);
+    bool updated = maudIosUpdateSession(context, false);
+    (void)updated;
+}
+
+void maudIosReleaseStream(maudContext* context, maudStreamSlot* slot)
+{
+    Free(context, EntryOf(context, slot));
+}
+
+// Stops the stream's unit and gives back its buffers at once, the
+// partner's too, for a stream that opens again.
+static void Teardown(maudContext* context, maudStreamSlot* slot)
+{
+    maudIosStream* entry = EntryOf(context, slot);
     if (entry->unit == nullptr && entry->voicePartner != nullptr)
     {
         Disconnect(context, entry->voicePartner);
@@ -551,7 +596,7 @@ static bool Running(const maudStreamSlot* slot)
 // has one.
 static bool Remake(maudContext* context, maudStreamSlot* slot)
 {
-    maudIosDetachStream(context, slot);
+    Teardown(context, slot);
     if (maudIosAttachStream(context, slot) != maud_success)
     {
         return false;

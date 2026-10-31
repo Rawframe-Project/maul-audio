@@ -477,6 +477,7 @@ static const maudBackend s_wasapi = {
     .loopback = true,
     .attachStream = AttachStream,
     .detachStream = DetachStream,
+    .releaseStream = maudWasapiReleaseStream,
     .setStreamActive = SetStreamActive,
     .retargetStream = RetargetStream,
     .reopensOnMove = true,

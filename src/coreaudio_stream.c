@@ -314,7 +314,9 @@ static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
                                 kAudioUnitScope_Global, 0, &slice, sizeof(slice)) == noErr;
 }
 
-static void Disconnect(maudContext* context, maudCoreAudioStream* entry)
+// Stops and disposes of the unit and the mixer; the buffers stay for
+// Free.
+static void Shut(maudCoreAudioStream* entry)
 {
     if (entry->hogged != kAudioObjectUnknown)
     {
@@ -332,19 +334,37 @@ static void Disconnect(maudContext* context, maudCoreAudioStream* entry)
         (void)uninitialized;
         (void)disposed;
     }
-    if (entry->captured != nullptr)
-    {
-        maudContextRelease(context, entry->captured, entry->capturedBytes,
-                           alignof(AudioBufferList));
-    }
     if (entry->voicePartner != nullptr)
     {
         entry->voicePartner->voicePartner = nullptr;
     }
     // The unit is gone, so the mixer renders no more.
-    maudCloseAppleObjects(context, &entry->objects);
+    maudShutAppleObjects(&entry->objects);
+    maudStreamCore* core = entry->core;
+    AudioBufferList* captured = entry->captured;
+    size_t capturedBytes = entry->capturedBytes;
+    maudAppleObjects objects = entry->objects;
+    *entry = (maudCoreAudioStream){
+        .core = core, .captured = captured, .capturedBytes = capturedBytes, .objects = objects};
+}
+
+// Gives back the buffers, once shut.
+static void Free(maudContext* context, maudCoreAudioStream* entry)
+{
+    if (entry->captured != nullptr)
+    {
+        maudContextRelease(context, entry->captured, entry->capturedBytes,
+                           alignof(AudioBufferList));
+    }
+    maudFreeAppleObjects(context, &entry->objects);
     maudStreamCore* core = entry->core;
     *entry = (maudCoreAudioStream){.core = core};
+}
+
+static void Disconnect(maudContext* context, maudCoreAudioStream* entry)
+{
+    Shut(entry);
+    Free(context, entry);
 }
 
 // One buffer of interleaved frames for an input, after the list's
@@ -650,6 +670,25 @@ void maudCoreAudioDetachStream(maudContext* context, maudStreamSlot* slot)
 {
     maudCoreAudioStream* entry = EntryOf(context, slot);
     // The unit plays the output half's frames: it goes before they do.
+    // The partner is the stream's other half, whose release frees its
+    // buffers.
+    if (entry->unit == nullptr && entry->voicePartner != nullptr)
+    {
+        Shut(entry->voicePartner);
+    }
+    Shut(entry);
+}
+
+void maudCoreAudioReleaseStream(maudContext* context, maudStreamSlot* slot)
+{
+    Free(context, EntryOf(context, slot));
+}
+
+// Stops the stream's unit and gives back its buffers at once, the
+// partner's too, for a stream that opens again.
+static void Teardown(maudContext* context, maudStreamSlot* slot)
+{
+    maudCoreAudioStream* entry = EntryOf(context, slot);
     if (entry->unit == nullptr && entry->voicePartner != nullptr)
     {
         Disconnect(context, entry->voicePartner);
@@ -665,7 +704,7 @@ void maudCoreAudioRetargetStream(maudContext* context, maudStreamSlot* slot)
     {
         return;
     }
-    maudCoreAudioDetachStream(context, slot);
+    Teardown(context, slot);
     // A failure leaves the stream without a unit; the drain tries again
     // while it runs.
     if (Open(context, slot) == maud_success && Running(slot))

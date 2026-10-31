@@ -340,21 +340,35 @@ static maudResult SetOrder(maudAlsaStream* entry, bool* reorderOut)
     return found ? maud_success : maud_errorUnsupported;
 }
 
-static void Close(maudContext* context, maudAlsaStream* entry)
+// Closes the PCM and the eventfd; the memory they used stays for Free.
+static void Shut(maudAlsaStream* entry)
 {
     if (entry->pcm != nullptr)
     {
         entry->api->pcmClose(entry->pcm);
+        entry->pcm = nullptr;
     }
     if (entry->fds != nullptr && entry->fds[0].fd >= 0)
     {
         close(entry->fds[0].fd);
+        entry->fds[0].fd = -1;
     }
+}
+
+// Gives back the descriptors and sample buffers, once shut.
+static void Free(maudContext* context, maudAlsaStream* entry)
+{
     if (entry->bytes != 0)
     {
         maudContextRelease(context, entry->fds, entry->bytes, alignof(max_align_t));
     }
     *entry = (maudAlsaStream){0};
+}
+
+static void Close(maudContext* context, maudAlsaStream* entry)
+{
+    Shut(entry);
+    Free(context, entry);
 }
 
 // Sets aside the descriptors and sample buffers, and makes the eventfd.
@@ -460,8 +474,13 @@ void maudAlsaDetachStream(maudContext* context, maudStreamSlot* slot)
     maudAlsaStream* entry = EntryOf(context, slot);
     Stop(entry);
     snd_local_error_handler_t previous = maudAlsaQuiet(api);
-    Close(context, entry);
+    Shut(entry);
     api->libErrorSetLocal(previous);
+}
+
+void maudAlsaReleaseStream(maudContext* context, maudStreamSlot* slot)
+{
+    Free(context, EntryOf(context, slot));
 }
 
 void maudAlsaSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active)

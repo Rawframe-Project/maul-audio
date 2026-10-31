@@ -464,6 +464,15 @@ static void DetachStream(maudContext* context, maudStreamSlot* slot)
     {
         maudWebCloseNode(entry->node);
     }
+    float* chunk = entry->chunk;
+    size_t chunkBytes = entry->chunkBytes;
+    *entry = (maudWebStream){.chunk = chunk, .chunkBytes = chunkBytes};
+}
+
+// Gives back the chunk, once the node is closed.
+static void ReleaseStream(maudContext* context, maudStreamSlot* slot)
+{
+    maudWebStream* entry = EntryOf(context, slot);
     maudContextRelease(context, entry->chunk, entry->chunkBytes, alignof(float));
     *entry = (maudWebStream){0};
 }
@@ -503,6 +512,7 @@ static const maudBackend s_web = {
     .openStream = OpenStream,
     .attachStream = AttachStream,
     .detachStream = DetachStream,
+    .releaseStream = ReleaseStream,
     .setStreamActive = SetStreamActive,
     .retargetStream = nullptr,
     .sharesClock = SharesClock,

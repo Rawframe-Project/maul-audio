@@ -207,7 +207,7 @@ maudResult maudWasapiOpenObjects(maudContext* context, IMMDevice* device, maudSt
     return result;
 }
 
-void maudWasapiCloseObjects(maudContext* context, maudWasapiObjects* objects)
+void maudWasapiShutObjects(maudWasapiObjects* objects)
 {
     // The bed's objects and the held ones lie side by side.
     for (uint32_t i = 0; i < objects->channels + objects->count; ++i)
@@ -225,12 +225,25 @@ void maudWasapiCloseObjects(maudContext* context, maudWasapiObjects* objects)
     {
         ISpatialAudioClient_Release(objects->client);
     }
+    void* storage = objects->storage;
+    size_t storageBytes = objects->storageBytes;
+    *objects = (maudWasapiObjects){.storage = storage, .storageBytes = storageBytes};
+}
+
+void maudWasapiFreeObjects(maudContext* context, maudWasapiObjects* objects)
+{
     if (objects->storage != nullptr)
     {
         maudContextRelease(context, objects->storage, objects->storageBytes,
                            alignof(maudStreamObject));
     }
     *objects = (maudWasapiObjects){0};
+}
+
+void maudWasapiCloseObjects(maudContext* context, maudWasapiObjects* objects)
+{
+    maudWasapiShutObjects(objects);
+    maudWasapiFreeObjects(context, objects);
 }
 
 // Copies frames into an object's buffer for the pass; false when it has

@@ -19,6 +19,9 @@ maudResult maudAlsaAttachStream(maudContext* context, maudStreamSlot* slot);
 // Joins the stream's thread and closes its PCM.
 void maudAlsaDetachStream(maudContext* context, maudStreamSlot* slot);
 
+// Gives back the stream's descriptors and buffers, once detached.
+void maudAlsaReleaseStream(maudContext* context, maudStreamSlot* slot);
+
 // Prepares the PCM and starts the stream's thread, or stops the thread
 // and drops what the PCM had queued.
 void maudAlsaSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active);

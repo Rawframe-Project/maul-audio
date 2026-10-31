@@ -16,6 +16,10 @@ maudResult maudWasapiAttachStream(maudContext* context, maudStreamSlot* slot);
 // Joins the stream's thread and releases its client.
 void maudWasapiDetachStream(maudContext* context, maudStreamSlot* slot);
 
+// Gives back the stream's buffers, once detached. Calls no COM object, so
+// any thread may run it.
+void maudWasapiReleaseStream(maudContext* context, maudStreamSlot* slot);
+
 // Starts the stream's thread, opening the client again if it failed;
 // or stops the thread and the client.
 void maudWasapiSetStreamActive(maudContext* context, maudStreamSlot* slot, bool active);

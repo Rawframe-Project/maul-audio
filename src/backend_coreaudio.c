@@ -393,6 +393,7 @@ static const maudBackend s_coreaudio = {
     .exclusive = true,
     .attachStream = maudCoreAudioAttachStream,
     .detachStream = maudCoreAudioDetachStream,
+    .releaseStream = maudCoreAudioReleaseStream,
     .setStreamActive = maudCoreAudioSetStreamActive,
     .retargetStream = maudCoreAudioRetargetStream,
     .reopensOnMove = true,

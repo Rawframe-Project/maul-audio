@@ -377,14 +377,16 @@ maudStreamId maudStreamIdOf(const maudContext* context, const maudStreamSlot* sl
     return (maudStreamId){index + 1, slot->generation};
 }
 
-static void ReleaseHalf(maudContext* context, maudStreamSlot* slot)
+// Takes a half out of use: the backend stops it, without giving back
+// any memory, and its id is stale from here. Its storage stays for the
+// release, and the slot cannot be taken again before then, since host
+// code the release runs is refused a creation.
+static void RetireHalf(maudContext* context, maudStreamSlot* slot)
 {
     if (context->backend->detachStream != nullptr)
     {
         context->backend->detachStream(context, slot);
     }
-    maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes,
-                       MAUD_STREAM_STORAGE_ALIGN);
     slot->live = false;
     slot->duplex = nullptr;
     slot->hidden = false;
@@ -392,20 +394,41 @@ static void ReleaseHalf(maudContext* context, maudStreamSlot* slot)
     slot->generation = slot->generation == UINT32_MAX ? 1 : slot->generation + 1;
 }
 
+// Gives back a retired half's memory: the backend's, then its samples.
+static void ReleaseStorage(maudContext* context, maudStreamSlot* slot)
+{
+    if (context->backend->releaseStream != nullptr)
+    {
+        context->backend->releaseStream(context, slot);
+    }
+    maudContextRelease(context, slot->core.period.samples, slot->core.sampleBytes,
+                       MAUD_STREAM_STORAGE_ALIGN);
+}
+
 void maudReleaseStream(maudContext* context, maudStreamSlot* slot)
 {
     MAUD_ASSERT(slot->live);
+    // Every half is stale before any storage goes back to the allocator,
+    // so host code that reads the stream back from a free finds it gone.
     maudDuplex* duplex = slot->duplex;
     if (duplex == nullptr)
     {
-        ReleaseHalf(context, slot);
+        RetireHalf(context, slot);
+        ReleaseStorage(context, slot);
         return;
     }
     // A duplex stream goes whole: its halves, then the joint.
-    ReleaseHalf(context, duplex->output);
-    if (duplex->input->live)
+    maudStreamSlot* output = duplex->output;
+    maudStreamSlot* input = duplex->input->live ? duplex->input : nullptr;
+    RetireHalf(context, output);
+    if (input != nullptr)
     {
-        ReleaseHalf(context, duplex->input);
+        RetireHalf(context, input);
+    }
+    ReleaseStorage(context, output);
+    if (input != nullptr)
+    {
+        ReleaseStorage(context, input);
     }
     maudContextRelease(context, duplex, duplex->bytes, alignof(maudDuplex));
 }

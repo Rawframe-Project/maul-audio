@@ -20,7 +20,7 @@ The control thread (whichever thread uses the context) and an audio thread share
 - The **stream clock** is written by the rendering thread at each callback and read by any thread under a sequence counter, without a lock: a reader that sees the counter move reads again.
 - The spatializer's **results** pass through three buffers: the simulation side writes the back one and swaps it with the waiting one under an atomic exchange, flagged fresh; `maudSpatializer_LatchResults` swaps the waiting one into the front if it is fresh. A step is published whole, and the rendering side never waits for the simulation side, which may take a whole second over an estimate. The reflections' responses pass through four buffers, since a crossfade still reads the one just replaced ([reflections.h](../../src/reflections.h)).
 
-Destroying a stream detaches its platform side first; the backend's `detachStream` returns only once no platform thread touches the stream, so `maudDestroyStream` returning means the callback has run for the last time.
+Destroying a stream detaches its platform side first; the backend's `detachStream` returns only once no platform thread touches the stream, so `maudDestroyStream` returning means the callback has run for the last time. Detaching gives back no memory. The stream's id goes stale next, every half of a duplex stream before any memory goes; then the backend's `releaseStream` gives back what it took from the context's allocator, and the library the stream's samples. So host code the allocator runs during a destroy finds the stream gone, on every backend.
 
 ## Keeping denormals away
 

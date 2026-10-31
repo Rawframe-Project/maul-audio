@@ -51,8 +51,14 @@ maudResult maudWasapiOpenObjects(maudContext* context, IMMDevice* device, maudSt
                                  HANDLE event, maudWasapiObjects* objects);
 
 // Releases every object, the stream and the client, and gives the block
-// back.
+// back: maudWasapiShutObjects, then maudWasapiFreeObjects.
 void maudWasapiCloseObjects(maudContext* context, maudWasapiObjects* objects);
+
+// Releases every object, the stream and the client, keeping the block.
+void maudWasapiShutObjects(maudWasapiObjects* objects);
+
+// Gives the block back, once shut.
+void maudWasapiFreeObjects(maudContext* context, maudWasapiObjects* objects);
 
 // One pass on the stream's thread: pulls the pass's frames of the bed
 // and objects from the period (silence where running is false), writes
