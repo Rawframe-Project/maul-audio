@@ -5,6 +5,26 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.7.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.6.0...v0.7.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* enumeration typedefs are int32_t (maudVoiceProcessing uint32_t), which changes the layout of every struct that holds one. Counter fields are renamed: underruns, overruns and slippedFrames to underrunCount, overrunCount and slippedFrameCount, droppedCount to notificationDropped, and the voice states' frames to frameCount. maudContext_GetDevices, maudDevice_GetName and maudDevice_GetKey no longer clear the room past what they report on success.
+
+### Fixed
+
+* **ambisonics:** refuse a speaker decode written over its own bed ([#242](https://github.com/Rawframe-Project/maul-audio/issues/242)) ([af7f136](https://github.com/Rawframe-Project/maul-audio/commit/af7f1365c447be4824b3fa4252399262cf9551ca)), closes [#233](https://github.com/Rawframe-Project/maul-audio/issues/233)
+* answer a NULL object in the calls that return a value ([#250](https://github.com/Rawframe-Project/maul-audio/issues/250)) ([e7cd565](https://github.com/Rawframe-Project/maul-audio/commit/e7cd565df648732ff19b60cae1e4586faf5b6da4)), closes [#249](https://github.com/Rawframe-Project/maul-audio/issues/249)
+* **spatializer:** free a re-baked set's earlier bake only once replaced ([#236](https://github.com/Rawframe-Project/maul-audio/issues/236)) ([5033111](https://github.com/Rawframe-Project/maul-audio/commit/50331110d6307f85ac066c612ffa793bba0b8b07)), closes [#234](https://github.com/Rawframe-Project/maul-audio/issues/234)
+* **spatializer:** make a probe set stale before freeing its memory ([#235](https://github.com/Rawframe-Project/maul-audio/issues/235)) ([726da15](https://github.com/Rawframe-Project/maul-audio/commit/726da151a2d1db4edffc78dd1250d299928393a5)), closes [#228](https://github.com/Rawframe-Project/maul-audio/issues/228)
+* **stream:** make a stream stale before freeing its storage ([#241](https://github.com/Rawframe-Project/maul-audio/issues/241)) ([22edd0e](https://github.com/Rawframe-Project/maul-audio/commit/22edd0e91c549a9df41a90d755c3868660438c6f)), closes [#229](https://github.com/Rawframe-Project/maul-audio/issues/229)
+
+
+### Changed
+
+* follow the family's enum, counter and caller array rules ([#245](https://github.com/Rawframe-Project/maul-audio/issues/245)) ([61fced2](https://github.com/Rawframe-Project/maul-audio/commit/61fced2c293087734a922c4144a3e48920cc790a)), closes [#230](https://github.com/Rawframe-Project/maul-audio/issues/230) [#231](https://github.com/Rawframe-Project/maul-audio/issues/231) [#232](https://github.com/Rawframe-Project/maul-audio/issues/232)
+
 ## [0.6.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.5.0...v0.6.0) (2026-10-30)
 
 0.6.0 makes four more calls leave zeros or silence behind when they fail, never data from an earlier call, as the Maul family's rule for outputs asks. A call refused as busy because the object's own callback made it is the exception: it writes none of its outputs, since the call it interrupted may still be filling them. No backend changes what it does, so the device checklist on real hardware, which runs before a release that changes a backend, is not run for it. The golden renders and the office bake are unchanged.
