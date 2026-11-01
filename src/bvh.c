@@ -3,11 +3,12 @@
 //
 // The hierarchy (bvh.h). The build is iterative: a node's range of
 // triangles is split at the binned SAH's best plane (32 bins per axis,
-// ties to the lower axis and bin) until 4 or fewer remain; a range whose
-// centroids coincide, or one deeper than 64, is halved by position. Box
-// tests scale the exit distance by 1 + 2 gamma(3) (Ize, "Robust BVH ray
-// traversal", JCGT 2013) so that rounding never misses a box a
-// watertight triangle test would hit.
+// ties to the lower axis and bin) until 4 or fewer remain; an axis whose
+// centroids coincide, or whose bins have no finite scale, is not binned,
+// and a range with no axis binned, or one deeper than 64, is halved by
+// position. Box tests scale the exit distance by 1 + 2 gamma(3) (Ize,
+// "Robust BVH ray traversal", JCGT 2013) so that rounding never misses a
+// box a watertight triangle test would hit.
 
 #include "bvh.h"
 
@@ -113,11 +114,17 @@ static int BinOf(const maudTriangle* t, const Split* split)
 static void TryAxis(const maudTriangle* tris, uint32_t count, int axis, float low, float high,
                     Split* best, float* bestCost)
 {
-    if (!(high > low))
+    // Finite vertices can still give centroids more than FLT_MAX apart,
+    // or a span so small that the bins' scale overflows: either makes a
+    // bin's position NaN, so such an axis is not binned, as one whose
+    // centroids coincide.
+    float span = high - low;
+    float scale = (float)BINS / span;
+    if (!(high > low) || !(span < INFINITY) || !(scale < INFINITY))
     {
         return;
     }
-    Split split = {axis, 0, low, (float)BINS / (high - low)};
+    Split split = {axis, 0, low, scale};
     uint32_t counts[BINS] = {0};
     Box boxes[BINS];
     for (int k = 0; k < BINS; ++k)
