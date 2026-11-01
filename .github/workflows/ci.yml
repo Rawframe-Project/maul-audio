@@ -254,8 +254,9 @@ jobs:
           cmake -S cmake/HeaderCheck -B out/headers
           cmake --build out/headers --config Release
 
-  # The two loaders of hostile files under libFuzzer, one cell per target,
-  # from the committed seeds and the shipped files (tools/fuzz_seeds.sh):
+  # The two loaders of hostile files and the geometry a host hands over
+  # (fuzz_scene) under libFuzzer, one cell per target, from the committed
+  # seeds and the shipped files (tools/fuzz_seeds.sh):
   # briefly on a pull request, longer on main, ten minutes at night. Each
   # target's corpus carries from run to run in a cache of its own. Every
   # run restores it first (the newest of that target's), a pull request's
@@ -273,7 +274,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_hrtf, fuzz_bake]
+        target: [fuzz_hrtf, fuzz_bake, fuzz_scene]
     env:
       TARGET: ${{ matrix.target }}
       FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && 20 || (github.event_name == 'schedule' || inputs.nightly) && 600 || 90 }}

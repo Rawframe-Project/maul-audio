@@ -6,8 +6,9 @@
 # test/corpus/<target>/, and the shipped files behind the byte that makes
 # the target read them as such (CMakeLists.txt and the targets say what
 # the first byte chooses): the HRTF set behind 0x01, the bakes behind
-# 0x03 (fields of order 1, as the office bakes have). Files already in
-# the directories (a corpus carried from an earlier run) stay.
+# 0x03 (fields of order 1, as the office bakes have). fuzz_scene's seeds
+# are built by tools/fuzz_scene_seeds.py. Files already in the
+# directories (a corpus carried from an earlier run) stay.
 #
 #   tools/fuzz_seeds.sh <corpus root>
 set -euo pipefail
@@ -22,3 +23,4 @@ done
 for bake in data/bake/*.maudbake; do
     { printf '\003'; cat "$bake"; } > "$root/fuzz_bake/seed-$(basename "$bake" .maudbake)"
 done
+python3 tools/fuzz_scene_seeds.py "$root/fuzz_scene"
