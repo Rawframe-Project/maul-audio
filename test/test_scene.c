@@ -5,16 +5,17 @@
 // force over every triangle (an independent test in double); rays
 // exactly through a diagonal two triangles share, or a vertex eight
 // share, hit; equal distances go to the triangle listed first; normals
-// face the counterclockwise side; an empty scene misses; plugged into a
-// spatializer's hooks, a wall occludes and its two faces transmit; bad
-// meshes are refused; memory running out at any allocation is a capacity
-// error with nothing left.
+// face the counterclockwise side, a triangle with one corner 1e17 m off
+// included, and a sliver whose edges cancel from every corner; an empty scene misses; plugged into
+// a spatializer's hooks, a wall occludes and its two faces transmit; bad meshes are refused; memory
+// running out at any allocation is a capacity error with nothing left.
 
 #include "test_harness.h"
 
 #include "maul-audio/scene.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -278,6 +279,45 @@ static void TestTiesAndNormals(void)
 
 // A wall of two faces (a box 0.2 m thick) between listener and source,
 // through a spatializer's hooks.
+// A triangle with its first corner 1e17 m off and the others near the
+// origin: from the far corner, the two edges round to one direction in
+// double, and their cross product to zero. The hit near the origin still
+// has the triangle's unit normal, (1, 0, -1) / sqrt(2) or its opposite.
+static void TestFarCorner(void)
+{
+    static const maudVector3 v[] = {
+        {1.0e17f, 1.0e17f, 1.0e17f}, {-4.0f, 0.0f, -4.0f}, {0.0f, 0.0f, 0.0f}};
+    static const uint32_t corners[] = {0, 1, 2};
+    static const uint32_t material[] = {0};
+    maudMesh mesh = {v, 3, corners, material, 1};
+    maudScene* scene = Build(&mesh, 1);
+    // Toward (-0.6, 1, -0.6), inside the triangle, from 1.41 m off.
+    maudRay ray = {{0.4f, 1.0f, -1.6f}, {-0.70710678f, 0.0f, 0.70710678f}, 0.0f, 5.0f};
+    maudRayHit h;
+    maudFindClosestHit(&ray, 1, &h, scene);
+    printf("far corner: distance %g, normal (%g %g %g)\n", (double)h.distance, (double)h.normal.x,
+           (double)h.normal.y, (double)h.normal.z);
+    CHECK(fabsf(h.distance - 1.4142135f) < 1e-5f, "the hit near the origin");
+    CHECK(fabsf(fabsf(h.normal.x) - 0.70710678f) < 1e-6f && h.normal.y == 0.0f &&
+              h.normal.z == -h.normal.x,
+          "the far-cornered triangle's unit normal");
+    maudDestroyScene(scene);
+    // Two corners 1e17 m off on either side and one near the origin, a
+    // float's step off their line: from every corner the two edges round
+    // to one direction, and only the exact product finds the plane y = 0.
+    maudVector3 sliver[3] = {
+        {-1.0e17f, 0.0f, -1.0e17f}, {1.0e17f, 0.0f, 1.0e17f}, {4.0f, 0.0f, nextafterf(4.0f, 5.0f)}};
+    maudMesh thin = {sliver, 3, corners, material, 1};
+    scene = Build(&thin, 1);
+    maudRay down = {{2.0f, 1.0f, 2.00000024f}, {0.0f, -1.0f, 0.0f}, 0.0f, 5.0f};
+    maudFindClosestHit(&down, 1, &h, scene);
+    printf("sliver: distance %g, normal (%g %g %g)\n", (double)h.distance, (double)h.normal.x,
+           (double)h.normal.y, (double)h.normal.z);
+    CHECK(h.distance == 1.0f && h.normal.x == 0.0f && h.normal.y == -1.0f && h.normal.z == 0.0f,
+          "a sliver cancelling from every corner: its exact unit normal");
+    maudDestroyScene(scene);
+}
+
 static void TestHooks(void)
 {
     static const maudVector3 v[] = {
@@ -411,6 +451,7 @@ int main(void)
     TestSoup();
     TestWatertight();
     TestTiesAndNormals();
+    TestFarCorner();
     TestHooks();
     TestMisuse();
     TestNoMemory();
