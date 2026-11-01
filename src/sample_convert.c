@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Sample conversion. Integers scale by 2^15 or 2^31 both ways, so a
-// round trip keeps every integer sample; the largest positive float
-// value saturates one step below full scale. 32-bit integers are
+// round trip through float keeps every 16-bit sample, and every 24-bit
+// one left-justified in 32 bits; a float holds 24 significant bits, so
+// other 32-bit samples come back rounded to them. The largest positive
+// float value saturates one step below full scale. 32-bit integers are
 // computed in double, whose mantissa holds them exactly.
 
 #include "sample_convert.h"
