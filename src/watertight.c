@@ -2,7 +2,10 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // The watertight test (watertight.h), as the paper gives it, without
-// back-face culling.
+// back-face culling. Where a float value of the test overflows (vertices
+// near FLT_MAX), the whole test runs again in double, in which every
+// product of finite floats is finite: an overflow would otherwise make
+// an edge function inf - inf, a NaN that passes every test.
 
 #include "watertight.h"
 
@@ -65,6 +68,56 @@ static void Edges(float ax, float ay, float bx, float by, float cx, float cy, fl
     }
 }
 
+// The test in double, for a triangle whose float values overflowed. A
+// value it cannot decide (a ray with no direction) fails the final
+// range test, so it is a miss.
+static bool HitInDouble(const maudShearedRay* ray, const float* a, const float* b, const float* c,
+                        float tMin, float tMax, float* t)
+{
+    double pa[3];
+    double pb[3];
+    double pc[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        pa[i] = (double)a[i] - (double)ray->origin[i];
+        pb[i] = (double)b[i] - (double)ray->origin[i];
+        pc[i] = (double)c[i] - (double)ray->origin[i];
+    }
+    int kx = ray->kx;
+    int ky = ray->ky;
+    int kz = ray->kz;
+    double sx = (double)ray->sx;
+    double sy = (double)ray->sy;
+    double sz = (double)ray->sz;
+    double ax = pa[kx] - sx * pa[kz];
+    double ay = pa[ky] - sy * pa[kz];
+    double bx = pb[kx] - sx * pb[kz];
+    double by = pb[ky] - sy * pb[kz];
+    double cx = pc[kx] - sx * pc[kz];
+    double cy = pc[ky] - sy * pc[kz];
+    double u = cx * by - cy * bx;
+    double v = ax * cy - ay * cx;
+    double w = bx * ay - by * ax;
+    if ((u < 0.0 || v < 0.0 || w < 0.0) && (u > 0.0 || v > 0.0 || w > 0.0))
+    {
+        return false;
+    }
+    double det = u + v + w;
+    if (det == 0.0)
+    {
+        return false;
+    }
+    double distance = (u * (sz * pa[kz]) + v * (sz * pb[kz]) + w * (sz * pc[kz])) / det;
+    if (!(distance >= (double)tMin && distance <= (double)tMax))
+    {
+        return false;
+    }
+    float narrow = (float)distance;
+    narrow = narrow < tMin ? tMin : narrow;
+    *t = narrow > tMax ? tMax : narrow;
+    return true;
+}
+
 bool maudHitTriangle(const maudShearedRay* ray, const float* a, const float* b, const float* c,
                      float tMin, float tMax, float* t)
 {
@@ -90,6 +143,10 @@ bool maudHitTriangle(const maudShearedRay* ray, const float* a, const float* b, 
     float v;
     float w;
     Edges(ax, ay, bx, by, cx, cy, &u, &v, &w);
+    if (!isfinite(u) || !isfinite(v) || !isfinite(w))
+    {
+        return HitInDouble(ray, a, b, c, tMin, tMax, t);
+    }
     if ((u < 0.0f || v < 0.0f || w < 0.0f) && (u > 0.0f || v > 0.0f || w > 0.0f))
     {
         return false;
@@ -100,6 +157,10 @@ bool maudHitTriangle(const maudShearedRay* ray, const float* a, const float* b, 
         return false;
     }
     float tScaled = u * (ray->sz * pa[kz]) + v * (ray->sz * pb[kz]) + w * (ray->sz * pc[kz]);
+    if (!isfinite(det) || !isfinite(tScaled))
+    {
+        return HitInDouble(ray, a, b, c, tMin, tMax, t);
+    }
     // The distance is tScaled / det; compare without dividing first,
     // with the sign of det taken out.
     if (det < 0.0f)
