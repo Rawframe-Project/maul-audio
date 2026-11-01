@@ -3,9 +3,13 @@
 //
 // The watertight test (watertight.h), as the paper gives it, without
 // back-face culling. Where a float value of the test overflows (vertices
-// near FLT_MAX), the whole test runs again in double, in which every
-// product of finite floats is finite: an overflow would otherwise make
-// an edge function inf - inf, a NaN that passes every test.
+// near FLT_MAX, or a direction too short for sz), the test runs again in
+// double, in which every product of finite floats is finite: an overflow
+// would otherwise make an edge function inf - inf, a NaN that passes
+// every test. The rerun takes each vertex's sheared x and y from the
+// float path where they are finite, so that an edge two triangles share
+// has one sign whichever path tests each, and a ray through it hits one
+// of them. A distance past FLT_MAX is a miss.
 
 #include "watertight.h"
 
@@ -38,6 +42,7 @@ void maudShearRay(const float* origin, const float* direction, maudShearedRay* r
     ray->sx = direction[kx] / direction[kz];
     ray->sy = direction[ky] / direction[kz];
     ray->sz = 1.0f / direction[kz];
+    ray->szDouble = 1.0 / (double)direction[kz];
 }
 
 // A double as a float that keeps its sign: a value too small for a float
@@ -68,33 +73,36 @@ static void Edges(float ax, float ay, float bx, float by, float cx, float cy, fl
     }
 }
 
-// The test in double, for a triangle whose float values overflowed. A
-// value it cannot decide (a ray with no direction) fails the final
-// range test, so it is a miss.
-static bool HitInDouble(const maudShearedRay* ray, const float* a, const float* b, const float* c,
-                        float tMin, float tMax, float* t)
+// A vertex's sheared x and y for the test in double: the float path's
+// where they are finite, and in double where they overflowed, as they
+// then do in every triangle that holds the vertex.
+static void Sheared(const maudShearedRay* ray, const float* p, double* x, double* y)
 {
-    double pa[3];
-    double pb[3];
-    double pc[3];
-    for (int i = 0; i < 3; ++i)
-    {
-        pa[i] = (double)a[i] - (double)ray->origin[i];
-        pb[i] = (double)b[i] - (double)ray->origin[i];
-        pc[i] = (double)c[i] - (double)ray->origin[i];
-    }
     int kx = ray->kx;
     int ky = ray->ky;
     int kz = ray->kz;
-    double sx = (double)ray->sx;
-    double sy = (double)ray->sy;
-    double sz = (double)ray->sz;
-    double ax = pa[kx] - sx * pa[kz];
-    double ay = pa[ky] - sy * pa[kz];
-    double bx = pb[kx] - sx * pb[kz];
-    double by = pb[ky] - sy * pb[kz];
-    double cx = pc[kx] - sx * pc[kz];
-    double cy = pc[ky] - sy * pc[kz];
+    float fx = (p[kx] - ray->origin[kx]) - ray->sx * (p[kz] - ray->origin[kz]);
+    float fy = (p[ky] - ray->origin[ky]) - ray->sy * (p[kz] - ray->origin[kz]);
+    double z = (double)p[kz] - (double)ray->origin[kz];
+    *x = isfinite(fx) ? (double)fx : (double)p[kx] - (double)ray->origin[kx] - (double)ray->sx * z;
+    *y = isfinite(fy) ? (double)fy : (double)p[ky] - (double)ray->origin[ky] - (double)ray->sy * z;
+}
+
+// The test in double, for a triangle whose float values overflowed. A
+// value it cannot decide (a ray with no direction) fails the final range
+// test, so it is a miss, as is a distance past FLT_MAX.
+static bool HitInDouble(const maudShearedRay* ray, const float* a, const float* b, const float* c,
+                        float tMin, float tMax, float* t)
+{
+    double ax;
+    double ay;
+    double bx;
+    double by;
+    double cx;
+    double cy;
+    Sheared(ray, a, &ax, &ay);
+    Sheared(ray, b, &bx, &by);
+    Sheared(ray, c, &cx, &cy);
     double u = cx * by - cy * bx;
     double v = ax * cy - ay * cx;
     double w = bx * ay - by * ax;
@@ -107,8 +115,13 @@ static bool HitInDouble(const maudShearedRay* ray, const float* a, const float* 
     {
         return false;
     }
-    double distance = (u * (sz * pa[kz]) + v * (sz * pb[kz]) + w * (sz * pc[kz])) / det;
-    if (!(distance >= (double)tMin && distance <= (double)tMax))
+    int kz = ray->kz;
+    double sz = ray->szDouble;
+    double za = sz * ((double)a[kz] - (double)ray->origin[kz]);
+    double zb = sz * ((double)b[kz] - (double)ray->origin[kz]);
+    double zc = sz * ((double)c[kz] - (double)ray->origin[kz]);
+    double distance = (u * za + v * zb + w * zc) / det;
+    if (!(distance >= (double)tMin && distance <= (double)tMax && distance <= (double)FLT_MAX))
     {
         return false;
     }
@@ -174,6 +187,10 @@ bool maudHitTriangle(const maudShearedRay* ray, const float* a, const float* b, 
     }
     // Rounding in the division may step just outside the range.
     float distance = tScaled / det;
+    if (!isfinite(distance))
+    {
+        return HitInDouble(ray, a, b, c, tMin, tMax, t);
+    }
     distance = distance < tMin ? tMin : distance;
     *t = distance > tMax ? tMax : distance;
     return true;

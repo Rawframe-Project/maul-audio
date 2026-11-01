@@ -7,7 +7,11 @@
 // double recheck must catch rather than turn into a hit; and triangles
 // with vertices near 3e38, whose float edge functions overflow: one
 // 3e38 m from the ray must not answer a hit at a NaN distance, and one
-// the ray meets must answer its true distance.
+// the ray meets must answer its true distance; two triangles sharing an
+// edge, one tested in double for a far corner and one in float, of
+// which the ray through their edge must hit one; and a direction too
+// short for sz in float, whose hit keeps its finite distance and whose
+// distance past FLT_MAX is none.
 
 #include "test_harness.h"
 #include "watertight.h"
@@ -61,5 +65,39 @@ int main(void)
     hit = maudHitTriangle(&ahead, huge1, huge2, huge3, 0.0f, INFINITY, &t);
     printf("wide: hit %d at %g\n", hit, (double)t);
     CHECK(hit && t == 5.0f, "an overflowing triangle the ray meets: its distance");
+    // P and Q shared: the first triangle's far corner sends it to double,
+    // the second stays in float, and in exact arithmetic the ray hits the
+    // second.
+    float shared[3] = {0.1f, 0.0f, 1.0f};
+    maudShearedRay through;
+    maudShearRay(zero, shared, &through);
+    float p[3] = {0.3f, -1.0f, 3.0f};
+    float q[3] = {0.1f - 0x1p-27f, 2.0f, 1.0f};
+    float beyond[3] = {3.0e38f, 0.5f, 2.0f};
+    float beside[3] = {-1.0f, 0.5f, 2.0f};
+    float t1 = 0.0f;
+    float t2 = 0.0f;
+    bool first = maudHitTriangle(&through, p, q, beyond, 0.0f, INFINITY, &t1);
+    bool second = maudHitTriangle(&through, q, p, beside, 0.0f, INFINITY, &t2);
+    printf("shared edge: %d at %g, %d at %g\n", first, (double)t1, second, (double)t2);
+    CHECK(first || second, "an edge shared across the float and double tests: a hit");
+    // A direction of 1e-40 along z: sz is infinite in float.
+    float tiny[3] = {0.0f, 0.0f, 1e-40f};
+    maudShearedRay crawl;
+    maudShearRay(zero, tiny, &crawl);
+    float close1[3] = {-1e-40f, -1e-40f, 1e-40f};
+    float close2[3] = {1e-40f, -1e-40f, 1e-40f};
+    float close3[3] = {0.0f, 1e-40f, 1e-40f};
+    t = 0.0f;
+    hit = maudHitTriangle(&crawl, close1, close2, close3, 0.0f, INFINITY, &t);
+    printf("short direction, near: %d at %g\n", hit, (double)t);
+    CHECK(hit && fabsf(t - 1.0f) < 1e-6f, "a short direction: its finite distance");
+    float ahead1[3] = {-1.0f, -1.0f, 5.0f};
+    float ahead2[3] = {1.0f, -1.0f, 5.0f};
+    float ahead3[3] = {0.0f, 1.0f, 5.0f};
+    t = 0.0f;
+    hit = maudHitTriangle(&crawl, ahead1, ahead2, ahead3, 0.0f, INFINITY, &t);
+    printf("short direction, far: %d at %g\n", hit, (double)t);
+    CHECK(!hit, "a distance past FLT_MAX: none");
     return s_failures == 0 ? 0 : 1;
 }

@@ -25,6 +25,9 @@ typedef struct maudShearedRay
     float sx;
     float sy;
     float sz;
+    // sz in double, finite where a direction shorter than 2^-128 along
+    // kz leaves sz infinite.
+    double szDouble;
 } maudShearedRay;
 
 void maudShearRay(const float* origin, const float* direction, maudShearedRay* ray);
