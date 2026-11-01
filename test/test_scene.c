@@ -6,10 +6,9 @@
 // exactly through a diagonal two triangles share, or a vertex eight
 // share, hit; equal distances go to the triangle listed first; normals
 // face the counterclockwise side, a triangle with one corner 1e17 m off
-// included; an empty scene misses; plugged into a
-// spatializer's hooks, a wall occludes and its two faces transmit; bad
-// meshes are refused; memory running out at any allocation is a capacity
-// error with nothing left.
+// included, and a sliver whose edges cancel from every corner; an empty scene misses; plugged into
+// a spatializer's hooks, a wall occludes and its two faces transmit; bad meshes are refused; memory
+// running out at any allocation is a capacity error with nothing left.
 
 #include "test_harness.h"
 
@@ -302,6 +301,20 @@ static void TestFarCorner(void)
     CHECK(fabsf(fabsf(h.normal.x) - 0.70710678f) < 1e-6f && h.normal.y == 0.0f &&
               h.normal.z == -h.normal.x,
           "the far-cornered triangle's unit normal");
+    maudDestroyScene(scene);
+    // Two corners 1e17 m off on either side and one near the origin, a
+    // float's step off their line: from every corner the two edges round
+    // to one direction, and only the exact product finds the plane y = 0.
+    maudVector3 sliver[3] = {
+        {-1.0e17f, 0.0f, -1.0e17f}, {1.0e17f, 0.0f, 1.0e17f}, {4.0f, 0.0f, nextafterf(4.0f, 5.0f)}};
+    maudMesh thin = {sliver, 3, corners, material, 1};
+    scene = Build(&thin, 1);
+    maudRay down = {{2.0f, 1.0f, 2.00000024f}, {0.0f, -1.0f, 0.0f}, 0.0f, 5.0f};
+    maudFindClosestHit(&down, 1, &h, scene);
+    printf("sliver: distance %g, normal (%g %g %g)\n", (double)h.distance, (double)h.normal.x,
+           (double)h.normal.y, (double)h.normal.z);
+    CHECK(h.distance == 1.0f && h.normal.x == 0.0f && h.normal.y == -1.0f && h.normal.z == 0.0f,
+          "a sliver cancelling from every corner: its exact unit normal");
     maudDestroyScene(scene);
 }
 

@@ -311,11 +311,59 @@ static double Cross(const float* o, const float* p, const float* q, double n[3])
     return n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
 }
 
+// The sum and the rounding error of a + b, exactly (Knuth's two-sum).
+static void TwoSum(double a, double b, double* sum, double* error)
+{
+    double s = a + b;
+    double bPart = s - a;
+    double aPart = s - bPart;
+    *error = (a - aPart) + (b - bPart);
+    *sum = s;
+}
+
+// Adds b to an expansion of *count nonoverlapping parts, smallest first,
+// whose sum is the exact total (Shewchuk, "Adaptive precision
+// floating-point arithmetic and fast robust geometric predicates", 1997).
+static void Grow(double* parts, int* count, double b)
+{
+    double q = b;
+    for (int i = 0; i < *count; ++i)
+    {
+        TwoSum(q, parts[i], &q, &parts[i]);
+    }
+    parts[(*count)++] = q;
+}
+
+// The component along the axis after j and k of the normal in vertex
+// form, a x b + b x c + c x a: six products of floats, each exact in
+// double, summed exactly and rounded once, so it is 0 only when the
+// exact value is. The parts' sum, smallest first, keeps the exact sign.
+static double ExactComponent(const maudTriangle* t, int j, int k)
+{
+    const float* corners[3] = {t->a, t->b, t->c};
+    double parts[6];
+    int count = 0;
+    for (int i = 0; i < 3; ++i)
+    {
+        const float* p = corners[i];
+        const float* q = corners[(i + 1) % 3];
+        Grow(parts, &count, (double)p[j] * (double)q[k]);
+        Grow(parts, &count, -((double)p[k] * (double)q[j]));
+    }
+    double sum = 0.0;
+    for (int i = 0; i < count; ++i)
+    {
+        sum += parts[i];
+    }
+    return sum;
+}
+
 maudVector3 maudTriangleNormal(const maudTriangle* t)
 {
     // From a; where a corner lies so far off that its two edges round to
     // one direction and their product to zero, from b, then from c, each
-    // keeping the winding.
+    // keeping the winding; where all three cancel, exactly, so that only
+    // a triangle with no area has no normal.
     double n[3];
     double squared = Cross(t->a, t->b, t->c, n);
     if (squared == 0.0)
@@ -325,6 +373,13 @@ maudVector3 maudTriangleNormal(const maudTriangle* t)
     if (squared == 0.0)
     {
         squared = Cross(t->c, t->a, t->b, n);
+    }
+    if (squared == 0.0)
+    {
+        n[0] = ExactComponent(t, 1, 2);
+        n[1] = ExactComponent(t, 2, 0);
+        n[2] = ExactComponent(t, 0, 1);
+        squared = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
     }
     if (squared == 0.0)
     {
