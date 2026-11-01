@@ -84,6 +84,11 @@ static bool HaveDaemon(void)
     return false;
 }
 
+static void PrintGraphNodes(const char* label)
+{
+    (void)label;
+}
+
 // How late a sleep may wake before the window counts as starved.
 #define LATE_WAKEUP 10000000LL
 #endif
@@ -316,6 +321,12 @@ int main(int argc, char** argv)
     CHECK(atomic_load(&shared->blocks) >= 10, "the stream runs");
     unsigned long long graphBefore = 0;
     unsigned long long graphAfter = 0;
+    // The graph's nodes before the stall, for the underrun check's log:
+    // which node counted an xrun shows against those after.
+    if (underruns)
+    {
+        PrintGraphNodes("graph before");
+    }
     bool graphRead = GraphXruns(&graphBefore);
     maudPose listener = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     maudStreamStatus status = {0};
@@ -395,6 +406,18 @@ int main(int argc, char** argv)
         if (underruns)
         {
             CHECK(status.underrunCount == 0, "no underrun over the stall");
+        }
+        // The backend counts an underrun when the graph's clock moved
+        // past one and a half cycles between two of the stream's: a
+        // cycle the stream missed. What the graph says a second later
+        // shows whether its own count lagged the window, and which node
+        // missed a cycle.
+        if (underruns && status.underrunCount != 0)
+        {
+            maudStreamStatus later = {0};
+            CHECK(maudStream_GetStatus(context, shared->stream, &later) == maud_success, "status");
+            printf("stall: underruns %llu now\n", (unsigned long long)later.underrunCount);
+            PrintGraphNodes("graph after");
         }
     }
     CHECK(maudStream_Stop(context, shared->stream) == maud_success, "stopped");

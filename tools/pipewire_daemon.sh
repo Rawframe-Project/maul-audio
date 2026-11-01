@@ -7,13 +7,16 @@
 # the daemon with XDG_RUNTIME_DIR=<dir>/run, and the restart tests stop
 # and start it with this script (test/test_daemon.h).
 #
-# usage: pipewire_daemon.sh start|stop|xruns <dir>
+# usage: pipewire_daemon.sh start|stop|xruns|nodes <dir>
 #        pipewire_daemon.sh signal <dir> <name> <signal>
 #
 # signal sends a signal (STOP, CONT) to one of the processes it started,
 # as the tests that freeze the daemon do. xruns prints the xruns every
 # node of the graph has counted, summed, which takes about a second: the
 # tests' timing checks judge only windows in which it did not move.
+# nodes prints the graph's nodes as pw-top shows them, each with its
+# quantum, rate, timings and xrun count, for a failed check's log; it
+# takes about a second too.
 #
 # Each process it starts is recorded in <dir>/<name>.pid with its start
 # time, and only a process whose PID and start time both still match is
@@ -202,8 +205,15 @@ xruns)
         block == 2 && $2 ~ /^[0-9]+$/ { sum += $9 }
         END { if (block < 2) exit 1; print sum }'
     ;;
+nodes)
+    # pw-top's second sample, header included, as xruns reads it.
+    pw-top --batch-mode --iterations 2 | awk '
+        $1 == "S" && $2 == "ID" { block += 1 }
+        block == 2 { print }
+        END { if (block < 2) exit 1 }'
+    ;;
 *)
-    echo "usage: $0 start|stop|xruns <dir> | signal <dir> <name> <signal>" >&2
+    echo "usage: $0 start|stop|xruns|nodes <dir> | signal <dir> <name> <signal>" >&2
     exit 2
     ;;
 esac

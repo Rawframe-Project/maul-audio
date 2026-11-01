@@ -75,6 +75,32 @@ static inline bool GraphXrunsEnd(FILE* reading, unsigned long long* count)
     return pclose(reading) == 0 && read;
 }
 
+// Prints the fixture's graph as pw-top shows it (the script's nodes
+// action), every line after `label`: each node's quantum, rate, timings
+// and xrun count, for a failed check's log. It takes about a second, and
+// prints nothing where there is no daemon.
+static inline void PrintGraphNodes(const char* label)
+{
+    char command[1024];
+    int length =
+        snprintf(command, sizeof(command), "%s nodes %s", MAUD_TEST_DAEMON, MAUD_TEST_SERVER_DIR);
+    FILE* reading =
+        HaveDaemon() && length > 0 && length < (int)sizeof(command) ? popen(command, "r") : nullptr;
+    if (reading == nullptr)
+    {
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof(line), reading) != nullptr)
+    {
+        printf("%s: %s", label, line);
+    }
+    if (pclose(reading) != 0)
+    {
+        printf("%s: not read\n", label);
+    }
+}
+
 // A window of a timing check against the fixture's server: `milliseconds`
 // (at least the second the count takes) through which the context, when
 // set, is drained (streams move, and PipeWire's main loop runs, inside the
