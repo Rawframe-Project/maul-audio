@@ -294,21 +294,43 @@ void maudFindAnyHit(const maudRay* rays, uint32_t count, uint8_t* occludedOut, v
     maudFloatEnvLeave(token);
 }
 
-maudVector3 maudTriangleNormal(const maudTriangle* t)
+// The cross product of the edges from corner o to p and to q, and its
+// squared length.
+static double Cross(const float* o, const float* p, const float* q, double n[3])
 {
     double u[3];
     double v[3];
     for (int i = 0; i < 3; ++i)
     {
-        u[i] = (double)t->b[i] - (double)t->a[i];
-        v[i] = (double)t->c[i] - (double)t->a[i];
+        u[i] = (double)p[i] - (double)o[i];
+        v[i] = (double)q[i] - (double)o[i];
     }
-    double n[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
-    double length = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-    if (length == 0.0)
+    n[0] = u[1] * v[2] - u[2] * v[1];
+    n[1] = u[2] * v[0] - u[0] * v[2];
+    n[2] = u[0] * v[1] - u[1] * v[0];
+    return n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+}
+
+maudVector3 maudTriangleNormal(const maudTriangle* t)
+{
+    // From a; where a corner lies so far off that its two edges round to
+    // one direction and their product to zero, from b, then from c, each
+    // keeping the winding.
+    double n[3];
+    double squared = Cross(t->a, t->b, t->c, n);
+    if (squared == 0.0)
+    {
+        squared = Cross(t->b, t->c, t->a, n);
+    }
+    if (squared == 0.0)
+    {
+        squared = Cross(t->c, t->a, t->b, n);
+    }
+    if (squared == 0.0)
     {
         return (maudVector3){0.0f, 0.0f, 0.0f};
     }
+    double length = sqrt(squared);
     return (maudVector3){(float)(n[0] / length), (float)(n[1] / length), (float)(n[2] / length)};
 }
 
