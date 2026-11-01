@@ -4,9 +4,10 @@
 // The probe sets (probe_graph.h). Generation walks every column twice,
 // once to count its floors and once to place them where the counts say,
 // so its memory is a byte and a word a column. Pairs within range come
-// from a sweep along x, sorted by their indices; each is one any-hit
-// ray; the links fill compressed rows in pair order, which leaves every
-// row ascending.
+// from a grid of cells a little wider than the range, each probe tested
+// against its own cell and the neighbouring ones, and are sorted by
+// their indices; each is one any-hit ray; the links fill compressed rows
+// in pair order, which leaves every row ascending.
 
 #include "probe_graph.h"
 
@@ -28,6 +29,11 @@
 #define MAX_HEIGHT  10.0f
 #define MIN_RANGE   0.1f
 #define MAX_RANGE   1000.0f
+// A cell is this much wider than the range: two probes whose distance
+// rounds to within range are less than a cell apart on every axis.
+#define CELL_MARGIN (1.0 + 1.0 / 1024.0)
+// The cells' numbers stop here, far past any scene's.
+#define CELL_LIMIT 4611686018427387904.0
 
 typedef struct Pair
 {
@@ -35,9 +41,10 @@ typedef struct Pair
     uint32_t j;
 } Pair;
 
+// A probe's cell, numbered along x, y and z, and the probe.
 typedef struct Key
 {
-    float x;
+    int64_t cell[3];
     uint32_t index;
 } Key;
 
@@ -258,13 +265,34 @@ static maudResult Generate(const maudProbeQueries* q, const maudProbeSetDef* def
     return result;
 }
 
-static int ByX(const void* a, const void* b)
+// The cell along one axis of a coordinate, cells width wide.
+static int64_t CellOf(float v, double width)
+{
+    double cell = floor((double)v / width);
+    cell = cell < -CELL_LIMIT ? -CELL_LIMIT : cell > CELL_LIMIT ? CELL_LIMIT : cell;
+    return (int64_t)cell;
+}
+
+static int CompareCells(const int64_t* l, const int64_t* r)
+{
+    for (int k = 0; k < 3; ++k)
+    {
+        if (l[k] != r[k])
+        {
+            return l[k] < r[k] ? -1 : 1;
+        }
+    }
+    return 0;
+}
+
+static int ByCell(const void* a, const void* b)
 {
     const Key* l = a;
     const Key* r = b;
-    if (l->x != r->x)
+    int cells = CompareCells(l->cell, r->cell);
+    if (cells != 0)
     {
-        return l->x < r->x ? -1 : 1;
+        return cells;
     }
     return l->index < r->index ? -1 : l->index > r->index ? 1 : 0;
 }
@@ -288,25 +316,95 @@ static float Distance(maudVector3 a, maudVector3 b)
     return sqrtf(x * x + y * y + z * z);
 }
 
-// The pairs within range by a sweep along x: counted without pairs,
-// written with them (unsorted), stopping past limit.
+// The 13 neighbouring cells that come after a cell in the keys' order:
+// with the cell itself, a pair in two cells is tested once, from the
+// earlier.
+static const int8_t s_after[13][3] = {
+    {0, 0, 1},  {0, 1, -1}, {0, 1, 0}, {0, 1, 1},  {1, -1, -1}, {1, -1, 0}, {1, -1, 1},
+    {1, 0, -1}, {1, 0, 0},  {1, 0, 1}, {1, 1, -1}, {1, 1, 0},   {1, 1, 1},
+};
+
+// The first key at or after cell.
+static uint32_t FirstIn(const Key* keys, uint32_t count, const int64_t* cell)
+{
+    uint32_t low = 0;
+    uint32_t high = count;
+    while (low < high)
+    {
+        uint32_t mid = low + (high - low) / 2;
+        if (CompareCells(keys[mid].cell, cell) < 0)
+        {
+            low = mid + 1;
+        }
+        else
+        {
+            high = mid;
+        }
+    }
+    return low;
+}
+
+// The keys of one cell, from *from up to *to.
+static void CellRun(const Key* keys, uint32_t count, const int64_t* cell, uint32_t* from,
+                    uint32_t* to)
+{
+    uint32_t b = FirstIn(keys, count, cell);
+    *from = b;
+    while (b < count && CompareCells(keys[b].cell, cell) == 0)
+    {
+        ++b;
+    }
+    *to = b;
+}
+
+// Tests key a's probe against the keys from from up to to: total, with
+// each pair within range counted, and written when pairs is given.
+static uint64_t TestAgainst(const Key* keys, const maudVector3* points, float range, uint32_t a,
+                            const uint32_t run[2], Pair* pairs, uint64_t total)
+{
+    for (uint32_t b = run[0]; b < run[1]; ++b)
+    {
+        uint32_t i = keys[a].index;
+        uint32_t j = keys[b].index;
+        if (Distance(points[i], points[j]) <= range)
+        {
+            if (pairs != nullptr)
+            {
+                pairs[total] = i < j ? (Pair){i, j} : (Pair){j, i};
+            }
+            total += 1;
+        }
+    }
+    return total;
+}
+
+// The pairs within range: each cell's probes tested against the later
+// probes of the cell and every probe of the cells after it, whose runs
+// of keys are found once a cell. Counted without pairs, written with
+// them (unsorted), stopping past limit.
 static uint64_t Sweep(const Key* keys, const maudVector3* points, uint32_t count, float range,
                       uint64_t limit, Pair* pairs)
 {
     uint64_t total = 0;
-    for (uint32_t a = 0; a < count && total <= limit; ++a)
+    uint32_t end = 0;
+    for (uint32_t first = 0; first < count && total <= limit; first = end)
     {
-        for (uint32_t b = a + 1; b < count && keys[b].x - keys[a].x <= range; ++b)
+        const int64_t* own = keys[first].cell;
+        uint32_t runs[14][2];
+        CellRun(keys, count, own, &runs[0][0], &runs[0][1]);
+        end = runs[0][1];
+        for (int n = 0; n < 13; ++n)
         {
-            uint32_t i = keys[a].index;
-            uint32_t j = keys[b].index;
-            if (Distance(points[i], points[j]) <= range)
+            int64_t cell[3] = {own[0] + s_after[n][0], own[1] + s_after[n][1],
+                               own[2] + s_after[n][2]};
+            CellRun(keys, count, cell, &runs[n + 1][0], &runs[n + 1][1]);
+        }
+        for (uint32_t a = first; a < end && total <= limit; ++a)
+        {
+            runs[0][0] = a + 1;
+            for (int n = 0; n < 14; ++n)
             {
-                if (pairs != nullptr)
-                {
-                    pairs[total] = i < j ? (Pair){i, j} : (Pair){j, i};
-                }
-                total += 1;
+                total = TestAgainst(keys, points, range, a, runs[n], pairs, total);
             }
         }
     }
@@ -453,13 +551,15 @@ static maudResult Connect(const maudProbeQueries* q, float range, const maudVect
     {
         return maud_errorCapacity;
     }
+    double width = (double)range * CELL_MARGIN;
     for (uint32_t i = 0; i < count; ++i)
     {
-        t.keys[i] = (Key){points[i].x, i};
+        maudVector3 p = points[i];
+        t.keys[i] = (Key){{CellOf(p.x, width), CellOf(p.y, width), CellOf(p.z, width)}, i};
     }
     if (count > 1)
     {
-        qsort(t.keys, count, sizeof(Key), ByX);
+        qsort(t.keys, count, sizeof(Key), ByCell);
     }
     uint64_t total = Sweep(t.keys, points, count, range, q->maxPairs, nullptr);
     if (total > q->maxPairs)

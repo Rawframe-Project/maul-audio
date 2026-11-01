@@ -10,10 +10,11 @@
 // storeys only, and on a surface at 45 degrees (the steepest floor);
 // without an any-hit query every pair within range is linked, and every
 // query a host gets has a unit direction, two probes at one point too;
-// one probe asks for no empty block; a column gives up after 32
-// surfaces; the largest spacing, height and range are taken; the
-// limits, a missing closest-hit query and a block that cannot be had
-// are refused.
+// one probe asks for no empty block; every pair within range links
+// wherever the probes lie, on the edges of the cells that find them or
+// far past any scene; a column gives up after 32 surfaces; the largest
+// spacing, height and range are taken; the limits, a missing
+// closest-hit query and a block that cannot be had are refused.
 
 #include "allocator.h"
 #include "probe_graph.h"
@@ -309,6 +310,74 @@ static void TestCoincident(void)
     maudReleaseProbeGraph(&s_allocator, &g);
 }
 
+// Probes on and about the edges of the cells that find the pairs: a
+// lattice half a range apart about the origin, so that pairs lie exactly
+// a range apart along each axis, scattered ones, a row whose coordinates
+// are a float's step apart, and some at magnitudes past any scene. With
+// nothing in the way, every pair within range links and no other.
+static void TestEveryPair(void)
+{
+    static maudVector3 points[400];
+    const float range = 1.5f;
+    uint32_t n = 0;
+    for (int x = -3; x <= 3; ++x)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            for (int z = -3; z <= 3; ++z)
+            {
+                points[n++] = (maudVector3){0.75f * (float)x, 0.75f * (float)y, 0.75f * (float)z};
+            }
+        }
+    }
+    uint32_t hash = 12345u;
+    for (int i = 0; i < 100; ++i)
+    {
+        float c[3];
+        for (int k = 0; k < 3; ++k)
+        {
+            hash = hash * 1664525u + 1013904223u;
+            c[k] = (float)((int)(hash >> 20) - 2048) * 0.00625f;
+        }
+        points[n++] = (maudVector3){c[0], c[1], c[2]};
+    }
+    for (int i = 0; i < 20; ++i)
+    {
+        points[n++] = (maudVector3){1.0e7f + (float)i, 0.0f, 0.0f};
+    }
+    for (int i = 0; i < 5; ++i)
+    {
+        points[n++] = (maudVector3){1.0e30f, 0.0f, (float)i};
+    }
+    static const maudVector3 far[6] = {{3.0e38f, 0.0f, 0.0f},  {3.0e38f, 0.0f, 1.0f},
+                                       {3.4e38f, 0.0f, 0.0f},  {-3.0e38f, 0.0f, 0.0f},
+                                       {-3.0e38f, 1.0f, 0.0f}, {0.0f, -3.0e38f, 0.0f}};
+    for (int i = 0; i < 6; ++i)
+    {
+        points[n++] = far[i];
+    }
+    maudProbeSetDef def = {.points = points, .pointCount = n, .range = range};
+    maudProbeQueries q = {
+        .anyHit = Clear, .allocator = &s_allocator, .maxProbes = 4096, .maxPairs = 1u << 20};
+    maudProbeGraph g;
+    CHECK(maudBuildProbeGraph(&q, &def, &g) == maud_success, "built");
+    uint32_t wrong = 0;
+    uint32_t within = 0;
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        for (uint32_t j = i + 1; j < n; ++j)
+        {
+            bool near = Distance(points[i], points[j]) <= range;
+            within += near ? 1 : 0;
+            wrong += near == Linked(&g, i, j) ? 0 : 1;
+        }
+    }
+    printf("every pair: %u probes, %u within range, %u links, %u wrong\n", n, within, g.links,
+           wrong);
+    CHECK(wrong == 0 && g.links == within && within > n, "every pair within range linked");
+    maudReleaseProbeGraph(&s_allocator, &g);
+}
+
 // A host's closest hits: a surface 2 m down each column, its normal 45
 // degrees from vertical, and nothing below it.
 static void Steep(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
@@ -519,5 +588,6 @@ int main(void)
     TestMostColumns();
     TestLonely();
     TestCoincident();
+    TestEveryPair();
     return s_failures == 0 ? 0 : 1;
 }
