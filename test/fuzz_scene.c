@@ -6,16 +6,19 @@
 // first byte chooses the range and whether the probes are the input's
 // points or generated over the scene; the next two the vertex and
 // triangle counts. Then come the vertices as raw floats, a byte per
-// index (vertexCount itself one past the last vertex), six bytes that
-// place a generation's box, and the points as raw floats. Each call is
-// held to its header's promises:
+// index (vertexCount itself one past the last vertex), a generation's
+// box corners, spacing and height as raw floats, and the points as raw
+// floats. Each call is held to its header's promises:
 //
 // - a scene is made exactly when every vertex is finite and every index
 //   names a vertex;
 // - a hit lies within its ray's distances with a unit normal, and
 //   any-hit agrees with closest-hit;
 // - a probe set's rows are ascending and symmetric, each link within
-//   range and measured, and the set saved as a bake reads back the same.
+//   range and measured, and the set saved as a bake reads back the same;
+// - a generation's def is valid exactly when its values are in their
+//   ranges and its box is finite and has height, and it is refused with
+//   maud_errorLimit exactly when its box holds too many columns.
 
 #include "bake_file.h"
 #include "fpenv.h"
@@ -36,7 +39,10 @@ enum
     MAX_TRIANGLES = 32,
     MAX_POINTS = 64,
     MAX_PROBES = 256,
-    MAX_PAIRS = 4096
+    MAX_PAIRS = 4096,
+    // Generations of more columns, but within the limit, are not built:
+    // each column walks up to 32 rays, too slow for a fuzzer.
+    FUZZ_COLUMNS = 1024
 };
 
 static const float s_ranges[4] = {0.5f, 1.5f, 5.0f, 40.0f};
@@ -56,6 +62,15 @@ typedef struct Input
     size_t size;
     size_t at;
 } Input;
+
+// A generation's box, as the input gives it.
+typedef struct Box
+{
+    maudVector3 low;
+    maudVector3 high;
+    float spacing;
+    float height;
+} Box;
 
 static uint8_t Byte(Input* in)
 {
@@ -178,38 +193,55 @@ static void CheckSaved(const maudProbeGraph* g, const maudAllocator* allocator)
     free(file);
 }
 
-// Builds a set from the points, or generated over the scene in a box
-// the input places, small enough that a run stays quick.
-static void CheckProbes(maudScene* scene, const maudVector3* points, uint32_t count,
-                        const uint8_t box[6], float range, bool generate)
+// Whether a generation's def holds values the header allows.
+static bool BoxValid(const Box* box)
+{
+    return box->spacing >= 0.25f && box->spacing <= 100.0f && box->height >= 0.1f &&
+           box->height <= 10.0f && Finite(box->low) && Finite(box->high) &&
+           box->low.x <= box->high.x && box->low.y < box->high.y && box->low.z <= box->high.z;
+}
+
+// The columns along one side: as many whole spacings as fit, at least
+// one.
+static double Columns(float low, float high, float spacing)
+{
+    return fmax(1.0, floor(((double)high - (double)low) / (double)spacing));
+}
+
+// Builds a set from the points, or generated over the scene in the box
+// the input gives.
+static void CheckProbes(maudScene* scene, const maudVector3* points, uint32_t count, const Box* box,
+                        float range, bool generate)
 {
     const maudAllocator allocator = {nullptr, nullptr, nullptr};
     maudProbeSetDef def = maudDefaultProbeSetDef();
     def.range = range;
+    bool expected = true;
+    double columns = 0.0;
     if (generate)
     {
-        float x = (float)(box[0] % 16) - 8.0f;
-        float y = (float)(box[1] % 16) - 8.0f;
-        float z = (float)(box[2] % 16) - 8.0f;
-        float extent = 1.0f + (float)(box[3] % 16);
-        def.boxMin = (maudVector3){x, y, z};
-        def.boxMax = (maudVector3){x + extent, y + extent, z + extent};
-        def.spacing = 0.5f + 0.25f * (float)(box[4] % 16);
-        def.height = 0.1f + 0.5f * (float)(box[5] % 16);
+        def.boxMin = box->low;
+        def.boxMax = box->high;
+        def.spacing = box->spacing;
+        def.height = box->height;
+        expected = BoxValid(box);
+        columns = expected ? Columns(box->low.x, box->high.x, box->spacing) *
+                                 Columns(box->low.z, box->high.z, box->spacing)
+                           : 0.0;
     }
     else
     {
         def.points = points;
         def.pointCount = count;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            expected = expected && Finite(points[i]);
+        }
     }
     bool valid = maudProbeSetDefValid(&def);
-    bool finite = true;
-    for (uint32_t i = 0; i < count && !generate; ++i)
-    {
-        finite = finite && Finite(points[i]);
-    }
-    Expect(valid == (generate || finite));
-    if (!valid)
+    Expect(valid == expected);
+    bool over = columns > (double)MAUD_MAX_PROBE_COLUMNS;
+    if (!valid || (!over && columns > FUZZ_COLUMNS))
     {
         return;
     }
@@ -223,7 +255,7 @@ static void CheckProbes(maudScene* scene, const maudVector3* points, uint32_t co
     uint64_t token = maudFloatEnvEnter();
     maudResult built = maudBuildProbeGraph(&queries, &def, &graph);
     maudFloatEnvLeave(token);
-    Expect(built == maud_success || built == maud_errorCapacity);
+    Expect(over ? built == maud_errorLimit : built == maud_success || built == maud_errorCapacity);
     if (built == maud_success)
     {
         CheckGraph(&graph);
@@ -255,11 +287,11 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         indices[i] = Byte(&in) % (vertexCount + 1);
         valid = valid && indices[i] < vertexCount;
     }
-    uint8_t box[6];
-    for (int k = 0; k < 6; ++k)
-    {
-        box[k] = Byte(&in);
-    }
+    Box box;
+    box.low = Vector(&in);
+    box.high = Vector(&in);
+    box.spacing = Float(&in);
+    box.height = Float(&in);
     uint32_t count = 0;
     while (count < MAX_POINTS && in.at < in.size)
     {
@@ -273,7 +305,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     maudResult made = maudCreateScene(&def, &scene);
     Expect(made == (valid ? maud_success : maud_errorInvalid));
     CheckRays(scene, points, count);
-    CheckProbes(scene, points, count, box, range, generate);
+    CheckProbes(scene, points, count, &box, range, generate);
     maudDestroyScene(scene);
     return 0;
 }
