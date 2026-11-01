@@ -114,6 +114,9 @@ extern "C"
 
     /// Creates an acoustic scene: copies the meshes and builds a bounding
     /// volume hierarchy over their triangles, the same on every platform.
+    /// A triangle with no area (its corners on one line) covers nothing:
+    /// it is left out, and no ray hits it. It still counts toward
+    /// maxTriangles and keeps its place in the order ties go by.
     ///
     /// @param def       The def, from maudDefaultSceneDef.
     /// @param sceneOut  Receives the scene; NULL on failure.

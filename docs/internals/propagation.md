@@ -30,7 +30,7 @@ The spatializer never holds the level. It asks the host's any-hit and closest-hi
 
 ## Scenes
 
-An acoustic scene ([scene.c](../../src/scene.c), [scene_instances.c](../../src/scene_instances.c)) is the library's own geometry for hosts without a tracer and for results that must match everywhere. Static meshes are copied at creation into one bounding volume hierarchy, built by binned SAH ([bvh.h](../../src/bvh.h)), the same on every platform. Instancing meshes get a hierarchy each; a commit places every live instance and builds a top level over their bounds. A ray enters an instance's frame through its inverse transform without renormalizing, so its distances stay the world's.
+An acoustic scene ([scene.c](../../src/scene.c), [scene_instances.c](../../src/scene_instances.c)) is the library's own geometry for hosts without a tracer and for results that must match everywhere. Static meshes are copied at creation into one bounding volume hierarchy, without the triangles that have no area (their cross product of edges is zero from every corner, so no hit on them could have a normal), built by binned SAH ([bvh.h](../../src/bvh.h)), the same on every platform. Instancing meshes get a hierarchy each; a commit places every live instance and builds a top level over their bounds. A ray enters an instance's frame through its inverse transform without renormalizing, so its distances stay the world's.
 
 Triangles are hit by the watertight test of Woop, Benthin and Wald ([watertight.h](../../src/watertight.h)): a ray through a shared edge or vertex hits exactly one of the triangles there, so a closed room never leaks a ray through a seam between two triangles.
 

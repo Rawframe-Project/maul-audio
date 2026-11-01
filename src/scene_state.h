@@ -63,8 +63,9 @@ struct maudScene
     _Atomic uint64_t misuse;
 };
 
-// Copies count meshes' triangles, numbered across them, and builds
-// their hierarchy; false when memory runs out (nothing to release).
+// Copies count meshes' triangles that have an area, numbered across all
+// of them, and builds their hierarchy; false when memory runs out
+// (nothing to release).
 bool maudBuildSceneMesh(const maudAllocator* allocator, const maudMesh* meshes, uint32_t count,
                         maudSceneMesh* out);
 void maudReleaseSceneMesh(const maudAllocator* allocator, maudSceneMesh* mesh);
