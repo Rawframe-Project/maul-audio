@@ -2,10 +2,11 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Acoustic scenes (maul-audio/scene.h): the static meshes' triangles
-// copied in order, numbered across the meshes, and a hierarchy over
-// them; each instancing mesh likewise on its own; the instances in
-// scene_instances.c. A query asks the static hierarchy first, then the
-// committed instances, which win a tie only against nothing.
+// with an area copied in order, numbered across the meshes, and a
+// hierarchy over them; each instancing mesh likewise on its own; the
+// instances in scene_instances.c. A query asks the static hierarchy
+// first, then the committed instances, which win a tie only against
+// nothing.
 
 #include "maul-audio/scene.h"
 
@@ -80,44 +81,67 @@ static maudResult Check(const maudSceneDef* def)
     return sum > def->maxTriangles ? maud_errorCapacity : maud_success;
 }
 
+// Triangle i of a mesh, numbered n across the meshes.
+static maudTriangle TriangleOf(const maudMesh* mesh, uint32_t i, uint32_t n)
+{
+    const maudVector3* v = mesh->vertices;
+    maudVector3 a = v[mesh->indices[3 * (size_t)i]];
+    maudVector3 b = v[mesh->indices[3 * (size_t)i + 1]];
+    maudVector3 c = v[mesh->indices[3 * (size_t)i + 2]];
+    return (maudTriangle){{a.x, a.y, a.z}, {b.x, b.y, b.z}, {c.x, c.y, c.z}, n, mesh->materials[i]};
+}
+
+// Whether a triangle has an area: one with none (its corners on a line
+// or at one point) covers no surface and has no normal, so the
+// hierarchy leaves it out, and every hit has a unit normal.
+static bool HasArea(const maudTriangle* t)
+{
+    maudVector3 n = maudTriangleNormal(t);
+    return n.x != 0.0f || n.y != 0.0f || n.z != 0.0f;
+}
+
 bool maudBuildSceneMesh(const maudAllocator* allocator, const maudMesh* meshes, uint32_t count,
                         maudSceneMesh* out)
 {
     *out = (maudSceneMesh){0};
-    uint32_t total = 0;
+    uint32_t kept = 0;
+    uint32_t n = 0;
     for (uint32_t m = 0; m < count; ++m)
     {
-        total += meshes[m].triangleCount;
+        for (uint32_t i = 0; i < meshes[m].triangleCount; ++i, ++n)
+        {
+            maudTriangle t = TriangleOf(&meshes[m], i, n);
+            kept += HasArea(&t) ? 1 : 0;
+        }
     }
-    if (total == 0)
+    if (kept == 0)
     {
         return true;
     }
     out->triangles =
-        maudAllocate(allocator, (size_t)total * sizeof(maudTriangle), alignof(maudTriangle));
-    out->nodes = maudAllocate(allocator, (size_t)maudBvhCapacity(total) * sizeof(maudBvhNode),
+        maudAllocate(allocator, (size_t)kept * sizeof(maudTriangle), alignof(maudTriangle));
+    out->nodes = maudAllocate(allocator, (size_t)maudBvhCapacity(kept) * sizeof(maudBvhNode),
                               alignof(maudBvhNode));
-    out->triangleCount = total;
+    out->triangleCount = kept;
     if (out->triangles == nullptr || out->nodes == nullptr)
     {
         maudReleaseSceneMesh(allocator, out);
         return false;
     }
-    uint32_t n = 0;
+    uint32_t at = 0;
+    n = 0;
     for (uint32_t m = 0; m < count; ++m)
     {
-        const maudMesh* mesh = &meshes[m];
-        for (uint32_t i = 0; i < mesh->triangleCount; ++i, ++n)
+        for (uint32_t i = 0; i < meshes[m].triangleCount; ++i, ++n)
         {
-            const maudVector3* v = mesh->vertices;
-            maudVector3 a = v[mesh->indices[3 * (size_t)i]];
-            maudVector3 b = v[mesh->indices[3 * (size_t)i + 1]];
-            maudVector3 c = v[mesh->indices[3 * (size_t)i + 2]];
-            out->triangles[n] = (maudTriangle){
-                {a.x, a.y, a.z}, {b.x, b.y, b.z}, {c.x, c.y, c.z}, n, mesh->materials[i]};
+            maudTriangle t = TriangleOf(&meshes[m], i, n);
+            if (HasArea(&t))
+            {
+                out->triangles[at++] = t;
+            }
         }
     }
-    out->nodeCount = maudBuildBvh(out->triangles, total, out->nodes);
+    out->nodeCount = maudBuildBvh(out->triangles, kept, out->nodes);
     return true;
 }
 

@@ -6,9 +6,11 @@
 // exactly through a diagonal two triangles share, or a vertex eight
 // share, hit; equal distances go to the triangle listed first; normals
 // face the counterclockwise side, a triangle with one corner 1e17 m off
-// included, and a sliver whose edges cancel from every corner; an empty scene misses; plugged into
-// a spatializer's hooks, a wall occludes and its two faces transmit; bad meshes are refused; memory
-// running out at any allocation is a capacity error with nothing left.
+// included, and a sliver whose edges cancel from every corner; a
+// triangle with no area is never hit, as a static triangle or in an
+// instance, yet keeps its number for ties and counts toward the limit; an empty scene misses;
+// plugged into a spatializer's hooks, a wall occludes and its two faces transmit; bad meshes are
+// refused; memory running out at any allocation is a capacity error with nothing left.
 
 #include "test_harness.h"
 
@@ -318,6 +320,71 @@ static void TestFarCorner(void)
     maudDestroyScene(scene);
 }
 
+// Three corners on the line x = -z, y = 0, one a few denormals from the
+// origin, in a leaf with a triangle 10 m off that gives the leaf's box
+// height: a ray from a few 1e-38 off the origin met it at distance 0
+// with a normal of zero, rounding having given it a determinant.
+static void TestNoArea(void)
+{
+    static const maudVector3 line[] = {{0x1.8p-142f, -0.0f, -0x1.8p-142f},
+                                       {-4.0f, 0.0f, 4.0f},
+                                       {4.0f, 0.0f, -4.0f},
+                                       {0.0f, 0.0f, 0.0f},
+                                       {1.0f, 0.0f, 0.0f},
+                                       {0.0f, 1.0f, 0.0f},
+                                       {10.0f, -5.0f, 10.0f},
+                                       {11.0f, 5.0f, 10.0f},
+                                       {10.0f, 5.0f, 11.0f}};
+    static const uint32_t flat[] = {0, 1, 2, 6, 7, 8};
+    static const uint32_t material[] = {3, 4};
+    maudRay ray = {{0x1.fcp-128f, 0x1.fep-128f, 0x1.808p-126f},
+                   {0x1.46f8b8p-1f, 0x1.47d344p-1f, 0x1.b519bp-2f},
+                   0.0f,
+                   0x1.2bddf8p+2f};
+    maudMesh mesh = {line, 9, flat, material, 2};
+    maudScene* scene = Build(&mesh, 1);
+    maudRayHit h;
+    uint8_t occluded = 2;
+    maudFindClosestHit(&ray, 1, &h, scene);
+    maudFindAnyHit(&ray, 1, &occluded, scene);
+    printf("no area: distance %g, any %u\n", (double)h.distance, occluded);
+    CHECK(h.distance == INFINITY && occluded == 0, "a triangle with no area: never hit");
+    maudDestroyScene(scene);
+    // Behind it, two copies of one triangle: the tie goes to the first of
+    // them, the second triangle of the mesh, whose number it keeps.
+    static const uint32_t three[] = {0, 1, 2, 3, 4, 5, 3, 4, 5};
+    static const uint32_t materials[] = {3, 7, 9};
+    maudMesh tied = {line, 9, three, materials, 3};
+    scene = Build(&tied, 1);
+    maudRay down = {{0.2f, 0.2f, 1.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 5.0f};
+    maudFindClosestHit(&down, 1, &h, scene);
+    CHECK(h.distance == 1.0f && h.material == 7, "the tie still goes to the first listed");
+    maudDestroyScene(scene);
+    // Counted toward maxTriangles all the same.
+    maudSceneDef def = maudDefaultSceneDef();
+    def.meshes = &tied;
+    def.meshCount = 1;
+    def.maxTriangles = 2;
+    CHECK(maudCreateScene(&def, &scene) == maud_errorCapacity && scene == nullptr,
+          "a triangle with no area counts toward maxTriangles");
+    // An instance of a mesh with no area: nothing to hit.
+    def = maudDefaultSceneDef();
+    def.instanceMeshes = &mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 1;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "an instancing scene");
+    maudSceneInstanceTransform at = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
+    maudSceneInstanceId instance;
+    CHECK(maudCreateSceneInstance(scene, 0, &at, &instance) == maud_success &&
+              maudScene_Commit(scene) == maud_success,
+          "an instance of it");
+    maudFindClosestHit(&ray, 1, &h, scene);
+    maudFindAnyHit(&ray, 1, &occluded, scene);
+    CHECK(h.distance == INFINITY && occluded == 0,
+          "an instance's triangle with no area: never hit");
+    maudDestroyScene(scene);
+}
+
 static void TestHooks(void)
 {
     static const maudVector3 v[] = {
@@ -452,6 +519,7 @@ int main(void)
     TestWatertight();
     TestTiesAndNormals();
     TestFarCorner();
+    TestNoArea();
     TestHooks();
     TestMisuse();
     TestNoMemory();
