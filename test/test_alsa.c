@@ -519,6 +519,49 @@ static void RefusingFree(void* memory, size_t size, size_t alignment, void* cont
     free(memory);
 }
 
+static uint32_t CountDevices(const maudContext* context, maudDirection direction)
+{
+    uint32_t count = 0;
+    maudDeviceId ids[1];
+    CHECK(maudContext_GetDevices(context, direction, ids, 0, &count) == maud_success, "count");
+    return count;
+}
+
+// A context of fewer devices than the machine has lists as many as fit,
+// the default output first and the default input next, whatever the
+// machine's cards; one made with room for all lists all of them.
+static void TestDeviceLimit(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendAlsa;
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&def, &context) == maud_success, "a context of the default limit");
+    if (context == nullptr)
+    {
+        return;
+    }
+    uint32_t all =
+        CountDevices(context, maud_directionOutput) + CountDevices(context, maud_directionInput);
+    CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    for (uint32_t limit = 1; limit <= all + 1; ++limit)
+    {
+        def.limits.devices = limit;
+        context = nullptr;
+        char what[64];
+        snprintf(what, sizeof(what), "a context of %u devices", limit);
+        CHECK(maudCreateContext(&def, &context) == maud_success, what);
+        if (context == nullptr)
+        {
+            continue;
+        }
+        uint32_t outputs = CountDevices(context, maud_directionOutput);
+        uint32_t inputs = CountDevices(context, maud_directionInput);
+        CHECK(outputs + inputs == (limit < all ? limit : all), "lists as many as fit");
+        CHECK(outputs >= 1 && (limit == 1 || inputs >= 1), "the default PCM of each direction");
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    }
+}
+
 // A refused block of a context's creation, or of a stream's, is a
 // capacity error that holds nothing; the context stays usable.
 static void TestRefusingAllocator(bool server)
@@ -580,6 +623,7 @@ int main(void)
         return getenv("MAUD_REQUIRE_ALSA") != nullptr ? 1 : PlatformAbsent("no libasound");
     }
     TestDevices(context);
+    TestDeviceLimit();
     TestSilentFailure(context);
     Blocks probe = {0};
     maudStreamDef streamDef = maudDefaultStreamDef();

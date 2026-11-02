@@ -34,10 +34,18 @@ snd_local_error_handler_t maudAlsaQuiet(const maudAlsaApi* api)
     return api->libErrorSetLocal(Quiet);
 }
 
-// The default PCM, for both directions.
+// The default PCMs the device table holds: one per direction, or the
+// output's alone in a table of one.
+static uint32_t DefaultCount(const maudContext* context)
+{
+    return context->def.limits.devices < 2 ? 1u : 2u;
+}
+
+// The default PCM of each direction the device limit has room for, the
+// output's first.
 static maudResult AddDefaults(maudContext* context)
 {
-    for (int direction = 0; direction < 2; ++direction)
+    for (uint32_t direction = 0; direction < DefaultCount(context); ++direction)
     {
         maudDeviceSpec spec = {
             .info = {.direction = (maudDirection)direction},
@@ -61,12 +69,14 @@ static maudResult AddDefaults(maudContext* context)
 // The directory whose card nodes the context watches.
 #define DEVICE_DIRECTORY "/dev/snd"
 
-// Lists the endpoints again and brings the device table in line.
+// Lists the endpoints again, as many as the default PCMs leave room
+// for, and brings the device table in line.
 static maudResult Rescan(maudContext* context)
 {
     maudAlsa* alsa = context->native;
     uint32_t count = maudAlsaScan(&alsa->api, alsa->endpoints, alsa->specs,
-                                  context->def.limits.devices, context->def.limits.deviceTextBytes);
+                                  context->def.limits.devices - DefaultCount(context),
+                                  context->def.limits.deviceTextBytes);
     return maudSyncDevices(context, alsa->specs, count, "default");
 }
 

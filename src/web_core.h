@@ -47,7 +47,9 @@ typedef struct maudWeb
 {
     int handle;
     maudWebStream* streams;
-    // Room for the browser's list: one endpoint and spec per device.
+    // Room for the browser's list: one endpoint and spec per device, of
+    // which endpointCapacity, the places the Default devices leave in the
+    // table, are used.
     maudWebEndpoint* endpoints;
     maudDeviceSpec* specs;
     uint32_t endpointCapacity;

@@ -322,7 +322,8 @@ static maudResult OpenContext(maudContext* context)
                      .streams = (maudWebStream*)(block + entries),
                      .specs = (maudDeviceSpec*)(block + specs),
                      .endpoints = (maudWebEndpoint*)(block + endpoints),
-                     .endpointCapacity = devices,
+                     // The Default devices take two places of the table.
+                     .endpointCapacity = devices > 2 ? devices - 2 : 0,
                      .bytes = layout.size};
     memset(web->streams, 0, (size_t)streams * sizeof(maudWebStream));
     context->native = web;
@@ -353,10 +354,12 @@ static maudResult OpenContext(maudContext* context)
     maudDeviceId device;
     maudResult result = maudAddDevice(context, &spec, &device);
     // The microphone, mono until the host asks for more; the browser
-    // mixes the track to the stream's channels.
+    // mixes the track to the stream's channels. A table of one device
+    // holds the output alone.
     spec.info.direction = maud_directionInput;
     spec.info.nativeLayout = maud_layoutMono;
-    result = result == maud_success ? maudAddDevice(context, &spec, &device) : result;
+    result =
+        result == maud_success && devices > 1 ? maudAddDevice(context, &spec, &device) : result;
     context->held = maudWebHeld(web->handle) != 0;
     if (result == maud_success)
     {
