@@ -382,8 +382,8 @@ static uint32_t Accepted(void)
     bits |= maudCreateSource(s, &sd, &source) == maud_success ? 4u : 0u;
     maudDestroySpatializer(s);
 
-    // An instance turned by a quaternion whose squared length, 1e-40, is
-    // subnormal: above 0, so accepted, made and moved.
+    // An instance turned by a quaternion whose one component, 1e-42, is
+    // subnormal: not 0, so accepted, made and moved.
     static const uint32_t faces[3] = {0, 1, 2};
     static const uint32_t materials[1] = {0};
     maudVector3 v[3] = {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
@@ -395,7 +395,7 @@ static uint32_t Accepted(void)
     maudScene* scene = nullptr;
     CHECK(maudCreateScene(&sceneDef, &scene) == maud_success, "an instancing scene");
     maudSceneInstanceTransform plain = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
-    maudSceneInstanceTransform tiny = {{0.0f, 0.0f, 0.0f}, {1e-20f, 0.0f, 0.0f, 0.0f}, 1.0f};
+    maudSceneInstanceTransform tiny = {{0.0f, 0.0f, 0.0f}, {1e-42f, 0.0f, 0.0f, 0.0f}, 1.0f};
     maudSceneInstanceId instance = {0, 0};
     bits |= maudCreateSceneInstance(scene, 0, &tiny, &instance) == maud_success ? 8u : 0u;
     CHECK(maudCreateSceneInstance(scene, 0, &plain, &instance) == maud_success, "an instance");

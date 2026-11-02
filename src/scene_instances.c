@@ -3,11 +3,12 @@
 //
 // A scene's instances (scene_state.h). Slots carry generations as the
 // spatializer's sources do. A commit places every live instance (its
-// rotation from the normalised quaternion, its inverse scale) and
-// builds the top level over boxes of their meshes' bounds carried into
-// the world and padded against rounding; a box is a degenerate triangle
-// from its lower to its upper corner through its centre, so the
-// triangles' builder serves. A ray enters an instance's frame as R^T (o
+// rotation from the normalised quaternion, scaled first by a power of
+// two when its squares would underflow or overflow, its inverse scale)
+// and builds the top level over boxes of their meshes' bounds carried
+// into the world and padded against rounding; a box is a degenerate
+// triangle from its lower to its upper corner through its centre, so
+// the triangles' builder serves. A ray enters an instance's frame as R^T (o
 // - p) / s with its direction R^T d / s, unnormalised, so its distances
 // are the world's.
 
@@ -78,9 +79,10 @@ void maudReleaseInstances(maudScene* scene)
 static bool TransformValid(const maudSceneInstanceTransform* t)
 {
     maudQuaternion q = t->orientation;
-    float length = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
     return isfinite(t->position.x) && isfinite(t->position.y) && isfinite(t->position.z) &&
-           isfinite(length) && length > 0.0f && t->scale >= MIN_SCALE && t->scale <= MAX_SCALE;
+           isfinite(q.x) && isfinite(q.y) && isfinite(q.z) && isfinite(q.w) &&
+           (q.x != 0.0f || q.y != 0.0f || q.z != 0.0f || q.w != 0.0f) && t->scale >= MIN_SCALE &&
+           t->scale <= MAX_SCALE;
 }
 
 // Counts one misuse and returns maud_errorInvalid, for invalid arguments.
@@ -120,8 +122,9 @@ static MAUD_NOINLINE maudResult CreateSceneInstance(maudScene* scene, uint32_t m
     return maud_success;
 }
 
-// Checking a transform squares its orientation, which flush-to-zero
-// would take to 0: the host's mode must not decide what is accepted.
+// An orientation's subnormal components are not 0, which
+// denormals-are-zero would read them as: the host's mode must not
+// decide what is accepted.
 maudResult maudCreateSceneInstance(maudScene* scene, uint32_t mesh,
                                    const maudSceneInstanceTransform* transform,
                                    maudSceneInstanceId* instanceOut)
@@ -191,9 +194,20 @@ maudResult maudDestroySceneInstance(maudScene* scene, maudSceneInstanceId instan
     return maud_success;
 }
 
+// An orientation scaled by a power of two, which is exact, so that its
+// squares neither underflow nor overflow: a largest component below
+// 2^-32 or from 2^32 up is taken to between 2^-61 and 2^56. Any other
+// stays as it is.
+static maudQuaternion Scaled(maudQuaternion q)
+{
+    float m = fmaxf(fmaxf(fabsf(q.x), fabsf(q.y)), fmaxf(fabsf(q.z), fabsf(q.w)));
+    float s = m < 0x1p-32f ? 0x1p88f : m >= 0x1p32f ? 0x1p-88f : 1.0f;
+    return (maudQuaternion){q.x * s, q.y * s, q.z * s, q.w * s};
+}
+
 static void Place(const maudSceneInstance* slot, maudPlacedInstance* p)
 {
-    maudQuaternion q = slot->transform.orientation;
+    maudQuaternion q = Scaled(slot->transform.orientation);
     float n = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
     float x = q.x / n;
     float y = q.y / n;
