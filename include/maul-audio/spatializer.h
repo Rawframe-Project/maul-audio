@@ -273,7 +273,8 @@ extern "C"
     // What a step found for a source.
     typedef struct maudDirectResult
     {
-        // From the listener to the source, in metres.
+        // From the listener to the source, in metres; one past the largest
+        // float reads as the largest float.
         float distance;
         // The direction from the listener to the source in the listener's
         // frame, unit length (straight ahead when the two coincide).

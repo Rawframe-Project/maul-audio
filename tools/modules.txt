@@ -43,7 +43,7 @@ coreaudio_stream: apple_objects clock context context_core coreaudio_core coreau
 crc32:
 device: context context_core follow notify
 direct_effect: air_absorption allocator band_eq exact_scale ramp
-direct_step:
+direct_step: exact_scale
 duplex: context context_core stream_open
 echo_canceller: allocator echo_filter echo_suppressor flush real_fft
 echo_filter: allocator flush real_fft
