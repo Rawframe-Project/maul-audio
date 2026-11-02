@@ -25,10 +25,11 @@ typedef struct maudAlsaEndpoint
 
 // Lists up to capacity endpoints into endpoints, and into specs the
 // device each is, pointing into endpoints, opening only the cards'
-// controls; returns how many it listed. Names are cut to nameLimit
-// bytes.
+// controls; returns how many it listed. Names are cut to textLimit
+// bytes; an endpoint whose key is longer is left out and takes no place,
+// since a key is never cut.
 uint32_t maudAlsaScan(const maudAlsaApi* api, maudAlsaEndpoint* endpoints, maudDeviceSpec* specs,
-                      uint32_t capacity, size_t nameLimit);
+                      uint32_t capacity, size_t textLimit);
 
 // The form a hardware PCM's name says: digital for HDMI, DisplayPort,
 // IEC958 and S/PDIF, which drivers name so; unknown otherwise, since a

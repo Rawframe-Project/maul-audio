@@ -19,6 +19,7 @@
 
 #import <AVFAudio/AVFAudio.h>
 #include <stdio.h>
+#include <string.h>
 
 // AVAudioSessionCategoryOptionAllowBluetooth by its value: the iOS 26
 // SDK renames it, and either name is deprecated in one SDK or missing in
@@ -202,7 +203,7 @@ static void CopyName(NSString* name, char* out, size_t capacity)
     maudUtf16ToUtf8(out, capacity, units, taken);
 }
 
-uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity)
+uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity, size_t keyLimit)
 {
     @autoreleasepool
     {
@@ -215,6 +216,10 @@ uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity)
             }
             maudIosPort* out = &ports[count];
             snprintf(out->key, sizeof(out->key), "port:%s", port.UID.UTF8String);
+            if (strlen(out->key) > keyLimit)
+            {
+                continue;
+            }
             CopyName(port.portName, out->name, sizeof(out->name));
             out->form = maudIosPortForm(port.portType);
             count++;

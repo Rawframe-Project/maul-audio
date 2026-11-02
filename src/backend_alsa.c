@@ -39,7 +39,7 @@ snd_local_error_handler_t maudAlsaQuiet(const maudAlsaApi* api)
 // past the text limit, since a key is never cut.
 static uint32_t DefaultCount(const maudContext* context)
 {
-    if (context->def.limits.deviceTextBytes < 7)
+    if (!maudKeyFits(context, 7))
     {
         return 0;
     }

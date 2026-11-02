@@ -154,12 +154,14 @@ static void ReadSpatializer(IMMDevice* device, maudDeviceInfo* info)
     info->spatialObjectCount = objects;
 }
 
-// Describes one endpoint into endpoint and spec; false when it cannot.
+// Describes one endpoint into endpoint and spec; false when it cannot,
+// or when its id is past the text limit, so that it takes no place in
+// the scan.
 static bool Describe(const maudContext* context, IMMDevice* device, maudDirection direction,
                      maudWasapiEndpoint* endpoint, maudDeviceSpec* spec)
 {
     IPropertyStore* store = nullptr;
-    if (!IdOf(device, endpoint->key) ||
+    if (!IdOf(device, endpoint->key) || !maudKeyFits(context, strlen(endpoint->key)) ||
         FAILED(IMMDevice_OpenPropertyStore(device, STGM_READ, &store)))
     {
         return false;

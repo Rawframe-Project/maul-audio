@@ -36,6 +36,11 @@ static void SetDefault(maudContext* context, maudDirection direction, maudDevice
     maudFollowDefault(context, direction, role);
 }
 
+bool maudKeyFits(const maudContext* context, size_t keyLength)
+{
+    return keyLength <= context->def.limits.deviceTextBytes;
+}
+
 maudResult maudAddDevice(maudContext* context, const maudDeviceSpec* spec, maudDeviceId* deviceOut)
 {
     uint32_t textBytes = context->def.limits.deviceTextBytes;
@@ -386,7 +391,7 @@ maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, ui
         }
         // A key is never cut, since a cut key could name another device:
         // a device whose key is past the text limit is left out.
-        bool fits = specs[i].keyLength <= context->def.limits.deviceTextBytes;
+        bool fits = maudKeyFits(context, specs[i].keyLength);
         maudDeviceId id;
         maudResult result =
             present || !fits ? maud_success : maudAddDevice(context, &specs[i], &id);

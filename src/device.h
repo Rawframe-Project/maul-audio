@@ -49,6 +49,12 @@ void maudRemoveDevice(maudContext* context, maudDeviceSlot* slot);
 maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, uint32_t count,
                            const char* kept);
 
+// Whether a key of keyLength bytes fits the context's text limit. A key
+// is never cut, so a device whose key does not fit is left out: a
+// backend asks before it gives the device a place in its scan, so that
+// the device takes none a device that fits could have.
+bool maudKeyFits(const maudContext* context, size_t keyLength);
+
 // The live device of direction whose key is key, length bytes, or the
 // null id.
 maudDeviceId maudFindDeviceByKey(const maudContext* context, maudDirection direction,

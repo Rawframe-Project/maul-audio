@@ -306,7 +306,7 @@ float* maudWebRender(maudContext* context, int slotIndex, int frames, double lat
 // take the places they leave.
 static uint32_t DefaultCount(const maudContext* context)
 {
-    if (context->def.limits.deviceTextBytes < 7)
+    if (!maudKeyFits(context, 7))
     {
         return 0;
     }

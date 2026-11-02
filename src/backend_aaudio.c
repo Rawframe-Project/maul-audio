@@ -111,7 +111,8 @@ static void Add(maudAaudio* aaudio, maudDirection direction, int32_t id, maudDev
                 const char* key, const char* name)
 {
     maudContext* context = aaudio->context;
-    if (aaudio->endpointCount >= context->def.limits.devices)
+    // A device whose key is past the text limit takes no place.
+    if (aaudio->endpointCount >= context->def.limits.devices || !maudKeyFits(context, strlen(key)))
     {
         return;
     }

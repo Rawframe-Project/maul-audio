@@ -66,14 +66,19 @@ static maudResult Rescan(maudIos* ios)
     maudDeviceForm output = maud_formUnknown;
     maudDeviceForm input = maud_formUnknown;
     maudIosSessionRoute(&output, &input);
-    ios->specs[0] = DefaultSpec(ios, maud_directionOutput, output);
-    uint32_t count = 1;
-    if (limit > 1)
+    // The default pair's key, "default", past the text limit leaves both
+    // out, and their places to the ports.
+    uint32_t count = 0;
+    if (maudKeyFits(ios->context, 7))
     {
-        ios->specs[1] = DefaultSpec(ios, maud_directionInput, input);
-        count = 2;
+        ios->specs[count++] = DefaultSpec(ios, maud_directionOutput, output);
     }
-    uint32_t ports = limit > count ? maudIosSessionInputs(ios->ports, limit - count) : 0;
+    if (count == 1 && limit > 1)
+    {
+        ios->specs[count++] = DefaultSpec(ios, maud_directionInput, input);
+    }
+    size_t keyLimit = ios->context->def.limits.deviceTextBytes;
+    uint32_t ports = limit > count ? maudIosSessionInputs(ios->ports, limit - count, keyLimit) : 0;
     for (uint32_t i = 0; i < ports; ++i)
     {
         const maudIosPort* port = &ios->ports[i];

@@ -128,7 +128,8 @@ static bool Hidden(AudioObjectID object)
 }
 
 // Describes one direction of a device into endpoint and spec; false
-// when the device has no channels that way or no UID.
+// when the device has no channels that way, or no UID or one past the
+// text limit, so that it takes no place in the scan.
 static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object, maudDirection direction,
                      maudCoreAudioEndpoint* endpoint, maudDeviceSpec* spec)
 {
@@ -137,7 +138,8 @@ static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object, maudDirecti
                                          : kAudioObjectPropertyScopeInput;
     uint32_t channels = ChannelsIn(coreaudio, object, scope);
     if (channels == 0 ||
-        !ReadText(object, kAudioDevicePropertyDeviceUID, endpoint->key, sizeof(endpoint->key)))
+        !ReadText(object, kAudioDevicePropertyDeviceUID, endpoint->key, sizeof(endpoint->key)) ||
+        !maudKeyFits(coreaudio->context, strlen(endpoint->key)))
     {
         return false;
     }

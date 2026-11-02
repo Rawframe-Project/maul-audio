@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Devices on the offline backend: enumeration, names and keys, defaults
-// per role, streams following a default and moving, device loss,
-// suspension and resumption, format changes (a stream's, and a
-// device's own), the notification queue's overflow record, and the
-// scripting calls refused without a context and inside a callback.
+// Devices on the offline backend: enumeration, names and keys, devices
+// left out at a short text limit, defaults per role, streams following a
+// default and moving, device loss, suspension and resumption, format
+// changes (a stream's, and a device's own), the notification queue's
+// overflow record, and the scripting calls refused without a context
+// and inside a callback.
 
 #include "test_harness.h"
 
 #include "maul-audio/notification.h"
 #include "maul-audio/offline.h"
 
+#include <stdio.h>
 #include <string.h>
 
 typedef struct Blocks
@@ -126,6 +128,44 @@ static void TestStartingDevices(void)
     CHECK(length == 13, "needed length");
     CHECK(maudDevice_GetName(context, input, name, 13, &length) == maud_success, "exact fit");
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
+}
+
+// A text limit shorter than a starting device's key, "offline-output" of
+// 14 bytes and "offline-input" of 13, leaves that device out and never
+// refuses the context; one that holds the key holds the name, as long.
+static void TestTextLimit(void)
+{
+    for (uint32_t limit = 1; limit <= 15; ++limit)
+    {
+        maudContextDef def = maudDefaultContextDef();
+        def.backend = maud_backendOffline;
+        def.limits.deviceTextBytes = limit;
+        maudContext* context = nullptr;
+        char what[64];
+        snprintf(what, sizeof(what), "a context of %u bytes of device text", (unsigned)limit);
+        CHECK(maudCreateContext(&def, &context) == maud_success, what);
+        if (context == nullptr)
+        {
+            continue;
+        }
+        for (int direction = 0; direction < 2; ++direction)
+        {
+            maudDeviceId ids[2];
+            uint32_t count = 0;
+            CHECK(maudContext_GetDevices(context, (maudDirection)direction, ids, 2, &count) ==
+                      maud_success,
+                  "list");
+            uint32_t keyLength = direction == maud_directionOutput ? 14 : 13;
+            CHECK(count == (limit >= keyLength ? 1u : 0u), "the devices whose keys fit");
+            char name[16];
+            size_t length = 0;
+            CHECK(count == 0 || (maudDevice_GetName(context, ids[0], name, sizeof(name), &length) ==
+                                     maud_success &&
+                                 length == keyLength),
+                  "the whole name");
+        }
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    }
 }
 
 static void TestDefaultChangeMovesFollowingStreams(void)
@@ -602,6 +642,7 @@ static void TestScriptGuards(void)
 int main(void)
 {
     TestStartingDevices();
+    TestTextLimit();
     TestDefaultChangeMovesFollowingStreams();
     TestRolesAreFollowedSeparately();
     TestLossSuspendsPinnedStreamsAndMovesFollowers();

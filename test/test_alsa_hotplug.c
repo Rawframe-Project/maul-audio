@@ -75,20 +75,25 @@ static void TestPcmForms(void)
           "an analog PCM, or none, is unknown");
 }
 
-// A made-up libasound with one card of one PCM device, named by the test.
+// A made-up libasound with cards of one PCM device each, their ids and
+// names set by the test.
 static const char* s_cardName;
 static const char* s_pcmName;
+static const char* const s_oneCard[] = {"Card"};
+static const char* const* s_cardIds = s_oneCard;
+static int s_cards = 1;
+static int s_openCard;
 
 static int FakeCardNext(int* card)
 {
-    *card = *card < 0 ? 0 : -1;
+    *card = *card + 1 < s_cards ? *card + 1 : -1;
     return 0;
 }
 
 static int FakeCtlOpen(snd_ctl_t** ctl, const char* name, int mode)
 {
-    (void)name;
     (void)mode;
+    s_openCard = atoi(name + 3);
     static char handle;
     *ctl = (snd_ctl_t*)&handle;
     return 0;
@@ -110,7 +115,7 @@ static int FakeCardInfo(snd_ctl_t* ctl, snd_ctl_card_info_t* info)
 static const char* FakeCardId(const snd_ctl_card_info_t* info)
 {
     (void)info;
-    return "Card";
+    return s_cardIds[s_openCard];
 }
 
 static const char* FakeCardName(const snd_ctl_card_info_t* info)
@@ -151,11 +156,9 @@ static const char* FakePcmName(const snd_pcm_info_t* info)
     return s_pcmName;
 }
 
-// Scans the made-up card; true when every name is whole UTF-8 within
-// limit bytes.
-static bool NamesWhole(size_t limit)
+static maudAlsaApi FakeApi(void)
 {
-    maudAlsaApi api = {
+    return (maudAlsaApi){
         .cardNext = FakeCardNext,
         .ctlOpen = FakeCtlOpen,
         .ctlClose = FakeCtlClose,
@@ -169,6 +172,13 @@ static bool NamesWhole(size_t limit)
         .pcmInfoSetStream = FakeSetStream,
         .pcmInfoGetName = FakePcmName,
     };
+}
+
+// Scans the made-up card; true when every name is whole UTF-8 within
+// limit bytes.
+static bool NamesWhole(size_t limit)
+{
+    maudAlsaApi api = FakeApi();
     maudAlsaEndpoint endpoints[2];
     maudDeviceSpec specs[2];
     uint32_t count = maudAlsaScan(&api, endpoints, specs, 2, limit);
@@ -198,7 +208,9 @@ static void TestScanNames(void)
                 "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F \xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F "
                 "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F \xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F";
     CHECK(NamesWhole(MAUD_ALSA_LABEL_BYTES - 1), "a name longer than its buffer");
-    for (size_t limit = 1; limit <= 9; ++limit)
+    // From the 18 bytes of the key, "hw:CARD=Card,DEV=0", below which the
+    // endpoint is left out.
+    for (size_t limit = 18; limit <= 26; ++limit)
     {
         CHECK(NamesWhole(limit), "a name longer than the limit");
     }
@@ -308,6 +320,28 @@ static void TestLongKey(maudContext* context)
     Drain(context, maud_notifyDeviceAdded);
 }
 
+// A card whose key is past the text limit takes no place in the scan: in
+// a context of three devices, the two Default ones leave one place, which
+// the next card's endpoint takes.
+static void TestScanLongKey(void)
+{
+    s_cardName = "Fake card";
+    s_pcmName = "Fake PCM";
+    static const char* const twoCards[] = {"LongCardName", "C"};
+    s_cardIds = twoCards;
+    s_cards = 2;
+    maudAlsaApi api = FakeApi();
+    maudAlsaEndpoint endpoints[1];
+    maudDeviceSpec specs[1];
+    // "hw:CARD=LongCardName,DEV=0" is 26 bytes, "hw:CARD=C,DEV=0" 15.
+    uint32_t count = maudAlsaScan(&api, endpoints, specs, 1, 20);
+    CHECK(count == 1 && specs[0].keyLength == 15 &&
+              memcmp(specs[0].key, "hw:CARD=C,DEV=0", 15) == 0,
+          "the place left goes to the endpoint whose key fits");
+    s_cardIds = s_oneCard;
+    s_cards = 1;
+}
+
 static void Touch(const char* directory, const char* name)
 {
     char path[128];
@@ -385,6 +419,7 @@ int main(void)
     CHECK(mkdtemp(directory) != nullptr, "a test directory");
     TestPcmForms();
     TestScanNames();
+    TestScanLongKey();
     TestSync(context);
     TestLongKey(context);
     TestWatch(directory);
