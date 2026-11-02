@@ -8,6 +8,8 @@ A context's devices live in a fixed table of `limits.devices` slots, both direct
 
 Backends report devices through [device.h](../../src/device.h) and nothing else: add, remove, set a default, change a form, a format or a spatializer state. Each report posts its notifications and keeps the streams on their devices in the same call, so the order a host reads is always the order things happened. A backend that rescans the whole list (ALSA, WASAPI, Core Audio, iOS, AAudio, the web) hands the scan to `maudSyncDevices`, which matches by direction and key, removes what is gone, adds what is new and reports what changed; a backend that gets one event per change (PipeWire, PulseAudio) reports each one.
 
+A table smaller than the platform's list holds the devices that fit and leaves the rest out; it never refuses the context. ALSA and the web keep their Default devices first, so their scan fills only the room those leave, and a table of one device holds the Default output alone ([test_alsa.c](../../test/test_alsa.c), [test_web_transport.c](../../test/test_web_transport.c)).
+
 Names and keys are cut to `limits.deviceTextBytes` without splitting a UTF-8 sequence ([test_utf8.c](../../test/test_utf8.c)).
 
 ## Following

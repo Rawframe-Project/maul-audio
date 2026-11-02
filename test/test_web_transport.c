@@ -12,11 +12,14 @@
 // ring's capacity, the drop when the stream stops, and the latency the
 // callback is told, with and without the context's output timestamp, and
 // the clock's filter holding a drifting timestamp and starting again on a
-// new route, a short quantum and a stop.
+// new route, a short quantum and a stop; and a context of one or two
+// devices, which holds the Default output, and the Default input when
+// there is room.
 
 #include "test_harness.h"
 
 #include "maul-audio/context.h"
+#include "maul-audio/device.h"
 #include "maul-audio/stream.h"
 
 #include <emscripten/em_js.h>
@@ -823,8 +826,39 @@ static void RunGuards(bool isolated)
     CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
 }
 
+static uint32_t CountDevices(const maudContext* context, maudDirection direction)
+{
+    uint32_t count = 0;
+    maudDeviceId ids[1];
+    CHECK(maudContext_GetDevices(context, direction, ids, 0, &count) == maud_success, "count");
+    return count;
+}
+
+// A context of one device holds the Default output alone; one of two
+// holds the Default input too.
+static void RunDeviceLimit(void)
+{
+    for (uint32_t limit = 1; limit <= 2; ++limit)
+    {
+        InstallWeb(1);
+        maudContextDef cdef = maudDefaultContextDef();
+        cdef.limits.devices = limit;
+        maudContext* context = nullptr;
+        CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context of few devices");
+        if (context == nullptr)
+        {
+            continue;
+        }
+        CHECK(CountDevices(context, maud_directionOutput) == 1 &&
+                  CountDevices(context, maud_directionInput) == limit - 1,
+              "the Default devices that fit");
+        CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+    }
+}
+
 int main(void)
 {
+    RunDeviceLimit();
     RunTransport(true);
     RunTransport(false);
     RunFilterResets(true);
