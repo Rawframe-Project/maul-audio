@@ -936,11 +936,13 @@ if(MAUL_AUDIO_BUILD_TESTS)
 endif()
 
 # The fuzz targets: test/fuzz_<area>.c, run as fuzz_<area> <corpus dir>,
-# over the bytes programs load and the geometry they hand the library.
-# The loaders' corpora are in test/corpus/fuzz_<area>/; the shipped HRTF
-# file in data/hrtf/, behind a 0x01 byte, seeds fuzz_hrtf too, and the
-# shipped bakes in data/bake/, behind a 0x03 byte (fields of order 1),
-# fuzz_bake. tools/fuzz_scene_seeds.py builds fuzz_scene's seeds.
+# over the bytes programs load, the geometry they hand the library and
+# the spatializer's calls. The loaders' corpora are in
+# test/corpus/fuzz_<area>/; the shipped HRTF file in data/hrtf/, behind a
+# 0x01 byte, seeds fuzz_hrtf too, and the shipped bakes in data/bake/,
+# behind a 0x03 byte (fields of order 1), fuzz_bake.
+# tools/fuzz_scene_seeds.py builds fuzz_scene's seeds; fuzz_spatializer
+# starts from none.
 if(MAUL_AUDIO_FUZZ AND MAUL_AUDIO_SPATIAL)
     # The library is instrumented too: its coverage guides libFuzzer, and
     # the sanitizers watch its code, not only the targets'. Undefined
@@ -949,7 +951,7 @@ if(MAUL_AUDIO_FUZZ AND MAUL_AUDIO_SPATIAL)
     target_compile_options(maul-audio PRIVATE -fsanitize=fuzzer-no-link,address,undefined
                            -fno-sanitize-recover=all)
     target_link_options(maul-audio PUBLIC -fsanitize=address,undefined)
-    foreach(area hrtf bake scene)
+    foreach(area hrtf bake scene spatializer)
         add_executable(fuzz_${area} test/fuzz_${area}.c)
         target_link_libraries(fuzz_${area} PRIVATE maul-audio)
         # The targets reach the library's own functions.
