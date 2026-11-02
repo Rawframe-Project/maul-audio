@@ -384,8 +384,12 @@ maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, ui
             present = slot->live && slot->info.direction == specs[i].info.direction &&
                       KeyIs(slot, specs[i].key, specs[i].keyLength);
         }
+        // A key is never cut, since a cut key could name another device:
+        // a device whose key is past the text limit is left out.
+        bool fits = specs[i].keyLength <= context->def.limits.deviceTextBytes;
         maudDeviceId id;
-        maudResult result = present ? maud_success : maudAddDevice(context, &specs[i], &id);
+        maudResult result =
+            present || !fits ? maud_success : maudAddDevice(context, &specs[i], &id);
         if (result != maud_success)
         {
             return result;

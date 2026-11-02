@@ -14,7 +14,7 @@
 // the clock's filter holding a drifting timestamp and starting again on a
 // new route, a short quantum and a stop; and a context of one or two
 // devices, which holds the Default output, and the Default input when
-// there is room.
+// there is room, and one whose text limit is too short for their key.
 
 #include "test_harness.h"
 
@@ -852,6 +852,25 @@ static void RunDeviceLimit(void)
         CHECK(CountDevices(context, maud_directionOutput) == 1 &&
                   CountDevices(context, maud_directionInput) == limit - 1,
               "the Default devices that fit");
+        CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+    }
+    // The Default devices' key, "default", is 7 bytes: a shorter text
+    // limit leaves them out, since a key is never cut.
+    for (uint32_t limit = 6; limit <= 7; ++limit)
+    {
+        InstallWeb(1);
+        maudContextDef cdef = maudDefaultContextDef();
+        cdef.limits.deviceTextBytes = limit;
+        maudContext* context = nullptr;
+        CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context of short text");
+        if (context == nullptr)
+        {
+            continue;
+        }
+        uint32_t expected = limit < 7 ? 0 : 1;
+        CHECK(CountDevices(context, maud_directionOutput) == expected &&
+                  CountDevices(context, maud_directionInput) == expected,
+              "the Default devices once their key fits");
         CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
     }
 }

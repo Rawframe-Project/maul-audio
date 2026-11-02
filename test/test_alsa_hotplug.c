@@ -272,6 +272,42 @@ static void TestSync(maudContext* context)
     Drain(context, maud_notifyDeviceAdded);
 }
 
+// A device whose key is longer than the context's text limit is left
+// out, never cut, since a cut key could name another device; the devices
+// listed after it are added all the same.
+static void TestLongKey(maudContext* context)
+{
+    static char longKey[MAUD_MAX_DEVICE_TEXT_BYTES + 2];
+    size_t limit = context->def.limits.deviceTextBytes;
+    memset(longKey, 'k', limit + 1);
+    longKey[limit + 1] = '\0';
+    maudDeviceSpec specs[3] = {
+        {.info = {.direction = maud_directionOutput},
+         .name = "First",
+         .nameLength = 5,
+         .key = "hw:CARD=First,DEV=0",
+         .keyLength = 19},
+        {.info = {.direction = maud_directionOutput},
+         .name = "Long",
+         .nameLength = 4,
+         .key = longKey,
+         .keyLength = limit + 1},
+        {.info = {.direction = maud_directionOutput},
+         .name = "Last",
+         .nameLength = 4,
+         .key = "hw:CARD=Last,DEV=0",
+         .keyLength = 18},
+    };
+    CHECK(maudSyncDevices(context, specs, 3, "default") == maud_success,
+          "a list with a key past the limit");
+    CHECK(CountDevices(context, maud_directionOutput) == 3 &&
+              HasKey(context, maud_directionOutput, "hw:CARD=First,DEV=0") &&
+              HasKey(context, maud_directionOutput, "hw:CARD=Last,DEV=0"),
+          "the default and the two whose keys fit");
+    CHECK(maudSyncDevices(context, nullptr, 0, "default") == maud_success, "no cards again");
+    Drain(context, maud_notifyDeviceAdded);
+}
+
 static void Touch(const char* directory, const char* name)
 {
     char path[128];
@@ -350,6 +386,7 @@ int main(void)
     TestPcmForms();
     TestScanNames();
     TestSync(context);
+    TestLongKey(context);
     TestWatch(directory);
     TestDrainRescans(context, directory);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");

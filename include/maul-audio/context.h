@@ -79,7 +79,9 @@ extern "C"
         // included, is refused with maud_errorLimit.
         uint32_t notifications;
         // Bytes of a device's name, and of its key, from 1 to
-        // MAUD_MAX_DEVICE_TEXT_BYTES.
+        // MAUD_MAX_DEVICE_TEXT_BYTES. A longer name is cut on a whole
+        // UTF-8 character; a device the platform reports with a longer
+        // key is not listed, since a cut key could name another device.
         uint32_t deviceTextBytes;
     } maudLimits;
 
