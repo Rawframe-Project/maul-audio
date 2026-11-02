@@ -6,6 +6,9 @@
 
 #include "direct_step.h"
 
+#include "exact_scale.h"
+
+#include <float.h>
 #include <math.h>
 
 bool maudPoseValid(const maudPose* pose)
@@ -57,9 +60,12 @@ void maudDirectGeometry(const maudPose* listener, const maudPose* source,
     double dy = (double)source->position.y - (double)listener->position.y;
     double dz = (double)source->position.z - (double)listener->position.z;
     double distance = sqrt(dx * dx + dy * dy + dz * dz);
-    maudVector3 toSource = {(float)dx, (float)dy, (float)dz};
-    maudVector3 toListener = {(float)-dx, (float)-dy, (float)-dz};
-    result->distance = (float)distance;
+    // The difference may be too long for a float, or its float squares
+    // may leave their range; scaled exactly, it keeps its direction.
+    double scale = (double)maudExactScale((float)fmax(fmax(fabs(dx), fabs(dy)), fabs(dz)));
+    maudVector3 toSource = {(float)(dx * scale), (float)(dy * scale), (float)(dz * scale)};
+    maudVector3 toListener = {-toSource.x, -toSource.y, -toSource.z};
+    result->distance = (float)fmin(distance, (double)FLT_MAX);
     if (distance > 0.0)
     {
         maudVector3 local = maudUnrotate(listener->orientation, toSource);

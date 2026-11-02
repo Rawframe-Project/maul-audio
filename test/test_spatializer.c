@@ -4,13 +4,16 @@
 // Spatializers: sources fill the capacity, a destroyed source's id is
 // stale and its slot comes back with a new generation; a step gives the
 // distance and the direction in the listener's frame, turning with the
-// listener, and the source's directivity turning with the source; the
-// rendering side sees a step only once it latches it, reads before the
+// listener, and the source's directivity turning with the source, the
+// same bits for a source at any finite offset, tiny or huge, as at an
+// ordinary one in its direction, and a finite distance; the rendering
+// side sees a step only once it latches it, reads before the
 // first latch are a state and read zero, and a source made or destroyed
 // after a step is stale in it; occlusion rays go in rounds of 4096; bad
 // calls are refused; a step allocates nothing.
 
 #include "test_harness.h"
+#include "test_lengths.h"
 
 #include "maul-audio/spatializer.h"
 
@@ -253,6 +256,55 @@ static void TestOrientations(void)
     maudDestroySpatializer(s);
 }
 
+// One step's result for a listener and a source at these positions.
+static maudDirectResult Between(maudSpatializer* s, maudSourceId id, maudVector3 listenerAt,
+                                maudVector3 sourceAt)
+{
+    maudPose listener = {listenerAt, Yaw(30.0)};
+    maudPose source = {sourceAt, Yaw(40.0)};
+    maudDirectResult r = {0};
+    CHECK(maudSource_SetPose(s, id, &source) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &listener) == maud_success &&
+              maudSpatializer_LatchResults(s) > 0 &&
+              maudSource_GetDirectResult(s, id, &r) == maud_success,
+          "a result");
+    return r;
+}
+
+static bool SameWay(const maudDirectResult* a, const maudDirectResult* b)
+{
+    return memcmp(&a->direction, &b->direction, sizeof(a->direction)) == 0 &&
+           memcmp(a->directivity, b->directivity, sizeof(a->directivity)) == 0;
+}
+
+// A source's offset from the listener, at both ends of a float's range,
+// gives the same direction and directivity as the same offset at an
+// ordinary length, and a finite distance.
+static void TestAnyLength(void)
+{
+    maudSpatializer* s = Create(1);
+    maudSourceDef def = maudDefaultSourceDef();
+    def.directivity = (maudDirectivityPattern){{0.3f, 0.5f, 0.8f}, {1.0f, 2.0f, 1.0f}};
+    maudSourceId id = {0, 0};
+    CHECK(maudCreateSource(s, &def, &id) == maud_success, "a cardioid");
+    maudVector3 origin = {0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < LENGTH_PAIRS; ++i)
+    {
+        maudDirectResult a = Between(s, id, origin, s_lengths[i].ordinary);
+        maudDirectResult b = Between(s, id, origin, s_lengths[i].scaled);
+        bool same = SameWay(&a, &b) && isfinite(b.distance) && b.distance > 0.0f;
+        PrintLength("offset", s_lengths[i].scaled, same);
+        CHECK(same, "the same direction and directivity at any length");
+    }
+    // Listener and source a float's range apart: past the largest float.
+    maudDirectResult a =
+        Between(s, id, (maudVector3){1.0f, 0.0f, 0.0f}, (maudVector3){-1.0f, 0.0f, 0.0f});
+    maudDirectResult b =
+        Between(s, id, (maudVector3){FLT_MAX, 0.0f, 0.0f}, (maudVector3){-FLT_MAX, 0.0f, 0.0f});
+    CHECK(SameWay(&a, &b) && b.distance == FLT_MAX, "across the range: the largest distance");
+    maudDestroySpatializer(s);
+}
+
 // Whether bytes are all zero.
 static bool Zero(const void* bytes, size_t size)
 {
@@ -395,6 +447,7 @@ int main(void)
     TestIds();
     TestGeometry();
     TestOrientations();
+    TestAnyLength();
     TestLatch();
     TestRounds();
     TestMisuse();
