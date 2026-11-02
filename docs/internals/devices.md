@@ -10,7 +10,7 @@ Backends report devices through [device.h](../../src/device.h) and nothing else:
 
 Names and keys are cut to `limits.deviceTextBytes` without splitting a UTF-8 sequence ([test_utf8.c](../../test/test_utf8.c)).
 
-A backend that copies a platform's name into a buffer of its own cuts it the same way ([utf8.h](../../src/utf8.h)). AAudio reads Java's names as UTF-16 and encodes them itself: JNI's UTF-8 is Java's modified form, which writes a character past U+FFFF, such as an emoji in a Bluetooth device's name, as two encoded surrogates that are not UTF-8.
+A backend that copies a platform's name into a buffer of its own cuts it the same way ([utf8.h](../../src/utf8.h)). AAudio and iOS read the platform's names as UTF-16 and encode them themselves, a lone surrogate as U+FFFD. JNI's UTF-8 is Java's modified form, which writes a character past U+FFFF, such as an emoji in a Bluetooth device's name, as two encoded surrogates that are not UTF-8; and an `NSString` holding a lone surrogate, which a USB device's UTF-16 product string can carry, has no `UTF8String` at all.
 
 ## Following
 

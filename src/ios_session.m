@@ -185,6 +185,23 @@ maudDeviceForm maudIosPortForm(NSString* type)
     return maud_formUnknown;
 }
 
+// Copies a name, nil as empty, into out as UTF-8 cut on whole
+// characters. UTF8String is NULL for a string holding a lone surrogate,
+// which a USB device's UTF-16 product string can carry, so the name is
+// read as UTF-16 and such a surrogate becomes U+FFFD: as many units as
+// out has bytes, which encode to at least as many bytes.
+static void CopyName(NSString* name, char* out, size_t capacity)
+{
+    unichar units[MAUD_IOS_PORT_BYTES];
+    NSUInteger length = name != nil ? name.length : 0;
+    NSUInteger taken = length < capacity ? length : capacity;
+    if (taken > 0)
+    {
+        [name getCharacters:units range:NSMakeRange(0, taken)];
+    }
+    maudUtf16ToUtf8(out, capacity, units, taken);
+}
+
 uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity)
 {
     @autoreleasepool
@@ -198,7 +215,7 @@ uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity)
             }
             maudIosPort* out = &ports[count];
             snprintf(out->key, sizeof(out->key), "port:%s", port.UID.UTF8String);
-            maudCopyUtf8(out->name, sizeof(out->name), port.portName.UTF8String);
+            CopyName(port.portName, out->name, sizeof(out->name));
             out->form = maudIosPortForm(port.portType);
             count++;
         }

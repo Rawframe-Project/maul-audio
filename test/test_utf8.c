@@ -42,6 +42,11 @@ int main(void)
     CHECK(maudUtf16ToUtf8(out, sizeof(out), lone, 2) == 6 &&
               memcmp(out, "\xEF\xBF\xBD\xEF\xBF\xBD", 7) == 0,
           "a surrogate without its pair is U+FFFD");
+    // A USB product name with a lone surrogate, which has no UTF8String
+    // on iOS and is read as UTF-16 there.
+    const uint16_t usb[] = {'M', 'i', 'c', 0xD83D, '!'};
+    CHECK(maudUtf16ToUtf8(out, sizeof(out), usb, 5) == 7 && memcmp(out, "Mic\xEF\xBF\xBD!", 8) == 0,
+          "a lone surrogate inside a name keeps the rest of it");
     CHECK(maudUtf16ToUtf8(out, sizeof(out), &lone[2], 1) == 3 &&
               memcmp(out, "\xEF\xBF\xBD", 4) == 0,
           "and so is U+0000, which would end the text");
