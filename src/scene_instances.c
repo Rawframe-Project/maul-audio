@@ -13,6 +13,7 @@
 // are the world's.
 
 #include "allocator.h"
+#include "exact_scale.h"
 #include "fpenv.h"
 #include "scene_state.h"
 
@@ -194,14 +195,12 @@ maudResult maudDestroySceneInstance(maudScene* scene, maudSceneInstanceId instan
     return maud_success;
 }
 
-// An orientation scaled by a power of two, which is exact, so that its
-// squares neither underflow nor overflow: a largest component below
-// 2^-32 or from 2^32 up is taken to between 2^-61 and 2^56. Any other
-// stays as it is.
+// An orientation scaled so that its squares neither underflow nor
+// overflow (exact_scale.h).
 static maudQuaternion Scaled(maudQuaternion q)
 {
     float m = fmaxf(fmaxf(fabsf(q.x), fabsf(q.y)), fmaxf(fabsf(q.z), fabsf(q.w)));
-    float s = m < 0x1p-32f ? 0x1p88f : m >= 0x1p32f ? 0x1p-88f : 1.0f;
+    float s = maudExactScale(m);
     return (maudQuaternion){q.x * s, q.y * s, q.z * s, q.w * s};
 }
 

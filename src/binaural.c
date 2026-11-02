@@ -15,6 +15,7 @@
 
 #include "allocator.h"
 #include "binaural_dsp.h"
+#include "exact_scale.h"
 #include "hrtf_core.h"
 #include "hrtf_lookup.h"
 #include "near_field.h"
@@ -35,6 +36,10 @@
 #define MAX_RADIUS 0.15f
 // The near field's nearest distance: closer sources count as this close.
 #define MIN_DISTANCE 0.1f
+// And its farthest, where its table is a source at infinity to within
+// 1e-9: farther sources count as this far, so that the squares of the
+// ears' rays to it stay in a float's range.
+#define MAX_DISTANCE 1.0e9f
 
 // An ear pair's responses, delays and near-field filters ({b0, b1, a1}).
 typedef struct Filter
@@ -217,9 +222,16 @@ maudResult maudBinaural_Reset(maudBinaural* effect)
     return maud_success;
 }
 
+static float Largest(maudVector3 v)
+{
+    return fmaxf(fmaxf(fabsf(v.x), fabsf(v.y)), fabsf(v.z));
+}
+
 // The direction as a unit vector; straight ahead for a zero vector.
 static maudVector3 Unit(maudVector3 v)
 {
+    float s = maudExactScale(Largest(v));
+    v = (maudVector3){v.x * s, v.y * s, v.z * s};
     float length = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
     if (length == 0.0f)
     {
@@ -228,8 +240,9 @@ static maudVector3 Unit(maudVector3 v)
     return (maudVector3){v.x / length, v.y / length, v.z / length};
 }
 
-// What the filters depend on: the position, no nearer than MIN_DISTANCE,
-// with the near field; the direction alone without it.
+// What the filters depend on: the position, from MIN_DISTANCE to
+// MAX_DISTANCE away, with the near field; the direction alone without
+// it. Below MAX_DISTANCE no square overflows.
 static maudVector3 Key(const maudBinaural* effect, maudVector3 position)
 {
     maudVector3 unit = Unit(position);
@@ -238,8 +251,12 @@ static maudVector3 Key(const maudBinaural* effect, maudVector3 position)
         return unit;
     }
     float length =
-        sqrtf(position.x * position.x + position.y * position.y + position.z * position.z);
-    float distance = length < MIN_DISTANCE ? MIN_DISTANCE : length;
+        Largest(position) >= MAX_DISTANCE
+            ? MAX_DISTANCE
+            : sqrtf(position.x * position.x + position.y * position.y + position.z * position.z);
+    float distance = length < MIN_DISTANCE   ? MIN_DISTANCE
+                     : length > MAX_DISTANCE ? MAX_DISTANCE
+                                             : length;
     return (maudVector3){unit.x * distance, unit.y * distance, unit.z * distance};
 }
 

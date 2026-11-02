@@ -26,7 +26,7 @@ backend_wasapi: allocator backend context device layout wasapi_apartment wasapi_
 backend_web: allocator backend context device follow period thread web_capture web_clock web_core web_devices
 bake_file: allocator crc32 file_fields probe_bake probe_graph
 band_eq: flush
-binaural: allocator binaural_dsp hrtf_core hrtf_lookup near_field ramp
+binaural: allocator binaural_dsp exact_scale hrtf_core hrtf_lookup near_field ramp
 binaural_decoder: allocator binaural_dsp hrtf_core magls
 binaural_dsp: flush
 base:
@@ -42,12 +42,13 @@ coreaudio_listen: coreaudio_core coreaudio_form
 coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device follow period retry thread voice xrun
 crc32:
 device: context context_core follow notify
-direct_effect: air_absorption allocator band_eq ramp
+direct_effect: air_absorption allocator band_eq exact_scale ramp
 direct_step:
 duplex: context context_core stream_open
 echo_canceller: allocator echo_filter echo_suppressor flush real_fft
 echo_filter: allocator flush real_fft
 echo_suppressor: allocator flush real_fft voice_dsp
+exact_scale:
 fft:
 file_fields:
 flush:
@@ -102,14 +103,14 @@ retry: context_core
 reverb: allocator band_eq flush octave_eq
 reverb_estimate: portable_math spherical_harmonics
 scene: allocator bvh fpenv scene_state
-scene_instances: allocator bvh fpenv scene_state
+scene_instances: allocator bvh exact_scale fpenv scene_state
 scene_state: bvh
 spatializer: air_absorption allocator direct_step fpenv host_tasks occlusion pathing probe_sets reflections reverb_estimate spatializer_state transmission
 spatializer_paths: bake_file fpenv pathing probe_bake probe_graph probe_sets reflections reverb_estimate spatializer_state
 spatializer_state: pathing probe_sets reflections reverb_estimate
 speaker_decoder: allocator spherical_harmonics
 speaker_panner: allocator ramp spherical_harmonics
-spherical_harmonics:
+spherical_harmonics: exact_scale
 staged: partitioned
 stream: backend clock context context_core duplex follow period stream_open thread
 sample_convert:

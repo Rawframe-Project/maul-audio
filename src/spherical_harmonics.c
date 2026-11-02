@@ -6,11 +6,15 @@
 
 #include "spherical_harmonics.h"
 
+#include "exact_scale.h"
+
 #include <math.h>
 
 // The direction in the field's axes, as a unit vector; ahead for zero.
 void maudFieldAxes(maudVector3 v, float* x, float* y, float* z)
 {
+    float s = maudExactScale(fmaxf(fmaxf(fabsf(v.x), fabsf(v.y)), fabsf(v.z)));
+    v = (maudVector3){v.x * s, v.y * s, v.z * s};
     float length = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
     if (length == 0.0f)
     {

@@ -8,11 +8,13 @@
 // (band means measured densely on the effect's impulse response); an
 // occlusion step makes no click; air absorption follows ISO 9613 part 1
 // (the standard's table at 20 degrees C and 50 %); directivity follows
-// the weighted dipole; a source exactly at the silence threshold is
+// the weighted dipole, whatever the length of the direction, from
+// subnormal to FLT_MAX; a source exactly at the silence threshold is
 // silent; no absorption at all is taken; bad calls write nothing;
 // processing allocates nothing.
 
 #include "test_harness.h"
+#include "test_lengths.h"
 
 #include "maul-audio/direct.h"
 
@@ -357,6 +359,24 @@ static void TestDirectivity(void)
           "a weight above 1");
 }
 
+// A direction to the listener at any length gives the directivity of the
+// same direction at an ordinary length, to the bit.
+static void TestAnyLength(void)
+{
+    maudDirectivityPattern pattern = {{0.0f, 0.5f, 1.0f}, {1.0f, 1.0f, 2.0f}};
+    for (int k = 0; k < LENGTH_PAIRS; ++k)
+    {
+        float want[3];
+        float d[3];
+        CHECK(maudGetDirectivity(&pattern, s_lengths[k].ordinary, want) == maud_success &&
+                  maudGetDirectivity(&pattern, s_lengths[k].scaled, d) == maud_success,
+              "directivity");
+        bool same = memcmp(d, want, sizeof(d)) == 0;
+        PrintLength("to the listener", s_lengths[k].scaled, same);
+        CHECK(same, "the directivity of the same direction");
+    }
+}
+
 // A source exactly at the silence threshold (its loudest band 1e-6 of
 // full scale, the others lower) renders nothing and leaves the filters
 // flat: a full-scale call after it renders as one after silence does.
@@ -475,6 +495,7 @@ int main(void)
     TestHistory();
     TestAir();
     TestDirectivity();
+    TestAnyLength();
     TestMisuse();
     TestSilent();
     return s_failures == 0 ? 0 : 1;

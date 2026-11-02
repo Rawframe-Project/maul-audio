@@ -6,9 +6,11 @@
 // double) and against AmbiX's axes; rotating a direction's encoding
 // equals encoding the rotated direction, at every order, still or at the
 // end of a ramp; encoding adds and ramps; rotation leaves channel 0
-// alone; bad calls write nothing.
+// alone; a direction's length does not count, from subnormal to
+// FLT_MAX; bad calls write nothing.
 
 #include "test_harness.h"
+#include "test_lengths.h"
 
 #include "maul-audio/ambisonics.h"
 
@@ -274,9 +276,27 @@ static void TestMisuse(void)
     CHECK(maudGetAmbisonicGains(2, source.direction, nullptr) == maud_errorInvalid, "no gains");
 }
 
+// A direction at any length has the gains of the same direction at an
+// ordinary length, to the bit.
+static void TestAnyLength(void)
+{
+    for (int k = 0; k < LENGTH_PAIRS; ++k)
+    {
+        float want[16];
+        float gains[16];
+        CHECK(maudGetAmbisonicGains(3, s_lengths[k].ordinary, want) == maud_success &&
+                  maudGetAmbisonicGains(3, s_lengths[k].scaled, gains) == maud_success,
+              "gains");
+        bool same = memcmp(gains, want, sizeof(gains)) == 0;
+        PrintLength("direction", s_lengths[k].scaled, same);
+        CHECK(same, "the gains of the same direction");
+    }
+}
+
 int main(void)
 {
     TestGains();
+    TestAnyLength();
     TestRotation();
     TestRotationRamp();
     TestEncode();
