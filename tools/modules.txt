@@ -90,7 +90,7 @@ pipewire_parse:
 pipewire_stream: clock context context_core follow period pipewire_core pipewire_parse retry thread xrun
 portable_math:
 probe_bake: allocator path_search portable_math probe_graph
-probe_graph: allocator fpenv host_tasks
+probe_graph: allocator exact_scale fpenv host_tasks
 probe_sets: allocator probe_bake probe_graph
 pulse_api:
 pulse_core: context_core pulse_api worker
@@ -101,7 +101,7 @@ reflection_response: fft
 reflections: allocator ambisonics reflection_response reverb_estimate staged
 retry: context_core
 reverb: allocator band_eq flush octave_eq
-reverb_estimate: portable_math spherical_harmonics
+reverb_estimate: exact_scale portable_math spherical_harmonics
 scene: allocator bvh fpenv scene_state
 scene_instances: allocator bvh exact_scale fpenv scene_state
 scene_state: bvh

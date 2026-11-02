@@ -12,6 +12,7 @@
 #include "probe_graph.h"
 
 #include "allocator.h"
+#include "exact_scale.h"
 #include "fpenv.h"
 #include "host_tasks.h"
 
@@ -130,6 +131,16 @@ static maudVector3 ColumnTop(const Columns* c, uint32_t column)
                          c->z0 + (float)k * c->def->spacing};
 }
 
+// Whether a normal of any length is within 45 degrees of vertical;
+// scaled exactly, its squares stay in range.
+static bool Floor(maudVector3 n)
+{
+    float k = maudExactScale(fmaxf(fmaxf(fabsf(n.x), fabsf(n.y)), fabsf(n.z)));
+    n = (maudVector3){n.x * k, n.y * k, n.z * k};
+    float length = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
+    return length > 0.0f && isfinite(length) && fabsf(n.y) >= FLOOR_NORMAL * length;
+}
+
 // Takes a column's next surface: a floor if horizontal with the height
 // free above it, then the surface above for what lies below.
 static void Visit(const Columns* c, uint32_t column, const maudRay* ray, const maudRayHit* hit,
@@ -141,7 +152,7 @@ static void Visit(const Columns* c, uint32_t column, const maudRay* ray, const m
         return;
     }
     float y = ray->origin.y - hit->distance;
-    if (fabsf(hit->normal.y) >= FLOOR_NORMAL && walk->ceiling - y > c->def->height)
+    if (Floor(hit->normal) && walk->ceiling - y > c->def->height)
     {
         if (c->firsts != nullptr)
         {
