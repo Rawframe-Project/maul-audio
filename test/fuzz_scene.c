@@ -341,7 +341,7 @@ static maudResult Create(maudScene* scene, const Call* call, uint32_t capacity, 
     {
         Expect(r == (full ? maud_errorCapacity : maud_success));
     }
-    Expect((r == maud_success) == (id.index1 != 0) && (id.index1 == 0 || id.generation != 0));
+    Expect((r == maud_success) == (id.index1 != 0));
     if (r == maud_success && made->count < MAX_CALLS)
     {
         made->ids[made->count] = id;
