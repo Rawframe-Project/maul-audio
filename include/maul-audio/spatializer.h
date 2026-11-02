@@ -569,14 +569,17 @@ extern "C"
     /// the rest over a block.
     ///
     /// @param spatializer  The spatializer.
-    /// @param orientation  The listener's orientation at the call's end;
-    ///                     the bed turns linearly from the last call's.
+    /// @param orientation  The listener's orientation at the call's end, a
+    ///                     quaternion of any nonzero length; the bed turns
+    ///                     linearly from the last call's.
     /// @param send         frameCount samples.
     /// @param bed          (order + 1)^2 channels of frameCount samples, added
     ///                     to.
     /// @param frameCount   The frames; 0 does nothing.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or
-    ///         an orientation of zero length or not finite;
+    ///         an orientation of zero length or not finite, as the
+    ///         thread's floating-point mode reads it (denormals-are-zero
+    ///         reads subnormal components as 0);
     ///         `maud_errorUnsupported` when the def asked for no reflections.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait. The rendering side is

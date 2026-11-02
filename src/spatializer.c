@@ -859,6 +859,24 @@ maudResult maudSpatializer_GetReverbResult(const maudSpatializer* spatializer,
     return maud_success;
 }
 
+// The orientation at unit length, false for one of zero length or not
+// finite. A float's square neither underflows nor overflows in double,
+// so any length is turned to 1.
+static bool UnitOrientation(const maudQuaternion* q, maudQuaternion* unit)
+{
+    double x = (double)q->x;
+    double y = (double)q->y;
+    double z = (double)q->z;
+    double w = (double)q->w;
+    double n = sqrt(x * x + y * y + z * z + w * w);
+    if (!isfinite(n) || !(n > 0.0))
+    {
+        return false;
+    }
+    *unit = (maudQuaternion){(float)(x / n), (float)(y / n), (float)(z / n), (float)(w / n)};
+    return true;
+}
+
 maudResult maudSpatializer_RenderReflections(maudSpatializer* spatializer,
                                              const maudQuaternion* orientation, const float* send,
                                              float* const* bed, uint32_t frameCount)
@@ -867,9 +885,8 @@ maudResult maudSpatializer_RenderReflections(maudSpatializer* spatializer,
     {
         return maud_errorInvalid;
     }
-    const maudQuaternion* q = orientation;
-    float n = q->x * q->x + q->y * q->y + q->z * q->z + q->w * q->w;
-    if (!isfinite(n) || !(n > 0.0f))
+    maudQuaternion unit;
+    if (!UnitOrientation(orientation, &unit))
     {
         return maudSpatializerInvalid(spatializer);
     }
@@ -890,6 +907,6 @@ maudResult maudSpatializer_RenderReflections(maudSpatializer* spatializer,
             return maudSpatializerInvalid(spatializer);
         }
     }
-    maudConvolveReflections(spatializer->reflections, orientation, send, bed, frameCount);
+    maudConvolveReflections(spatializer->reflections, &unit, send, bed, frameCount);
     return maud_success;
 }
