@@ -7,8 +7,10 @@
 // change of direction crossfades sample by sample, without a click,
 // into exactly what an effect started there renders, the latest of
 // several changes waiting for the fade under way, and a fade writes
-// nothing past a call's last frame; only the direction counts; the
-// gain ramps; one call or many give the same samples; a reset forgets;
+// nothing past a call's last frame; only the direction counts, from
+// subnormal positions to FLT_MAX, and with the near field a position
+// counts as no nearer than 0.1 m and no farther than 10^9 m; the gain
+// ramps; one call or many give the same samples; a reset forgets;
 // a head radius at either end of its bounds is taken. On the shipped
 // SADIE II set: a source on the right reaches the right ear first and
 // louder, and the left one the left. Bad calls write nothing, and
@@ -22,6 +24,7 @@
 #include "hrtf_core.h"
 #include "near_field.h"
 #include "test_harness.h"
+#include "test_lengths.h"
 
 #include "maul-audio/binaural.h"
 
@@ -513,6 +516,53 @@ static void TestDirectionOnly(const maudHrtf* hrtf)
     CHECK(memcmp(s_left, s_left2, 256 * sizeof(float)) == 0, "a direction of any length");
     maudDestroyBinaural(near);
     maudDestroyBinaural(far);
+}
+
+// Renders noise from two positions, each on an effect of its own, and
+// says whether both ears came out the same to the bit.
+static bool SameFrom(const maudHrtf* hrtf, bool nearField, maudVector3 a, maudVector3 b)
+{
+    maudBinaural* first = CreateWith(hrtf, 256, nearField);
+    maudBinaural* second = CreateWith(hrtf, 256, nearField);
+    CHECK(Process(first, At(a.x, a.y, a.z), s_in, s_left, s_right, 256) == maud_success &&
+              Process(second, At(b.x, b.y, b.z), s_in, s_left2, s_right2, 256) == maud_success,
+          "process");
+    maudDestroyBinaural(first);
+    maudDestroyBinaural(second);
+    return memcmp(s_left, s_left2, 256 * sizeof(float)) == 0 &&
+           memcmp(s_right, s_right2, 256 * sizeof(float)) == 0;
+}
+
+// A position at any length renders as the same direction at an ordinary
+// length. With the near field, one nearer than 0.1 m renders as the same
+// direction at 2^-6 times (4, -2, 3), also nearer, and one past 10^9 m
+// as the same direction past it too.
+static void TestAnyLength(const maudHrtf* hrtf)
+{
+    Noise(s_in, 256, 23);
+    for (int k = 0; k < LENGTH_PAIRS; ++k)
+    {
+        bool same = SameFrom(hrtf, false, s_lengths[k].ordinary, s_lengths[k].scaled);
+        PrintLength("position", s_lengths[k].scaled, same);
+        CHECK(same, "the direction alone counts");
+    }
+    const maudVector3 near = {4.0f * 0x1p-6f, -2.0f * 0x1p-6f, 3.0f * 0x1p-6f};
+    const maudVector3 far = {4.0f * 0x1p29f, -2.0f * 0x1p29f, 3.0f * 0x1p29f};
+    const LengthPair nearField[] = {
+        {near, s_lengths[0].scaled},
+        {near, s_lengths[1].scaled},
+        {near, s_lengths[2].scaled},
+        {far, s_lengths[3].scaled},
+        {far, s_lengths[4].scaled},
+        {{FLT_MAX * 0x1p-98f, 0.0f, -FLT_MAX * 0x1p-98f}, s_lengths[5].scaled},
+        {{0x1p30f, 0.0f, -0x1p30f}, s_lengths[6].scaled},
+    };
+    for (size_t k = 0; k < sizeof(nearField) / sizeof(nearField[0]); ++k)
+    {
+        bool same = SameFrom(hrtf, true, nearField[k].ordinary, nearField[k].scaled);
+        PrintLength("near field, position", nearField[k].scaled, same);
+        CHECK(same, "nearer than 0.1 m or past 10^9 m, as there");
+    }
 }
 
 // The near-field filter of one ear, applied by the definition, in double.
@@ -1008,6 +1058,7 @@ int main(void)
         TestExactBuffers(hrtf);
         TestNoAllocation(hrtf);
         TestNearField(hrtf);
+        TestAnyLength(hrtf);
         maudDestroyHrtf(hrtf);
     }
     TestShippedSet();

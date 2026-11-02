@@ -6,14 +6,17 @@
 // velocity vector points at the source exactly (VBAP's property); a
 // mirrored source gets mirrored gains; the zenith and nadir share
 // equally among the speakers around them; stereo folds the rear to the
-// front; mono passes through; panning ramps and adds; bad calls write
+// front; mono passes through; panning ramps and adds; a direction's
+// length does not count, from subnormal to FLT_MAX; bad calls write
 // nothing.
 
 #include "test_harness.h"
+#include "test_lengths.h"
 
 #include "maul-audio/speakers.h"
 
 #include <math.h>
+#include <string.h>
 
 #define PI 3.14159265358979323846
 
@@ -435,9 +438,33 @@ static void TestPan(void)
     maudDestroySpeakerPanner(nullptr);
 }
 
+// On every layout, a direction at any length has the gains of the same
+// direction at an ordinary length, to the bit.
+static void TestAnyLength(void)
+{
+    for (size_t l = 0; l < sizeof(s_layouts) / sizeof(s_layouts[0]); ++l)
+    {
+        maudSpeakerPanner* panner = Create(s_layouts[l]);
+        for (int k = 0; k < LENGTH_PAIRS; ++k)
+        {
+            float want[16] = {0};
+            float gains[16] = {0};
+            CHECK(maudSpeakerPanner_GetGains(panner, s_lengths[k].ordinary, want) == maud_success &&
+                      maudSpeakerPanner_GetGains(panner, s_lengths[k].scaled, gains) ==
+                          maud_success,
+                  "gains");
+            bool same = memcmp(gains, want, sizeof(gains)) == 0;
+            PrintLength("direction", s_lengths[k].scaled, same);
+            CHECK(same, "the gains of the same direction");
+        }
+        maudDestroySpeakerPanner(panner);
+    }
+}
+
 int main(void)
 {
     TestOnSpeakers();
+    TestAnyLength();
     TestEnergy();
     TestVelocity();
     TestMirror();

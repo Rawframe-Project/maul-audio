@@ -13,6 +13,7 @@
 #include "air_absorption.h"
 #include "allocator.h"
 #include "band_eq.h"
+#include "exact_scale.h"
 #include "ramp.h"
 
 #include "maul-audio/direct.h"
@@ -72,9 +73,11 @@ maudResult maudGetDirectivity(const maudDirectivityPattern* pattern, maudVector3
             return maud_errorInvalid;
         }
     }
-    float length = sqrtf(toListener.x * toListener.x + toListener.y * toListener.y +
-                         toListener.z * toListener.z);
-    float cosine = length > 0.0f ? -toListener.z / length : 1.0f;
+    maudVector3 d = toListener;
+    float s = maudExactScale(fmaxf(fmaxf(fabsf(d.x), fabsf(d.y)), fabsf(d.z)));
+    d = (maudVector3){d.x * s, d.y * s, d.z * s};
+    float length = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+    float cosine = length > 0.0f ? -d.z / length : 1.0f;
     for (int b = 0; b < MAUD_BANDS; ++b)
     {
         float w = pattern->weight[b];

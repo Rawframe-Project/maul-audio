@@ -48,8 +48,8 @@ extern "C"
     {
         // Where the source is, from the head's centre, in metres in the
         // listener's frame. Its direction picks the responses; with the
-        // near field, its length counts too, no nearer than 0.1 m. A zero
-        // vector is straight ahead.
+        // near field, its length counts too, from 0.1 m to 10^9 m (nearer
+        // and farther count as those). A zero vector is straight ahead.
         maudVector3 position;
         // A gain the host computed, distance attenuation included: the
         // effect applies none of its own. It moves linearly from the
