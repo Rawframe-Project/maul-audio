@@ -15,6 +15,8 @@
 
 #include "ios_session.h"
 
+#include "utf8.h"
+
 #import <AVFAudio/AVFAudio.h>
 #include <stdio.h>
 
@@ -196,7 +198,7 @@ uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity)
             }
             maudIosPort* out = &ports[count];
             snprintf(out->key, sizeof(out->key), "port:%s", port.UID.UTF8String);
-            snprintf(out->name, sizeof(out->name), "%s", port.portName.UTF8String);
+            maudCopyUtf8(out->name, sizeof(out->name), port.portName.UTF8String);
             out->form = maudIosPortForm(port.portType);
             count++;
         }

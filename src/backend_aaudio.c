@@ -179,7 +179,8 @@ static void Listed(maudAaudio* aaudio, maudDirection direction, const maudAaudio
     }
     char key[MAUD_AAUDIO_KEY_BYTES];
     const char* where = listing->address[0] != '\0' ? listing->address : listing->product;
-    snprintf(key, sizeof(key), "%d:%s", (int)listing->type, where);
+    int prefix = snprintf(key, sizeof(key), "%d:", (int)listing->type);
+    maudCopyUtf8(key + prefix, sizeof(key) - (size_t)prefix, where);
     const char* name = kind->builtIn != nullptr ? kind->builtIn : listing->product;
     uint32_t low = listing->lowRate > 0 ? (uint32_t)listing->lowRate : aaudio->rate;
     uint32_t high = listing->highRate > 0 ? (uint32_t)listing->highRate : aaudio->rate;

@@ -11,6 +11,7 @@
 #include "context.h"
 #include "device.h"
 #include "test_harness.h"
+#include "test_names.h"
 
 #include "maul-audio/device.h"
 #include "maul-audio/notification.h"
@@ -72,6 +73,135 @@ static void TestPcmForms(void)
     CHECK(maudAlsaFormOfPcm("ALC1220 Analog") == maud_formUnknown &&
               maudAlsaFormOfPcm(nullptr) == maud_formUnknown,
           "an analog PCM, or none, is unknown");
+}
+
+// A made-up libasound with one card of one PCM device, named by the test.
+static const char* s_cardName;
+static const char* s_pcmName;
+
+static int FakeCardNext(int* card)
+{
+    *card = *card < 0 ? 0 : -1;
+    return 0;
+}
+
+static int FakeCtlOpen(snd_ctl_t** ctl, const char* name, int mode)
+{
+    (void)name;
+    (void)mode;
+    static char handle;
+    *ctl = (snd_ctl_t*)&handle;
+    return 0;
+}
+
+static int FakeCtlClose(snd_ctl_t* ctl)
+{
+    (void)ctl;
+    return 0;
+}
+
+static int FakeCardInfo(snd_ctl_t* ctl, snd_ctl_card_info_t* info)
+{
+    (void)ctl;
+    (void)info;
+    return 0;
+}
+
+static const char* FakeCardId(const snd_ctl_card_info_t* info)
+{
+    (void)info;
+    return "Card";
+}
+
+static const char* FakeCardName(const snd_ctl_card_info_t* info)
+{
+    (void)info;
+    return s_cardName;
+}
+
+static int FakeNextDevice(snd_ctl_t* ctl, int* device)
+{
+    (void)ctl;
+    *device = *device < 0 ? 0 : -1;
+    return 0;
+}
+
+static int FakePcmInfo(snd_ctl_t* ctl, snd_pcm_info_t* info)
+{
+    (void)ctl;
+    (void)info;
+    return 0;
+}
+
+static void FakeSetDevice(snd_pcm_info_t* info, unsigned int device)
+{
+    (void)info;
+    (void)device;
+}
+
+static void FakeSetStream(snd_pcm_info_t* info, snd_pcm_stream_t stream)
+{
+    (void)info;
+    (void)stream;
+}
+
+static const char* FakePcmName(const snd_pcm_info_t* info)
+{
+    (void)info;
+    return s_pcmName;
+}
+
+// Scans the made-up card; true when every name is whole UTF-8 within
+// limit bytes.
+static bool NamesWhole(size_t limit)
+{
+    maudAlsaApi api = {
+        .cardNext = FakeCardNext,
+        .ctlOpen = FakeCtlOpen,
+        .ctlClose = FakeCtlClose,
+        .ctlCardInfo = FakeCardInfo,
+        .ctlCardInfoGetId = FakeCardId,
+        .ctlCardInfoGetName = FakeCardName,
+        .ctlPcmNextDevice = FakeNextDevice,
+        .ctlPcmInfo = FakePcmInfo,
+        .pcmInfoSetDevice = FakeSetDevice,
+        .pcmInfoSetSubdevice = FakeSetDevice,
+        .pcmInfoSetStream = FakeSetStream,
+        .pcmInfoGetName = FakePcmName,
+    };
+    maudAlsaEndpoint endpoints[2];
+    maudDeviceSpec specs[2];
+    uint32_t count = maudAlsaScan(&api, endpoints, specs, 2, limit);
+    CHECK(count == 2, "the card's PCM, both directions");
+    bool whole = count == 2;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        whole = whole && specs[i].nameLength <= limit && specs[i].nameLength + 2 > limit &&
+                IsUtf8(specs[i].name, specs[i].nameLength);
+    }
+    return whole;
+}
+
+// A card's name and its PCM's, mostly two bytes a character, cut where
+// the endpoint's buffer ends (62 bytes of the card's, 2 of the comma,
+// and the PCM's cut inside the second character of its seventh word)
+// and where the context's limit does, keep whole characters only, a
+// byte short at most.
+static void TestScanNames(void)
+{
+    s_cardName = "\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C"
+                 "\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C"
+                 "\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C\xC3\x9C"
+                 "\xC3\x9C";
+    s_pcmName = "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F \xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F "
+                "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F \xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F "
+                "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F \xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F "
+                "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F \xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F";
+    CHECK(NamesWhole(MAUD_ALSA_LABEL_BYTES - 1), "a name longer than its buffer");
+    for (size_t limit = 1; limit <= 9; ++limit)
+    {
+        CHECK(NamesWhole(limit), "a name longer than the limit");
+    }
 }
 
 static void TestSync(maudContext* context)
@@ -218,6 +348,7 @@ int main(void)
     char directory[] = "/tmp/maud-snd-XXXXXX";
     CHECK(mkdtemp(directory) != nullptr, "a test directory");
     TestPcmForms();
+    TestScanNames();
     TestSync(context);
     TestWatch(directory);
     TestDrainRescans(context, directory);

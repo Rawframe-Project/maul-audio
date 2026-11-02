@@ -1,14 +1,14 @@
 # The internal module graph (docs/internals/maul-conventions.md): each module
 # and the modules it may use. tools/check_modules.py enforces it.
 aaudio_core: context_core device
-aaudio_java: aaudio_core
+aaudio_java: aaudio_core utf8
 aaudio_stream: aaudio_core aaudio_java clock context context_core device follow period retry thread voice xrun
 air_absorption: fpenv portable_math
 allocator: fpenv
 alsa_api:
 alsa_chmap:
 alsa_core: alsa_api alsa_chmap alsa_scan context_core worker
-alsa_scan: alsa_api context_core device
+alsa_scan: alsa_api context_core device utf8
 alsa_stream: allocator alsa_api alsa_chmap alsa_core clock context context_core period thread worker xrun
 alsa_watch:
 ambisonic_rotation:
@@ -41,7 +41,7 @@ coreaudio_form: coreaudio_core
 coreaudio_listen: coreaudio_core coreaudio_form
 coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device follow period retry thread voice xrun
 crc32:
-device: context context_core follow notify
+device: context context_core follow notify utf8
 direct_effect: air_absorption allocator band_eq exact_scale ramp
 direct_step: exact_scale
 duplex: context context_core stream_open
@@ -65,7 +65,7 @@ hrtf_resample:
 gain_control: allocator flush vad_core voice_dsp
 invariant:
 ios_core: apple_objects context_core device
-ios_session: ios_core
+ios_session: ios_core utf8
 ios_stream: apple_objects clock context context_core device follow ios_core ios_session period retry thread voice xrun
 layout:
 least_squares:
@@ -117,6 +117,7 @@ sample_convert:
 stream_open: backend clock context context_core follow period voice
 thread:
 transmission:
+utf8:
 vad_core: voice_dsp
 voice: context_core
 voice_detector: allocator vad_core voice_dsp

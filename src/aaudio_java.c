@@ -8,6 +8,8 @@
 
 #include "aaudio_java.h"
 
+#include "utf8.h"
+
 #include <jni.h>
 
 static JNIEnv* Enter(JavaVM* vm, bool* attached)
@@ -193,6 +195,30 @@ void maudAaudioCloseJava(maudAaudio* aaudio)
     aaudio->hasJava = false;
 }
 
+// Reads a Java string, NULL as empty, into out as UTF-8 cut on whole
+// characters. JNI's own UTF-8 is Java's modified form, which writes a
+// character past U+FFFF as two encoded surrogates, so the string is read
+// as UTF-16 instead: as many units as out has bytes, which encode to at
+// least as many bytes. False when Java threw.
+static bool ReadText(JNIEnv* env, jstring text, char* out, size_t capacity)
+{
+    jchar units[MAUD_AAUDIO_NAME_BYTES > MAUD_AAUDIO_KEY_BYTES ? MAUD_AAUDIO_NAME_BYTES
+                                                               : MAUD_AAUDIO_KEY_BYTES];
+    jsize length = text != nullptr ? (*env)->GetStringLength(env, text) : 0;
+    jsize taken = length < (jsize)capacity ? length : (jsize)capacity;
+    if (taken > 0)
+    {
+        (*env)->GetStringRegion(env, text, 0, taken, units);
+    }
+    if (Thrown(env))
+    {
+        out[0] = '\0';
+        return false;
+    }
+    maudUtf16ToUtf8(out, capacity, units, (size_t)taken);
+    return true;
+}
+
 // Hands each device of one listed pair of arrays to listed.
 static void Walk(maudAaudio* aaudio, JNIEnv* env, jobjectArray pair, maudDirection direction,
                  void (*listed)(maudAaudio* aaudio, maudDirection direction,
@@ -215,30 +241,17 @@ static void Walk(maudAaudio* aaudio, JNIEnv* env, jobjectArray pair, maudDirecti
     {
         jstring address = (jstring)(*env)->GetObjectArrayElement(env, texts, 2 * i);
         jstring product = (jstring)(*env)->GetObjectArrayElement(env, texts, 2 * i + 1);
-        const char* addressText =
-            address != nullptr ? (*env)->GetStringUTFChars(env, address, nullptr) : nullptr;
-        const char* productText =
-            product != nullptr ? (*env)->GetStringUTFChars(env, product, nullptr) : nullptr;
-        if (!Thrown(env))
+        maudAaudioListing listing = {
+            .id = values[5 * i],
+            .type = values[5 * i + 1],
+            .channels = values[5 * i + 2],
+            .lowRate = values[5 * i + 3],
+            .highRate = values[5 * i + 4],
+        };
+        if (ReadText(env, address, listing.address, sizeof(listing.address)) &&
+            ReadText(env, product, listing.product, sizeof(listing.product)))
         {
-            maudAaudioListing listing = {
-                .id = values[5 * i],
-                .type = values[5 * i + 1],
-                .channels = values[5 * i + 2],
-                .lowRate = values[5 * i + 3],
-                .highRate = values[5 * i + 4],
-                .address = addressText != nullptr ? addressText : "",
-                .product = productText != nullptr ? productText : "",
-            };
             listed(aaudio, direction, &listing);
-        }
-        if (addressText != nullptr)
-        {
-            (*env)->ReleaseStringUTFChars(env, address, addressText);
-        }
-        if (productText != nullptr)
-        {
-            (*env)->ReleaseStringUTFChars(env, product, productText);
         }
         (*env)->DeleteLocalRef(env, address);
         (*env)->DeleteLocalRef(env, product);

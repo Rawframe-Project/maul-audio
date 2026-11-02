@@ -11,7 +11,7 @@
 
 // One device Java listed: its AAudio id, its AudioDeviceInfo type, its
 // most channels and its rate range (0 where it takes any), its address
-// and product name.
+// and product name, in UTF-8 cut on whole characters.
 typedef struct maudAaudioListing
 {
     int32_t id;
@@ -19,8 +19,8 @@ typedef struct maudAaudioListing
     int32_t channels;
     int32_t lowRate;
     int32_t highRate;
-    const char* address;
-    const char* product;
+    char address[MAUD_AAUDIO_KEY_BYTES];
+    char product[MAUD_AAUDIO_NAME_BYTES];
 } maudAaudioListing;
 
 // Loads the Devices class through the Context's class loader, registers
