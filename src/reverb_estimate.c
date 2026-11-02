@@ -12,6 +12,7 @@
 
 #include "reverb_estimate.h"
 
+#include "exact_scale.h"
 #include "portable_math.h"
 #include "spherical_harmonics.h"
 
@@ -147,9 +148,13 @@ static bool Shade(const maudReverbTrace* trace, const Path* path, const maudRay*
     {
         return false;
     }
-    float n[3] = {hit->normal.x, hit->normal.y, hit->normal.z};
+    // The host's normal may have any length: scaled exactly, its squares
+    // stay in range.
+    float k = maudExactScale(
+        fmaxf(fmaxf(fabsf(hit->normal.x), fabsf(hit->normal.y)), fabsf(hit->normal.z)));
+    float n[3] = {hit->normal.x * k, hit->normal.y * k, hit->normal.z * k};
     float length = sqrtf(Dot(n, n));
-    if (!(length > 0.0f))
+    if (!(length > 0.0f) || !isfinite(length))
     {
         return false;
     }

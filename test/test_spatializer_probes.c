@@ -3,7 +3,8 @@
 //
 // Probe sets through the spatializer: a set from points reports its
 // probes and links and copies its points; a generated set lands its
-// probes on the floor; a destroyed set's id is stale and its slot is
+// probes on the floor, the same probes whatever length the host's
+// normals have; a destroyed set's id is stale and its slot is
 // reused under a new generation; the largest limits are in range; the
 // capacity, the limits, defs out of range, generation without a
 // closest-hit query and probes past the set's are refused.
@@ -14,6 +15,7 @@
 #include "maul-audio/spatializer.h"
 
 #include <math.h>
+#include <string.h>
 
 static void* Refuse(size_t size, size_t alignment, void* context)
 {
@@ -64,11 +66,26 @@ static maudScene* Room(void)
     return scene;
 }
 
+// The scene's hits with their normals scaled by s_normalScale, as a
+// host that does not normalize them answers.
+static float s_normalScale = 1.0f;
+
+static void ScaledHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
+{
+    maudFindClosestHit(rays, count, hits, context);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        hits[i].normal.x *= s_normalScale;
+        hits[i].normal.y *= s_normalScale;
+        hits[i].normal.z *= s_normalScale;
+    }
+}
+
 static maudSpatializer* Create(maudScene* scene, uint32_t sets)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = maudFindAnyHit;
-    def.closestHit = maudFindClosestHit;
+    def.closestHit = ScaledHit;
     def.rayContext = scene;
     def.probeSetCapacity = sets;
     def.maxProbes = 64;
@@ -138,6 +155,40 @@ static void TestGenerated(maudSpatializer* s)
     CHECK(maudDestroyProbeSet(s, set) == maud_success, "destroyed");
     def.spacing = 0.25f;
     CHECK(maudCreateProbeSet(s, &def, &set) == maud_errorCapacity, "past maxProbes");
+}
+
+// Normals of any length, from subnormal to near FLT_MAX, find the floor
+// as unit ones do.
+static void TestNormalLengths(maudSpatializer* s)
+{
+    static const float scales[5] = {0.5f, 0x1p-100f, 0x1p-70f, 0x1p64f, 0x1p127f};
+    maudProbeSetDef def = maudDefaultProbeSetDef();
+    def.boxMin = (maudVector3){0.0f, -1.0f, 0.0f};
+    def.boxMax = (maudVector3){10.0f, 4.0f, 10.0f};
+    def.spacing = 2.5f;
+    maudVector3 unit[16] = {0};
+    maudProbeSetInfo a = {0};
+    maudProbeSetId set = {0, 0};
+    CHECK(maudCreateProbeSet(s, &def, &set) == maud_success &&
+              maudProbeSet_GetInfo(s, set, 0, &a, unit, 16) == maud_success,
+          "generated with unit normals");
+    CHECK(maudDestroyProbeSet(s, set) == maud_success, "destroyed");
+    for (int i = 0; i < 5; ++i)
+    {
+        s_normalScale = scales[i];
+        maudVector3 scaled[16] = {0};
+        maudProbeSetInfo b = {0};
+        CHECK(maudCreateProbeSet(s, &def, &set) == maud_success &&
+                  maudProbeSet_GetInfo(s, set, 0, &b, nullptr, 0) == maud_success,
+              "generated with scaled normals");
+        bool same = b.probeCount == a.probeCount && b.linkCount == a.linkCount &&
+                    maudProbeSet_GetInfo(s, set, 0, &b, scaled, 16) == maud_success &&
+                    memcmp(unit, scaled, sizeof(unit)) == 0;
+        printf("normals x%g: %u probes, same %d\n", (double)scales[i], b.probeCount, same);
+        CHECK(same, "the same probes at any normal length");
+        CHECK(maudDestroyProbeSet(s, set) == maud_success, "destroyed");
+    }
+    s_normalScale = 1.0f;
 }
 
 static void TestMisuse(maudSpatializer* s)
@@ -219,6 +270,7 @@ int main(void)
     maudSpatializer* s = Create(scene, 2);
     TestPoints(s);
     TestGenerated(s);
+    TestNormalLengths(s);
     TestMisuse(s);
     maudDestroySpatializer(s);
     maudDestroyScene(scene);

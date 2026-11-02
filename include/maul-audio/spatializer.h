@@ -124,8 +124,9 @@ extern "C"
 
     // What a closest-hit query found on a ray: the distance to the
     // nearest hit within the ray's distances (any value outside them,
-    // INFINITY for instance, for none), the surface's normal and its
-    // material's index in the spatializer's table.
+    // INFINITY for instance, for none), the surface's normal (of any
+    // finite nonzero length) and its material's index in the
+    // spatializer's table.
     typedef struct maudRayHit
     {
         float distance;

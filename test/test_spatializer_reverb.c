@@ -10,7 +10,8 @@
 // reverberation, and with a host's any-hit query that
 // blocks every path, which lights nothing, too; without an any-hit
 // query every path is clear, which in the convex office gives the
-// scene query's times bit for bit; a def asking for no estimates
+// scene query's times bit for bit; a host's normals of any length give
+// the times and levels of unit ones bit for bit; a def asking for no estimates
 // refuses them; ray counts out of range and bad air are refused.
 
 #include "test_harness.h"
@@ -62,11 +63,26 @@ static void Finish(void* userTask, void* userContext)
     (void)userContext;
 }
 
+// The scene's hits with their normals scaled by s_normalScale, as a
+// host that does not normalize them answers.
+static float s_normalScale = 1.0f;
+
+static void ScaledHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
+{
+    maudFindClosestHit(rays, count, hits, context);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        hits[i].normal.x *= s_normalScale;
+        hits[i].normal.y *= s_normalScale;
+        hits[i].normal.z *= s_normalScale;
+    }
+}
+
 static maudSpatializer* Create(maudScene* scene, bool tasks, maudAnyHitFunction* anyHit)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
     def.anyHit = anyHit;
-    def.closestHit = maudFindClosestHit;
+    def.closestHit = ScaledHit;
     def.rayContext = scene;
     def.reverbRays = 1024;
     for (int b = 0; b < MAUD_BANDS; ++b)
@@ -204,6 +220,41 @@ static void TestNoAnyHit(void)
     maudDestroyScene(scene);
 }
 
+// One estimate's result, published by a direct step.
+static maudReverbResult Estimate(maudScene* scene)
+{
+    maudSpatializer* s = Create(scene, false, maudFindAnyHit);
+    maudReverbResult r = {0};
+    CHECK(maudSpatializer_SimulateReverb(s, &s_listener) == maud_success &&
+              maudSpatializer_SimulateDirect(s, &s_listener) == maud_success &&
+              maudSpatializer_LatchResults(s) == 1 &&
+              maudSpatializer_GetReverbResult(s, &r) == maud_success,
+          "an estimate");
+    maudDestroySpatializer(s);
+    return r;
+}
+
+// Normals of any length, from subnormal to near FLT_MAX, reflect as unit
+// ones do.
+static void TestNormalLengths(void)
+{
+    static const float scales[5] = {0.5f, 0x1p-100f, 0x1p-70f, 0x1p64f, 0x1p127f};
+    maudScene* scene = Office();
+    maudReverbResult unit = Estimate(scene);
+    for (int i = 0; i < 5; ++i)
+    {
+        s_normalScale = scales[i];
+        maudReverbResult scaled = Estimate(scene);
+        bool same = memcmp(unit.reverbTime, scaled.reverbTime, sizeof(unit.reverbTime)) == 0 &&
+                    memcmp(unit.level, scaled.level, sizeof(unit.level)) == 0;
+        printf("normals x%g: %.3f s, same %d\n", (double)scales[i], (double)scaled.reverbTime[1],
+               same);
+        CHECK(same, "the same times and levels at any normal length");
+    }
+    s_normalScale = 1.0f;
+    maudDestroyScene(scene);
+}
+
 static void TestMisuse(void)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
@@ -251,6 +302,7 @@ int main(void)
     TestEstimate();
     TestBlocked();
     TestNoAnyHit();
+    TestNormalLengths();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
 }
