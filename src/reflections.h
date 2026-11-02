@@ -44,7 +44,7 @@ void maudPublishReflections(maudReflections* reflections, const maudReverbTrace*
 
 // Adds frames of the send's reflections into a bed of the order's
 // channels, turned into the frame of a listener whose orientation moves
-// to `orientation` across the call.
+// to `orientation`, of unit length, across the call.
 void maudConvolveReflections(maudReflections* reflections, const maudQuaternion* orientation,
                              const float* send, float* const* bed, uint32_t frames);
 

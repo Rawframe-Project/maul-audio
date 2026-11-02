@@ -5,7 +5,10 @@
 // fully scattering floor 2 m below, an impulse sent renders W with the
 // floor's energy, 1 / (8 pi h^2), within 5 %, and arriving from below
 // (Z over W, energy-weighted, -0.8 within 0.05; X and Y nothing); a
-// listener rolled upside down hears it from above; the mean arrival is
+// listener rolled upside down hears it from above; a turn given at any
+// nonzero length, from subnormal to FLT_MAX, and alternating with the
+// same turn at another, turns the bed to the bit as that turn alone
+// does; the mean arrival is
 // on time within 1 ms (the convolution's block taken back); the bed is
 // added to; nothing arrives
 // before the first path does; before any response the bed is silent; a
@@ -24,6 +27,7 @@
 #include "maul-audio/scene.h"
 #include "maul-audio/spatializer.h"
 
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -109,8 +113,9 @@ static float s_bed[4][FRAMES];
 static float s_discard[4][480];
 
 // Renders an impulse at frame 0 in blocks of 480 into a bed holding
-// base.
-static void RenderOver(maudSpatializer* s, maudQuaternion orientation, float base)
+// base, the listener turned by even in even blocks and by odd in odd
+// ones.
+static void RenderOver(maudSpatializer* s, maudQuaternion even, maudQuaternion odd, float base)
 {
     memset(s_send, 0, sizeof(s_send));
     for (int c = 0; c < 4; ++c)
@@ -123,15 +128,16 @@ static void RenderOver(maudSpatializer* s, maudQuaternion orientation, float bas
     for (int at = 0; at < SETTLE; at += 480)
     {
         float* bed[4] = {s_discard[0], s_discard[1], s_discard[2], s_discard[3]};
-        CHECK(maudSpatializer_RenderReflections(s, &orientation, s_send, bed, 480) == maud_success,
+        const maudQuaternion* q = at / 480 % 2 == 0 ? &even : &odd;
+        CHECK(maudSpatializer_RenderReflections(s, q, s_send, bed, 480) == maud_success,
               "render silence");
     }
     s_send[0] = 1.0f;
     for (int at = 0; at < FRAMES; at += 480)
     {
         float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
-        CHECK(maudSpatializer_RenderReflections(s, &orientation, s_send + at, bed, 480) ==
-                  maud_success,
+        const maudQuaternion* q = at / 480 % 2 == 0 ? &even : &odd;
+        CHECK(maudSpatializer_RenderReflections(s, q, s_send + at, bed, 480) == maud_success,
               "render");
     }
 }
@@ -151,7 +157,7 @@ static double Along(int c)
 
 static void Render(maudSpatializer* s, maudQuaternion orientation)
 {
-    RenderOver(s, orientation, 0.0f);
+    RenderOver(s, orientation, orientation, 0.0f);
 }
 
 // The floor's energy-weighted mean arrival time, each 10 ms bin's energy
@@ -216,7 +222,7 @@ static void TestFloor(void)
     printf("mean arrival %.2f ms (want %.2f)\n", 1e3 * mean, 1e3 * MeanArrival(2.0));
     CHECK(fabs(mean - MeanArrival(2.0)) < 0.001, "on time");
     // Added into the bed, not over it.
-    RenderOver(s, upright, 1.0f);
+    RenderOver(s, upright, upright, 1.0f);
     double added = 0.0;
     for (int i = 0; i < FRAMES; ++i)
     {
@@ -263,6 +269,45 @@ static void TestTurn(void)
     printf("turned: Y %.3f X %.3f\n", Along(1), Along(3));
     CHECK(fabs(Along(3) + 0.8) < 0.05 && fabs(Along(1)) < 0.05, "turned left, the wall behind");
     maudDestroySpatializer(s);
+    maudDestroyScene(scene);
+}
+
+static float s_turned[4][FRAMES];
+
+// An orientation of any nonzero length turns the bed as its unit
+// quaternion does: off the wall, rendered in blocks that alternate
+// between a quarter turn to the left as (0, 1, 0, 1) and the same turn
+// at another length, the bed is the same to the bit as rendered by the
+// first throughout. Each run has a spatializer of its own, so that
+// nothing but the orientation differs.
+static void TestAnyLength(void)
+{
+    maudScene* scene = Wall();
+    const maudQuaternion turn = {0.0f, 1.0f, 0.0f, 1.0f};
+    maudPose listener = {{0.0f, 0.3f, 0.2f}, turn};
+    maudSpatializer* s = Create(scene);
+    CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "an estimate");
+    Render(s, turn);
+    memcpy(s_turned, s_bed, sizeof(s_turned));
+    printf("turned: Y %.3f X %.3f\n", Along(1), Along(3));
+    CHECK(fabs(Along(3) + 0.8) < 0.05 && fabs(Along(1)) < 0.05, "turned left, the wall behind");
+    maudDestroySpatializer(s);
+    static const maudQuaternion lengths[] = {
+        {0.0f, 0x1p-149f, 0.0f, 0x1p-149f}, {0.0f, 0x1p-126f, 0.0f, 0x1p-126f},
+        {0.0f, 0x1p-33f, 0.0f, 0x1p-33f},   {0.0f, 0x1p64f, 0.0f, 0x1p64f},
+        {0.0f, FLT_MAX, 0.0f, FLT_MAX},     {0x1p-100f, 0x1p100f, 0.0f, 0x1p100f},
+    };
+    for (size_t k = 0; k < sizeof(lengths) / sizeof(lengths[0]); ++k)
+    {
+        s = Create(scene);
+        CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "an estimate");
+        RenderOver(s, turn, lengths[k], 0.0f);
+        bool same = memcmp(s_bed, s_turned, sizeof(s_turned)) == 0;
+        printf("orientation (%g %g %g %g): same %d\n", (double)lengths[k].x, (double)lengths[k].y,
+               (double)lengths[k].z, (double)lengths[k].w, same);
+        CHECK(same, "turned as by the same turn's unit quaternion");
+        maudDestroySpatializer(s);
+    }
     maudDestroyScene(scene);
 }
 
@@ -448,6 +493,7 @@ int main(void)
 {
     TestFloor();
     TestTurn();
+    TestAnyLength();
     TestHybrid();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
