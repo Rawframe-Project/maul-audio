@@ -8,6 +8,7 @@
 #define MAUL_AUDIO_SRC_DEVICE_H
 
 #include "context_core.h"
+#include "utf8.h"
 
 // The rates a stream runs at. A platform's rate outside them is taken
 // as one it cannot tell, 0.
@@ -51,11 +52,6 @@ maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, ui
 // null id.
 maudDeviceId maudFindDeviceByKey(const maudContext* context, maudDirection direction,
                                  const char* key, size_t length);
-
-// The length of text cut to at most limit bytes without splitting a
-// UTF-8 sequence: a device name as a backend reports it, cut to the
-// context's text limit.
-size_t maudCutUtf8(const char* text, size_t limit);
 
 // Sets a live device's form; a change posts maud_notifyRouteChanged.
 void maudSetDeviceForm(maudContext* context, maudDeviceSlot* slot, maudDeviceForm form);

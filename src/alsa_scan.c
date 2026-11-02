@@ -7,6 +7,8 @@
 
 #include "alsa_scan.h"
 
+#include "utf8.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -43,7 +45,10 @@ static bool ScanEndpoint(const maudAlsaApi* api, snd_ctl_t* ctl, const char* car
     endpoint->form = maudAlsaFormOfPcm(api->pcmInfoGetName(info));
     int keyLength =
         snprintf(endpoint->key, sizeof(endpoint->key), "hw:CARD=%s,DEV=%d", cardId, device);
-    snprintf(endpoint->name, sizeof(endpoint->name), "%s, %s", cardName, api->pcmInfoGetName(info));
+    // The card's name, then the PCM's, cut on whole characters.
+    size_t named = maudCopyUtf8(endpoint->name, sizeof(endpoint->name), cardName);
+    named += maudCopyUtf8(endpoint->name + named, sizeof(endpoint->name) - named, ", ");
+    maudCopyUtf8(endpoint->name + named, sizeof(endpoint->name) - named, api->pcmInfoGetName(info));
     return keyLength > 0 && (size_t)keyLength < sizeof(endpoint->key);
 }
 
@@ -92,11 +97,10 @@ uint32_t maudAlsaScan(const maudAlsaApi* api, maudAlsaEndpoint* endpoints, maudD
     }
     for (uint32_t i = 0; i < count; ++i)
     {
-        size_t nameLength = strlen(endpoints[i].name);
         specs[i] = (maudDeviceSpec){
             .info = {.direction = endpoints[i].direction, .form = endpoints[i].form},
             .name = endpoints[i].name,
-            .nameLength = nameLength < nameLimit ? nameLength : nameLimit,
+            .nameLength = maudCutUtf8(endpoints[i].name, nameLimit),
             .key = endpoints[i].key,
             .keyLength = strlen(endpoints[i].key),
         };

@@ -119,6 +119,7 @@ set(MAUL_AUDIO_DEVICE_SOURCES
     src/stream.c
     src/stream_open.c
     src/thread.c
+    src/utf8.c
     src/vad_core.c
     src/voice.c
     src/voice_detector.c
