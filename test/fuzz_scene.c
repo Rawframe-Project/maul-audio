@@ -2,13 +2,15 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Fuzzes the geometry a host hands over: an acoustic scene's mesh, the
-// rays it answers, and a probe set's points or generation box. The
-// first byte chooses the range and whether the probes are the input's
-// points or generated over the scene; the next two the vertex and
-// triangle counts. Then come the vertices as raw floats, a byte per
-// index (vertexCount itself one past the last vertex), a generation's
-// box corners, spacing and height as raw floats, and the points as raw
-// floats. Each call is held to its header's promises:
+// rays it answers, the instances a host makes of it, and a probe set's
+// points or generation box. The first byte chooses the range, whether
+// the probes are the input's points or generated over the scene, and
+// whether the mesh is also the scene's instancing mesh; the next two
+// the vertex and triangle counts. Then come the vertices as raw floats,
+// a byte per index (vertexCount itself one past the last vertex), a
+// generation's box corners, spacing and height as raw floats, with
+// instances their capacity and calls, and the points as raw floats.
+// Each call is held to its header's promises:
 //
 // - a scene is made exactly when every vertex is finite and every index
 //   names a vertex;
@@ -18,7 +20,14 @@
 //   range and measured, and the set saved as a bake reads back the same;
 // - a generation's def is valid exactly when its values are in their
 //   ranges and its box is finite and has height, and it is refused with
-//   maud_errorLimit exactly when its box holds too many columns.
+//   maud_errorLimit exactly when its box holds too many columns;
+// - making and moving an instance succeed exactly when its mesh is in
+//   range and its transform finite with a nonzero orientation and a
+//   scale in range, past the capacity it is maud_errorCapacity, a
+//   destroyed instance's id is maud_errorStale, and every refusal for
+//   an invalid argument counts as misuse;
+// - with every instance destroyed and committed, the rays answer
+//   exactly as before any instance was made.
 
 #include "bake_file.h"
 #include "fpenv.h"
@@ -38,6 +47,8 @@ enum
     MAX_VERTICES = 64,
     MAX_TRIANGLES = 32,
     MAX_POINTS = 64,
+    MAX_INSTANCES = 8,
+    MAX_CALLS = 32,
     MAX_PROBES = 256,
     MAX_PAIRS = 4096,
     // Generations of more columns, but within the limit, are not built:
@@ -264,12 +275,178 @@ static void CheckProbes(maudScene* scene, const maudVector3* points, uint32_t co
     }
 }
 
+// What the input asks of a scene's instances: each call a kind byte,
+// a byte choosing the mesh or the id, and a transform as raw floats.
+typedef struct Call
+{
+    uint8_t kind;
+    uint8_t which;
+    maudSceneInstanceTransform transform;
+} Call;
+
+enum
+{
+    CALL_CREATE,
+    CALL_MOVE,
+    CALL_DESTROY,
+    CALL_COMMIT,
+    CALL_KINDS
+};
+
+// The ids the calls got, and whether each is still live.
+typedef struct Made
+{
+    maudSceneInstanceId ids[MAX_CALLS];
+    bool live[MAX_CALLS];
+    uint32_t count;
+    uint32_t liveCount;
+} Made;
+
+// Whether a transform is one scene.h allows: a finite position, a
+// finite orientation of nonzero length, a scale of 0.001 to 1,000.
+static bool TransformValid(const maudSceneInstanceTransform* t)
+{
+    maudQuaternion q = t->orientation;
+    return Finite(t->position) && isfinite(q.x) && isfinite(q.y) && isfinite(q.z) &&
+           isfinite(q.w) && (q.x != 0.0f || q.y != 0.0f || q.z != 0.0f || q.w != 0.0f) &&
+           t->scale >= 0.001f && t->scale <= 1000.0f;
+}
+
+// The id a call names: one an earlier call got, or, past those, 0 or
+// one past the capacity, which no instance has.
+static maudSceneInstanceId Named(const Made* made, uint8_t which, uint32_t capacity, int* slot)
+{
+    *slot = -1;
+    if (which < made->count)
+    {
+        *slot = which;
+        return made->ids[which];
+    }
+    return (which & 1) != 0 ? (maudSceneInstanceId){capacity + 1, 1} : (maudSceneInstanceId){0, 0};
+}
+
+// Makes an instance of mesh 0 or of mesh 1, which the scene lacks.
+static maudResult Create(maudScene* scene, const Call* call, uint32_t capacity, Made* made)
+{
+    maudSceneInstanceId id = {7, 7};
+    maudResult r = maudCreateSceneInstance(scene, call->which % 2, &call->transform, &id);
+    bool valid = call->which % 2 == 0 && TransformValid(&call->transform);
+    bool full = made->liveCount == capacity;
+    if (!valid)
+    {
+        // Both refusals apply to an invalid call on a full scene.
+        Expect(r == maud_errorInvalid || (full && r == maud_errorCapacity));
+    }
+    else
+    {
+        Expect(r == (full ? maud_errorCapacity : maud_success));
+    }
+    Expect((r == maud_success) == (id.index1 != 0));
+    if (r == maud_success && made->count < MAX_CALLS)
+    {
+        made->ids[made->count] = id;
+        made->live[made->count++] = true;
+        made->liveCount += 1;
+    }
+    return r;
+}
+
+static maudResult Change(maudScene* scene, const Call* call, uint32_t capacity, Made* made)
+{
+    int slot = -1;
+    maudSceneInstanceId id = Named(made, call->which, capacity, &slot);
+    bool known = slot >= 0;
+    bool live = known && made->live[slot];
+    if (call->kind == CALL_MOVE)
+    {
+        maudResult r = maudSceneInstance_Move(scene, id, &call->transform);
+        bool valid = TransformValid(&call->transform);
+        if (!known)
+        {
+            Expect(r == maud_errorInvalid);
+        }
+        else if (!live)
+        {
+            // Both refusals apply to an invalid transform for a destroyed id.
+            Expect(r == maud_errorStale || (!valid && r == maud_errorInvalid));
+        }
+        else
+        {
+            Expect(r == (valid ? maud_success : maud_errorInvalid));
+        }
+        return r;
+    }
+    maudResult r = maudDestroySceneInstance(scene, id);
+    Expect(r == (!known ? maud_errorInvalid : live ? maud_success : maud_errorStale));
+    if (live)
+    {
+        made->live[slot] = false;
+        made->liveCount -= 1;
+    }
+    return r;
+}
+
+// Runs the calls; a commit asks the rays. Then destroys every instance
+// and commits: the rays must answer as they did before.
+static void CheckInstances(maudScene* scene, const Call* calls, uint32_t callCount,
+                           uint32_t capacity, const maudVector3* points, uint32_t count)
+{
+    static maudRay rays[MAX_POINTS];
+    static maudRayHit before[MAX_POINTS];
+    static maudRayHit after[MAX_POINTS];
+    uint32_t rayCount = 0;
+    for (uint32_t i = 0; i + 1 < count; ++i)
+    {
+        rayCount += RayBetween(points[i], points[i + 1], &rays[rayCount]) ? 1 : 0;
+    }
+    maudFindClosestHit(rays, rayCount, before, scene);
+    Made made = {0};
+    for (uint32_t c = 0; c < callCount; ++c)
+    {
+        uint64_t misuse = maudScene_GetMisuse(scene);
+        maudResult r = maud_success;
+        switch (calls[c].kind)
+        {
+        case CALL_CREATE:
+            r = Create(scene, &calls[c], capacity, &made);
+            break;
+        case CALL_MOVE:
+        case CALL_DESTROY:
+            r = Change(scene, &calls[c], capacity, &made);
+            break;
+        default:
+            r = maudScene_Commit(scene);
+            Expect(r == maud_success);
+            CheckRays(scene, points, count);
+            break;
+        }
+        // Each refusal for an invalid argument counts, nothing else.
+        Expect(maudScene_GetMisuse(scene) - misuse == (r == maud_errorInvalid ? 1u : 0u));
+    }
+    for (uint32_t i = 0; i < made.count; ++i)
+    {
+        if (made.live[i])
+        {
+            Expect(maudDestroySceneInstance(scene, made.ids[i]) == maud_success);
+        }
+    }
+    Expect(maudScene_Commit(scene) == maud_success);
+    maudFindClosestHit(rays, rayCount, after, scene);
+    for (uint32_t i = 0; i < rayCount; ++i)
+    {
+        Expect(after[i].distance == before[i].distance && after[i].normal.x == before[i].normal.x &&
+               after[i].normal.y == before[i].normal.y && after[i].normal.z == before[i].normal.z &&
+               after[i].material == before[i].material);
+    }
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     Input in = {data, size, 0};
     uint8_t mode = Byte(&in);
     float range = s_ranges[mode & 3];
     bool generate = (mode & 4) != 0;
+    bool instancing = (mode & 8) != 0;
     uint32_t vertexCount = 1u + Byte(&in) % MAX_VERTICES;
     uint32_t triangleCount = Byte(&in) % (MAX_TRIANGLES + 1);
     static maudVector3 vertices[MAX_VERTICES];
@@ -292,6 +469,25 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     box.high = Vector(&in);
     box.spacing = Float(&in);
     box.height = Float(&in);
+    static Call calls[MAX_CALLS];
+    uint32_t capacity = 0;
+    uint32_t callCount = 0;
+    if (instancing)
+    {
+        capacity = Byte(&in) % (MAX_INSTANCES + 1);
+        callCount = Byte(&in) % (MAX_CALLS + 1);
+        for (uint32_t c = 0; c < callCount; ++c)
+        {
+            calls[c].kind = Byte(&in) % CALL_KINDS;
+            calls[c].which = Byte(&in);
+            calls[c].transform.position = Vector(&in);
+            calls[c].transform.orientation.x = Float(&in);
+            calls[c].transform.orientation.y = Float(&in);
+            calls[c].transform.orientation.z = Float(&in);
+            calls[c].transform.orientation.w = Float(&in);
+            calls[c].transform.scale = Float(&in);
+        }
+    }
     uint32_t count = 0;
     while (count < MAX_POINTS && in.at < in.size)
     {
@@ -301,10 +497,17 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     maudSceneDef def = maudDefaultSceneDef();
     def.meshes = &mesh;
     def.meshCount = 1;
+    def.instanceMeshes = instancing ? &mesh : nullptr;
+    def.instanceMeshCount = instancing ? 1 : 0;
+    def.instanceCapacity = capacity;
     maudScene* scene = nullptr;
     maudResult made = maudCreateScene(&def, &scene);
     Expect(made == (valid ? maud_success : maud_errorInvalid));
     CheckRays(scene, points, count);
+    if (scene != nullptr && instancing)
+    {
+        CheckInstances(scene, calls, callCount, capacity, points, count);
+    }
     CheckProbes(scene, points, count, &box, range, generate);
     maudDestroyScene(scene);
     return 0;
