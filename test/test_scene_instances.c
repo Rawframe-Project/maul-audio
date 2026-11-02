@@ -19,6 +19,7 @@
 
 #include "maul-audio/scene.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -373,6 +374,95 @@ static void TestRefused(void)
 
 // A static mesh with no triangles may leave its arrays out; every
 // allocation the scene makes fails in turn.
+// Where a ray down onto the instance meets it, at four points.
+static void HitsOfBar(maudScene* scene, maudRayHit hits[4])
+{
+    static const float at[4][2] = {{1.0f, 0.0f}, {1.5f, 0.05f}, {0.0f, -1.5f}, {0.05f, -0.5f}};
+    for (int i = 0; i < 4; ++i)
+    {
+        hits[i] = Down(scene, at[i][0], at[i][1]);
+    }
+}
+
+static bool SameHits(const maudRayHit* a, const maudRayHit* b)
+{
+    bool same = true;
+    for (int i = 0; i < 4; ++i)
+    {
+        same = same && a[i].distance == b[i].distance && a[i].normal.x == b[i].normal.x &&
+               a[i].normal.y == b[i].normal.y && a[i].normal.z == b[i].normal.z;
+    }
+    return same;
+}
+
+// An orientation of any finite nonzero length, made or moved to, turns
+// as its unit quaternion does, to the bit: (1.1574725e-42, 0, 0, 0),
+// which the scene fuzz target was refused, and others at both ends of
+// the floats. Next to 2^100, 2^-100 is below a float's precision and
+// turns nothing.
+static void TestAnyLength(void)
+{
+    // A bar along local +x from 0 to 2, 0.2 thick.
+    Box bar;
+    MakeBox(&bar, (maudVector3){0.0f, -0.1f, -0.1f}, (maudVector3){2.0f, 0.1f, 0.1f}, 0);
+    maudSceneDef def = maudDefaultSceneDef();
+    def.instanceMeshes = &bar.mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 1;
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    // A half turn about x and a quarter turn about y, each beside the
+    // same turn at other lengths.
+    static const maudQuaternion half = {1.0f, 0.0f, 0.0f, 0.0f};
+    static const maudQuaternion quarter = {0.0f, 1.0f, 0.0f, 1.0f};
+    static const struct
+    {
+        const maudQuaternion* unit;
+        maudQuaternion other;
+    } cases[] = {
+        {&half, {1.1574725e-42f, 0.0f, 0.0f, 0.0f}},
+        {&quarter, {0.0f, 0x1p-149f, 0.0f, 0x1p-149f}},
+        {&quarter, {0.0f, 0x1p-126f, 0.0f, 0x1p-126f}},
+        {&half, {0x1p-126f, 0.0f, 0.0f, 0.0f}},
+        {&half, {1.9e19f, 0.0f, 0.0f, 0.0f}},
+        {&quarter, {0.0f, 0x1p64f, 0.0f, 0x1p64f}},
+        {&half, {FLT_MAX, 0.0f, 0.0f, 0.0f}},
+        {&quarter, {0.0f, 0x1p127f, 0.0f, 0x1p127f}},
+        {&half, {0x1p100f, 0.0f, 0x1p-100f, 0.0f}},
+    };
+    for (size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); ++k)
+    {
+        maudSceneInstanceTransform t = {{0.0f, 0.0f, 0.0f}, *cases[k].unit, 1.0f};
+        maudSceneInstanceId id = {0, 0};
+        CHECK(maudCreateSceneInstance(scene, 0, &t, &id) == maud_success &&
+                  maudScene_Commit(scene) == maud_success,
+              "an instance turned by a unit quaternion");
+        maudRayHit unit[4];
+        HitsOfBar(scene, unit);
+        CHECK(unit[0].distance != INFINITY || unit[2].distance != INFINITY, "the bar is hit");
+        t.orientation = cases[k].other;
+        maudResult moved = maudSceneInstance_Move(scene, id, &t);
+        maudRayHit hits[4];
+        CHECK(maudScene_Commit(scene) == maud_success, "committed");
+        HitsOfBar(scene, hits);
+        bool movedSame = moved == maud_success && SameHits(hits, unit);
+        CHECK(maudDestroySceneInstance(scene, id) == maud_success, "destroyed");
+        maudResult made = maudCreateSceneInstance(scene, 0, &t, &id);
+        CHECK(maudScene_Commit(scene) == maud_success, "committed");
+        HitsOfBar(scene, hits);
+        bool madeSame = made == maud_success && SameHits(hits, unit);
+        printf("orientation (%g %g %g %g): moved %d, made %d\n", (double)t.orientation.x,
+               (double)t.orientation.y, (double)t.orientation.z, (double)t.orientation.w,
+               (int)moved, (int)made);
+        CHECK(movedSame, "moved to it, the instance turns as by its unit quaternion");
+        CHECK(madeSame, "made with it, the instance turns as by its unit quaternion");
+        CHECK(made != maud_success || maudDestroySceneInstance(scene, id) == maud_success,
+              "destroyed");
+    }
+    CHECK(maudScene_GetMisuse(scene) == 0, "no call refused");
+    maudDestroyScene(scene);
+}
+
 static void TestFailingAllocator(void)
 {
     maudMesh empty = {0};
@@ -411,6 +501,7 @@ int main(void)
     TestExactAndTurn();
     TestTies();
     TestRefused();
+    TestAnyLength();
     TestFailingAllocator();
     return s_failures == 0 ? 0 : 1;
 }
