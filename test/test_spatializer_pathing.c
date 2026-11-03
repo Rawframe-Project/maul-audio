@@ -16,7 +16,8 @@
 // was made: its links are found blocked and no path is left; a pillar
 // put up blocking one row of links: the path goes around it; every link
 // blocked, more than the search lists: no path. With no source to path,
-// no ray attaches the listener to the set. A destroyed set's id is
+// no ray attaches the listener to the set; with the listener out of
+// every probe's reach, none either, and no path. A destroyed set's id is
 // stale and its paths stop.
 
 #include "test_harness.h"
@@ -367,6 +368,13 @@ int main(void)
     CHECK(maudSource_SetPose(w.s, w.sources[0], &around) == maud_success &&
               maudSource_SetPose(w.s, w.sources[3], &past) == maud_success,
           "moved back");
+    // The listener out of every probe's reach: nothing attaches it to the
+    // set, so no source is pathed and no ray is spent on it.
+    s_listener.position = (maudVector3){18.5f, 1.5f, 200.0f};
+    s_attachRays = 0;
+    Step(&w, r);
+    s_listener.position = (maudVector3){18.5f, 1.5f, 12.0f};
+    CHECK(!r[0].pathed && s_attachRays == 0, "a listener out of reach, no path");
     // 0 takes a live set out of use, and setting it again puts it back.
     const maudProbeSetId none = {0, 0};
     CHECK(maudSpatializer_SetPathingProbeSet(w.s, none) == maud_success, "pathing off");

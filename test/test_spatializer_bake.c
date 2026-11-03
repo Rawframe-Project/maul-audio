@@ -360,6 +360,7 @@ static void TestRefused(maudScene* scene)
     const maudProbeSetId none = {0, 0};
     CHECK(maudProbeSet_Bake(s, none) == maud_errorInvalid &&
               maudProbeSet_Bake(nullptr, set) == maud_errorInvalid &&
+              maudSpatializer_SetReverbProbeSet(nullptr, set) == maud_errorInvalid &&
               maudSpatializer_SetReverbProbeSet(s, none) == maud_success,
           "0, NULL, and none in use");
     maudDestroySpatializer(s);
