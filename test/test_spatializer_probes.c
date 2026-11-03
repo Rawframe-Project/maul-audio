@@ -114,6 +114,9 @@ static void TestPoints(maudSpatializer* s)
     CHECK(maudProbeSet_GetInfo(s, set, 2, &info, copied, 2) == maud_errorInvalid,
           "probes past the set's");
     CHECK(maudProbeSet_GetInfo(s, set, 3, &info, copied, 0) == maud_success, "none at the end");
+    CHECK(maudDestroyProbeSet(nullptr, set) == maud_errorInvalid &&
+              maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) == maud_success,
+          "NULL destroys nothing");
     CHECK(maudDestroyProbeSet(s, set) == maud_success, "destroyed");
     CHECK(maudDestroyProbeSet(s, set) == maud_errorStale &&
               maudProbeSet_GetInfo(s, set, 0, &info, nullptr, 0) == maud_errorStale,
