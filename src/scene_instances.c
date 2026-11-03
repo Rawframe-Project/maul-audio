@@ -266,7 +266,8 @@ static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const mau
                             (double)PAD_FLOOR);
         box.a[i] = low[i] - pad;
         box.b[i] = high[i] + pad;
-        box.c[i] = 0.5f * (box.a[i] + box.b[i]);
+        // Halved first: two edges above half the float range sum past it.
+        box.c[i] = 0.5f * box.a[i] + 0.5f * box.b[i];
     }
     return box;
 }
