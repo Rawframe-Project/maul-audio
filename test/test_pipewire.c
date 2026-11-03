@@ -489,25 +489,15 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
 }
 
 // A node name of 300 bytes, past 255.
+// A context's text limit, past 255 bytes.
 #define LONG_NAME_BYTES 300
 
-// The effective default, a sink whose name is past 255 bytes, reaches a
-// context whose text limit has room for it.
-static void TestLongNameDefault(maudContext* context, Helper* helper)
+// Plugs in a null sink named maud-test-long- and 'l' to length bytes.
+static struct pw_proxy* PlugLongSink(Helper* helper, char* name, size_t length)
 {
-    maudContextDef def = maudDefaultContextDef();
-    def.backend = maud_backendPipewire;
-    def.limits.deviceTextBytes = 512;
-    maudContext* wide = nullptr;
-    CHECK(maudCreateContext(&def, &wide) == maud_success, "a context with a 512-byte text limit");
-    if (wide == nullptr)
-    {
-        return;
-    }
-    char name[LONG_NAME_BYTES + 1];
     memcpy(name, "maud-test-long-", 15);
-    memset(name + 15, 'l', LONG_NAME_BYTES - 15);
-    name[LONG_NAME_BYTES] = '\0';
+    memset(name + 15, 'l', length - 15);
+    name[length] = '\0';
     pw_thread_loop_lock(helper->loop);
     struct pw_properties* props =
         pw_properties_new("factory.name", "support.null-audio-sink", "node.name", name,
@@ -516,14 +506,40 @@ static void TestLongNameDefault(maudContext* context, Helper* helper)
                                                   PW_VERSION_NODE, &props->dict, 0);
     pw_properties_free(props);
     pw_thread_loop_unlock(helper->loop);
-    maudDeviceId longer = {0, 0};
-    CHECK(WaitFor(wide, maud_notifyDeviceAdded, name, &longer), "the sink is listed");
-    CHECK(SetEffectiveDefault(wide, helper, name, longer), "the default is that sink");
+    return node;
+}
+
+// The effective default, a sink whose name is exactly the context's text
+// limit of 300 bytes, reaches the context. A sink one byte past the limit
+// is left out, so its name can be no device's default.
+static void TestLongNameDefault(maudContext* context, Helper* helper)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendPipewire;
+    def.limits.deviceTextBytes = LONG_NAME_BYTES;
+    maudContext* wide = nullptr;
+    CHECK(maudCreateContext(&def, &wide) == maud_success, "a context with a 300-byte text limit");
+    if (wide == nullptr)
+    {
+        return;
+    }
+    char past[LONG_NAME_BYTES + 2];
+    char name[LONG_NAME_BYTES + 1];
+    // The graph lists nodes in the order they come, so the sink past the
+    // limit has been seen once the other is listed.
+    struct pw_proxy* pastNode = PlugLongSink(helper, past, LONG_NAME_BYTES + 1);
+    struct pw_proxy* node = PlugLongSink(helper, name, LONG_NAME_BYTES);
+    maudDeviceId longest = {0, 0};
+    CHECK(WaitFor(wide, maud_notifyDeviceAdded, name, &longest), "the sink at the limit is listed");
+    maudDeviceId left = {0, 0};
+    CHECK(!FindByKey(wide, maud_directionOutput, past, &left), "the sink past it is left out");
+    CHECK(SetEffectiveDefault(wide, helper, name, longest), "the default is the sink at the limit");
     maudDeviceId sink = {0, 0};
     CHECK(FindByKey(wide, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
     CHECK(SetEffectiveDefault(wide, helper, "maud-test-sink", sink), "the default back");
     pw_thread_loop_lock(helper->loop);
     pw_proxy_destroy(node);
+    pw_proxy_destroy(pastNode);
     pw_thread_loop_unlock(helper->loop);
     CHECK(maudDestroyContext(wide) == maud_success, "destroy the context");
     ResetDefaults(context, helper);

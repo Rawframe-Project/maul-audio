@@ -34,6 +34,11 @@ bool maudPipewireNodeCard(const struct spa_dict* props, uint32_t* cardIdOut,
            spa_atoi32(profileDevice, profileDeviceOut, 10);
 }
 
+size_t maudPipewireDefaultNameBytes(uint32_t limit)
+{
+    return (size_t)limit + 3;
+}
+
 void maudPipewireParseDefaultName(const char* value, char* name, size_t nameBytes)
 {
     name[0] = '\0';

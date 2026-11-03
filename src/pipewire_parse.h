@@ -30,6 +30,13 @@ bool maudPipewireNodeCard(const struct spa_dict* props, uint32_t* cardIdOut,
 // into name, of nameBytes; empty when there is none or it does not fit.
 void maudPipewireParseDefaultName(const char* value, char* name, size_t nameBytes);
 
+// The nameBytes that read every default name of up to limit bytes. SPA
+// reads a JSON string only into a buffer longer than its token, which
+// counts both quotes, so a name takes its length and three. A name the
+// JSON writes with escapes, which only quotes, backslashes and control
+// characters need, has a longer token and reads as none near the limit.
+size_t maudPipewireDefaultNameBytes(uint32_t limit);
+
 // The graph's rate: the forced rate, else the clock's, else fallback.
 uint32_t maudPipewireGraphRate(uint32_t forceRate, uint32_t clockRate, uint32_t fallback);
 

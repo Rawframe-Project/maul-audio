@@ -668,7 +668,7 @@ static maudResult OpenContext(maudContext* context)
         maudLayoutAdd(&layout, capacity, sizeof(maudPipewireCard), alignof(maudPipewireCard));
     size_t entries =
         maudLayoutAdd(&layout, streams, sizeof(maudPipewireStream), alignof(maudPipewireStream));
-    size_t nameBytes = (size_t)context->def.limits.deviceTextBytes + 1;
+    size_t nameBytes = maudPipewireDefaultNameBytes(context->def.limits.deviceTextBytes);
     size_t names = maudLayoutAdd(&layout, 2, nameBytes, 1);
     unsigned char* block = layout.overflow
                                ? nullptr
