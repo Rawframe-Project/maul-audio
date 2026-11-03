@@ -485,6 +485,13 @@ static void TestSend(void)
                              (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
                              16) == maud_errorInvalid,
           "a delay past the longest");
+    // 9601.75 frames, under two past the longest's 9600: it rounds to
+    // the delay line's length, which the line would read as no delay.
+    bad.delay = 0.2000365f;
+    CHECK(maudReverb_Process(r[0], &bad, out[0][0],
+                             (float* const[4]){out[0][0], out[0][1], out[0][2], out[0][3]},
+                             16) == maud_errorInvalid,
+          "a delay under two frames past the longest");
     bad.delay = 0.0f;
     bad.level[1] = 25.0f;
     CHECK(maudReverb_Process(r[0], &bad, out[0][0],
