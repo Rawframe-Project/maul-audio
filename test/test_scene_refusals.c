@@ -306,6 +306,14 @@ static void TestInstancesTurnedNearRange(void)
     moved.position.z = 1e30f;
     CHECK(maudSceneInstance_Move(scene, id, &moved) == maud_success, "and moved");
     CHECK(maudScene_Commit(scene) == maud_success, "a commit of it");
+    // Straight up from the origin a ray runs along the mesh's diagonal
+    // onto its edge at x = y = 2.4e38, 2.4e38 x sqrt(2) x 0.001 away.
+    maudRay up = {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.0f, 1e36f};
+    maudRayHit hit;
+    maudFindClosestHit(&up, 1, &hit, scene);
+    uint8_t occluded = 0;
+    maudFindAnyHit(&up, 1, &occluded, scene);
+    CHECK(fabsf(hit.distance - 3.394113e35f) <= 1e31f && occluded == 1, "a ray meets it");
     maudDestroyScene(scene);
 }
 
