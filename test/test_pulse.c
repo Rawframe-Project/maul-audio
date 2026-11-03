@@ -49,7 +49,8 @@ static maudDeviceId FindByKey(const maudContext* context, maudDirection directio
     CHECK(maudContext_GetDevices(context, direction, ids, 32, &count) == maud_success, "list");
     for (uint32_t i = 0; i < count && i < 32; ++i)
     {
-        char bytes[256];
+        // Room for the longest key a test lists, 300 bytes.
+        char bytes[512];
         size_t length = 0;
         if (maudDevice_GetKey(context, ids[i], bytes, sizeof(bytes), &length) == maud_success &&
             length == strlen(key) && memcmp(bytes, key, length) == 0)
@@ -753,6 +754,92 @@ static void TestPinnedStream(maudContext* context)
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
 }
 
+// A sink name of 300 bytes, past 255, and its first 255 bytes.
+#define LONG_NAME_BYTES  300
+#define SHORT_NAME_BYTES 255
+
+static void LongName(char* name, size_t length)
+{
+    memcpy(name, "maud-pulse-long-", 16);
+    memset(name + 16, 'l', length - 16);
+    name[length] = '\0';
+}
+
+// A context whose text limit has room for a 300-byte key.
+static maudContext* WideContext(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendPulse;
+    def.limits.deviceTextBytes = 512;
+    maudContext* wide = nullptr;
+    CHECK(maudCreateContext(&def, &wide) == maud_success, "a context with a 512-byte text limit");
+    return wide;
+}
+
+// A stream opened on a sink whose name is past 255 bytes plays on that
+// sink, not on the server's default.
+static void TestLongNamePinned(void)
+{
+    maudContext* wide = WideContext();
+    if (wide == nullptr)
+    {
+        return;
+    }
+    char name[LONG_NAME_BYTES + 1];
+    LongName(name, LONG_NAME_BYTES);
+    char command[LONG_NAME_BYTES + 200];
+    snprintf(command, sizeof(command),
+             "pactl load-module module-null-sink sink_name=%s > /dev/null", name);
+    CHECK(Run(command), "load a sink with a 300-byte name");
+    maudDeviceId pinned = WaitForKey(wide, maud_directionOutput, name);
+    CHECK(pinned.index1 != 0, "it is listed");
+    Blocks blocks = {0};
+    maudStreamId stream = OpenStream(wide, maud_directionOutput, pinned, &blocks);
+    CHECK(maudStream_Start(wide, stream) == maud_success, "start");
+    CHECK(WaitForBlocks(wide, &blocks, 20), "it plays");
+    snprintf(command, sizeof(command),
+             "pactl list sink-inputs | grep -q \"Sink: $(pactl list short sinks | "
+             "awk '$2==\"%s\"{print $1}')$\"",
+             name);
+    CHECK(Run(command), "on the sink it was opened on");
+    CHECK(maudDestroyStream(wide, stream) == maud_success, "destroy");
+    CHECK(Run("pactl unload-module module-null-sink"), "unload it");
+    CHECK(maudDestroyContext(wide) == maud_success, "destroy the context");
+}
+
+// The server's default, a sink whose name is past 255 bytes, is that
+// sink, not one named its first 255 bytes.
+static void TestLongNameDefault(maudContext* context)
+{
+    maudContext* wide = WideContext();
+    if (wide == nullptr)
+    {
+        return;
+    }
+    char name[LONG_NAME_BYTES + 1];
+    char shorter[SHORT_NAME_BYTES + 1];
+    LongName(name, LONG_NAME_BYTES);
+    LongName(shorter, SHORT_NAME_BYTES);
+    char command[LONG_NAME_BYTES + 200];
+    snprintf(command, sizeof(command),
+             "pactl load-module module-null-sink sink_name=%s > /dev/null", name);
+    CHECK(Run(command), "load a sink with a 300-byte name");
+    snprintf(command, sizeof(command),
+             "pactl load-module module-null-sink sink_name=%s > /dev/null", shorter);
+    CHECK(Run(command), "load a sink named its first 255 bytes");
+    maudDeviceId longer = WaitForKey(wide, maud_directionOutput, name);
+    CHECK(longer.index1 != 0, "the first is listed");
+    CHECK(WaitForKey(wide, maud_directionOutput, shorter).index1 != 0, "the second is listed");
+    snprintf(command, sizeof(command), "pactl set-default-sink %s", name);
+    CHECK(Run(command), "make the first the default");
+    CHECK(WaitForDefaults(wide, longer), "the default is the first, whole name");
+    CHECK(Run("pactl set-default-sink maud-test-sink"), "restore the default");
+    CHECK(Run("pactl unload-module module-null-sink"), "unload them");
+    CHECK(maudDestroyContext(wide) == maud_success, "destroy the context");
+    CHECK(WaitForDefaults(context, FindByKey(context, maud_directionOutput, "maud-test-sink")),
+          "the first context's default back");
+}
+
 // A native stream on the default follows it to a sink of another rate:
 // the server moves it, and the library reopens it at the new rate and
 // says so; it plays there, and goes back with the default.
@@ -1389,6 +1476,7 @@ int main(int argc, char** argv)
     {
         TestHotplug(context);
         TestListedDefault(context);
+        TestLongNameDefault(context);
         TestFollowRate(context);
         TestLoopback(context);
         CHECK(maudDestroyContext(context) == maud_success, "destroy");
@@ -1403,6 +1491,7 @@ int main(int argc, char** argv)
     TestInputStream(context);
     TestDuplexConverted(context);
     TestPinnedStream(context);
+    TestLongNamePinned();
     TestServerEnded(context);
     TestRebuildFails(context);
     TestRebuildPacing(context);

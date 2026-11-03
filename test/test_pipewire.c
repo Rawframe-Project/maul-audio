@@ -179,7 +179,7 @@ static void UnplugSink(Helper* helper)
 // effective default itself.
 static void SetDefaultKey(Helper* helper, const char* key, const char* nodeName)
 {
-    char value[128];
+    char value[512];
     snprintf(value, sizeof(value), "{ \"name\": \"%s\" }", nodeName);
     pw_thread_loop_lock(helper->loop);
     pw_metadata_set_property(helper->metadata, PW_ID_CORE, key, "Spa:String:JSON", value);
@@ -227,7 +227,8 @@ static void StopHelper(Helper* helper)
 
 static bool KeyIs(const maudContext* context, maudDeviceId device, const char* key)
 {
-    char bytes[64];
+    // Room for the longest key a test lists, 300 bytes.
+    char bytes[512];
     size_t length = 0;
     return maudDevice_GetKey(context, device, bytes, sizeof(bytes), &length) == maud_success &&
            length == strlen(key) && memcmp(bytes, key, length) == 0;
@@ -484,6 +485,47 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     maudDeviceId removed = plugged;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
     CHECK(maudDevice_GetInfo(context, plugged, &info) == maud_errorStale, "its id is stale");
+    ResetDefaults(context, helper);
+}
+
+// A node name of 300 bytes, past 255.
+#define LONG_NAME_BYTES 300
+
+// The effective default, a sink whose name is past 255 bytes, reaches a
+// context whose text limit has room for it.
+static void TestLongNameDefault(maudContext* context, Helper* helper)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendPipewire;
+    def.limits.deviceTextBytes = 512;
+    maudContext* wide = nullptr;
+    CHECK(maudCreateContext(&def, &wide) == maud_success, "a context with a 512-byte text limit");
+    if (wide == nullptr)
+    {
+        return;
+    }
+    char name[LONG_NAME_BYTES + 1];
+    memcpy(name, "maud-test-long-", 15);
+    memset(name + 15, 'l', LONG_NAME_BYTES - 15);
+    name[LONG_NAME_BYTES] = '\0';
+    pw_thread_loop_lock(helper->loop);
+    struct pw_properties* props =
+        pw_properties_new("factory.name", "support.null-audio-sink", "node.name", name,
+                          "media.class", "Audio/Sink", "audio.position", "[FL FR]", nullptr);
+    struct pw_proxy* node = pw_core_create_object(helper->core, "adapter", PW_TYPE_INTERFACE_Node,
+                                                  PW_VERSION_NODE, &props->dict, 0);
+    pw_properties_free(props);
+    pw_thread_loop_unlock(helper->loop);
+    maudDeviceId longer = {0, 0};
+    CHECK(WaitFor(wide, maud_notifyDeviceAdded, name, &longer), "the sink is listed");
+    CHECK(SetEffectiveDefault(wide, helper, name, longer), "the default is that sink");
+    maudDeviceId sink = {0, 0};
+    CHECK(FindByKey(wide, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
+    CHECK(SetEffectiveDefault(wide, helper, "maud-test-sink", sink), "the default back");
+    pw_thread_loop_lock(helper->loop);
+    pw_proxy_destroy(node);
+    pw_thread_loop_unlock(helper->loop);
+    CHECK(maudDestroyContext(wide) == maud_success, "destroy the context");
     ResetDefaults(context, helper);
 }
 
@@ -1420,6 +1462,7 @@ int main(int argc, char** argv)
         if (helped && s_defaultsOnly)
         {
             TestHotplugAndDefaults(context, &helper);
+            TestLongNameDefault(context, &helper);
             TestStreamsMoveAndAreLost(context, &helper);
         }
         if (helped)

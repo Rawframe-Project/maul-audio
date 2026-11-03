@@ -27,7 +27,7 @@ bool maudPipewireNodeCard(const struct spa_dict* props, uint32_t* cardIdOut,
                           int32_t* profileDeviceOut);
 
 // Reads the node name out of a default metadata value, {"name": "..."},
-// into name, of nameBytes; empty when there is none.
+// into name, of nameBytes; empty when there is none or it does not fit.
 void maudPipewireParseDefaultName(const char* value, char* name, size_t nameBytes);
 
 // The graph's rate: the forced rate, else the clock's, else fallback.
