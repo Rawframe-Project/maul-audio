@@ -227,7 +227,11 @@ all_c_files() { git ls-files 'include/*.h' 'src/*.[chm]' 'test/*.[chm]' 'tools/*
 # assertions compile out, and with them live. Each hides findings the
 # other shows. It checks the Linux build's sources under src/: every one
 # for "all", otherwise those among the paths given, and none when no path
-# given is one of them.
+# given is one of them. The header filter is given here because clang-tidy
+# 20, run from the repository's root, does not take .clang-tidy's
+# HeaderFilterRegex and reports nothing in headers. It is anchored at the
+# repository, so that headers fetched under out/ are not taken for this
+# library's.
 tidy() { # "all", or the paths to check
     local build tree files
     for build in Release Debug; do
@@ -249,7 +253,7 @@ sys.stdout.write("".join(f + "\n" for f in sorted(files)))' "$tree" "$root" "$@"
         step "clang-tidy, $build, on ${#files[@]} of the Linux build's sources"
         [ ${#files[@]} -gt 0 ] || continue
         printf '%s\n' "${files[@]}" | xargs -P "$jobs" -n 1 clang-tidy-20 -p "$tree" --quiet \
-            --warnings-as-errors='*' 2>/dev/null
+            --warnings-as-errors='*' --header-filter="^$root/(src|include)/" 2>/dev/null
     done
 }
 
