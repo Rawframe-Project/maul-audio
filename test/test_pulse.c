@@ -36,6 +36,12 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+// How long one test may take, in seconds: the longest takes about 12,
+// and ctest would stop the whole suite only at 300, saying nothing of
+// where it stood. It also bounds the daemon's stops and starts that
+// TestRestart and TestHostSuspended make, before DAEMON_SECONDS would.
+#define TEST_SECONDS 60
+
 static bool SameDevice(maudDeviceId a, maudDeviceId b)
 {
     return a.index1 == b.index1 && a.generation == b.generation;
@@ -155,11 +161,12 @@ static void PrintDefaults(const maudContext* context)
         }
     }
     fflush(stdout);
-    int status = system("echo \"the server's default sink: $(pactl get-default-sink)\";"
-                        " echo \"the server's sinks:\"; pactl list short sinks;"
-                        " echo \"the daemon's default metadata:\"; pw-metadata -n default 0;"
-                        " echo \"the daemon's metadata objects:\";"
-                        " pw-cli ls Metadata | grep -E '^[[:space:]]*id |metadata.name'");
+    const char* view = "echo \"the server's default sink: $(pactl get-default-sink)\";"
+                       " echo \"the server's sinks:\"; pactl list short sinks;"
+                       " echo \"the daemon's default metadata:\"; pw-metadata -n default 0;"
+                       " echo \"the daemon's metadata objects:\";"
+                       " pw-cli ls Metadata | grep -E '^[[:space:]]*id |metadata.name'";
+    int status = RunBounded(view, COMMAND_SECONDS);
     if (status != 0)
     {
         printf("the server's view could not be read (status %d)\n", status);
@@ -398,18 +405,19 @@ static maudStreamId OpenStream(maudContext* context, maudDirection direction, ma
 
 static bool Run(const char* command)
 {
-    return system(command) == 0;
+    return RunBounded(command, COMMAND_SECONDS) == 0;
 }
 
 // Whether the one sink input is corked: 1 yes, 0 no, -1 none.
 static int Corked(void)
 {
-    FILE* listing = popen("pactl list sink-inputs | grep 'Corked:'", "r");
+    const char* command = "pactl list sink-inputs | grep 'Corked:'";
+    FILE* listing = OpenBounded(command, COMMAND_SECONDS);
     char line[64] = {0};
     bool read = listing != nullptr && fgets(line, sizeof(line), listing) != nullptr;
     if (listing != nullptr)
     {
-        pclose(listing);
+        (void)CloseBounded(listing, command, COMMAND_SECONDS);
     }
     return !read ? -1 : strstr(line, "yes") != nullptr ? 1 : 0;
 }
@@ -1451,8 +1459,65 @@ static void TestExclusiveRefused(maudContext* context)
           "exclusive use is refused");
 }
 
+// The test running now, or NULL, and the watchdog's 100 ms ticks since
+// it began. Past TEST_SECONDS the watchdog ends the suite, naming the
+// test, so a wait nothing else bounds fails in seconds and says where.
+static _Atomic(const char*) s_running;
+static atomic_int s_ticks;
+static struct timespec s_began;
+
+static void* Watch(void* unused)
+{
+    (void)unused;
+    for (;;)
+    {
+        Pause(100);
+        const char* name = atomic_load(&s_running);
+        if (name != nullptr && atomic_fetch_add(&s_ticks, 1) + 1 > TEST_SECONDS * 10)
+        {
+            printf("FAIL: %s ran past its %d s bound\n", name, TEST_SECONDS);
+            _exit(1);
+        }
+    }
+    return nullptr;
+}
+
+static void Begin(const char* name)
+{
+    clock_gettime(CLOCK_MONOTONIC, &s_began);
+    atomic_store(&s_ticks, 0);
+    atomic_store(&s_running, name);
+}
+
+static void End(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    double seconds =
+        (double)(now.tv_sec - s_began.tv_sec) + (double)(now.tv_nsec - s_began.tv_nsec) * 1e-9;
+    printf("%s: %.1f s\n", atomic_load(&s_running), seconds);
+    atomic_store(&s_running, (const char*)nullptr);
+}
+
+// Runs one test under the watchdog's bound and says how long it took.
+#define RUN(call)                                                                                  \
+    do                                                                                             \
+    {                                                                                              \
+        Begin(#call);                                                                              \
+        call;                                                                                      \
+        End();                                                                                     \
+    } while (0)
+
 int main(int argc, char** argv)
 {
+    // What the suite printed before a hang reaches the log: ctest reads
+    // a pipe, which would hold it in a buffer the watchdog's exit drops.
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    pthread_t watchdog;
+    if (pthread_create(&watchdog, nullptr, Watch, nullptr) == 0)
+    {
+        pthread_detach(watchdog);
+    }
     // The quarantined runs: pulse_rate ("test_pulse rate"), the output
     // stream's rate alone, and pulse_defaults ("test_pulse defaults"),
     // the tests that change the server's default.
@@ -1462,43 +1527,46 @@ int main(int argc, char** argv)
     maudContextDef def = maudDefaultContextDef();
     def.backend = maud_backendPulse;
     maudContext* context = nullptr;
-    if (maudCreateContext(&def, &context) != maud_success)
+    Begin("maudCreateContext");
+    maudResult made = maudCreateContext(&def, &context);
+    End();
+    if (made != maud_success)
     {
         return getenv("MAUD_REQUIRE_PULSE") != nullptr ? 1 : PlatformAbsent("no PulseAudio server");
     }
     if (rateOnly)
     {
-        TestOutputRate(context);
-        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        RUN(TestOutputRate(context));
+        RUN(CHECK(maudDestroyContext(context) == maud_success, "destroy"));
         return RateSuiteResult();
     }
     if (defaultsOnly)
     {
-        TestHotplug(context);
-        TestListedDefault(context);
-        TestLongNameDefault(context);
-        TestFollowRate(context);
-        TestLoopback(context);
-        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+        RUN(TestHotplug(context));
+        RUN(TestListedDefault(context));
+        RUN(TestLongNameDefault(context));
+        RUN(TestFollowRate(context));
+        RUN(TestLoopback(context));
+        RUN(CHECK(maudDestroyContext(context) == maud_success, "destroy"));
         return RateSuiteResult();
     }
-    TestDevices(context);
-    TestMark(context);
-    TestOutputStream(context);
-    TestMono(context);
-    TestUnderrun(context);
-    TestExclusiveRefused(context);
-    TestInputStream(context);
-    TestDuplexConverted(context);
-    TestPinnedStream(context);
-    TestLongNamePinned();
-    TestServerEnded(context);
-    TestRebuildFails(context);
-    TestRebuildPacing(context);
-    TestRestart(context);
-    TestHostSuspended(context);
-    CHECK(maudDestroyContext(context) == maud_success, "destroy");
-    TestLimits();
-    TestNativeFallback();
+    RUN(TestDevices(context));
+    RUN(TestMark(context));
+    RUN(TestOutputStream(context));
+    RUN(TestMono(context));
+    RUN(TestUnderrun(context));
+    RUN(TestExclusiveRefused(context));
+    RUN(TestInputStream(context));
+    RUN(TestDuplexConverted(context));
+    RUN(TestPinnedStream(context));
+    RUN(TestLongNamePinned());
+    RUN(TestServerEnded(context));
+    RUN(TestRebuildFails(context));
+    RUN(TestRebuildPacing(context));
+    RUN(TestRestart(context));
+    RUN(TestHostSuspended(context));
+    RUN(CHECK(maudDestroyContext(context) == maud_success, "destroy"));
+    RUN(TestLimits());
+    RUN(TestNativeFallback());
     return RateSuiteResult();
 }
