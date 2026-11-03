@@ -23,7 +23,9 @@
 //   maud_errorLimit exactly when its box holds too many columns;
 // - making and moving an instance succeed exactly when its mesh is in
 //   range and its transform finite with a nonzero orientation and a
-//   scale in range, past the capacity it is maud_errorCapacity, a
+//   scale in range, and the placed mesh is surely within the float
+//   range; one placed near or past that range may be refused as
+//   invalid; past the capacity it is maud_errorCapacity, a
 //   destroyed instance's id is maud_errorStale, and every refusal for
 //   an invalid argument counts as misuse;
 // - with every instance destroyed and committed, the rays answer
@@ -312,6 +314,19 @@ static bool TransformValid(const maudSceneInstanceTransform* t)
            t->scale >= 0.001f && t->scale <= 1000.0f;
 }
 
+// Whether a mesh whose vertices are within reach on every axis, placed
+// by a valid transform, is surely within the float range: a turned
+// corner is within sqrt(3) x reach on each axis, the commit pads a box
+// by a little over 4e-5 of its reach, and the box's midpoint sums two
+// corners, so a bound well below half of FLT_MAX is surely taken.
+static bool SurelyInRange(const maudSceneInstanceTransform* t, double reach)
+{
+    double far = fmax(fmax(fabs((double)t->position.x), fabs((double)t->position.y)),
+                      fabs((double)t->position.z)) +
+                 (double)t->scale * sqrt(3.0) * reach;
+    return far * 1.001 + 1.0 < 1e38;
+}
+
 // The id a call names: one an earlier call got, or, past those, 0 or
 // one past the capacity, which no instance has.
 static maudSceneInstanceId Named(const Made* made, uint8_t which, uint32_t capacity, int* slot)
@@ -326,7 +341,8 @@ static maudSceneInstanceId Named(const Made* made, uint8_t which, uint32_t capac
 }
 
 // Makes an instance of mesh 0 or of mesh 1, which the scene lacks.
-static maudResult Create(maudScene* scene, const Call* call, uint32_t capacity, Made* made)
+static maudResult Create(maudScene* scene, const Call* call, uint32_t capacity, double reach,
+                         Made* made)
 {
     maudSceneInstanceId id = {7, 7};
     maudResult r = maudCreateSceneInstance(scene, call->which % 2, &call->transform, &id);
@@ -337,9 +353,13 @@ static maudResult Create(maudScene* scene, const Call* call, uint32_t capacity, 
         // Both refusals apply to an invalid call on a full scene.
         Expect(r == maud_errorInvalid || (full && r == maud_errorCapacity));
     }
-    else
+    else if (SurelyInRange(&call->transform, reach))
     {
         Expect(r == (full ? maud_errorCapacity : maud_success));
+    }
+    else
+    {
+        Expect(r == maud_errorInvalid || r == (full ? maud_errorCapacity : maud_success));
     }
     Expect((r == maud_success) == (id.index1 != 0));
     if (r == maud_success && made->count < MAX_CALLS)
@@ -351,7 +371,8 @@ static maudResult Create(maudScene* scene, const Call* call, uint32_t capacity, 
     return r;
 }
 
-static maudResult Change(maudScene* scene, const Call* call, uint32_t capacity, Made* made)
+static maudResult Change(maudScene* scene, const Call* call, uint32_t capacity, double reach,
+                         Made* made)
 {
     int slot = -1;
     maudSceneInstanceId id = Named(made, call->which, capacity, &slot);
@@ -361,6 +382,7 @@ static maudResult Change(maudScene* scene, const Call* call, uint32_t capacity, 
     {
         maudResult r = maudSceneInstance_Move(scene, id, &call->transform);
         bool valid = TransformValid(&call->transform);
+        bool sure = valid && SurelyInRange(&call->transform, reach);
         if (!known)
         {
             Expect(r == maud_errorInvalid);
@@ -368,11 +390,15 @@ static maudResult Change(maudScene* scene, const Call* call, uint32_t capacity, 
         else if (!live)
         {
             // Both refusals apply to an invalid transform for a destroyed id.
-            Expect(r == maud_errorStale || (!valid && r == maud_errorInvalid));
+            Expect(r == maud_errorStale || (!sure && r == maud_errorInvalid));
+        }
+        else if (!valid || sure)
+        {
+            Expect(r == (valid ? maud_success : maud_errorInvalid));
         }
         else
         {
-            Expect(r == (valid ? maud_success : maud_errorInvalid));
+            Expect(r == maud_success || r == maud_errorInvalid);
         }
         return r;
     }
@@ -389,7 +415,8 @@ static maudResult Change(maudScene* scene, const Call* call, uint32_t capacity, 
 // Runs the calls; a commit asks the rays. Then destroys every instance
 // and commits: the rays must answer as they did before.
 static void CheckInstances(maudScene* scene, const Call* calls, uint32_t callCount,
-                           uint32_t capacity, const maudVector3* points, uint32_t count)
+                           uint32_t capacity, double reach, const maudVector3* points,
+                           uint32_t count)
 {
     static maudRay rays[MAX_POINTS];
     static maudRayHit before[MAX_POINTS];
@@ -408,11 +435,11 @@ static void CheckInstances(maudScene* scene, const Call* calls, uint32_t callCou
         switch (calls[c].kind)
         {
         case CALL_CREATE:
-            r = Create(scene, &calls[c], capacity, &made);
+            r = Create(scene, &calls[c], capacity, reach, &made);
             break;
         case CALL_MOVE:
         case CALL_DESTROY:
-            r = Change(scene, &calls[c], capacity, &made);
+            r = Change(scene, &calls[c], capacity, reach, &made);
             break;
         default:
             r = maudScene_Commit(scene);
@@ -506,7 +533,14 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     CheckRays(scene, points, count);
     if (scene != nullptr && instancing)
     {
-        CheckInstances(scene, calls, callCount, capacity, points, count);
+        // The instancing mesh's farthest coordinate, a bound on its box.
+        double reach = 0.0;
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+            reach = fmax(reach, fmax(fmax(fabs((double)vertices[i].x), fabs((double)vertices[i].y)),
+                                     fabs((double)vertices[i].z)));
+        }
+        CheckInstances(scene, calls, callCount, capacity, reach, points, count);
     }
     CheckProbes(scene, points, count, &box, range, generate);
     maudDestroyScene(scene);
