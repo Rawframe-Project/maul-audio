@@ -13,7 +13,8 @@
 // transforms out of range are refused, and only the invalid arguments
 // count as misuse; a freed slot is taken again
 // under a new id; an allocator that fails at any of the scene's blocks
-// is a capacity error with nothing leaked.
+// is a capacity error with nothing leaked; a ray grazing a turned box far
+// from its own origin is not culled.
 
 #include "test_harness.h"
 
@@ -491,6 +492,38 @@ static void TestFailingAllocator(void)
     CHECK(s_live == 0, "every block returned");
 }
 
+// A box 1 cm wide whose own coordinates sit near (1000, 1000), turned 45
+// degrees about z: its world x spans only about +-0.00703, but each term
+// of a corner's x is about 707, and the box around the instance must take
+// those terms' rounding. Taken into the box's own frame, rays straight
+// down from y = 1500 hit it up to x = 0.006991; one at x = 0.006975 is
+// hit there, and the box around it must not cull it.
+static void TestGrazingTurned(void)
+{
+    Box b;
+    MakeBox(&b, (maudVector3){1000.0f, 1000.0f, -0.005f}, (maudVector3){1000.01f, 1000.01f, 0.005f},
+            0);
+    maudSceneDef def = maudDefaultSceneDef();
+    def.instanceMeshes = &b.mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 1;
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    maudSceneInstanceTransform turned = {
+        {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.38268343f, 0.92387953f}, 1.0f};
+    maudSceneInstanceId id;
+    CHECK(maudCreateSceneInstance(scene, 0, &turned, &id) == maud_success &&
+              maudScene_Commit(scene) == maud_success,
+          "a turned box near (1000, 1000)");
+    maudRay ray = {{0.006975f, 1500.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 0.0f, 200.0f};
+    uint8_t occluded = 0;
+    maudFindAnyHit(&ray, 1, &occluded, scene);
+    maudRayHit hit;
+    maudFindClosestHit(&ray, 1, &hit, scene);
+    CHECK(occluded == 1 && hit.distance <= ray.maxDistance, "a ray grazing its edge hits it");
+    maudDestroyScene(scene);
+}
+
 int main(void)
 {
     MakeBox(&s_unit, (maudVector3){-0.5f, -0.5f, -0.5f}, (maudVector3){0.5f, 0.5f, 0.5f}, 10);
@@ -503,5 +536,6 @@ int main(void)
     TestRefused();
     TestAnyLength();
     TestFailingAllocator();
+    TestGrazingTurned();
     return s_failures == 0 ? 0 : 1;
 }

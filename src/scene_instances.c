@@ -232,12 +232,16 @@ static void Place(const maudSceneInstance* slot, maudPlacedInstance* p)
 // The world box of a placed mesh's bounds, padded: every local point's
 // world image lies inside despite rounding. Each term is scaled before
 // the sum: a turned corner of a mesh near the float range would sum past
-// it before a scale below 1 brought it back.
+// it before a scale below 1 brought it back. The rounding follows the
+// terms, not their sum, which can cancel to far less, so the pad takes
+// the largest sum of their magnitudes on each axis, in double: that sum
+// can pass the float range while the corners stay inside it.
 static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const maudBvhNode* root,
                              uint32_t slot)
 {
     float low[3] = {INFINITY, INFINITY, INFINITY};
     float high[3] = {-INFINITY, -INFINITY, -INFINITY};
+    double magnitude[3] = {0.0, 0.0, 0.0};
     for (int corner = 0; corner < 8; ++corner)
     {
         float local[3] = {(corner & 1) ? root->max[0] : root->min[0],
@@ -245,17 +249,21 @@ static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const mau
                           (corner & 4) ? root->max[2] : root->min[2]};
         for (int i = 0; i < 3; ++i)
         {
-            float v = p->position[i] + scale * p->rotation[3 * i] * local[0] +
-                      scale * p->rotation[3 * i + 1] * local[1] +
-                      scale * p->rotation[3 * i + 2] * local[2];
+            float t0 = scale * p->rotation[3 * i] * local[0];
+            float t1 = scale * p->rotation[3 * i + 1] * local[1];
+            float t2 = scale * p->rotation[3 * i + 2] * local[2];
+            float v = p->position[i] + t0 + t1 + t2;
             low[i] = fminf(low[i], v);
             high[i] = fmaxf(high[i], v);
+            magnitude[i] = fmax(magnitude[i], fabs((double)p->position[i]) + fabs((double)t0) +
+                                                  fabs((double)t1) + fabs((double)t2));
         }
     }
     maudTriangle box = {.index = slot};
     for (int i = 0; i < 3; ++i)
     {
-        float pad = PAD_SHARE * (high[i] - low[i] + fabsf(low[i]) + fabsf(high[i])) + PAD_FLOOR;
+        float pad = (float)((double)PAD_SHARE * ((double)(high[i] - low[i]) + 2.0 * magnitude[i]) +
+                            (double)PAD_FLOOR);
         box.a[i] = low[i] - pad;
         box.b[i] = high[i] + pad;
         box.c[i] = 0.5f * (box.a[i] + box.b[i]);

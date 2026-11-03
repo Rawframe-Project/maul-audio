@@ -317,11 +317,36 @@ static void TestInstancesTurnedNearRange(void)
     maudDestroyScene(scene);
 }
 
+// A thin mesh near (1.2e38, 1.2e38, 1.2e38), turned 60 degrees about
+// (1, 1, 1): each world row is 2/3, -1/3 and 2/3 of it, so its corners
+// land near 1.2e38, inside the float range, though the magnitudes of the
+// terms sum to 2e38 and twice that would overflow a float. It is taken.
+static void TestInstanceTermsPastHalfRange(void)
+{
+    static maudVector3 thin[8];
+    Cube(thin, 1.2e38f, 1.2001e38f);
+    maudMesh mesh = {thin, 8, s_faces, s_materials, 12};
+    maudSceneDef def = maudDefaultSceneDef();
+    def.instanceMeshes = &mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 1;
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    maudSceneInstanceTransform turned = {
+        {0.0f, 0.0f, 0.0f}, {0.28867513f, 0.28867513f, 0.28867513f, 0.8660254f}, 1.0f};
+    maudSceneInstanceId id = {0, 0};
+    CHECK(maudCreateSceneInstance(scene, 0, &turned, &id) == maud_success &&
+              maudScene_Commit(scene) == maud_success,
+          "a mesh whose terms sum past half the float range taken");
+    maudDestroyScene(scene);
+}
+
 int main(void)
 {
     TestDefs();
     TestInstances();
     TestInstancesPastRange();
     TestInstancesTurnedNearRange();
+    TestInstanceTermsPastHalfRange();
     return s_failures == 0 ? 0 : 1;
 }
