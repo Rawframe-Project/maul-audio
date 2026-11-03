@@ -230,7 +230,9 @@ static void Place(const maudSceneInstance* slot, maudPlacedInstance* p)
 }
 
 // The world box of a placed mesh's bounds, padded: every local point's
-// world image lies inside despite rounding.
+// world image lies inside despite rounding. Each term is scaled before
+// the sum: a turned corner of a mesh near the float range would sum past
+// it before a scale below 1 brought it back.
 static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const maudBvhNode* root,
                              uint32_t slot)
 {
@@ -243,9 +245,9 @@ static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const mau
                           (corner & 4) ? root->max[2] : root->min[2]};
         for (int i = 0; i < 3; ++i)
         {
-            float v = p->position[i] +
-                      scale * (p->rotation[3 * i] * local[0] + p->rotation[3 * i + 1] * local[1] +
-                               p->rotation[3 * i + 2] * local[2]);
+            float v = p->position[i] + scale * p->rotation[3 * i] * local[0] +
+                      scale * p->rotation[3 * i + 1] * local[1] +
+                      scale * p->rotation[3 * i + 2] * local[2];
             low[i] = fminf(low[i], v);
             high[i] = fmaxf(high[i], v);
         }
