@@ -18,6 +18,7 @@
 #include "coreaudio_stream.h"
 #include "device.h"
 #include "layout.h"
+#include "utf8.h"
 
 #include <string.h>
 
@@ -46,6 +47,32 @@ static bool ReadText(AudioObjectID object, AudioObjectPropertySelector selector,
     bool ok = CFStringGetCString(text, out, (CFIndex)capacity, kCFStringEncodingUTF8);
     CFRelease(text);
     return ok;
+}
+
+// Reads a device's name as UTF-16 into out, cut after the last whole
+// character that fits and a surrogate without its pair as U+FFFD; false
+// when the device has none. CFStringGetCString would refuse a name that
+// does not fit, or one holding such a surrogate.
+static bool ReadName(AudioObjectID object, char* out, size_t capacity)
+{
+    AudioObjectPropertyAddress address =
+        maudCoreAudioAddress(kAudioObjectPropertyName, kAudioObjectPropertyScopeGlobal);
+    CFStringRef text = nullptr;
+    UInt32 size = sizeof(text);
+    if (AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, (void*)&text) != noErr ||
+        text == nullptr)
+    {
+        return false;
+    }
+    // As many units as the name has bytes: each unit takes at least one.
+    UniChar units[MAUD_COREAUDIO_NAME_BYTES];
+    CFIndex length = CFStringGetLength(text);
+    CFIndex taken =
+        length < (CFIndex)MAUD_COREAUDIO_NAME_BYTES ? length : (CFIndex)MAUD_COREAUDIO_NAME_BYTES;
+    CFStringGetCharacters(text, CFRangeMake(0, taken), units);
+    CFRelease(text);
+    maudUtf16ToUtf8(out, capacity, units, (size_t)taken);
+    return true;
 }
 
 // Reads a variable-size property into the scratch buffer; returns its
@@ -143,7 +170,7 @@ static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object, maudDirecti
     {
         return false;
     }
-    if (!ReadText(object, kAudioObjectPropertyName, endpoint->name, sizeof(endpoint->name)))
+    if (!ReadName(object, endpoint->name, sizeof(endpoint->name)))
     {
         memcpy(endpoint->name, endpoint->key, sizeof(endpoint->key));
     }

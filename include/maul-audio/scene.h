@@ -192,9 +192,10 @@ extern "C"
     /// @param transform    Where it is.
     /// @param instanceOut  Receives the instance; 0 on failure.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a
-    ///         mesh out of range or a transform out of range or not
-    ///         finite; `maud_errorCapacity` when the scene has its
-    ///         capacity of instances.
+    ///         mesh out of range, a transform out of range or not finite,
+    ///         or one that puts the mesh's bounds past the float range;
+    ///         `maud_errorCapacity` when the scene has its capacity of
+    ///         instances.
     /// @par Thread safety
     /// Safe from any thread; the scene is used by one thread at a time.
     /// Changes and commits must not overlap its queries.
@@ -208,7 +209,8 @@ extern "C"
     /// @param instance   The instance.
     /// @param transform  Where it is now.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a 0
-    ///         or unknown id or a transform out of range or not finite;
+    ///         or unknown id, a transform out of range or not finite, or
+    ///         one that puts the mesh's bounds past the float range;
     ///         `maud_errorStale` for a destroyed instance's id.
     /// @par Thread safety
     /// Safe from any thread; the scene is used by one thread at a time.

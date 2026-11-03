@@ -177,6 +177,10 @@ stop)
         record_file=$dir/$name.pid
         if running "$record_file"; then
             read -r pid _ < "$record_file"
+            # A process a test stopped (signal STOP) and never continued,
+            # because the test was killed first, holds SIGTERM pending
+            # until it runs again: continue it, then end it.
+            kill -CONT "$pid" 2>/dev/null || true
             kill "$pid"
             deadline=$((SECONDS + LIMIT))
             while running "$record_file"; do
