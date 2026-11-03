@@ -44,9 +44,16 @@ void maudRemoveDevice(maudContext* context, maudDeviceSlot* slot);
 // (NULL for none); every spec not yet a device is added; a device whose
 // layout or rates changed takes the new ones, and native streams their
 // rate; one whose form changed reports its new route. Devices match by
-// direction and key. maud_errorCapacity when the table is full.
+// direction and key; a spec whose key is past the text limit is left
+// out. maud_errorCapacity when the table is full.
 maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, uint32_t count,
                            const char* kept);
+
+// Whether a key of keyLength bytes fits the context's text limit. A key
+// is never cut, so a device whose key does not fit is left out: a
+// backend asks before it gives the device a place in its scan, so that
+// the device takes none a device that fits could have.
+bool maudKeyFits(const maudContext* context, size_t keyLength);
 
 // The live device of direction whose key is key, length bytes, or the
 // null id.

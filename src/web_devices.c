@@ -170,6 +170,11 @@ maudResult maudWebSyncDevices(maudContext* context)
         maudDirection direction =
             (maudDirection)maudWebDeviceAt(web->handle, i, endpoint->key, sizeof(endpoint->key),
                                            endpoint->name, sizeof(endpoint->name));
+        // A device whose key is past the text limit takes no place.
+        if (!maudKeyFits(context, strlen(endpoint->key)))
+        {
+            continue;
+        }
         web->specs[count++] = (maudDeviceSpec){
             .info = {.direction = direction,
                      .nativeLayout =

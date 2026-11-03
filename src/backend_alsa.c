@@ -35,9 +35,14 @@ snd_local_error_handler_t maudAlsaQuiet(const maudAlsaApi* api)
 }
 
 // The default PCMs the device table holds: one per direction, or the
-// output's alone in a table of one.
+// output's alone in a table of one; none when their key, "default", is
+// past the text limit, since a key is never cut.
 static uint32_t DefaultCount(const maudContext* context)
 {
+    if (!maudKeyFits(context, 7))
+    {
+        return 0;
+    }
     return context->def.limits.devices < 2 ? 1u : 2u;
 }
 

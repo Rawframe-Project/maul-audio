@@ -300,6 +300,19 @@ float* maudWebRender(maudContext* context, int slotIndex, int frames, double lat
     return chunk;
 }
 
+// The Default devices the table holds: one per direction, or the
+// output's alone in a table of one; none when their key, "default", is
+// past the text limit, since a key is never cut. The browser's devices
+// take the places they leave.
+static uint32_t DefaultCount(const maudContext* context)
+{
+    if (!maudKeyFits(context, 7))
+    {
+        return 0;
+    }
+    return context->def.limits.devices < 2 ? 1u : 2u;
+}
+
 static maudResult OpenContext(maudContext* context)
 {
     uint32_t streams = context->def.limits.streams;
@@ -322,8 +335,7 @@ static maudResult OpenContext(maudContext* context)
                      .streams = (maudWebStream*)(block + entries),
                      .specs = (maudDeviceSpec*)(block + specs),
                      .endpoints = (maudWebEndpoint*)(block + endpoints),
-                     // The Default devices take two places of the table.
-                     .endpointCapacity = devices > 2 ? devices - 2 : 0,
+                     .endpointCapacity = devices - DefaultCount(context),
                      .bytes = layout.size};
     memset(web->streams, 0, (size_t)streams * sizeof(maudWebStream));
     context->native = web;
@@ -352,14 +364,14 @@ static maudResult OpenContext(maudContext* context)
         .keyLength = 7,
     };
     maudDeviceId device;
-    maudResult result = maudAddDevice(context, &spec, &device);
+    uint32_t defaults = DefaultCount(context);
+    maudResult result = defaults > 0 ? maudAddDevice(context, &spec, &device) : maud_success;
     // The microphone, mono until the host asks for more; the browser
-    // mixes the track to the stream's channels. A table of one device
-    // holds the output alone.
+    // mixes the track to the stream's channels.
     spec.info.direction = maud_directionInput;
     spec.info.nativeLayout = maud_layoutMono;
     result =
-        result == maud_success && devices > 1 ? maudAddDevice(context, &spec, &device) : result;
+        result == maud_success && defaults > 1 ? maudAddDevice(context, &spec, &device) : result;
     context->held = maudWebHeld(web->handle) != 0;
     if (result == maud_success)
     {

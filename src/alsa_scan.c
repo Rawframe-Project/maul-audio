@@ -25,10 +25,11 @@ maudDeviceForm maudAlsaFormOfPcm(const char* name)
     return maud_formUnknown;
 }
 
-// Lists one card device's endpoint in one direction, if the card has it.
+// Lists one card device's endpoint in one direction, if the card has it
+// and its key fits the endpoint's buffer and textLimit.
 static bool ScanEndpoint(const maudAlsaApi* api, snd_ctl_t* ctl, const char* cardId,
                          const char* cardName, int device, maudDirection direction,
-                         maudAlsaEndpoint* endpoint)
+                         size_t textLimit, maudAlsaEndpoint* endpoint)
 {
     alignas(max_align_t) unsigned char infoBytes[MAUD_ALSA_STRUCT_BYTES];
     snd_pcm_info_t* info = (snd_pcm_info_t*)infoBytes;
@@ -49,12 +50,13 @@ static bool ScanEndpoint(const maudAlsaApi* api, snd_ctl_t* ctl, const char* car
     size_t named = maudCopyUtf8(endpoint->name, sizeof(endpoint->name), cardName);
     named += maudCopyUtf8(endpoint->name + named, sizeof(endpoint->name) - named, ", ");
     maudCopyUtf8(endpoint->name + named, sizeof(endpoint->name) - named, api->pcmInfoGetName(info));
-    return keyLength > 0 && (size_t)keyLength < sizeof(endpoint->key);
+    return keyLength > 0 && (size_t)keyLength < sizeof(endpoint->key) &&
+           (size_t)keyLength <= textLimit;
 }
 
 // Lists every endpoint of one card from count on; returns the new count.
 static uint32_t ScanCard(const maudAlsaApi* api, int card, maudAlsaEndpoint* endpoints,
-                         uint32_t count, uint32_t capacity)
+                         uint32_t count, uint32_t capacity, size_t textLimit)
 {
     char ctlName[32];
     snprintf(ctlName, sizeof(ctlName), "hw:%d", card);
@@ -76,7 +78,7 @@ static uint32_t ScanCard(const maudAlsaApi* api, int card, maudAlsaEndpoint* end
             for (int direction = 0; direction < 2 && count < capacity; ++direction)
             {
                 count += ScanEndpoint(api, ctl, id, name, device, (maudDirection)direction,
-                                      &endpoints[count])
+                                      textLimit, &endpoints[count])
                              ? 1u
                              : 0u;
             }
@@ -87,20 +89,20 @@ static uint32_t ScanCard(const maudAlsaApi* api, int card, maudAlsaEndpoint* end
 }
 
 uint32_t maudAlsaScan(const maudAlsaApi* api, maudAlsaEndpoint* endpoints, maudDeviceSpec* specs,
-                      uint32_t capacity, size_t nameLimit)
+                      uint32_t capacity, size_t textLimit)
 {
     uint32_t count = 0;
     int card = -1;
     while (count < capacity && api->cardNext(&card) == 0 && card >= 0)
     {
-        count = ScanCard(api, card, endpoints, count, capacity);
+        count = ScanCard(api, card, endpoints, count, capacity, textLimit);
     }
     for (uint32_t i = 0; i < count; ++i)
     {
         specs[i] = (maudDeviceSpec){
             .info = {.direction = endpoints[i].direction, .form = endpoints[i].form},
             .name = endpoints[i].name,
-            .nameLength = maudCutUtf8(endpoints[i].name, nameLimit),
+            .nameLength = maudCutUtf8(endpoints[i].name, textLimit),
             .key = endpoints[i].key,
             .keyLength = strlen(endpoints[i].key),
         };

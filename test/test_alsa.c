@@ -562,6 +562,54 @@ static void TestDeviceLimit(void)
     }
 }
 
+// Whether every device of direction has a key and a name within limit
+// bytes.
+static bool TextWithin(const maudContext* context, maudDirection direction, size_t limit)
+{
+    maudDeviceId ids[64];
+    uint32_t count = 0;
+    bool within = maudContext_GetDevices(context, direction, ids, 64, &count) == maud_success;
+    for (uint32_t i = 0; i < count && i < 64 && within; ++i)
+    {
+        char text[64];
+        size_t key = 0;
+        size_t name = 0;
+        within = maudDevice_GetKey(context, ids[i], text, sizeof(text), &key) == maud_success &&
+                 maudDevice_GetName(context, ids[i], text, sizeof(text), &name) == maud_success &&
+                 key <= limit && name <= limit;
+    }
+    return within;
+}
+
+// A context whose text limit is shorter than a device's key leaves that
+// device out, and never refuses the context: below the 7 bytes of
+// "default" the default PCMs, and below a card's "hw:CARD=...,DEV=..."
+// that card's endpoints. A key is never cut, since a cut key could name
+// another device.
+static void TestTextLimit(void)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendAlsa;
+    for (uint32_t limit = 1; limit <= 18; ++limit)
+    {
+        def.limits.deviceTextBytes = limit;
+        maudContext* context = nullptr;
+        char what[64];
+        snprintf(what, sizeof(what), "a context of %u bytes of device text", limit);
+        CHECK(maudCreateContext(&def, &context) == maud_success, what);
+        if (context == nullptr)
+        {
+            continue;
+        }
+        uint32_t outputs = CountDevices(context, maud_directionOutput);
+        CHECK(TextWithin(context, maud_directionOutput, limit) &&
+                  TextWithin(context, maud_directionInput, limit),
+              "lists only the devices whose keys fit");
+        CHECK(limit < 7 ? outputs == 0 : outputs >= 1, "the default PCM once its key fits");
+        CHECK(maudDestroyContext(context) == maud_success, "destroy");
+    }
+}
+
 // A refused block of a context's creation, or of a stream's, is a
 // capacity error that holds nothing; the context stays usable.
 static void TestRefusingAllocator(bool server)
@@ -624,6 +672,7 @@ int main(void)
     }
     TestDevices(context);
     TestDeviceLimit();
+    TestTextLimit();
     TestSilentFailure(context);
     Blocks probe = {0};
     maudStreamDef streamDef = maudDefaultStreamDef();

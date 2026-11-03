@@ -14,15 +14,18 @@
 // the clock's filter holding a drifting timestamp and starting again on a
 // new route, a short quantum and a stop; and a context of one or two
 // devices, which holds the Default output, and the Default input when
-// there is room.
+// there is room, and one whose text limit is too short for their key;
+// and a listed device whose key is past the limit, which takes no place.
 
 #include "test_harness.h"
 
 #include "maul-audio/context.h"
 #include "maul-audio/device.h"
+#include "maul-audio/notification.h"
 #include "maul-audio/stream.h"
 
 #include <emscripten/em_js.h>
+#include <string.h>
 
 #define RATE    48000
 #define RAMP    1000
@@ -246,6 +249,26 @@ EM_JS(int, PlayedStep, (int index), {
 
 EM_JS(void, ForgetPlayed, (void), {
     globalThis.maudSim.played = [];
+});
+
+// Lists two microphones, the first with an id of 30 bytes, the second
+// with one of 3. The listing settles at once, as a thenable, so that the
+// context holds it when it is made.
+EM_JS(void, ListInputs, (void), {
+    const list = ["a-microphone-id-past-the-limit", "mic"].map(function (id) {
+        return {kind: "audioinput", deviceId: id, groupId: id, label: "Mic"};
+    });
+    const devices = {
+        addEventListener: function () {},
+        removeEventListener: function () {},
+        enumerateDevices: function () { return {then: function (settled) { settled(list); }}; },
+    };
+    Object.defineProperty(globalThis.navigator, "mediaDevices", {configurable: true, value: devices});
+});
+
+// Takes the mock's devices away again.
+EM_JS(void, UnlistInputs, (void), {
+    Object.defineProperty(globalThis.navigator, "mediaDevices", {configurable: true, value: undefined});
 });
 
 // clang-format on
@@ -854,11 +877,68 @@ static void RunDeviceLimit(void)
               "the Default devices that fit");
         CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
     }
+    // The Default devices' key, "default", is 7 bytes: a shorter text
+    // limit leaves them out, since a key is never cut.
+    for (uint32_t limit = 6; limit <= 7; ++limit)
+    {
+        InstallWeb(1);
+        maudContextDef cdef = maudDefaultContextDef();
+        cdef.limits.deviceTextBytes = limit;
+        maudContext* context = nullptr;
+        CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context of short text");
+        if (context == nullptr)
+        {
+            continue;
+        }
+        uint32_t expected = limit < 7 ? 0 : 1;
+        CHECK(CountDevices(context, maud_directionOutput) == expected &&
+                  CountDevices(context, maud_directionInput) == expected,
+              "the Default devices once their key fits");
+        CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+    }
+}
+
+// A device whose key is past the text limit takes no place: in a context
+// of three devices, the two Default ones leave one place, which the
+// microphone whose id fits takes.
+static void RunLongKeyPlace(void)
+{
+    InstallWeb(1);
+    ListInputs();
+    maudContextDef cdef = maudDefaultContextDef();
+    cdef.limits.devices = 3;
+    cdef.limits.deviceTextBytes = 20;
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context of one free place");
+    if (context != nullptr)
+    {
+        maudNotification notification;
+        while (maudContext_NextNotification(context, &notification) == maud_success)
+        {
+        }
+        maudDeviceId ids[3];
+        uint32_t count = 0;
+        CHECK(maudContext_GetDevices(context, maud_directionInput, ids, 3, &count) == maud_success,
+              "list the inputs");
+        bool mic = false;
+        for (uint32_t i = 0; i < count && i < 3; ++i)
+        {
+            char key[32] = {0};
+            size_t length = 0;
+            mic = mic ||
+                  (maudDevice_GetKey(context, ids[i], key, sizeof(key), &length) == maud_success &&
+                   length == 3 && memcmp(key, "mic", 3) == 0);
+        }
+        CHECK(count == 2 && mic, "the Default input and the microphone whose id fits");
+        CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+    }
+    UnlistInputs();
 }
 
 int main(void)
 {
     RunDeviceLimit();
+    RunLongKeyPlace();
     RunTransport(true);
     RunTransport(false);
     RunFilterResets(true);

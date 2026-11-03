@@ -12,9 +12,16 @@
 #define OFFLINE_MIN_RATE 8000u
 #define OFFLINE_MAX_RATE 384000u
 
+// Adds one of the devices a context starts with, its name cut to the
+// text limit; one whose key does not fit is left out, never refusing the
+// context, since a key is never cut.
 static maudResult AddStartingDevice(maudContext* context, maudDirection direction, const char* name,
                                     const char* key)
 {
+    if (!maudKeyFits(context, __builtin_strlen(key)))
+    {
+        return maud_success;
+    }
     maudDeviceSpec spec = {
         .info = {.direction = direction,
                  .nativeLayout = maud_layoutStereo,
@@ -25,7 +32,7 @@ static maudResult AddStartingDevice(maudContext* context, maudDirection directio
                  .spatializer = direction == maud_directionOutput ? maud_spatializerNone
                                                                   : maud_spatializerUnknown},
         .name = name,
-        .nameLength = __builtin_strlen(name),
+        .nameLength = maudCutUtf8(name, context->def.limits.deviceTextBytes),
         .key = key,
         .keyLength = __builtin_strlen(key),
     };
