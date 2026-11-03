@@ -233,7 +233,8 @@ static void Cube(maudVector3* v, float low, float high)
 // Finite vertices and a transform in range can still place a mesh past
 // the float range: one far out and scaled up, or one whose corners are
 // so far apart that their distance overflows. Either is refused, where
-// it is made or moved to, and a commit after takes the last placement.
+// it is made or moved to, and a commit after takes the last placement, as
+// a ray against it shows.
 static void TestInstancesPastRange(void)
 {
     static maudVector3 far[8];
@@ -267,6 +268,12 @@ static void TestInstancesPastRange(void)
     CHECK(maudSceneInstance_Move(scene, id, &out) == maud_errorInvalid,
           "a move past the float range refused");
     CHECK(maudScene_Commit(scene) == maud_success, "a commit of the placement in range");
+    // The instance stays where it was: its cube, 1e33 on a side from the
+    // origin, lies 1e33 below a ray from 2e33 straight down.
+    maudRay down = {{5e32f, 2e33f, 5e32f}, {0.0f, -1.0f, 0.0f}, 0.0f, 3e33f};
+    maudRayHit hit;
+    maudFindClosestHit(&down, 1, &hit, scene);
+    CHECK(fabsf(hit.distance - 1e33f) <= 1e30f, "the refused move left the instance where it was");
     maudDestroyScene(scene);
 }
 
