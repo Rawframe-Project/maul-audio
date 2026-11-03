@@ -341,6 +341,31 @@ static void TestInstanceTermsPastHalfRange(void)
     maudDestroyScene(scene);
 }
 
+// A mesh from 2.4e38 to 2.5e38 on every axis lies inside the float range
+// though its box's edges sum past it: it is taken, and a ray reaches it.
+static void TestInstanceAboveHalfRange(void)
+{
+    static maudVector3 high[8];
+    Cube(high, 2.4e38f, 2.5e38f);
+    maudMesh mesh = {high, 8, s_faces, s_materials, 12};
+    maudSceneDef def = maudDefaultSceneDef();
+    def.instanceMeshes = &mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 1;
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    maudSceneInstanceTransform plain = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
+    maudSceneInstanceId id = {0, 0};
+    CHECK(maudCreateSceneInstance(scene, 0, &plain, &id) == maud_success &&
+              maudScene_Commit(scene) == maud_success,
+          "a mesh above half the float range taken");
+    maudRay along = {{0.0f, 2.45e38f, 2.45e38f}, {1.0f, 0.0f, 0.0f}, 0.0f, 3e38f};
+    maudRayHit hit;
+    maudFindClosestHit(&along, 1, &hit, scene);
+    CHECK(fabsf(hit.distance - 2.4e38f) <= 1e33f, "a ray meets it at 2.4e38");
+    maudDestroyScene(scene);
+}
+
 int main(void)
 {
     TestDefs();
@@ -348,5 +373,6 @@ int main(void)
     TestInstancesPastRange();
     TestInstancesTurnedNearRange();
     TestInstanceTermsPastHalfRange();
+    TestInstanceAboveHalfRange();
     return s_failures == 0 ? 0 : 1;
 }
