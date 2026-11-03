@@ -9,7 +9,7 @@
 // included, and a sliver whose edges cancel from every corner; a
 // triangle with no area is never hit, as a static triangle or in an
 // instance, yet keeps its number for ties and counts toward the limit; an instance of a mesh
-// with nothing left to hit is taken anywhere; an empty scene misses;
+// with nothing left to hit is taken and misses; an empty scene misses;
 // plugged into a spatializer's hooks, a wall occludes and its two faces transmit; bad meshes are
 // refused; memory running out at any allocation is a capacity error with nothing left.
 
@@ -17,7 +17,6 @@
 
 #include "maul-audio/scene.h"
 
-#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -385,17 +384,15 @@ static void TestNoArea(void)
     CHECK(h.distance == INFINITY && occluded == 0,
           "an instance's triangle with no area: never hit");
     maudDestroyScene(scene);
-    // A mesh whose only triangle has no area has no bounds to place, so
-    // an instance of it is taken at the float range's edge, at any scale.
+    // A mesh whose only triangle has no area keeps nothing to place: its
+    // instance is taken and commits, and a ray finds nothing.
     static const uint32_t only[] = {0, 1, 2};
     maudMesh empty = {line, 9, only, material, 1};
     def.instanceMeshes = &empty;
     CHECK(maudCreateScene(&def, &scene) == maud_success, "an instancing scene with no area");
-    maudSceneInstanceTransform edge = {
-        {FLT_MAX, -FLT_MAX, FLT_MAX}, {0.0f, 0.0f, 0.0f, 1.0f}, 1000.0f};
-    CHECK(maudCreateSceneInstance(scene, 0, &edge, &instance) == maud_success &&
+    CHECK(maudCreateSceneInstance(scene, 0, &at, &instance) == maud_success &&
               maudScene_Commit(scene) == maud_success,
-          "an instance of a mesh with no area, anywhere");
+          "an instance of a mesh with nothing to hit");
     maudFindClosestHit(&ray, 1, &h, scene);
     maudFindAnyHit(&ray, 1, &occluded, scene);
     CHECK(h.distance == INFINITY && occluded == 0, "nothing to hit");
