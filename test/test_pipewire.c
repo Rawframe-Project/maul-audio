@@ -488,7 +488,6 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     ResetDefaults(context, helper);
 }
 
-// A node name of 300 bytes, past 255.
 // A context's text limit, past 255 bytes.
 #define LONG_NAME_BYTES 300
 
