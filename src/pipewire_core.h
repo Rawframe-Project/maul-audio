@@ -22,8 +22,6 @@
 #define MAUD_PIPEWIRE_PUMP_ITERATIONS 64
 // The graph rate until the settings metadata gives it.
 #define MAUD_PIPEWIRE_FALLBACK_RATE 48000u
-// Bytes of a default device's node name.
-#define MAUD_PIPEWIRE_NAME_BYTES 256
 
 typedef struct maudPipewire maudPipewire;
 
@@ -98,14 +96,14 @@ typedef struct maudPipewireConnection
     int listing;
 } maudPipewireConnection;
 
-// The default metadata and the node names it gives per direction.
+// The default metadata, whose node names go to maudPipewire's
+// defaultNames.
 typedef struct maudPipewireDefaults
 {
     struct pw_proxy* metadata;
     // The bound metadata's global, so its removal is noticed.
     uint32_t global;
     struct spa_hook listener;
-    char names[2][MAUD_PIPEWIRE_NAME_BYTES];
 } maudPipewireDefaults;
 
 // The settings metadata and the graph rate it gives: the forced rate
@@ -156,6 +154,11 @@ struct maudPipewire
     maudContext* context;
     maudPipewireConnection connection;
     maudPipewireDefaults defaults;
+    // The default metadata's node name per direction, nameBytes each:
+    // room for a key at the text limit, so a longer name, which no
+    // device's key can be, reads as none.
+    char* defaultNames[2];
+    size_t nameBytes;
     maudPipewireClock clock;
     maudPipewireNode* nodes;
     uint32_t nodeCapacity;

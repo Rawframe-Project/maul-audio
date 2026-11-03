@@ -94,7 +94,7 @@ probe_graph: allocator exact_scale fpenv host_tasks
 probe_sets: allocator probe_bake probe_graph
 pulse_api:
 pulse_core: context_core pulse_api worker
-pulse_stream: clock context context_core follow period pulse_core retry thread worker xrun
+pulse_stream: clock context context_core follow invariant period pulse_core retry thread worker xrun
 ramp:
 real_fft: allocator
 reflection_response: fft

@@ -62,7 +62,7 @@ static void ResolveDefaults(maudPipewire* pipewire)
         {
             continue;
         }
-        const char* wanted = pipewire->defaults.names[slot->info.direction];
+        const char* wanted = pipewire->defaultNames[slot->info.direction];
         if (strlen(wanted) == slot->key.length &&
             memcmp(wanted, slot->key.bytes, slot->key.length) == 0)
         {
@@ -238,13 +238,13 @@ static int OnMetadataProperty(void* data, uint32_t subject, const char* key, con
     }
     if (spa_streq(key, "default.audio.sink"))
     {
-        maudPipewireParseDefaultName(value, pipewire->defaults.names[maud_directionOutput],
-                                     MAUD_PIPEWIRE_NAME_BYTES);
+        maudPipewireParseDefaultName(value, pipewire->defaultNames[maud_directionOutput],
+                                     pipewire->nameBytes);
     }
     else if (spa_streq(key, "default.audio.source"))
     {
-        maudPipewireParseDefaultName(value, pipewire->defaults.names[maud_directionInput],
-                                     MAUD_PIPEWIRE_NAME_BYTES);
+        maudPipewireParseDefaultName(value, pipewire->defaultNames[maud_directionInput],
+                                     pipewire->nameBytes);
     }
     else
     {
@@ -458,6 +458,8 @@ static void DropCore(maudPipewire* pipewire)
         pipewire->api.proxyDestroy(pipewire->clock.metadata);
     }
     pipewire->defaults = (maudPipewireDefaults){0};
+    pipewire->defaultNames[0][0] = '\0';
+    pipewire->defaultNames[1][0] = '\0';
     pipewire->clock.metadata = nullptr;
     if (connection->registry != nullptr)
     {
@@ -666,6 +668,8 @@ static maudResult OpenContext(maudContext* context)
         maudLayoutAdd(&layout, capacity, sizeof(maudPipewireCard), alignof(maudPipewireCard));
     size_t entries =
         maudLayoutAdd(&layout, streams, sizeof(maudPipewireStream), alignof(maudPipewireStream));
+    size_t nameBytes = maudPipewireDefaultNameBytes(context->def.limits.deviceTextBytes);
+    size_t names = maudLayoutAdd(&layout, 2, nameBytes, 1);
     unsigned char* block = layout.overflow
                                ? nullptr
                                : maudContextAllocate(context, layout.size, alignof(maudPipewire));
@@ -680,6 +684,8 @@ static maudResult OpenContext(maudContext* context)
         .nodes = (maudPipewireNode*)(block + nodes),
         .cards = (maudPipewireCard*)(block + cards),
         .streams = (maudPipewireStream*)(block + entries),
+        .defaultNames = {(char*)block + names, (char*)block + names + nameBytes},
+        .nameBytes = nameBytes,
         .clock = {.graphRate = MAUD_PIPEWIRE_FALLBACK_RATE},
         .nodeCapacity = capacity,
         .cardCapacity = capacity,
@@ -688,6 +694,7 @@ static maudResult OpenContext(maudContext* context)
     memset(pipewire->nodes, 0, (size_t)capacity * sizeof(maudPipewireNode));
     memset(pipewire->cards, 0, (size_t)capacity * sizeof(maudPipewireCard));
     memset(pipewire->streams, 0, (size_t)streams * sizeof(maudPipewireStream));
+    memset(pipewire->defaultNames[0], 0, 2 * nameBytes);
     context->native = pipewire;
     if (!maudLoadPipewire(&pipewire->api))
     {

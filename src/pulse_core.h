@@ -25,8 +25,8 @@
 #define MAUD_PULSE_PUMP_ITERATIONS 64
 // The rate of a native stream with no device yet.
 #define MAUD_PULSE_FALLBACK_RATE 48000u
-// Bytes of a default device's name.
-#define MAUD_PULSE_NAME_BYTES 256
+// What the server appends to a sink's name to name its monitor source.
+#define MAUD_PULSE_MONITOR ".monitor"
 
 typedef struct maudPulse maudPulse;
 
@@ -56,7 +56,6 @@ typedef struct maudPulseServer
     // When the devices of a lost connection go if no new server has
     // listed them by then; zero with none away.
     int64_t awayUntil;
-    char defaultNames[2][MAUD_PULSE_NAME_BYTES];
 } maudPulseServer;
 
 // A stream's own connection: its loop, context and pa_stream, run by
@@ -88,6 +87,15 @@ struct maudPulse
     maudPulseNode* nodes;
     uint32_t nodeCapacity;
     maudPulseStream* streams;
+    // The server's default sink and source names, nameBytes each: room
+    // for a key at the text limit, so a longer name, which no device's
+    // key can be, is kept as none.
+    char* defaultNames[2];
+    size_t nameBytes;
+    // The name a stream connects to, a key and ".monitor", built on the
+    // control thread.
+    char* target;
+    size_t targetBytes;
     size_t bytes;
     // Whether libpulse's port structures have their type: 14.0 or later.
     bool portTypes;

@@ -179,7 +179,7 @@ static void UnplugSink(Helper* helper)
 // effective default itself.
 static void SetDefaultKey(Helper* helper, const char* key, const char* nodeName)
 {
-    char value[128];
+    char value[512];
     snprintf(value, sizeof(value), "{ \"name\": \"%s\" }", nodeName);
     pw_thread_loop_lock(helper->loop);
     pw_metadata_set_property(helper->metadata, PW_ID_CORE, key, "Spa:String:JSON", value);
@@ -227,7 +227,8 @@ static void StopHelper(Helper* helper)
 
 static bool KeyIs(const maudContext* context, maudDeviceId device, const char* key)
 {
-    char bytes[64];
+    // Room for the longest key a test lists, 300 bytes.
+    char bytes[512];
     size_t length = 0;
     return maudDevice_GetKey(context, device, bytes, sizeof(bytes), &length) == maud_success &&
            length == strlen(key) && memcmp(bytes, key, length) == 0;
@@ -484,6 +485,63 @@ static void TestHotplugAndDefaults(maudContext* context, Helper* helper)
     maudDeviceId removed = plugged;
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, nullptr, &removed), "unplugged");
     CHECK(maudDevice_GetInfo(context, plugged, &info) == maud_errorStale, "its id is stale");
+    ResetDefaults(context, helper);
+}
+
+// A node name of 300 bytes, past 255.
+// A context's text limit, past 255 bytes.
+#define LONG_NAME_BYTES 300
+
+// Plugs in a null sink named maud-test-long- and 'l' to length bytes.
+static struct pw_proxy* PlugLongSink(Helper* helper, char* name, size_t length)
+{
+    memcpy(name, "maud-test-long-", 15);
+    memset(name + 15, 'l', length - 15);
+    name[length] = '\0';
+    pw_thread_loop_lock(helper->loop);
+    struct pw_properties* props =
+        pw_properties_new("factory.name", "support.null-audio-sink", "node.name", name,
+                          "media.class", "Audio/Sink", "audio.position", "[FL FR]", nullptr);
+    struct pw_proxy* node = pw_core_create_object(helper->core, "adapter", PW_TYPE_INTERFACE_Node,
+                                                  PW_VERSION_NODE, &props->dict, 0);
+    pw_properties_free(props);
+    pw_thread_loop_unlock(helper->loop);
+    return node;
+}
+
+// The effective default, a sink whose name is exactly the context's text
+// limit of 300 bytes, reaches the context. A sink one byte past the limit
+// is left out, so its name can be no device's default.
+static void TestLongNameDefault(maudContext* context, Helper* helper)
+{
+    maudContextDef def = maudDefaultContextDef();
+    def.backend = maud_backendPipewire;
+    def.limits.deviceTextBytes = LONG_NAME_BYTES;
+    maudContext* wide = nullptr;
+    CHECK(maudCreateContext(&def, &wide) == maud_success, "a context with a 300-byte text limit");
+    if (wide == nullptr)
+    {
+        return;
+    }
+    char past[LONG_NAME_BYTES + 2];
+    char name[LONG_NAME_BYTES + 1];
+    // The graph lists nodes in the order they come, so the sink past the
+    // limit has been seen once the other is listed.
+    struct pw_proxy* pastNode = PlugLongSink(helper, past, LONG_NAME_BYTES + 1);
+    struct pw_proxy* node = PlugLongSink(helper, name, LONG_NAME_BYTES);
+    maudDeviceId longest = {0, 0};
+    CHECK(WaitFor(wide, maud_notifyDeviceAdded, name, &longest), "the sink at the limit is listed");
+    maudDeviceId left = {0, 0};
+    CHECK(!FindByKey(wide, maud_directionOutput, past, &left), "the sink past it is left out");
+    CHECK(SetEffectiveDefault(wide, helper, name, longest), "the default is the sink at the limit");
+    maudDeviceId sink = {0, 0};
+    CHECK(FindByKey(wide, maud_directionOutput, "maud-test-sink", &sink), "the test sink");
+    CHECK(SetEffectiveDefault(wide, helper, "maud-test-sink", sink), "the default back");
+    pw_thread_loop_lock(helper->loop);
+    pw_proxy_destroy(node);
+    pw_proxy_destroy(pastNode);
+    pw_thread_loop_unlock(helper->loop);
+    CHECK(maudDestroyContext(wide) == maud_success, "destroy the context");
     ResetDefaults(context, helper);
 }
 
@@ -1420,6 +1478,7 @@ int main(int argc, char** argv)
         if (helped && s_defaultsOnly)
         {
             TestHotplugAndDefaults(context, &helper);
+            TestLongNameDefault(context, &helper);
             TestStreamsMoveAndAreLost(context, &helper);
         }
         if (helped)

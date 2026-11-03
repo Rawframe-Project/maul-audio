@@ -12,6 +12,7 @@
 #include "clock.h"
 #include "context.h"
 #include "follow.h"
+#include "invariant.h"
 #include "period.h"
 #include "pulse_core.h"
 #include "retry.h"
@@ -255,26 +256,30 @@ static bool ConnectStream(maudContext* context, maudPulseStream* entry, int64_t 
         .minreq = period,
         .fragsize = period,
     };
-    char name[MAUD_PULSE_NAME_BYTES] = {0};
-    static const char monitor[] = ".monitor";
+    const maudPulse* pulse = context->native;
     bool loopback = core->def.direction == maud_directionLoopback;
     const maudDeviceSlot* device =
         maudFindDevice(context, loopback ? core->binding.current : core->binding.requested);
-    size_t suffix = loopback ? sizeof(monitor) - 1 : 0;
-    if (loopback && (device == nullptr || device->key.length + suffix >= sizeof(name)))
+    if (loopback && device == nullptr)
     {
         return false;
     }
     // Timing updates keep pa_stream_get_latency current for the clock.
     pa_stream_flags_t flags = PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY |
                               PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING;
-    if (device != nullptr && device->key.length + suffix < sizeof(name))
+    const char* target = nullptr;
+    if (device != nullptr)
     {
-        memcpy(name, device->key.bytes, device->key.length);
-        memcpy(name + device->key.length, monitor, suffix);
+        // A key is at most the text limit, which the target has room for
+        // with the monitor's suffix.
+        size_t suffix = loopback ? sizeof(MAUD_PULSE_MONITOR) - 1 : 0;
+        MAUD_ASSERT(device->key.length + suffix < pulse->targetBytes);
+        memcpy(pulse->target, device->key.bytes, device->key.length);
+        memcpy(pulse->target + device->key.length, MAUD_PULSE_MONITOR, suffix);
+        pulse->target[device->key.length + suffix] = '\0';
+        target = pulse->target;
         flags |= PA_STREAM_DONT_MOVE;
     }
-    const char* target = name[0] != '\0' ? name : nullptr;
     int connected =
         output ? api->streamConnectPlayback(entry->stream, target, &attr, flags, nullptr, nullptr)
                : api->streamConnectRecord(entry->stream, target, &attr, flags);

@@ -50,7 +50,7 @@ static void ResolveDefaults(maudPulse* pulse)
         const maudPulseNode* node = &pulse->nodes[i];
         const maudDeviceSlot* slot =
             node->used ? maudFindDevice(pulse->context, node->device) : nullptr;
-        const char* wanted = slot != nullptr ? pulse->server.defaultNames[node->direction] : "";
+        const char* wanted = slot != nullptr ? pulse->defaultNames[node->direction] : "";
         if (slot != nullptr && strlen(wanted) == slot->key.length &&
             memcmp(wanted, slot->key.bytes, slot->key.length) == 0)
         {
@@ -233,9 +233,9 @@ static void ApplyServer(maudPulse* pulse, const pa_server_info* info)
     const char* names[2] = {info->default_sink_name, info->default_source_name};
     for (int direction = 0; direction < 2; ++direction)
     {
-        char* target = pulse->server.defaultNames[direction];
+        char* target = pulse->defaultNames[direction];
         size_t length = names[direction] != nullptr ? strlen(names[direction]) : 0;
-        length = length < MAUD_PULSE_NAME_BYTES - 1 ? length : MAUD_PULSE_NAME_BYTES - 1;
+        length = length < pulse->nameBytes ? length : 0;
         if (length != 0)
         {
             memcpy(target, names[direction], length);
@@ -419,7 +419,8 @@ static void DropContext(maudPulse* pulse)
         server->context = nullptr;
     }
     server->ready = false;
-    memset(server->defaultNames, 0, sizeof(server->defaultNames));
+    pulse->defaultNames[0][0] = '\0';
+    pulse->defaultNames[1][0] = '\0';
 }
 
 // The server went away. Its devices are kept, away, for a new server
@@ -495,6 +496,10 @@ static maudResult OpenContext(maudContext* context)
     size_t nodes = maudLayoutAdd(&layout, capacity, sizeof(maudPulseNode), alignof(maudPulseNode));
     size_t entries =
         maudLayoutAdd(&layout, streams, sizeof(maudPulseStream), alignof(maudPulseStream));
+    size_t nameBytes = (size_t)context->def.limits.deviceTextBytes + 1;
+    size_t names = maudLayoutAdd(&layout, 2, nameBytes, 1);
+    size_t targetBytes = nameBytes + sizeof(MAUD_PULSE_MONITOR) - 1;
+    size_t target = maudLayoutAdd(&layout, 1, targetBytes, 1);
     unsigned char* block =
         layout.overflow ? nullptr : maudContextAllocate(context, layout.size, alignof(maudPulse));
     if (block == nullptr)
@@ -507,11 +512,16 @@ static maudResult OpenContext(maudContext* context)
         .context = context,
         .nodes = (maudPulseNode*)(block + nodes),
         .streams = (maudPulseStream*)(block + entries),
+        .defaultNames = {(char*)block + names, (char*)block + names + nameBytes},
+        .nameBytes = nameBytes,
+        .target = (char*)block + target,
+        .targetBytes = targetBytes,
         .nodeCapacity = capacity,
         .bytes = layout.size,
     };
     memset(pulse->nodes, 0, (size_t)capacity * sizeof(maudPulseNode));
     memset(pulse->streams, 0, (size_t)streams * sizeof(maudPulseStream));
+    memset(pulse->defaultNames[0], 0, 2 * nameBytes);
     context->native = pulse;
     if (!maudLoadPulse(&pulse->api))
     {

@@ -14,6 +14,7 @@
 #include <pipewire/keys.h>
 #include <spa/param/audio/format-utils.h>
 #include <spa/pod/builder.h>
+#include <stdio.h>
 #include <string.h>
 
 static void TestChoice(void)
@@ -74,6 +75,30 @@ static void TestDefaultName(void)
     CHECK(NameIs("{\"x\"", ""), "a key without a value");
     CHECK(NameIs(nullptr, ""), "no value");
     CHECK(NameIs("{\"name\": \"a-name-far-too-long\"}", ""), "a name past the buffer");
+}
+
+// A name of the limit's length reads whole into the bytes sized for that
+// limit, and one a byte longer reads as none.
+static void TestDefaultNameAtLimit(void)
+{
+    enum
+    {
+        limit = 40
+    };
+    char name[limit + 8];
+    size_t bytes = maudPipewireDefaultNameBytes(limit);
+    CHECK(bytes <= sizeof(name), "the bytes fit the test's buffer");
+    for (size_t length = limit; length <= limit + 1 && bytes <= sizeof(name); ++length)
+    {
+        char value[limit + 32];
+        int prefix = snprintf(value, sizeof(value), "{\"name\": \"");
+        memset(value + prefix, 'a', length);
+        snprintf(value + prefix + length, sizeof(value) - (size_t)prefix - length, "\"}");
+        memset(name, 'x', sizeof(name));
+        maudPipewireParseDefaultName(value, name, bytes);
+        CHECK(length == limit ? strlen(name) == limit : name[0] == '\0',
+              length == limit ? "a name at the limit reads whole" : "a name past it reads as none");
+    }
 }
 
 static void TestGraphRate(void)
@@ -137,6 +162,7 @@ int main(void)
     TestChoice();
     TestCard();
     TestDefaultName();
+    TestDefaultNameAtLimit();
     TestGraphRate();
     TestChunkBytes();
     TestFormat();
