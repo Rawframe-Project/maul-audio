@@ -568,20 +568,21 @@ static void TestHotplug(maudContext* context)
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
 }
 
-// A device whose name holds a surrogate without its pair and runs past
-// the 255 bytes the backend reads is named that name, cut after the last
-// whole character and the surrogate as U+FFFD, not by its UID.
+// A device whose name runs past the 255 bytes the backend reads is named
+// that name cut after the last whole character, not by its UID. A name
+// holding a surrogate without its pair cannot be made this way:
+// coreaudiod cuts an aggregate's name at it. test_utf8 covers the U+FFFD
+// that ReadName's encoding gives it.
 static void TestLongName(maudContext* context)
 {
-    // "Maud", a lone high surrogate, "!", then U+00E9, two bytes each.
+    // "Maud", then U+00E9, two bytes each: 316 bytes, of which "Maud"
+    // and 125 accents fit 255.
     UniChar units[160];
     CFIndex count = 0;
     for (const char* head = "Maud"; *head != '\0'; ++head)
     {
         units[count++] = (UniChar)*head;
     }
-    units[count++] = 0xD83D;
-    units[count++] = '!';
     while (count < 160)
     {
         units[count++] = 0x00E9;
@@ -594,19 +595,19 @@ static void TestLongName(maudContext* context)
     maudDeviceId device = WaitFor(context, maud_notifyDeviceAdded, none);
     char bytes[512] = {0};
     size_t length = 0;
-    CHECK(device.index1 != 0 && maudDevice_GetName(context, device, bytes, sizeof(bytes) - 1,
-                                                   &length) == maud_success,
+    CHECK(device.index1 != 0 &&
+              maudDevice_GetName(context, device, bytes, sizeof(bytes), &length) == maud_success,
           "it appears with a name");
-    // The 8 bytes before the accents and 123 accents fit 255 bytes.
-    static const char prefix[] = "Maud\xEF\xBF\xBD!";
-    size_t head = sizeof(prefix) - 1;
-    bool accents = length == head + 2 * 123;
-    for (size_t i = head; accents && i < length; i += 2)
+    bool cut = length == 4 + 2 * 125 && memcmp(bytes, "Maud", 4) == 0;
+    for (size_t i = 4; cut && i < length; i += 2)
     {
-        accents = bytes[i] == '\xC3' && bytes[i + 1] == '\xA9';
+        cut = bytes[i] == '\xC3' && bytes[i + 1] == '\xA9';
     }
-    CHECK(accents, "its name cut after the last whole character, not its UID");
-    CHECK(memcmp(bytes, prefix, head) == 0, "the lone surrogate as U+FFFD");
+    CHECK(cut, "a long name cut after the last whole character, not the UID");
+    if (!cut)
+    {
+        printf("the name listed, %zu bytes: %.*s\n", length, (int)length, bytes);
+    }
     if (aggregate != kAudioObjectUnknown)
     {
         CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed");
