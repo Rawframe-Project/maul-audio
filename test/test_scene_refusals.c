@@ -277,10 +277,51 @@ static void TestInstancesPastRange(void)
     maudDestroyScene(scene);
 }
 
+// A mesh near the float range, turned and scaled down, lies well inside
+// it, and is taken where it is made or moved to: its corners, turned
+// first and scaled after, would sum past the range.
+static void TestInstancesTurnedNearRange(void)
+{
+    static maudVector3 edge[8];
+    for (int i = 0; i < 8; ++i)
+    {
+        edge[i] = (maudVector3){(i & 1) ? 2.5e38f : 2.4e38f, (i & 2) ? 2.5e38f : 2.4e38f,
+                                (i & 4) ? 1e37f : -1e37f};
+    }
+    maudMesh mesh = {edge, 8, s_faces, s_materials, 12};
+    maudSceneDef def = maudDefaultSceneDef();
+    def.instanceMeshes = &mesh;
+    def.instanceMeshCount = 1;
+    def.instanceCapacity = 1;
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    // 45 degrees about z: the corner at (2.5e38, 2.5e38) turns to
+    // y = 3.5e38, which a scale of 0.001 brings to 3.5e35.
+    maudSceneInstanceTransform turned = {
+        {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.38268343f, 0.92387953f}, 0.001f};
+    maudSceneInstanceId id = {0, 0};
+    CHECK(maudCreateSceneInstance(scene, 0, &turned, &id) == maud_success,
+          "a turned mesh near the float range, scaled into it, taken");
+    maudSceneInstanceTransform moved = turned;
+    moved.position.z = 1e30f;
+    CHECK(maudSceneInstance_Move(scene, id, &moved) == maud_success, "and moved");
+    CHECK(maudScene_Commit(scene) == maud_success, "a commit of it");
+    // Straight up from the origin a ray runs along the mesh's diagonal
+    // onto its edge at x = y = 2.4e38, 2.4e38 x sqrt(2) x 0.001 away.
+    maudRay up = {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.0f, 1e36f};
+    maudRayHit hit;
+    maudFindClosestHit(&up, 1, &hit, scene);
+    uint8_t occluded = 0;
+    maudFindAnyHit(&up, 1, &occluded, scene);
+    CHECK(fabsf(hit.distance - 3.394113e35f) <= 1e31f && occluded == 1, "a ray meets it");
+    maudDestroyScene(scene);
+}
+
 int main(void)
 {
     TestDefs();
     TestInstances();
     TestInstancesPastRange();
+    TestInstancesTurnedNearRange();
     return s_failures == 0 ? 0 : 1;
 }

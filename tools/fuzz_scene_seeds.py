@@ -96,6 +96,16 @@ def seeds():
         call(CREATE, orientation=diagonal), call(CREATE, orientation=diagonal, scale=0.9),
         call(COMMIT), call(MOVE, 0, orientation=diagonal), call(COMMIT),
     ]
+    # A box near the float range, turned 45 degrees about z: its corner at
+    # (2.5e38, 2.5e38) turns to y = 3.5e38 before a scale of 0.001 brings
+    # it to 3.5e35, so it is taken only when each term is scaled first.
+    edge, edge_faces = box((2.4e38, 2.4e38, -1.0e37), (2.5e38, 2.5e38, 1.0e37))
+    quarter = (0.0, 0.0, 0.38268343, 0.92387953)
+    edge_calls = [
+        call(CREATE, orientation=quarter, scale=0.001), call(COMMIT),
+        call(MOVE, 0, position=(0.0, 0.0, 1.0e30), orientation=quarter, scale=0.001),
+        call(COMMIT),
+    ]
     return [
         seed(RANGE_5, room, room_faces, probes),
         seed(RANGE_5, walled, walled_faces, probes),
@@ -108,6 +118,8 @@ def seeds():
         seed(RANGE_5 | INSTANCES, walled, walled_faces, across, capacity=2, calls=calls),
         seed(RANGE_5 | INSTANCES, huge, huge_faces, [(0.0, 0.0, -1.0e38), (0.0, 0.0, 1.0e38)],
              capacity=2, calls=huge_calls),
+        seed(RANGE_5 | INSTANCES, edge, edge_faces, [(0.0, 0.0, 0.0), (0.0, 1.0e35, 0.0)],
+             capacity=1, calls=edge_calls),
     ]
 
 
