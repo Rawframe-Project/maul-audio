@@ -8,7 +8,8 @@
 #                            source rules, the test hygiene check,
 #                            formatting, the documentation checks,
 #                            clang-tidy in Release and in Debug on the
-#                            changed sources, and in the
+#                            changed sources (on all of them when a header
+#                            under src/ or include/ changed), and in the
 #                            linux-clang-20-asan preset
 #                            (assertions on) the suites the changes reach.
 #                            An integration suite runs only when a change
@@ -229,11 +230,11 @@ all_c_files() { git ls-files 'include/*.h' 'src/*.[chm]' 'test/*.[chm]' 'tools/*
 # for "all", otherwise those among the paths given, and none when no path
 # given is one of them. The header filter is given here because clang-tidy
 # 20, run from the repository's root, does not take .clang-tidy's
-# HeaderFilterRegex and reports nothing in headers. It is anchored at the
-# repository, so that headers fetched under out/ are not taken for this
-# library's.
+# HeaderFilterRegex and reports nothing in headers. tools/tidy_filter.sh
+# anchors it where the tree was configured from, so that headers fetched
+# under out/ are not taken for this library's.
 tidy() { # "all", or the paths to check
-    local build tree files
+    local build tree files filter
     for build in Release Debug; do
         tree=$out/check-tidy-$build
         cmake --preset linux-clang-20 -B "$tree" -DCMAKE_BUILD_TYPE=$build \
@@ -252,8 +253,9 @@ sys.stdout.write("".join(f + "\n" for f in sorted(files)))' "$tree" "$root" "$@"
         fi
         step "clang-tidy, $build, on ${#files[@]} of the Linux build's sources"
         [ ${#files[@]} -gt 0 ] || continue
+        filter=$("$root/tools/tidy_filter.sh" "$tree")
         printf '%s\n' "${files[@]}" | xargs -P "$jobs" -n 1 clang-tidy-20 -p "$tree" --quiet \
-            --warnings-as-errors='*' --header-filter="^$root/(src|include)/" 2>/dev/null
+            --warnings-as-errors='*' --header-filter="$filter" 2>/dev/null
     done
 }
 
@@ -275,9 +277,17 @@ if [ "$tier" = changed ]; then
         step "clang-format on ${#present[@]} changed files"
         clang-format --dry-run -Werror "${present[@]}"
     fi
+    # A changed header reaches sources that did not change, so it checks
+    # them all.
     sources=()
-    for f in "${present[@]+"${present[@]}"}"; do [[ $f == src/* ]] && sources+=("$f"); done
-    if [ ${#sources[@]} -gt 0 ]; then
+    headers=0
+    for f in "${present[@]+"${present[@]}"}"; do
+        [[ $f == src/* ]] && sources+=("$f")
+        [[ $f == src/*.h || $f == include/*.h ]] && headers=1
+    done
+    if [ $headers -eq 1 ]; then
+        tidy all
+    elif [ ${#sources[@]} -gt 0 ]; then
         tidy "${sources[@]}"
     fi
     labels=""
