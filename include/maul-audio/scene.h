@@ -195,7 +195,9 @@ extern "C"
     ///         mesh out of range, a transform out of range or not finite,
     ///         or one that puts the mesh's bounds past the float range;
     ///         `maud_errorCapacity` when the scene has its capacity of
-    ///         instances.
+    ///         instances. The mesh's bounds are those of the triangles
+    ///         with an area: a mesh whose triangles all have none has no
+    ///         bounds, and any finite transform in range places it.
     /// @par Thread safety
     /// Safe from any thread; the scene is used by one thread at a time.
     /// Changes and commits must not overlap its queries.
@@ -210,8 +212,9 @@ extern "C"
     /// @param transform  Where it is now.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer, a 0
     ///         or unknown id, a transform out of range or not finite, or
-    ///         one that puts the mesh's bounds past the float range;
-    ///         `maud_errorStale` for a destroyed instance's id.
+    ///         one that puts the mesh's bounds, as maudCreateSceneInstance
+    ///         defines them, past the float range; `maud_errorStale` for a
+    ///         destroyed instance's id.
     /// @par Thread safety
     /// Safe from any thread; the scene is used by one thread at a time.
     /// Changes and commits must not overlap its queries.
