@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // Cutting device names to the context's text limit, and copying and
-// encoding them into fixed buffers, without splitting a UTF-8 sequence.
+// encoding them into fixed buffers, without splitting a UTF-8 sequence;
+// encoding keys whole or not at all.
 
 #include "test_harness.h"
 #include "utf8.h"
@@ -51,5 +52,13 @@ int main(void)
               memcmp(out, "\xEF\xBF\xBD", 4) == 0,
           "and so is U+0000, which would end the text");
     CHECK(maudUtf16ToUtf8(out, sizeof(out), speaker, 0) == 0 && out[0] == '\0', "no units");
+    // A key is encoded whole and unchanged, or refused.
+    CHECK(maudUtf16ToKey(out, sizeof(out), speaker, 3) && memcmp(out, "a\xF0\x9F\x94\x8A", 6) == 0,
+          "a key that fits is encoded whole");
+    CHECK(maudUtf16ToKey(out, 6, speaker, 3), "a key of the buffer's length with the NUL fits");
+    CHECK(!maudUtf16ToKey(out, 5, speaker, 3), "a key one byte too long is refused, never cut");
+    CHECK(!maudUtf16ToKey(out, sizeof(out), usb, 5), "a key with a lone surrogate is refused");
+    CHECK(!maudUtf16ToKey(out, sizeof(out), &lone[2], 1), "and so is one with U+0000");
+    CHECK(maudUtf16ToKey(out, 1, speaker, 0) && out[0] == '\0', "an empty key fits");
     return s_failures == 0 ? 0 : 1;
 }

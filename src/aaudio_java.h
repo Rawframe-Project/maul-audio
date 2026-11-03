@@ -10,8 +10,9 @@
 #include "aaudio_core.h"
 
 // One device Java listed: its AAudio id, its AudioDeviceInfo type, its
-// most channels and its rate range (0 where it takes any), its address
-// and product name, in UTF-8 cut on whole characters.
+// most channels and its rate range (0 where it takes any), in UTF-8 the
+// text its key is made of, its address or its product name when it has
+// none, whole, and its product name, cut on whole characters.
 typedef struct maudAaudioListing
 {
     int32_t id;
@@ -19,7 +20,7 @@ typedef struct maudAaudioListing
     int32_t channels;
     int32_t lowRate;
     int32_t highRate;
-    char address[MAUD_AAUDIO_KEY_BYTES];
+    char where[MAUD_AAUDIO_KEY_BYTES];
     char product[MAUD_AAUDIO_NAME_BYTES];
 } maudAaudioListing;
 
@@ -33,7 +34,8 @@ bool maudAaudioOpenJava(maudAaudio* aaudio, void* vm, void* context);
 // Closes the object and drops the references.
 void maudAaudioCloseJava(maudAaudio* aaudio);
 
-// Calls listed for each device of a direction Java lists.
+// Calls listed for each device of a direction Java lists, leaving out
+// one whose key text does not fit whole.
 void maudAaudioListJava(maudAaudio* aaudio, maudDirection direction,
                         void (*listed)(maudAaudio* aaudio, maudDirection direction,
                                        const maudAaudioListing* listing));

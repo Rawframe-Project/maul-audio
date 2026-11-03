@@ -15,7 +15,9 @@
 // new route, a short quantum and a stop; and a context of one or two
 // devices, which holds the Default output, and the Default input when
 // there is room, and one whose text limit is too short for their key;
-// and a listed device whose key is past the limit, which takes no place.
+// and a listed device whose key is past the limit, which takes no place;
+// and listed devices whose ids do not fit whole as keys, which are left
+// out, and labels that are not well-formed UTF-16.
 
 #include "test_harness.h"
 
@@ -251,12 +253,21 @@ EM_JS(void, ForgetPlayed, (void), {
     globalThis.maudSim.played = [];
 });
 
-// Lists two microphones, the first with an id of 30 bytes, the second
-// with one of 3. The listing settles at once, as a thenable, so that the
-// context holds it when it is made.
-EM_JS(void, ListInputs, (void), {
-    const list = ["a-microphone-id-past-the-limit", "mic"].map(function (id) {
-        return {kind: "audioinput", deviceId: id, groupId: id, label: "Mic"};
+// Lists microphones. With keys 0: two, the first with an id of 30
+// bytes, the second with one of 3. With keys 1: ids of 9 and 127 bytes,
+// two of 128 that share their first 127, which a cut to the 128-byte
+// buffer would make one key, ids ending in one of two surrogates without
+// their pairs, which a repair to U+FFFD would make one key, and one
+// holding U+0000, each labeled with a surrogate without its pair. The listing settles at once,
+// as a thenable, so that the context holds it when it is made.
+EM_JS(void, ListInputs, (int keys), {
+    const ids = keys === 0 ? ["a-microphone-id-past-the-limit", "mic"]
+                           : ["mic-short", "x".repeat(127), "y".repeat(127) + "a", "y".repeat(127) + "b",
+                              "mic" + String.fromCharCode(0xD83D), "mic" + String.fromCharCode(0xD83E),
+                              "a" + String.fromCharCode(0) + "b"];
+    const label = keys === 0 ? "Mic" : "Mic" + String.fromCharCode(0xD83D) + "!";
+    const list = ids.map(function (id) {
+        return {kind: "audioinput", deviceId: id, groupId: id, label: label};
     });
     const devices = {
         addEventListener: function () {},
@@ -904,7 +915,7 @@ static void RunDeviceLimit(void)
 static void RunLongKeyPlace(void)
 {
     InstallWeb(1);
-    ListInputs();
+    ListInputs(0);
     maudContextDef cdef = maudDefaultContextDef();
     cdef.limits.devices = 3;
     cdef.limits.deviceTextBytes = 20;
@@ -935,10 +946,57 @@ static void RunLongKeyPlace(void)
     UnlistInputs();
 }
 
+// A device whose id does not fit the backend's key buffer whole, or has
+// no UTF-8 of its own, is left out, since a key is never cut or changed:
+// the Default input and the two microphones whose ids fit remain, with
+// their ids as keys and their labels in UTF-8, and neither of the two
+// long ids nor of the two with a lone surrogate is listed, under its own
+// key or a shared one.
+static void RunDeviceKeys(void)
+{
+    InstallWeb(1);
+    ListInputs(1);
+    maudContextDef cdef = maudDefaultContextDef();
+    maudContext* context = nullptr;
+    CHECK(maudCreateContext(&cdef, &context) == maud_success, "a context of listed inputs");
+    if (context != nullptr)
+    {
+        maudNotification notification;
+        while (maudContext_NextNotification(context, &notification) == maud_success)
+        {
+        }
+        maudDeviceId ids[8];
+        uint32_t count = 0;
+        CHECK(maudContext_GetDevices(context, maud_directionInput, ids, 8, &count) == maud_success,
+              "list the inputs");
+        CHECK(count == 3, "the inputs whose keys fit whole");
+        for (uint32_t i = 0; i < count && i < 8; ++i)
+        {
+            char key[256] = {0};
+            size_t length = 0;
+            CHECK(maudDevice_GetKey(context, ids[i], key, sizeof(key), &length) == maud_success,
+                  "a key");
+            bool whole = (length == 7 && memcmp(key, "default", 7) == 0) ||
+                         (length == 9 && memcmp(key, "mic-short", 9) == 0) ||
+                         (length == 127 && key[0] == 'x' && key[126] == 'x');
+            CHECK(whole, "a key as the browser listed it");
+            char name[16] = {0};
+            CHECK(maudDevice_GetName(context, ids[i], name, sizeof(name), &length) == maud_success,
+                  "a name");
+            CHECK(memcmp(key, "default", 7) == 0 ||
+                      (length == 7 && memcmp(name, "Mic\xEF\xBF\xBD!", 7) == 0),
+                  "a lone surrogate in a label is U+FFFD");
+        }
+        CHECK(maudDestroyContext(context) == maud_success, "destroy the context");
+    }
+    UnlistInputs();
+}
+
 int main(void)
 {
     RunDeviceLimit();
     RunLongKeyPlace();
+    RunDeviceKeys();
     RunTransport(true);
     RunTransport(false);
     RunFilterResets(true);

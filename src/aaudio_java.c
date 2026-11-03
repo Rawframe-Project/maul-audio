@@ -219,6 +219,30 @@ static bool ReadText(JNIEnv* env, jstring text, char* out, size_t capacity)
     return true;
 }
 
+// Reads a Java string, NULL as empty, into out, at most
+// MAUD_AAUDIO_KEY_BYTES, as UTF-8 for a key, whole and unchanged: false
+// when Java threw or it does not fit, a unit taking at least a byte.
+static bool ReadKey(JNIEnv* env, jstring text, char* out, size_t capacity)
+{
+    jchar units[MAUD_AAUDIO_KEY_BYTES];
+    jsize length = text != nullptr ? (*env)->GetStringLength(env, text) : 0;
+    if (Thrown(env) || (size_t)length >= capacity)
+    {
+        out[0] = '\0';
+        return false;
+    }
+    if (length > 0)
+    {
+        (*env)->GetStringRegion(env, text, 0, length, units);
+    }
+    if (Thrown(env))
+    {
+        out[0] = '\0';
+        return false;
+    }
+    return maudUtf16ToKey(out, capacity, units, (size_t)length);
+}
+
 // Hands each device of one listed pair of arrays to listed.
 static void Walk(maudAaudio* aaudio, JNIEnv* env, jobjectArray pair, maudDirection direction,
                  void (*listed)(maudAaudio* aaudio, maudDirection direction,
@@ -248,7 +272,11 @@ static void Walk(maudAaudio* aaudio, JNIEnv* env, jobjectArray pair, maudDirecti
             .lowRate = values[5 * i + 3],
             .highRate = values[5 * i + 4],
         };
-        if (ReadText(env, address, listing.address, sizeof(listing.address)) &&
+        // The key is made of the address, or of the product name when
+        // there is none.
+        if (ReadKey(env, address, listing.where, sizeof(listing.where)) &&
+            (listing.where[0] != '\0' ||
+             ReadKey(env, product, listing.where, sizeof(listing.where))) &&
             ReadText(env, product, listing.product, sizeof(listing.product)))
         {
             listed(aaudio, direction, &listing);

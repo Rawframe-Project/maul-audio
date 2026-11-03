@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Device text as platforms report it, cut to fit without splitting a
-// UTF-8 sequence.
+// Device text as platforms report it: names cut to fit without
+// splitting a UTF-8 sequence, keys encoded whole or not at all.
 
 #ifndef MAUL_AUDIO_SRC_UTF8_H
 #define MAUL_AUDIO_SRC_UTF8_H
@@ -28,5 +28,11 @@ size_t maudCopyUtf8(char* out, size_t capacity, const char* text);
 // short of a string never end the text early with half a pair once
 // count is at least capacity.
 size_t maudUtf16ToUtf8(char* out, size_t capacity, const uint16_t* units, size_t count);
+
+// Encodes count UTF-16 units into out as maudUtf16ToUtf8 does, for a
+// key, which is an identity and is never cut or changed: false when a
+// character does not fit or a unit has no UTF-8 of its own (a surrogate
+// without its pair, U+0000), since two such keys could then be one.
+bool maudUtf16ToKey(char* out, size_t capacity, const uint16_t* units, size_t count);
 
 #endif // MAUL_AUDIO_SRC_UTF8_H
