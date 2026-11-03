@@ -99,8 +99,10 @@ struct maudReverb
     maudBandEqSetup eqSetup;
     float* memory;
     size_t memoryFloats;
-    // The send's delay line (the longest delay and one sample), where
-    // the next sample goes, and the delay now.
+    // The longest delay the def allows, s; the send's delay line (the
+    // longest delay and one sample), where the next sample goes, and the
+    // delay now.
+    float maxDelay;
     float* delayLine;
     uint32_t delayLength;
     uint32_t delayAt;
@@ -186,6 +188,7 @@ maudResult maudCreateReverb(const maudReverbDef* def, maudReverb** reverbOut)
     }
     *r = (maudReverb){.allocator = def->allocator,
                       .rate = (double)def->sampleRate,
+                      .maxDelay = def->maxDelay,
                       .networkCount = def->enableTail ? 2u : 1u};
     for (uint32_t k = 0; k < r->networkCount; ++k)
     {
@@ -448,7 +451,9 @@ static bool ParamsValid(const maudReverb* r, const maudReverbParams* p)
             return false;
         }
     }
-    return p->delay >= 0.0f && (double)p->delay * r->rate < (double)r->delayLength;
+    // At most the longest, the delay rounds to at most the line's length
+    // less one.
+    return p->delay >= 0.0f && p->delay <= r->maxDelay;
 }
 
 // Takes a network's new times and levels: designs what changed, at once
