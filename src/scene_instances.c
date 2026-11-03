@@ -86,6 +86,9 @@ static bool TransformValid(const maudSceneInstanceTransform* t)
            t->scale <= MAX_SCALE;
 }
 
+static bool Placeable(const maudScene* scene, uint32_t mesh,
+                      const maudSceneInstanceTransform* transform);
+
 // Counts one misuse and returns maud_errorInvalid, for invalid arguments.
 static maudResult Invalid(maudScene* scene)
 {
@@ -106,7 +109,7 @@ static MAUD_NOINLINE maudResult CreateSceneInstance(maudScene* scene, uint32_t m
         return maud_errorInvalid;
     }
     if (transform == nullptr || instanceOut == nullptr || mesh >= scene->meshCount ||
-        !TransformValid(transform))
+        !TransformValid(transform) || !Placeable(scene, mesh, transform))
     {
         return Invalid(scene);
     }
@@ -164,7 +167,8 @@ static MAUD_NOINLINE maudResult MoveSceneInstance(maudScene* scene, maudSceneIns
     {
         return result;
     }
-    if (transform == nullptr || !TransformValid(transform))
+    if (transform == nullptr || !TransformValid(transform) ||
+        !Placeable(scene, slot->mesh, transform))
     {
         return Invalid(scene);
     }
@@ -255,6 +259,33 @@ static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const mau
         box.c[i] = 0.5f * (box.a[i] + box.b[i]);
     }
     return box;
+}
+
+// Whether a mesh placed by transform has a finite world box. Finite
+// vertices and a finite transform can still put the box past the float
+// range, or its corners so far apart that the padding overflows, which
+// would give the hierarchy a box with an infinite corner and a NaN
+// midpoint.
+static bool Placeable(const maudScene* scene, uint32_t mesh,
+                      const maudSceneInstanceTransform* transform)
+{
+    const maudSceneMesh* placed = &scene->meshes[mesh];
+    if (placed->triangleCount == 0)
+    {
+        return true;
+    }
+    maudSceneInstance slot = {.mesh = mesh, .transform = *transform};
+    maudPlacedInstance p;
+    Place(&slot, &p);
+    maudTriangle box = WorldBox(&p, transform->scale, &placed->nodes[0], 0);
+    for (int i = 0; i < 3; ++i)
+    {
+        if (!isfinite(box.a[i]) || !isfinite(box.b[i]) || !isfinite(box.c[i]))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 static MAUD_NOINLINE maudResult CommitAcousticScene(maudScene* scene)
