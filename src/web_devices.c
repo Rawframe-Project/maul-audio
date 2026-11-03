@@ -20,6 +20,7 @@
 #include "device.h"
 #include "follow.h"
 #include "notify.h"
+#include "utf8.h"
 
 #include <emscripten/em_js.h>
 #include <string.h>
@@ -89,12 +90,23 @@ EM_JS(int, maudWebTakeDevices, (int handle), {
     return entry.devices.length;
 });
 
-// Copies one listed device's id and label; returns its direction.
-EM_JS(int, maudWebDeviceAt, (int handle, int index, char* key, int keyBytes, char* name,
-                             int nameBytes), {
+// Copies one listed device's id and label as UTF-16, at most keyUnits
+// and nameUnits units, and their whole lengths in units; returns its
+// direction. Emscripten's stringToUTF8 writes a surrogate without its
+// pair as bytes that are not UTF-8 and stops at U+0000, so the C side
+// encodes the units itself.
+EM_JS(int, maudWebDeviceAt, (int handle, int index, uint16_t* key, int keyUnits, int* keyLength,
+                             uint16_t* name, int nameUnits, int* nameLength), {
     const device = globalThis.maudWeb.contexts[handle].devices[index];
-    stringToUTF8(device.deviceId, key, keyBytes);
-    stringToUTF8(device.label, name, nameBytes);
+    function copy(text, out, units, length) {
+        const taken = Math.min(text.length, units);
+        for (let i = 0; i < taken; ++i) {
+            HEAPU16[(out >>> 1) + i] = text.charCodeAt(i);
+        }
+        HEAP32[length >>> 2] = text.length;
+    }
+    copy(device.deviceId, key, keyUnits, keyLength);
+    copy(device.label, name, nameUnits, nameLength);
     return device.kind === "audiooutput" ? 0 : 1;
 });
 
@@ -167,14 +179,24 @@ maudResult maudWebSyncDevices(maudContext* context)
     for (int i = 0; i < listed && count < web->endpointCapacity; ++i)
     {
         maudWebEndpoint* endpoint = &web->endpoints[count];
+        uint16_t keyUnits[MAUD_WEB_KEY_BYTES];
+        uint16_t nameUnits[MAUD_WEB_NAME_BYTES];
+        int keyLength = 0;
+        int nameLength = 0;
         maudDirection direction =
-            (maudDirection)maudWebDeviceAt(web->handle, i, endpoint->key, sizeof(endpoint->key),
-                                           endpoint->name, sizeof(endpoint->name));
-        // A device whose key is past the text limit takes no place.
-        if (!maudKeyFits(context, strlen(endpoint->key)))
+            (maudDirection)maudWebDeviceAt(web->handle, i, keyUnits, MAUD_WEB_KEY_BYTES, &keyLength,
+                                           nameUnits, MAUD_WEB_NAME_BYTES, &nameLength);
+        // A key is never cut or changed: a device whose id does not fit
+        // whole, a unit taking at least a byte, or is past the text limit
+        // is left out, and takes no place.
+        if (keyLength >= MAUD_WEB_KEY_BYTES ||
+            !maudUtf16ToKey(endpoint->key, sizeof(endpoint->key), keyUnits, (size_t)keyLength) ||
+            !maudKeyFits(context, strlen(endpoint->key)))
         {
             continue;
         }
+        size_t taken = nameLength < MAUD_WEB_NAME_BYTES ? (size_t)nameLength : MAUD_WEB_NAME_BYTES;
+        maudUtf16ToUtf8(endpoint->name, sizeof(endpoint->name), nameUnits, taken);
         web->specs[count++] = (maudDeviceSpec){
             .info = {.direction = direction,
                      .nativeLayout =

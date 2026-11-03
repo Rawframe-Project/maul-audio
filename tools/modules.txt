@@ -133,7 +133,7 @@ wasapi_voice: context_core voice wasapi_core
 watertight:
 web_capture: context context_core follow period thread voice web_clock web_core web_devices xrun
 web_clock: clock context_core xrun
-web_devices: context context_core device follow notify web_core
+web_devices: context context_core device follow notify utf8 web_core
 web_core: context_core device web_clock
 worker:
 xrun: context_core

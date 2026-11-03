@@ -170,18 +170,19 @@ static void AddDefault(maudAaudio* aaudio, maudDirection direction)
 }
 
 // Adds one device Java listed, keyed by its type and address (its
-// product name when it has none).
+// product name when it has none); one whose key does not fit is left
+// out, since a key is never cut.
 static void Listed(maudAaudio* aaudio, maudDirection direction, const maudAaudioListing* listing)
 {
     const Kind* kind = KindOf(listing->type);
-    if (kind == nullptr)
+    char key[MAUD_AAUDIO_KEY_BYTES];
+    int prefix = snprintf(key, sizeof(key), "%d:", (int)listing->type);
+    size_t length = strlen(listing->where);
+    if (kind == nullptr || prefix < 0 || (size_t)prefix + length >= sizeof(key))
     {
         return;
     }
-    char key[MAUD_AAUDIO_KEY_BYTES];
-    const char* where = listing->address[0] != '\0' ? listing->address : listing->product;
-    int prefix = snprintf(key, sizeof(key), "%d:", (int)listing->type);
-    maudCopyUtf8(key + prefix, sizeof(key) - (size_t)prefix, where);
+    memcpy(key + prefix, listing->where, length + 1);
     const char* name = kind->builtIn != nullptr ? kind->builtIn : listing->product;
     uint32_t low = listing->lowRate > 0 ? (uint32_t)listing->lowRate : aaudio->rate;
     uint32_t high = listing->highRate > 0 ? (uint32_t)listing->highRate : aaudio->rate;

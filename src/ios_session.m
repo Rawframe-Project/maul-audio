@@ -18,7 +18,6 @@
 #include "utf8.h"
 
 #import <AVFAudio/AVFAudio.h>
-#include <stdio.h>
 #include <string.h>
 
 // AVAudioSessionCategoryOptionAllowBluetooth by its value: the iOS 26
@@ -186,6 +185,12 @@ maudDeviceForm maudIosPortForm(NSString* type)
     return maud_formUnknown;
 }
 
+// A port's name and key are read as UTF-16 into this many units, at
+// least as many as their buffers have bytes.
+static_assert(sizeof(((maudIosPort*)nullptr)->name) <= MAUD_IOS_PORT_BYTES &&
+                  sizeof(((maudIosPort*)nullptr)->key) <= MAUD_IOS_PORT_BYTES,
+              "a port's text fits the units it is read into");
+
 // Copies a name, nil as empty, into out as UTF-8 cut on whole
 // characters. UTF8String is NULL for a string holding a lone surrogate,
 // which a USB device's UTF-16 product string can carry, so the name is
@@ -203,6 +208,25 @@ static void CopyName(NSString* name, char* out, size_t capacity)
     maudUtf16ToUtf8(out, capacity, units, taken);
 }
 
+// Copies a port's key, "port:" and its UID, into out as UTF-8, whole and
+// unchanged. False for a port without a UID, or whose UID does not fit
+// or holds a surrogate without its pair, which is left out: a key is an
+// identity, and two such ports would share one.
+static bool CopyKey(NSString* uid, char* out, size_t capacity)
+{
+    static const char prefix[] = "port:";
+    size_t skip = sizeof(prefix) - 1;
+    unichar units[MAUD_IOS_PORT_BYTES];
+    NSUInteger length = uid != nil ? uid.length : 0;
+    if (length == 0 || length >= capacity - skip)
+    {
+        return false;
+    }
+    [uid getCharacters:units range:NSMakeRange(0, length)];
+    memcpy(out, prefix, skip);
+    return maudUtf16ToKey(out + skip, capacity - skip, units, length);
+}
+
 uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity, size_t keyLimit)
 {
     @autoreleasepool
@@ -215,8 +239,7 @@ uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity, size_t keyL
                 break;
             }
             maudIosPort* out = &ports[count];
-            snprintf(out->key, sizeof(out->key), "port:%s", port.UID.UTF8String);
-            if (strlen(out->key) > keyLimit)
+            if (!CopyKey(port.UID, out->key, sizeof(out->key)) || strlen(out->key) > keyLimit)
             {
                 continue;
             }

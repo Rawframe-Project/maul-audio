@@ -77,10 +77,13 @@ static bool IsLow(uint16_t unit)
     return unit >= 0xDC00u && unit < 0xE000u;
 }
 
-size_t maudUtf16ToUtf8(char* out, size_t capacity, const uint16_t* units, size_t count)
+// Encodes units as maudUtf16ToUtf8 says; exact is false when a unit was
+// replaced or a character did not fit.
+static size_t Encode(char* out, size_t capacity, const uint16_t* units, size_t count, bool* exact)
 {
     size_t length = 0;
     bool fits = true;
+    *exact = true;
     for (size_t i = 0; i < count && fits; ++i)
     {
         uint32_t code = units[i];
@@ -92,9 +95,24 @@ size_t maudUtf16ToUtf8(char* out, size_t capacity, const uint16_t* units, size_t
         else if (IsHigh(units[i]) || IsLow(units[i]) || code == 0)
         {
             code = 0xFFFDu;
+            *exact = false;
         }
         fits = Put(out, capacity, &length, code);
     }
     out[length] = '\0';
+    *exact = *exact && fits;
     return length;
+}
+
+size_t maudUtf16ToUtf8(char* out, size_t capacity, const uint16_t* units, size_t count)
+{
+    bool exact;
+    return Encode(out, capacity, units, count, &exact);
+}
+
+bool maudUtf16ToKey(char* out, size_t capacity, const uint16_t* units, size_t count)
+{
+    bool exact;
+    (void)Encode(out, capacity, units, count, &exact);
+    return exact;
 }

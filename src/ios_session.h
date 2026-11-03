@@ -29,8 +29,9 @@ maudDeviceForm maudIosPortForm(NSString* type);
 #endif
 
 // Fills ports with the session's available inputs, at most capacity,
-// leaving out one whose key is longer than keyLimit bytes, which would
-// be left out of the table; returns the count.
+// leaving out a port without a UID or whose key does not fit whole or
+// is longer than keyLimit bytes, which would be left out of the table;
+// returns the count.
 uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity, size_t keyLimit);
 
 // Makes the input whose UID is uid, length bytes, the session's
