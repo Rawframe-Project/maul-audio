@@ -7,7 +7,9 @@
 // made, triangles past the def's limit are
 // maud_errorCapacity, and the limits at their bounds are taken; an
 // instance's transform out of range, a placement past the float range,
-// its ids out of range and the pointers each function needs are refused.
+// its ids out of range and the pointers each function needs are refused;
+// a mesh whose triangles have no area has no bounds, and is placed
+// anywhere.
 
 #include "test_harness.h"
 
@@ -366,6 +368,48 @@ static void TestInstanceAboveHalfRange(void)
     maudDestroyScene(scene);
 }
 
+// A mesh whose only triangle has no area, its corners on one line,
+// keeps no triangle and so has no bounds: a transform at the float
+// range's edge, scaled up, places it where it is made and moved to, and
+// a commit holds nothing to hit. The same transform puts a cube past the
+// range and is refused.
+static void TestInstanceWithNoArea(void)
+{
+    static const maudVector3 line[3] = {{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {2.0f, 2.0f, 2.0f}};
+    static const uint32_t corners[3] = {0, 1, 2};
+    static maudVector3 cube[8];
+    Cube(cube, 0.0f, 1.0f);
+    maudMesh meshes[2] = {
+        {line, 3, corners, s_materials, 1},
+        {cube, 8, s_faces, s_materials, 12},
+    };
+    maudSceneDef def = maudDefaultSceneDef();
+    def.instanceMeshes = meshes;
+    def.instanceMeshCount = 2;
+    def.instanceCapacity = 1;
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    maudSceneInstanceTransform edge = {
+        {FLT_MAX, -FLT_MAX, FLT_MAX}, {0.0f, 0.0f, 0.0f, 1.0f}, 1000.0f};
+    maudSceneInstanceTransform origin = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
+    maudSceneInstanceId id = {0, 0};
+    CHECK(maudCreateSceneInstance(scene, 1, &edge, &id) == maud_errorInvalid && id.index1 == 0,
+          "a cube there refused");
+    CHECK(maudCreateSceneInstance(scene, 0, &edge, &id) == maud_success,
+          "a mesh with no area taken at the range's edge");
+    CHECK(maudSceneInstance_Move(scene, id, &origin) == maud_success &&
+              maudSceneInstance_Move(scene, id, &edge) == maud_success,
+          "and moved there");
+    CHECK(maudScene_Commit(scene) == maud_success, "a commit");
+    maudRay ray = {{-1.0f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, 0.0f, 10.0f};
+    maudRayHit hit;
+    uint8_t occluded = 2;
+    maudFindClosestHit(&ray, 1, &hit, scene);
+    maudFindAnyHit(&ray, 1, &occluded, scene);
+    CHECK(hit.distance == INFINITY && occluded == 0, "nothing to hit");
+    maudDestroyScene(scene);
+}
+
 int main(void)
 {
     TestDefs();
@@ -374,5 +418,6 @@ int main(void)
     TestInstancesTurnedNearRange();
     TestInstanceTermsPastHalfRange();
     TestInstanceAboveHalfRange();
+    TestInstanceWithNoArea();
     return s_failures == 0 ? 0 : 1;
 }
