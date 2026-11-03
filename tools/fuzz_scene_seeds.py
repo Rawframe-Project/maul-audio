@@ -4,7 +4,9 @@
 # them, at two ranges, the room's probes generated over it, eight small
 # triangles near x = +3e38 and -3e38, and generations over a box too
 # wide for its columns, a box whose top is near 3e38 and a column at
-# x = 3e38, and the walled room's instances made, moved and destroyed.
+# x = 3e38, the walled room's instances made, moved and destroyed, and
+# a cube turned with its diagonal along x, placed where the padding's sum
+# just overflows and just below where it would.
 # The layout is the one test/fuzz_scene.c reads: a mode byte (the range
 # in its low two bits, generation in its third, instances in its
 # fourth), the vertex and triangle counts, the vertices as floats, a
@@ -84,6 +86,16 @@ def seeds():
         call(CREATE, position=(0.0, 1.0, 0.0), scale=0.001), call(COMMIT),
     ]
     across = [(-30.0, 1.5, 0.1), (30.0, 1.5, 0.1), (20.0, 10.0, 0.0), (20.0, -10.0, 0.5)]
+    # A cube 5e37 from the origin on each axis, its diagonal turned onto
+    # x: at scale 1 its corner reaches 8.66e37, where the four of it the
+    # padding sums pass FLT_MAX and the instance is refused; at 0.9,
+    # 7.79e37, the sum fits and it is taken.
+    huge, huge_faces = box((-5.0e37, -5.0e37, -5.0e37), (5.0e37, 5.0e37, 5.0e37))
+    diagonal = (0.0, 0.32505758, -0.32505758, 0.88807383)
+    huge_calls = [
+        call(CREATE, orientation=diagonal), call(CREATE, orientation=diagonal, scale=0.9),
+        call(COMMIT), call(MOVE, 0, orientation=diagonal), call(COMMIT),
+    ]
     return [
         seed(RANGE_5, room, room_faces, probes),
         seed(RANGE_5, walled, walled_faces, probes),
@@ -94,6 +106,8 @@ def seeds():
         seed(RANGE_5 | GENERATE, walled, walled_faces, [], tall),
         seed(RANGE_5 | GENERATE, far, far_faces, [], column),
         seed(RANGE_5 | INSTANCES, walled, walled_faces, across, capacity=2, calls=calls),
+        seed(RANGE_5 | INSTANCES, huge, huge_faces, [(0.0, 0.0, -1.0e38), (0.0, 0.0, 1.0e38)],
+             capacity=2, calls=huge_calls),
     ]
 
 

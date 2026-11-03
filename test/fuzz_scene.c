@@ -315,16 +315,17 @@ static bool TransformValid(const maudSceneInstanceTransform* t)
 }
 
 // Whether a mesh whose vertices are within reach on every axis, placed
-// by a valid transform, is surely within the float range: a turned
-// corner is within sqrt(3) x reach on each axis, the commit pads a box
-// by a little over 4e-5 of its reach, and the box's midpoint sums two
-// corners, so a bound well below half of FLT_MAX is surely taken.
+// by a valid transform, is surely within the float range. A turned
+// corner is within far = |position| + scale x sqrt(3) x reach on each
+// axis. The commit's padding sums high - low, |low| and |high| in float,
+// up to 4 x far, before it takes its share, so that sum overflows past a
+// quarter of FLT_MAX, about 8.5e37: a bound below it is surely taken.
 static bool SurelyInRange(const maudSceneInstanceTransform* t, double reach)
 {
     double far = fmax(fmax(fabs((double)t->position.x), fabs((double)t->position.y)),
                       fabs((double)t->position.z)) +
                  (double)t->scale * sqrt(3.0) * reach;
-    return far * 1.001 + 1.0 < 1e38;
+    return far * 1.001 + 1.0 < 8e37;
 }
 
 // The id a call names: one an earlier call got, or, past those, 0 or
