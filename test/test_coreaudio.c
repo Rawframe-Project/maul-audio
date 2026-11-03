@@ -452,9 +452,9 @@ static void TestDefaultMoves(maudContext* context)
     CHECK(Destroy(context, stream), "destroy");
 }
 
-// Makes a private aggregate device over BlackHole, seen by this process
-// only; returns its object, or kAudioObjectUnknown.
-static AudioObjectID MakeAggregate(void)
+// Makes a private aggregate device over BlackHole named name, seen by
+// this process only; returns its object, or kAudioObjectUnknown.
+static AudioObjectID MakeAggregate(CFStringRef name)
 {
     CFMutableDictionaryRef sub = CFDictionaryCreateMutable(
         kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
@@ -466,8 +466,7 @@ static AudioObjectID MakeAggregate(void)
     CFMutableDictionaryRef description = CFDictionaryCreateMutable(
         kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceUIDKey), CFSTR(AGGREGATE_UID));
-    CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceNameKey),
-                         CFSTR("Maud test aggregate"));
+    CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceNameKey), name);
     CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceSubDeviceListKey), list);
     CFDictionarySetValue(description, CFSTR(kAudioAggregateDeviceIsPrivateKey), isPrivate);
     AudioObjectID aggregate = kAudioObjectUnknown;
@@ -536,7 +535,7 @@ static maudSuspendReason Suspension(const maudContext* context, maudStreamId str
 // stays where it was opened, lost.
 static void TestHotplug(maudContext* context)
 {
-    AudioObjectID aggregate = MakeAggregate();
+    AudioObjectID aggregate = MakeAggregate(CFSTR("Maud test aggregate"));
     CHECK(aggregate != kAudioObjectUnknown, "an aggregate device made");
     maudStreamId none = {0, 0};
     maudDeviceId device = WaitFor(context, maud_notifyDeviceAdded, none);
@@ -554,7 +553,7 @@ static void TestHotplug(maudContext* context)
     // hygiene: gives a lost stream 200 ms in which a callback would show
     Pause(200);
     CHECK(atomic_load(&blocks.count) == lost, "silent while lost");
-    aggregate = MakeAggregate();
+    aggregate = MakeAggregate(CFSTR("Maud test aggregate"));
     CHECK(aggregate != kAudioObjectUnknown, "the device made again");
     maudDeviceId again = WaitFor(context, maud_notifyDeviceAdded, none);
     CHECK(again.index1 != 0 &&
@@ -567,6 +566,53 @@ static void TestHotplug(maudContext* context)
     CHECK(Destroy(context, stream), "destroy");
     CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed again");
     CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
+}
+
+// A device whose name runs past the 255 bytes the backend reads is named
+// that name cut after the last whole character, not by its UID. A name
+// holding a surrogate without its pair cannot be made this way:
+// coreaudiod cuts an aggregate's name at it. test_utf8 covers the U+FFFD
+// that ReadName's encoding gives it.
+static void TestLongName(maudContext* context)
+{
+    // "Maud", then U+00E9, two bytes each: 316 bytes, of which "Maud"
+    // and 125 accents fit 255.
+    UniChar units[160];
+    CFIndex count = 0;
+    for (const char* head = "Maud"; *head != '\0'; ++head)
+    {
+        units[count++] = (UniChar)*head;
+    }
+    while (count < 160)
+    {
+        units[count++] = 0x00E9;
+    }
+    CFStringRef name = CFStringCreateWithCharacters(kCFAllocatorDefault, units, count);
+    AudioObjectID aggregate = MakeAggregate(name);
+    CFRelease(name);
+    CHECK(aggregate != kAudioObjectUnknown, "an aggregate device with a long name");
+    maudStreamId none = {0, 0};
+    maudDeviceId device = WaitFor(context, maud_notifyDeviceAdded, none);
+    char bytes[512] = {0};
+    size_t length = 0;
+    CHECK(device.index1 != 0 &&
+              maudDevice_GetName(context, device, bytes, sizeof(bytes), &length) == maud_success,
+          "it appears with a name");
+    bool cut = length == 4 + 2 * 125 && memcmp(bytes, "Maud", 4) == 0;
+    for (size_t i = 4; cut && i < length; i += 2)
+    {
+        cut = bytes[i] == '\xC3' && bytes[i + 1] == '\xA9';
+    }
+    CHECK(cut, "a long name cut after the last whole character, not the UID");
+    if (!cut)
+    {
+        printf("the name listed, %zu bytes: %.*s\n", length, (int)length, bytes);
+    }
+    if (aggregate != kAudioObjectUnknown)
+    {
+        CHECK(AudioHardwareDestroyAggregateDevice(aggregate) == noErr, "the device destroyed");
+        CHECK(WaitFor(context, maud_notifyDeviceRemoved, none).index1 != 0, "it disappears");
+    }
 }
 
 // Drains and prints the notifications the restart brings.
@@ -1221,6 +1267,7 @@ int main(void)
         TestServiceRestart(context);
     }
     TestHotplug(context);
+    TestLongName(context);
     CHECK(maudDestroyContext(context) == maud_success, "destroy");
     CHECK(s_live == 0, "everything given back");
     CHECK(given[0] == '\0' || MakeDefaultOutput(given), "the default given back");
