@@ -42,8 +42,12 @@
 // for as long as it stalls.
 #define COMMAND_SECONDS 20
 // How long the daemon's script may take to stop or start the daemon, in
-// seconds: it bounds each wait at 20 (its LIMIT), and makes up to four.
-#define DAEMON_SECONDS 90
+// seconds: it bounds each wait at 20 (its LIMIT); a stop makes up to four,
+// and a start five (the bus, pipewire, pipewire-pulse, the test sink and
+// the default) and creates the test nodes. A suite with a bound of its
+// own on each test, as test_pulse's TEST_SECONDS, cuts a start or stop
+// inside a test at that bound first, naming the test.
+#define DAEMON_SECONDS 110
 
 // Writes into line, of size bytes, the shell command that runs command
 // under a bound of seconds, its text quoted for sh -c; false when it does

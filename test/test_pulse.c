@@ -38,7 +38,8 @@
 
 // How long one test may take, in seconds: the longest takes about 12,
 // and ctest would stop the whole suite only at 300, saying nothing of
-// where it stood.
+// where it stood. It also bounds the daemon's stops and starts that
+// TestRestart and TestHostSuspended make, before DAEMON_SECONDS would.
 #define TEST_SECONDS 60
 
 static bool SameDevice(maudDeviceId a, maudDeviceId b)
