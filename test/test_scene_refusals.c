@@ -6,13 +6,14 @@
 // past a published bound and maud_errorInvalid otherwise, with no scene
 // made, triangles past the def's limit are
 // maud_errorCapacity, and the limits at their bounds are taken; an
-// instance's transform out of range, its ids out of range and the
-// pointers each function needs are refused.
+// instance's transform out of range, a placement past the float range,
+// its ids out of range and the pointers each function needs are refused.
 
 #include "test_harness.h"
 
 #include "maul-audio/scene.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -220,9 +221,59 @@ static void TestInstances(void)
     maudDestroyScene(scene);
 }
 
+// The cube from low to high on each axis, into v.
+static void Cube(maudVector3* v, float low, float high)
+{
+    for (int i = 0; i < 8; ++i)
+    {
+        v[i] = (maudVector3){(i & 1) ? high : low, (i & 2) ? high : low, (i & 4) ? high : low};
+    }
+}
+
+// Finite vertices and a transform in range can still place a mesh past
+// the float range: one far out and scaled up, or one whose corners are
+// so far apart that their distance overflows. Either is refused, where
+// it is made or moved to, and a commit after takes the last placement.
+static void TestInstancesPastRange(void)
+{
+    static maudVector3 far[8];
+    static maudVector3 wide[8];
+    static maudVector3 near[8];
+    Cube(far, 0.0f, 1e36f);
+    Cube(wide, -2e38f, 2e38f);
+    Cube(near, 0.0f, 1e30f);
+    maudMesh meshes[3] = {
+        {far, 8, s_faces, s_materials, 12},
+        {wide, 8, s_faces, s_materials, 12},
+        {near, 8, s_faces, s_materials, 12},
+    };
+    maudSceneDef def = maudDefaultSceneDef();
+    def.instanceMeshes = meshes;
+    def.instanceMeshCount = 3;
+    def.instanceCapacity = 1;
+    maudScene* scene = nullptr;
+    CHECK(maudCreateScene(&def, &scene) == maud_success, "a scene");
+    maudSceneInstanceTransform up = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1000.0f};
+    maudSceneInstanceTransform one = up;
+    one.scale = 1.0f;
+    maudSceneInstanceId id = {0, 0};
+    CHECK(maudCreateSceneInstance(scene, 0, &up, &id) == maud_errorInvalid && id.index1 == 0,
+          "a mesh scaled past the float range refused");
+    CHECK(maudCreateSceneInstance(scene, 1, &one, &id) == maud_errorInvalid && id.index1 == 0,
+          "a mesh whose corners are farther apart than a float holds refused");
+    CHECK(maudCreateSceneInstance(scene, 2, &up, &id) == maud_success, "a mesh in range taken");
+    maudSceneInstanceTransform out = up;
+    out.position.x = FLT_MAX;
+    CHECK(maudSceneInstance_Move(scene, id, &out) == maud_errorInvalid,
+          "a move past the float range refused");
+    CHECK(maudScene_Commit(scene) == maud_success, "a commit of the placement in range");
+    maudDestroyScene(scene);
+}
+
 int main(void)
 {
     TestDefs();
     TestInstances();
+    TestInstancesPastRange();
     return s_failures == 0 ? 0 : 1;
 }
