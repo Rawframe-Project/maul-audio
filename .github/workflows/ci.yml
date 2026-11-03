@@ -124,8 +124,13 @@ jobs:
         # The Linux build's sources, on the Release preset, where the
         # assertions compile out, and with them live: each hides findings the
         # other shows. The other platforms' code is compiled with warnings as
-        # errors by its own cell.
+        # errors by its own cell. The header filter is given here because
+        # clang-tidy 20, run from the checkout's root, does not take
+        # .clang-tidy's HeaderFilterRegex and reports nothing in headers. It
+        # is anchored at the checkout, so that headers fetched under out/
+        # are not taken for this library's.
         run: |
+          root=$(pwd)
           for build in Release Debug; do
             echo "::group::clang-tidy, $build"
             cmake --preset linux-clang-20 -B "out/tidy-$build" -DCMAKE_BUILD_TYPE=$build \
@@ -133,7 +138,7 @@ jobs:
             mapfile -t files < <(python3 -c "import json, sys; sys.stdout.write(''.join(f + '\n' for f in sorted({e['file'] for e in json.load(open('out/tidy-$build/compile_commands.json')) if '/src/' in e['file']})))")
             [ ${#files[@]} -gt 0 ] || { echo "::error::no sources for clang-tidy"; exit 1; }
             printf '%s\n' "${files[@]}" | xargs -P "$(nproc)" -n 1 clang-tidy-20 -p "out/tidy-$build" \
-              --quiet --warnings-as-errors='*'
+              --quiet --warnings-as-errors='*' --header-filter="^$root/(src|include)/"
             echo "::endgroup::"
           done
 
