@@ -34,40 +34,12 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
-// How long one shell command may take, in seconds. pactl answers in
-// well under a second, but waits on a stalled server for as long as the
-// server stalls.
-#define COMMAND_SECONDS 20
 // How long one test may take, in seconds: the longest takes about 12,
 // and ctest would stop the whole suite only at 300, saying nothing of
 // where it stood.
 #define TEST_SECONDS 60
-
-// A shell command line that runs command, stopped past COMMAND_SECONDS.
-// The command goes through the environment, so its quotes need no
-// escaping. Only the test's own thread runs commands.
-static const char* Bounded(const char* command)
-{
-    static char line[64];
-    setenv("MAUD_TEST_COMMAND", command, 1);
-    snprintf(line, sizeof(line), "timeout -k 2 %d sh -c \"$MAUD_TEST_COMMAND\"", COMMAND_SECONDS);
-    return line;
-}
-
-// Whether a status from system or pclose says the command was stopped
-// at its bound, and if so, says which command.
-static bool Stopped(int status, const char* command)
-{
-    bool stopped = WIFEXITED(status) && (WEXITSTATUS(status) == 124 || WEXITSTATUS(status) == 137);
-    if (stopped)
-    {
-        printf("the command did not finish within %d s: %s\n", COMMAND_SECONDS, command);
-    }
-    return stopped;
-}
 
 static bool SameDevice(maudDeviceId a, maudDeviceId b)
 {
@@ -193,8 +165,8 @@ static void PrintDefaults(const maudContext* context)
                        " echo \"the daemon's default metadata:\"; pw-metadata -n default 0;"
                        " echo \"the daemon's metadata objects:\";"
                        " pw-cli ls Metadata | grep -E '^[[:space:]]*id |metadata.name'";
-    int status = system(Bounded(view));
-    if (status != 0 && !Stopped(status, view))
+    int status = RunBounded(view, COMMAND_SECONDS);
+    if (status != 0)
     {
         printf("the server's view could not be read (status %d)\n", status);
     }
@@ -432,21 +404,19 @@ static maudStreamId OpenStream(maudContext* context, maudDirection direction, ma
 
 static bool Run(const char* command)
 {
-    int status = system(Bounded(command));
-    (void)Stopped(status, command);
-    return status == 0;
+    return RunBounded(command, COMMAND_SECONDS) == 0;
 }
 
 // Whether the one sink input is corked: 1 yes, 0 no, -1 none.
 static int Corked(void)
 {
     const char* command = "pactl list sink-inputs | grep 'Corked:'";
-    FILE* listing = popen(Bounded(command), "r");
+    FILE* listing = OpenBounded(command, COMMAND_SECONDS);
     char line[64] = {0};
     bool read = listing != nullptr && fgets(line, sizeof(line), listing) != nullptr;
     if (listing != nullptr)
     {
-        (void)Stopped(pclose(listing), command);
+        (void)CloseBounded(listing, command, COMMAND_SECONDS);
     }
     return !read ? -1 : strstr(line, "yes") != nullptr ? 1 : 0;
 }
