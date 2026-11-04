@@ -115,7 +115,8 @@ extern "C"
     ///
     /// Samples must be finite: one that is not (NaN or infinite) spoils the
     /// detector's state, and so all it reports after, until it is destroyed
-    /// and made again.
+    /// and made again. Samples within 2^64 of zero, far past full scale,
+    /// keep all it reports finite.
     ///
     /// @param detector    The detector.
     /// @param frames      frameCount frames in the def's layout; may be NULL
@@ -168,7 +169,8 @@ extern "C"
     {
         // The gain applied at the end of the last frames, in dB.
         float gainDb;
-        // The speech level it measured, in dBFS, once reliable.
+        // The speech level it measured, in dBFS, once reliable; -100 until
+        // then.
         float speechDbfs;
         bool speechReliable;
         // The noise floor under the input, in dBFS.
@@ -244,7 +246,8 @@ extern "C"
     ///
     /// Samples must be finite: one that is not (NaN or infinite) spoils the
     /// gain control's state, and so its output after, until it is destroyed
-    /// and made again.
+    /// and made again. Samples within 2^64 of zero, far past full scale,
+    /// keep its output and state finite.
     ///
     /// @param gain        The gain control.
     /// @param frames      frameCount frames in the def's layout; may be NULL
@@ -357,7 +360,8 @@ extern "C"
     ///
     /// Samples must be finite: one that is not (NaN or infinite) spoils the
     /// noise suppressor's state, and so its output after, until it is
-    /// destroyed and made again.
+    /// destroyed and made again. Samples within 2^64 of zero, far past full
+    /// scale, keep its output and state finite.
     ///
     /// @param suppressor  The noise suppressor.
     /// @param frames      frameCount frames in the def's layout; may be
@@ -477,7 +481,8 @@ extern "C"
     ///
     /// Samples of both must be finite: one that is not (NaN or infinite)
     /// spoils the echo canceller's state, and so its output after, until it
-    /// is destroyed and made again.
+    /// is destroyed and made again. Samples within 2^64 of zero, far past
+    /// full scale, keep its output and state finite.
     ///
     /// @param canceller   The echo canceller.
     /// @param capture     frameCount mono frames of the capture; may be NULL
