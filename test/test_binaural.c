@@ -1080,11 +1080,12 @@ static void TestBadSample(const maudHrtf* hrtf)
 // With the near field, a source exactly at an ear leaves that ear no
 // direction to see it from: it takes the source's direction from the
 // head's centre, and so renders, finite, as a source just outside the
-// ear on that line does. That the two agree bit for bit also rests on
-// the near-field table: it ends at an inverse distance of 1 / 1.15, so
-// both sources' (1 and 0.993) take its last entry. A table reaching
-// closer would set them apart, and the test would then compare them
-// within a tolerance.
+// ear on that line does. That the two agree within 1e-10 of the energy
+// (they are in fact identical) also rests on the near-field table: it
+// ends at an inverse distance of 1 / 1.15, so both sources' (1 and
+// 0.993) take its last entry. A table reaching closer would give them
+// different near-field filters, and the check's 1e-10 would need
+// loosening to the difference those filters make.
 static void TestAtEar(const maudHrtf* hrtf)
 {
     maudBinauralDef def = maudDefaultBinauralDef();
