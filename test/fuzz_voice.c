@@ -18,7 +18,7 @@
 //   and the state within its documented ranges: a probability from 0 to
 //   1 (the echo canceller's 0 until two blocks have been processed and
 //   from 0.1 after, its leakage from 0.005), the gain within the def's
-//   range, the frames counted;
+//   range and its speech level -100 until reliable, the frames counted;
 // - the gain control lets no sample out above -1 dBFS.
 
 #include "maul-audio/voice.h"
@@ -290,8 +290,8 @@ static void Gain(Input* in)
     {
         Expect(fabsf(s_whole[i]) <= CEILING);
     }
-    Expect(Within(one.gainDb, def.minGainDb, def.maxGainDb) && isfinite(one.speechDbfs) &&
-           isfinite(one.noiseDbfs));
+    Expect(Within(one.gainDb, def.minGainDb, def.maxGainDb) && isfinite(one.noiseDbfs));
+    Expect(one.speechReliable ? isfinite(one.speechDbfs) : one.speechDbfs == -100.0f);
     maudDestroyGainControl(whole);
     maudDestroyGainControl(cut);
 }
