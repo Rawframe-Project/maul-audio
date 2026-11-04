@@ -4,8 +4,9 @@
 // The echo canceller: a render of noise heard through a fixed room
 // response (10 ms late, 60 ms long) is taken down 50 dB or more within
 // three seconds at 8, 16 and 48 kHz (at 8 kHz, the suppressor's bands
-// above the 4 kHz Nyquist hold no frequencies), and it reports having adapted
-// with a low leakage; a near end of noise at about the echo's level
+// above the 4 kHz Nyquist hold no frequencies), and at 16 kHz scaled by
+// 2^63, and it reports having adapted with a low leakage; a near end of
+// noise at about the echo's level
 // (the hardest double talk) comes through within 3 dB with the rest 6
 // dB under it, and the echo stays down 30 dB between its bursts; with
 // nothing played, tone bursts keep their level within a decibel while
@@ -207,6 +208,33 @@ static void TestTwoBlocks(void)
           "from 0.1 once two blocks have been processed");
 }
 
+// The same scene scaled by 2^63, its peaks near 2^62, far past full scale
+// but within the 2^64 the header names: the echo is taken down as at
+// full scale. The filter's steps multiply two transforms' bins, each
+// past 2^64 at that level.
+static void TestLoud(void)
+{
+    const uint32_t rate = 16000;
+    uint32_t frames = rate * SECONDS;
+    Scene(rate, frames, false);
+    const float scale = ldexpf(1.0f, 63);
+    for (uint32_t i = 0; i < frames; ++i)
+    {
+        s_render[i] *= scale;
+        s_echo[i] *= scale;
+        s_capture[i] *= scale;
+    }
+    maudEchoCanceller* c = Create(rate);
+    maudEchoState state = Run(c, s_capture, frames, rate / 100);
+    maudDestroyEchoCanceller(c);
+    double erle = 10.0 * log10(Energy(s_echo, 3 * rate - 2 * 128, frames - 2 * 128) /
+                               Energy(s_capture, 3 * rate, frames));
+    printf("scaled by 2^63: %.1f dB taken from the echo, leakage %.4f\n", erle,
+           (double)state.leakage);
+    CHECK(erle > 50.0 && state.adapted && state.leakage < 0.05f,
+          "the echo taken down at 2^63 as at full scale");
+}
+
 static void TestDoubleTalk(void)
 {
     const uint32_t rate = 16000;
@@ -372,6 +400,7 @@ int main(void)
     TestConverges(8000, 64);
     TestConverges(16000, 128);
     TestConverges(48000, 512);
+    TestLoud();
     TestDoubleTalk();
     TestQuietFirst();
     TestTwoBlocks();

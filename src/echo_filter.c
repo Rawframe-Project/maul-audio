@@ -35,6 +35,30 @@
 // then cancellation), so a floor of 1e-30 still left them subnormal;
 // 1e-20 is far below any weight that adds to an estimate.
 #define WEIGHT_TINY 1e-20f
+// The largest weight kept, each part of a bin: the most gain the filter
+// models in a bin, 78 dB, and the bound on every float the canceller
+// stores for samples within 2^64 of zero (voice.h). With blocks of at
+// most 4,096 frames, transforms of at most 2^13 (2^12 complex points in
+// 12 stages, each at most doubling the sum of squares) and at most 128
+// partitions:
+// - the render through the pre-emphasis stays under 2^65 and its bins
+//   under 2^78; the capture through the notch (the L1 norm of its
+//   response at most 2.39) and the pre-emphasis under 2^66.3;
+// - the estimate's bins stay under 2^7 2^78 2^13.5 = 2^98.5; the
+//   inverse's split at most doubles them, its stages add 2^12, and it
+//   divides by 2^12, so its stages stay under 2^111.5 and its samples
+//   under 2^99.5;
+// - the error's samples stay under 2^99.6 and its bins (of 2^12
+//   samples) under 2^111.6;
+// - the de-emphasis (a pole at most 0.979) multiplies by 48 at most, to
+//   under 2^105.2;
+// - the suppressor's frame of 2^13 samples has a root sum of squares
+//   under 2^6.5 2^105.2, so its bins' is under 2^13 2^105.2 = 2^118.2
+//   and each bin under that; its gains are at most 1; the inverse's
+//   split multiplies the root sum of squares by 2^0.5 at most and its
+//   stages by 2^6, so every value stays under 2^124.7, within a float's
+//   2^128.
+#define WEIGHT_LIMIT 8192.0
 
 typedef struct Sums
 {
@@ -44,6 +68,12 @@ typedef struct Sums
     double foreground;
     double echo;
 } Sums;
+
+// A weight within WEIGHT_LIMIT, as a float.
+static float Bounded(double weight)
+{
+    return (float)fmin(fmax(weight, -WEIGHT_LIMIT), WEIGHT_LIMIT);
+}
 
 static float* Partition(float* spectra, uint32_t bins, uint32_t index)
 {
@@ -406,13 +436,16 @@ static void Adapt(maudEchoFilter* f, double rer, double startRate, bool still)
         double share = f->shares[m];
         for (uint32_t k = 0; k < f->bins; ++k)
         {
+            // The product in double: each bin of an unscaled transform may
+            // pass 2^64 for loud input, and two such multiplied in float
+            // would pass its range.
             double step = mu[k] * share / power[k];
-            float er = e[2 * k];
-            float ei = e[2 * k + 1];
-            float xr = x[2 * k];
-            float xi = x[2 * k + 1];
-            w[2 * k] += (float)(step * (double)(er * xr + ei * xi));
-            w[2 * k + 1] += (float)(step * (double)(ei * xr - er * xi));
+            double er = (double)e[2 * k];
+            double ei = (double)e[2 * k + 1];
+            double xr = (double)x[2 * k];
+            double xi = (double)x[2 * k + 1];
+            w[2 * k] = Bounded((double)w[2 * k] + step * (er * xr + ei * xi));
+            w[2 * k + 1] = Bounded((double)w[2 * k + 1] + step * (ei * xr - er * xi));
         }
     }
 }
@@ -434,7 +467,7 @@ static void Constrain(maudEchoFilter* f)
     maudForwardRealFft(f->fft, f->time, w);
     for (uint32_t k = 0; k < 2 * f->bins; ++k)
     {
-        w[k] = FlushWeight(w[k]);
+        w[k] = FlushWeight(Bounded((double)w[k]));
     }
     f->constrain = (f->constrain + 1) % f->partitions;
 }
