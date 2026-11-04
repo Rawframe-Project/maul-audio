@@ -74,6 +74,11 @@ fail() {
     exit 1
 }
 
+# Runs a client command, LIMIT seconds at most: a daemon that accepts a
+# connection and then stops answering would hold pw-cli or pactl, and
+# with it the start, until CTest's timeout, with no reason given.
+bounded() { timeout -k 2 "$LIMIT" "$@"; }
+
 # Waits until a command succeeds, LIMIT seconds at most. With a daemon's
 # name first, fails at once if that daemon has exited: a daemon that
 # refused to start never answers, and waiting longer tells nothing more.
@@ -118,9 +123,9 @@ launch() { # name
     fi
 }
 
-count_nodes() { pw-cli ls Node | grep -c "node.name = \"$1\"" || true; }
-has_sink() { pactl list short sinks | grep -q maud-test-sink; }
-has_default() { [ "$(pactl get-default-sink)" = maud-test-sink ]; }
+count_nodes() { bounded pw-cli ls Node | grep -c "node.name = \"$1\"" || true; }
+has_sink() { bounded pactl list short sinks | grep -q maud-test-sink; }
+has_default() { [ "$(bounded pactl get-default-sink)" = maud-test-sink ]; }
 
 case $action in
 start)
@@ -139,7 +144,8 @@ start)
     done
     if ! running "$dir/dbus.pid"; then
         rm -f "$dir/run/bus"
-        pid=$(dbus-daemon --session --fork --address="$DBUS_SESSION_BUS_ADDRESS" --print-pid=1)
+        pid=$(bounded dbus-daemon --session --fork --address="$DBUS_SESSION_BUS_ADDRESS" \
+            --print-pid=1) || fail "dbus-daemon did not start the session bus"
         record dbus "$pid"
     fi
     wait_for "the session bus" test -S "$dir/run/bus"
@@ -149,7 +155,7 @@ start)
     # nodes live as long as the daemon, and making them again would give
     # two devices of each name.
     fresh=$launched
-    wait_for "pipewire" --daemon pipewire pw-cli info 0
+    wait_for "pipewire" --daemon pipewire bounded pw-cli info 0
     # The PulseAudio directory exists before pipewire-pulse starts: it
     # checks for the directory, then makes it, and fails if another
     # process made it between the two. pactl, polling below, makes it
@@ -158,11 +164,13 @@ start)
     mkdir -p "$dir/run/pulse"
     chmod 700 "$dir/run/pulse"
     launch pipewire-pulse
-    wait_for "pipewire-pulse" --daemon pipewire-pulse pactl info
+    wait_for "pipewire-pulse" --daemon pipewire-pulse bounded pactl info
     launch wireplumber
     if $fresh; then
-        pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-sink node.description="Maud test sink" media.class=Audio/Sink audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
-        pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-source node.description="Maud test source ğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğ音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音" media.class=Audio/Source/Virtual audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null
+        bounded pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-sink node.description="Maud test sink" media.class=Audio/Sink audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null ||
+            fail "pw-cli did not make the test sink"
+        bounded pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=maud-test-source node.description="Maud test source ğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğğ音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音音" media.class=Audio/Source/Virtual audio.rate=48000 audio.channels=2 audio.position=[FL FR] object.linger=true }' >/dev/null ||
+            fail "pw-cli did not make the test source"
     fi
     wait_for "the test sink" has_sink
     for node in maud-test-sink maud-test-source; do
