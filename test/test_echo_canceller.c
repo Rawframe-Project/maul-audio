@@ -12,7 +12,7 @@
 // and does not depend on how the frames are cut; on a bent echo path a
 // first second with nothing played leaves the echo taken down as from
 // the start, and silence alone leaves it unadapted with a high leakage;
-// the probability of speech is 0 until the first frame, two blocks in,
+// the probability of speech is 0 until two blocks have been processed,
 // and from 0.1 after; refusals; and no allocation while processing. (Its quality on
 // recorded speech is measured outside the tests, against Speex's.)
 
@@ -190,10 +190,10 @@ static void TestQuietFirst(void)
     CHECK(quiet > 20.0 && fabs(quiet - played) < 2.0, "a quiet start leaves the leakage to learn");
 }
 
-// Before its first frame, two blocks in, nothing has been weighed: the
-// probability of speech is 0. From that frame on it is 0.1 or more, even
-// over silence.
-static void TestFirstFrame(void)
+// Until two blocks have been processed, nothing has been weighed: the
+// probability of speech is 0. From then on it is 0.1 or more, even over
+// silence.
+static void TestTwoBlocks(void)
 {
     memset(s_render, 0, 2 * 128 * sizeof(float));
     memset(s_capture, 0, 2 * 128 * sizeof(float));
@@ -201,9 +201,9 @@ static void TestFirstFrame(void)
     maudEchoState before = Run(c, s_capture, 2 * 128 - 1, 2 * 128 - 1);
     maudEchoState after = Run(c, s_capture + 2 * 128 - 1, 1, 1);
     maudDestroyEchoCanceller(c);
-    CHECK(before.speechProbability == 0.0f, "0 before the first frame");
+    CHECK(before.speechProbability == 0.0f, "0 until two blocks have been processed");
     CHECK(after.speechProbability >= 0.1f && after.speechProbability <= 1.0f,
-          "from 0.1 once the first frame is weighed");
+          "from 0.1 once two blocks have been processed");
 }
 
 static void TestDoubleTalk(void)
@@ -372,7 +372,7 @@ int main(void)
     TestConverges(48000, 512);
     TestDoubleTalk();
     TestQuietFirst();
-    TestFirstFrame();
+    TestTwoBlocks();
     TestFraming();
     TestNearAlone();
     TestRefused();
