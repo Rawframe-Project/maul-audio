@@ -6,9 +6,9 @@
 // echo canceller; then come its def's fields, each either drawn within
 // its range or taken as raw bits, the frame count, the signal's level,
 // shape and seed, and the lengths of the cuts; for the echo canceller,
-// before them, the echo's path. The same frames go
-// through one processor whole and through another in those cuts, and
-// each call is held to its header's promises:
+// before them, the echo's path and a change of it part way. The same
+// frames go through one processor whole and through another in those
+// cuts, and each call is held to its header's promises:
 //
 // - a processor is made exactly when its def is within the ranges its
 //   header gives, and refused as invalid otherwise;
@@ -374,8 +374,16 @@ static void Echo(Input* in)
     // stopping for stretches, as a far end that pauses.
     uint8_t path = Byte(in);
     float gain = ldexpf(1.0f, (int)((path & 31u) % 25u) - 8);
+    // A change part way, from the frame the top six bits name: with bit 0
+    // the capture muted for half of what is left, as in a call; with bit 1
+    // the echo's path 40 dB quieter and 32 frames later, as a speaker
+    // turned down and set aside.
+    uint8_t change = Byte(in);
     Signal signal;
     Fill(in, &signal, 1);
+    uint32_t from = (uint32_t)((uint64_t)signal.frames * (change >> 2u) / 64u);
+    uint32_t to = (change & 1u) != 0 ? from + (signal.frames - from) / 2u : from;
+    bool moved = (change & 2u) != 0;
     // The capture holds the render's echo, as a loudspeaker's, over the
     // near end: 0.8 of the near end and 0.15 of the level at most, within
     // the level and so within 2^64; the render is at most 0.5 of it.
@@ -383,8 +391,13 @@ static void Echo(Input* in)
     {
         bool stopped = (path & 0x80u) != 0 && (i / 1000u) % 3u == 0;
         s_render[i] = stopped ? 0.0f : s_render[i] / fmaxf(gain, 1.0f);
-        s_whole[i] = ((path & 0x20u) != 0 ? 0.0f : 0.8f * s_whole[i]) + 0.3f * gain * s_render[i];
-        s_whole[i] = (path & 0x40u) != 0 ? 0.0f : s_whole[i];
+        float echo = 0.3f * gain * s_render[i];
+        if (moved && i >= from)
+        {
+            echo = i >= 32u ? 0.003f * gain * s_render[i - 32u] : 0.0f;
+        }
+        bool muted = (path & 0x40u) != 0 || (i >= from && i < to);
+        s_whole[i] = muted ? 0.0f : ((path & 0x20u) != 0 ? 0.0f : 0.8f * s_whole[i]) + echo;
         s_cut[i] = s_whole[i];
     }
     int before = s_allocations;

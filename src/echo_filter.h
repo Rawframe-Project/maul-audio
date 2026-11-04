@@ -85,6 +85,8 @@ typedef struct maudEchoFilter
     // under the capture by LEARNT_ERROR.
     uint32_t learnt;
     bool adapted;
+    // The blocks of absence running, counted to one past holdBlocks.
+    uint32_t absent;
     // The partition the gradient constraint takes next, and the blocks
     // since the background last took a step (no more than the
     // partitions: by then each has been constrained since).
@@ -94,10 +96,12 @@ typedef struct maudEchoFilter
     double recent;
     double window1;
     double window2;
-    // The most the echo's gain may rise in a block, and the blocks the
-    // error must stay under the capture for.
+    // The most the echo's gain may rise in a block, the blocks the error
+    // must stay under the capture for, and the blocks of absence the
+    // background is held through.
     double gainRise;
     uint32_t learntBlocks;
+    uint32_t holdBlocks;
 } maudEchoFilter;
 
 // The bytes a filter of partitions of block frames takes (block a power

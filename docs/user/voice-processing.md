@@ -51,6 +51,7 @@ maudDestroyEchoCanceller(canceller);
 - Give the echo canceller the played signal **aligned** with the capture. The streams' clocks (`maudStream_GetClock`) give both latencies; a duplex stream delivers its input in step with its output, which makes the alignment the difference of the two latencies. Its def's `tailTime` is the longest echo path it learns, 0.2 s by default and up to 1 s.
 - When the far end plays in another application, capture it with a **loopback** stream on the output device and use that as the played signal. PipeWire, PulseAudio, WASAPI and the web have loopback streams.
 - Put the gain control last, after the echo is out, so it does not raise the echo with the speech.
+- Keep running the echo canceller while the microphone is muted. A silent capture comes out silent, the echo path it has learnt is kept, and the echo after the unmute is taken out as before it.
 - The echo canceller's state reports `leakage`: high while it learns or after the echo path changes (the user moved, the volume changed), low once it has adapted.
 
 The noise suppressor takes rates that are a multiple of 100 from 8,000 to 384,000, the others any rate in that range. The detector listens to the mean of the channels, and the gain control and suppressor apply one gain to all of them.

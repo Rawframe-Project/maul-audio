@@ -17,7 +17,9 @@
 // an echo 18 dB louder than the render, with the near end speaking from
 // the start, is learnt within three seconds; a capture muted for the
 // first second leaves it unadapted, and the echo after is learnt as
-// after a second of both silent;
+// after a second of both silent; a capture muted in a call leaves the
+// output silent and the echo path kept; a path 40 dB quieter and moved
+// is learnt anew, and a near end over it comes through;
 // the probability of speech is 0 until two blocks have been processed,
 // and from 0.1 after; refusals; and no allocation while processing. (Its quality on
 // recorded speech is measured outside the tests, against Speex's.)
@@ -256,6 +258,125 @@ static void TestMutedStart(void)
            adapted ? "adapted" : "unadapted", muted, from);
     CHECK(!adapted, "no echo path learnt from a muted capture");
     CHECK(muted > from - 6.0, "and the echo learnt once it is heard");
+}
+
+// The echo taken down over the third second after a capture muted
+// (zeros) for muted frames from the third second comes back, at 16 kHz
+// (dB under the echo); held is the output while muted, in dB under the
+// echo it stands for, and adapted the state at the end.
+static double MidcallErle(uint32_t muted, double* held, bool* adapted)
+{
+    const uint32_t rate = 16000;
+    const uint32_t block = 256;
+    uint32_t from = 3 * rate;
+    uint32_t frames = from + muted + 3 * rate;
+    Scene(rate, frames, false);
+    memset(s_capture + from, 0, muted * sizeof(float));
+    maudEchoCanceller* c = Create(rate);
+    maudEchoState state = Run(c, s_capture, frames, 160);
+    maudDestroyEchoCanceller(c);
+    *adapted = state.adapted;
+    *held = 10.0 * log10(Energy(s_echo, from, from + muted - 2 * block) /
+                         (Energy(s_capture, from + 2 * block, from + muted) + 1e-30));
+    return 10.0 * log10(Energy(s_echo, frames - rate - 2 * block, frames - 2 * block) /
+                        Energy(s_capture, frames - rate, frames));
+}
+
+// A capture muted in a call, for half a second or for three: the output
+// stays silent while muted, nothing of the estimate subtracted, and the
+// echo after is taken down within 6 dB of one never muted.
+static void TestMidcallMute(void)
+{
+    double held = 0.0;
+    bool adapted = false;
+    double never = MidcallErle(0, &held, &adapted);
+    double brief = MidcallErle(16000 / 2, &held, &adapted);
+    printf("a mute in a call: %.1f dB taken in the third second after half a second, ", brief);
+    CHECK(held > 60.0 && adapted, "silent while muted half a second, still adapted");
+    double heldBrief = held;
+    double longer = MidcallErle(3 * 16000, &held, &adapted);
+    printf("%.1f dB after three, %.1f dB never muted; the output %.1f and %.1f dB under the echo "
+           "while muted\n",
+           longer, never, heldBrief, held);
+    CHECK(held > 60.0 && adapted, "silent while muted three seconds, still adapted");
+    CHECK(brief > never - 6.0 && longer > never - 6.0, "the echo path kept through a mute");
+}
+
+// The echo after the third second heard through a path 40 dB quieter
+// and 2 ms later, at 16 kHz, with a near end of noise bursts (half a
+// second on, half off) at near times the old echo's level from then on.
+// first and last are the echo taken down over the first and the ninth
+// second after the change, between the bursts (dB under the echo);
+// kept is the near end's level in the output while it speaks, and rest
+// what is not the near end, under it (dB).
+static void Moved(float near, double* first, double* last, double* kept, double* rest)
+{
+    const uint32_t rate = 16000;
+    // The output lags two blocks of 128.
+    const uint32_t lag = 256;
+    uint32_t from = 3 * rate;
+    uint32_t frames = from + 9 * rate;
+    Scene(rate, frames, false);
+    float level = sqrtf((float)(Energy(s_echo, 0, from) / from));
+    memcpy(s_other, s_echo, frames * sizeof(float));
+    for (uint32_t i = from; i < frames; ++i)
+    {
+        s_echo[i] = 0.01f * s_other[i - rate / 500];
+        s_near[i] = (i / (rate / 2)) % 2 == 0 ? near * level * Gaussian() : 0.0f;
+        s_capture[i] = s_echo[i] + s_near[i];
+    }
+    maudEchoCanceller* c = Create(rate);
+    (void)Run(c, s_capture, frames, 160);
+    maudDestroyEchoCanceller(c);
+    double echo[2] = {0.0, 0.0};
+    double gap[2] = {0.0, 0.0};
+    double said = 0.0;
+    double heard = 0.0;
+    double other = 0.0;
+    for (uint32_t i = from + lag; i < frames; ++i)
+    {
+        uint32_t second = (i - from - lag) / rate;
+        float n = s_near[i - lag];
+        bool on = n != 0.0f && s_near[i - lag - rate / 10] != 0.0f;
+        bool off = n == 0.0f && s_near[i - lag - rate / 10] == 0.0f;
+        if (off && (second == 0 || second == 8))
+        {
+            echo[second / 8] += (double)s_echo[i - lag] * (double)s_echo[i - lag];
+            gap[second / 8] += (double)s_capture[i] * (double)s_capture[i];
+        }
+        if (on && second >= 3)
+        {
+            said += (double)n * (double)n;
+            heard += (double)s_capture[i] * (double)s_capture[i];
+            other += ((double)s_capture[i] - (double)n) * ((double)s_capture[i] - (double)n);
+        }
+    }
+    *first = 10.0 * log10(echo[0] / gap[0]);
+    *last = 10.0 * log10(echo[1] / gap[1]);
+    *kept = near > 0.0f ? 10.0 * log10(heard / said) : 0.0;
+    *rest = near > 0.0f ? 10.0 * log10(said / other) : 0.0;
+}
+
+// A path that turns 40 dB quieter and moves (a speaker turned down and
+// set aside) is learnt anew, not taken for a mute: the output is never
+// louder than the quiet echo, which is taken down 20 dB by the ninth
+// second. A near end 20 dB under the old echo over it, as quiet as a
+// mute's capture against the estimate, comes through within a decibel.
+static void TestQuietPath(void)
+{
+    double first = 0.0;
+    double last = 0.0;
+    double kept = 0.0;
+    double rest = 0.0;
+    Moved(0.0f, &first, &last, &kept, &rest);
+    printf("a path 40 dB quieter and moved: %.1f dB taken in the first second, %.1f dB in the "
+           "ninth; ",
+           first, last);
+    CHECK(first > 0.0 && last > 20.0, "a quieter path learnt anew");
+    Moved(0.1f, &first, &last, &kept, &rest);
+    printf("a near end 20 dB under the old echo over it at %+.2f dB, the rest %.1f dB under it\n",
+           kept, rest);
+    CHECK(fabs(kept) < 1.0 && rest > 10.0, "a quiet near end kept over a quiet path");
 }
 
 // The echo left over the last second of a bent echo path at 16 kHz,
@@ -504,6 +625,8 @@ int main(void)
     TestDoubleTalk();
     TestLoudEcho();
     TestMutedStart();
+    TestMidcallMute();
+    TestQuietPath();
     TestQuietFirst();
     TestTwoBlocks();
     TestFraming();
