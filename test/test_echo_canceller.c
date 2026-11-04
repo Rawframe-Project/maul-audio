@@ -3,7 +3,8 @@
 //
 // The echo canceller: a render of noise heard through a fixed room
 // response (10 ms late, 60 ms long) is taken down 50 dB or more within
-// three seconds at 16 kHz and at 48 kHz, and it reports having adapted
+// three seconds at 8, 16 and 48 kHz (at 8 kHz, the suppressor's bands
+// above the 4 kHz Nyquist hold no frequencies), and it reports having adapted
 // with a low leakage; a near end of noise at about the echo's level
 // (the hardest double talk) comes through within 3 dB with the rest 6
 // dB under it, and the echo stays down 30 dB between its bursts; with
@@ -368,6 +369,7 @@ static void TestRefused(void)
 
 int main(void)
 {
+    TestConverges(8000, 64);
     TestConverges(16000, 128);
     TestConverges(48000, 512);
     TestDoubleTalk();
