@@ -123,7 +123,8 @@ launch() { # name
     fi
 }
 
-count_nodes() { bounded pw-cli ls Node | grep -c "node.name = \"$1\"" || true; }
+# The nodes named $2 in the listing $1, from pw-cli ls Node.
+count_nodes() { grep -c "node.name = \"$2\"" <<<"$1" || true; }
 has_sink() { bounded pactl list short sinks | grep -q maud-test-sink; }
 has_default() { [ "$(bounded pactl get-default-sink)" = maud-test-sink ]; }
 
@@ -173,8 +174,11 @@ start)
             fail "pw-cli did not make the test source"
     fi
     wait_for "the test sink" has_sink
+    # Listed once, so that a pw-cli that does not answer is named as
+    # such, not counted as no node.
+    nodes=$(bounded pw-cli ls Node) || fail "pw-cli did not list the nodes"
     for node in maud-test-sink maud-test-source; do
-        count=$(count_nodes "$node")
+        count=$(count_nodes "$nodes" "$node")
         [ "$count" = 1 ] || fail "$count nodes named $node, where there must be one"
     done
     # WirePlumber makes the only sink the default once it has seen it.
