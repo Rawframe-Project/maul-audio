@@ -37,7 +37,8 @@ start=$(date +%s)
 again install -r "$apk" > /dev/null
 again shell pm clear "$package" > /dev/null
 again shell run-as "$package" rm -f files/out
-left=$(again shell "run-as $package ls files/out > /dev/null 2>&1 && echo present || echo absent" |
+# absent only from a test that ran: a run-as that fails answers nothing.
+left=$(again shell "run-as $package sh -c 'if [ -e files/out ]; then echo present; else echo absent; fi'" |
     tr -d '\r')
 if [ "$left" != absent ]; then
     echo "run_android_app.sh: an earlier run's files/out is still there ($left)" >&2
