@@ -14,6 +14,8 @@
 // and does not depend on how the frames are cut; on a bent echo path a
 // first second with nothing played leaves the echo taken down as from
 // the start, and silence alone leaves it unadapted with a high leakage;
+// an echo 18 dB louder than the render, with the near end speaking from
+// the start, is learnt within three seconds;
 // the probability of speech is 0 until two blocks have been processed,
 // and from 0.1 after; refusals; and no allocation while processing. (Its quality on
 // recorded speech is measured outside the tests, against Speex's.)
@@ -155,6 +157,54 @@ static void TestConverges(uint32_t rate, uint32_t block)
     CHECK(erle > 50.0, "the echo taken down 50 dB or more");
     CHECK(state.adapted && state.leakage < 0.05f && state.frameCount == frames,
           "adapted, little left");
+    maudDestroyEchoCanceller(c);
+}
+
+// The same scene with the echo 18 dB louder than the render, as a loud
+// speaker playing a quiet render, and the near end in bursts at the
+// echo's level from the start: learnt within three seconds (an echo at
+// the render's level is learnt in one), and the echo taken down 20 dB or
+// more between the bursts of the last second (25 dB at the render's
+// level).
+static void TestLoudEcho(void)
+{
+    const uint32_t rate = 16000;
+    const uint32_t block = 256;
+    uint32_t frames = rate * SECONDS;
+    Scene(rate, frames, false);
+    float gain = sqrtf((float)(63.1 * Energy(s_render, 0, frames) / Energy(s_echo, 0, frames)));
+    float level = sqrtf((float)(Energy(s_render, 0, frames) * 63.1 / frames));
+    for (uint32_t i = 0; i < frames; ++i)
+    {
+        s_echo[i] *= gain;
+        s_near[i] = (i / (rate / 4)) % 2 == 0 ? level * Gaussian() : 0.0f;
+        s_capture[i] = s_echo[i] + s_near[i];
+    }
+    maudEchoCanceller* c = Create(rate);
+    bool learnt = false;
+    for (uint32_t at = 0; at < frames; at += 160)
+    {
+        maudEchoState state = {0};
+        CHECK(maudEchoCanceller_Cancel(c, s_capture + at, s_render + at, 160, &state) ==
+                  maud_success,
+              "cancel");
+        learnt = learnt || (state.adapted && at < 3 * rate);
+    }
+    double gap = 0.0;
+    double echo = 0.0;
+    for (uint32_t i = frames - rate; i < frames; ++i)
+    {
+        if (s_near[i - block] == 0.0f && s_near[i] == 0.0f)
+        {
+            gap += (double)s_capture[i] * (double)s_capture[i];
+            echo += (double)s_echo[i - block] * (double)s_echo[i - block];
+        }
+    }
+    double held = 10.0 * log10(echo / gap);
+    printf("an echo 18 dB over the render: %s in three seconds, %.1f dB taken between the bursts\n",
+           learnt ? "learnt" : "not learnt", held);
+    CHECK(learnt, "an echo louder than the render learnt within three seconds");
+    CHECK(held > 20.0, "and taken down between the near end's bursts");
     maudDestroyEchoCanceller(c);
 }
 
@@ -402,6 +452,7 @@ int main(void)
     TestConverges(48000, 512);
     TestLoud();
     TestDoubleTalk();
+    TestLoudEcho();
     TestQuietFirst();
     TestTwoBlocks();
     TestFraming();
