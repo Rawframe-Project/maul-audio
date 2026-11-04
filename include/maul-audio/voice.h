@@ -341,7 +341,9 @@ extern "C"
 
     /// Suppresses noise in interleaved frames in place, in any count; the
     /// output does not depend on how the frames are cut. It lags the
-    /// input by 10 ms: the first 10 ms out are silence.
+    /// input by 20 ms, two of its 10 ms hops: a hop goes out from the
+    /// 20 ms frame that reaches into the next. The first 10 ms out are
+    /// silence.
     ///
     /// @param suppressor  The noise suppressor.
     /// @param frames      frameCount frames in the def's layout; may be

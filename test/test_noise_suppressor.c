@@ -5,7 +5,7 @@
 // second and 14 later (white noise still looks like speech to some of
 // its bins now and then), its level reported; speech-like bursts over noise
 // kept within a decibel while the gaps between them fall; the output
-// lagging by exactly 10 ms and independent of how the frames are cut;
+// lagging by exactly 20 ms and independent of how the frames are cut;
 // stereo channels sharing one gain; the high-pass filter; refusals; and
 // no allocation while processing. (Its quality on recorded speech and
 // noise is measured outside the tests.)
@@ -23,6 +23,9 @@
 #define FRAMES  (RATE * SECONDS)
 #define HOP     (RATE / 100u)
 #define PI      3.14159265358979f
+// The output's lag: two hops, since a hop goes out from the frame that
+// reaches into the next.
+#define LAG (2u * HOP)
 
 static int s_allocations = 0;
 
@@ -124,16 +127,16 @@ static void TestBursts(void)
     maudNoiseSuppressor* s = Make(maud_layoutMono, 0.0f);
     CHECK(maudNoiseSuppressor_Suppress(s, s_out, FRAMES, nullptr) == maud_success, "suppressed");
     // Compare the middle of each burst and gap after 1.2 s, the output
-    // moved back by its 10 ms.
+    // moved back by its 20 ms.
     double worstBurst = 0.0;
     double leastGap = 1e9;
-    for (uint32_t start = 4 * (RATE * 3 / 10); start + RATE * 3 / 10 <= FRAMES - HOP;
+    for (uint32_t start = 4 * (RATE * 3 / 10); start + RATE * 3 / 10 <= FRAMES - LAG;
          start += RATE * 3 / 10)
     {
         uint32_t from = start + RATE / 20;
         uint32_t to = start + RATE / 4;
         double in = LevelDb(s_in, from, to, 1);
-        double out = LevelDb(s_out + HOP, from, to, 1);
+        double out = LevelDb(s_out + LAG, from, to, 1);
         if (Burst(start))
         {
             worstBurst = fmax(worstBurst, fabs(out - in));
@@ -149,21 +152,52 @@ static void TestBursts(void)
     maudDestroyNoiseSuppressor(s);
 }
 
+// The output's correlation with the input moved later by lag, from 1 s.
+static double Correlation(uint32_t lag)
+{
+    double dot = 0.0;
+    double in = 0.0;
+    double out = 0.0;
+    for (uint32_t i = RATE; i + lag < FRAMES; ++i)
+    {
+        dot += (double)s_in[i] * (double)s_out[i + lag];
+        in += (double)s_in[i] * (double)s_in[i];
+        out += (double)s_out[i + lag] * (double)s_out[i + lag];
+    }
+    return dot / sqrt(in * out);
+}
+
 static void TestLatencyAndCuts(void)
 {
+    // White noise, in bursts 300 ms long and 28 dB apart: its correlation
+    // with itself is a spike, so the output's correlation with it peaks
+    // only at the lag.
     for (uint32_t i = 0; i < FRAMES; ++i)
     {
-        s_in[i] = 0.2f * sinf(0.05f * (float)i) + 0.01f * Gaussian();
+        s_in[i] = (Burst(i) ? 0.01f : 0.25f) * Gaussian();
     }
-    maudNoiseSuppressor* whole = Make(maud_layoutMono, 100.0f);
+    // The lag through the suppression alone: the high-pass would take
+    // the noise's lowest frequencies out of the correlation.
+    maudNoiseSuppressor* plain = Make(maud_layoutMono, 0.0f);
     memcpy(s_out, s_in, sizeof(s_in));
-    CHECK(maudNoiseSuppressor_Suppress(whole, s_out, FRAMES, nullptr) == maud_success, "whole");
+    CHECK(maudNoiseSuppressor_Suppress(plain, s_out, FRAMES, nullptr) == maud_success, "plain");
+    maudDestroyNoiseSuppressor(plain);
     bool silent = true;
     for (uint32_t i = 0; i < HOP; ++i)
     {
         silent = silent && s_out[i] == 0.0f;
     }
-    CHECK(silent && s_out[HOP] != 0.0f, "the first 10 ms silent, then the input");
+    CHECK(silent, "the first 10 ms silent");
+    uint32_t best = 0;
+    for (uint32_t lag = 1; lag <= 4 * HOP; ++lag)
+    {
+        best = Correlation(lag) > Correlation(best) ? lag : best;
+    }
+    printf("lag: %u frames, correlation %.4f\n", (unsigned)best, Correlation(best));
+    CHECK(best == LAG && Correlation(LAG) > 0.99, "the input out exactly 20 ms later");
+    maudNoiseSuppressor* whole = Make(maud_layoutMono, 100.0f);
+    memcpy(s_out, s_in, sizeof(s_in));
+    CHECK(maudNoiseSuppressor_Suppress(whole, s_out, FRAMES, nullptr) == maud_success, "whole");
     static const uint32_t cuts[4] = {1, 7, 160, 479};
     for (int c = 0; c < 4; ++c)
     {
@@ -228,7 +262,7 @@ static void TestFloor(void)
               maudNoiseSuppressor_Suppress(s, s_out, FRAMES, nullptr) == maud_success,
           "suppressed");
     double down =
-        LevelDb(s_in, RATE, FRAMES - HOP, 1) - LevelDb(s_out + HOP, RATE, FRAMES - HOP, 1);
+        LevelDb(s_in, RATE, FRAMES - LAG, 1) - LevelDb(s_out + LAG, RATE, FRAMES - LAG, 1);
     printf("a -6 dB floor: noise %.2f dB down\n", down);
     CHECK(down > 5.0 && down < 6.3, "down to the floor and no further");
     maudDestroyNoiseSuppressor(s);
@@ -251,7 +285,7 @@ static void TestHighPass(void)
               maudNoiseSuppressor_Suppress(s, s_out, FRAMES, nullptr) == maud_success,
           "a hum");
     double down =
-        LevelDb(s_in, RATE, FRAMES - HOP, 1) - LevelDb(s_out + HOP, RATE, FRAMES - HOP, 1);
+        LevelDb(s_in, RATE, FRAMES - LAG, 1) - LevelDb(s_out + LAG, RATE, FRAMES - LAG, 1);
     printf("a 30 Hz hum: %.1f dB down\n", down);
     CHECK(down > 20.0, "the hum taken out");
     maudDestroyNoiseSuppressor(s);

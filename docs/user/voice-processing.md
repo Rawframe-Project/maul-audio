@@ -14,7 +14,7 @@ Each processor stands alone: no context, no stream, its own def and allocator. I
 |---|---|---|
 | Voice detector (`maudVoiceDetector_Detect`) | Decides, every 10 ms, whether the frames hold speech, with a probability, the level and the noise floor. A hangover keeps it active through short pauses. | None |
 | Gain control (`maudGainControl_Apply`) | Brings speech to a target level, changing the gain slowly and only on evidence of speech, never raising the noise above a ceiling, and limits peaks to -1 dBFS. | None |
-| Noise suppressor (`maudNoiseSuppressor_Suppress`) | Removes rumble below speech, then lowers each frequency by how likely it holds only noise, down to a floor. | 10 ms |
+| Noise suppressor (`maudNoiseSuppressor_Suppress`) | Removes rumble below speech, then lowers each frequency by how likely it holds only noise, down to a floor. | 20 ms |
 | Echo canceller (`maudEchoCanceller_Cancel`) | Takes what was played out of the capture, and the noise with it. | Two blocks of 8 ms or more |
 
 A noise suppressor:
@@ -28,7 +28,7 @@ if (result == maud_success)
 {
     result = maudNoiseSuppressor_Suppress(suppressor, frames, frameCount, &state);   // in place
 }
-// state.speechProbability; the output lags the input by 10 ms.
+// state.speechProbability; the output lags the input by 20 ms.
 maudDestroyNoiseSuppressor(suppressor);
 ```
 

@@ -15,7 +15,9 @@
 // ("Optimal speech enhancement under signal presence uncertainty using
 // log-spectral amplitude estimator", IEEE SPL 9(4), 2002). The channels'
 // mean power sets one gain per bin for all of them, so a stereo image
-// keeps its place. The output lags the input by 10 ms.
+// keeps its place. The output lags the input by two hops, 20 ms: a
+// hop's samples are whole only with the frame that reaches into the
+// next hop, and in place each sample goes out as one comes in.
 
 #include "allocator.h"
 #include "flush.h"
