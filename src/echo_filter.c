@@ -25,8 +25,13 @@
 #define RER_SHARE  0.3
 #define START_RATE 0.25
 // How fast the echo's gain over the render may rise until the filter
-// has adapted, in dB a second: slowly, so that a near end speaking is
-// not taken for a loud echo. It falls at once.
+// has adapted, in dB a second; it falls at once. Slowly enough that a
+// near end speaking is not taken for a loud echo: at 20, a quiet echo
+// (0.25 of the render) under loud near-end bursts is 45.6 dB down at 9
+// s, against 79.6 dB at 10. Fast enough that double talk does not hold
+// the start back: at 3 or 5, an echo at the render's level heard through
+// 5 s of continuous double talk is 31 to 36 dB down after, against 83 dB
+// at 10.
 #define GAIN_RISE_DB 10.0
 // The leakage's floor (as a share of the echo) and its first value.
 #define LEAK_FLOOR 0.005
@@ -486,8 +491,9 @@ static void Constrain(maudEchoFilter* f)
 // The start rate is Speex's, min(0.25 Sxx / See, 0.25), with the
 // render's energy Sxx taken times the echo's gain over the render. The
 // error's energy See guards against a near end speaking, which raises
-// it and slows the step; measured against the render alone, an echo g
-// times louder looked the same, and took g^2 times as long to learn.
+// it and slows the step. Against the render's energy alone, an echo g
+// times louder raises See as a near end does, and its rate falls as
+// 1 / g^2; against the echo's expected energy, it does not.
 // The gain is the capture's energy over the render's, at least 1, never
 // above this block's ratio and rising no faster than GAIN_RISE_DB:
 // - a near end speaking lifts the ratio, but the gain follows only
