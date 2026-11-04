@@ -54,7 +54,7 @@ if (result == maud_success)
 ```
 
 - The gain is the program's own, distance attenuation included: the effect applies none, so the program keeps its distance curve. Gain and position move across the call from the previous call's.
-- With the near field on (the default), a source closer than the set's measuring distance sounds closer: each ear is filtered for the head's shadow, and each ear looks its response up from where it sees the source. `headRadius` sets the head's size.
+- With the near field on (the default), a source closer than the set's measuring distance sounds closer: each ear is filtered for the head's shadow, and each ear looks its response up from where it sees the source. `headRadius` sets the head's size. A source exactly at an ear leaves that ear no direction to see it from (the effect then takes the direction from the head's centre), and near an ear the direction turns fast as the source moves, so keep sources outside `headRadius` of the head's centre.
 - `maudBinaural_Reset` forgets the previous call, for a source that jumps (a cut, a respawn).
 
 ## Many sources: the ambisonic bed
