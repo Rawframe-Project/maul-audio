@@ -6,7 +6,7 @@ The detector, gain control and suppressor follow the designs WebRTC's processing
 
 ## Frame independence
 
-Every processor works in fixed frames internally (10 ms, or the echo canceller's blocks) and keeps what does not complete a frame for the next call. A host may therefore call it with whatever its stream delivers, and the output is the same as with any other cut. The tests feed the same input in different cuts and compare.
+Every processor works in fixed frames internally (a hundredth of the rate's frames, rounded down, so 10 ms or a hair less at a rate that is not a multiple of 100; or the echo canceller's blocks) and keeps what does not complete a frame for the next call. A time a def gives in seconds, such as the detector's hangover or the gain control's fastest change, counts frames at their real length. A host may therefore call it with whatever its stream delivers, and the output is the same as with any other cut. The tests feed the same input in different cuts and compare.
 
 ## The voice detector
 

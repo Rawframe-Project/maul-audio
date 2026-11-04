@@ -181,8 +181,11 @@ static void UpdateGain(maudGainControl* gain)
     noiseCap = noiseCap > 0.0f ? noiseCap : 0.0f;
     target = target > noiseCap ? noiseCap : target;
     // Rising waits for a run of confident speech; the run's first moment
-    // may then catch up the steps it waited.
-    float step = def->maxChangeDbPerSecond / 100.0f;
+    // may then catch up the steps it waited. A step is a frame's share of
+    // the fastest change; frames are a hundredth of the rate's frames
+    // rounded down, so a few more than 100 a second at a rate not a
+    // multiple of 100.
+    float step = def->maxChangeDbPerSecond / ((float)def->sampleRate / (float)vad->frameSamples);
     float rise = 0.0f;
     if (!confident)
     {
