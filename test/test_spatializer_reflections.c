@@ -493,7 +493,7 @@ static void TestHybrid(void)
 // A send sample that is not finite spoils the bed while the response
 // passes over it, then the bed is finite again: within the 0.5 s
 // response, two of its tail blocks (1,024 each) and a render of 480
-// (measured: 0.515 s for NaN, 0.525 s for infinity).
+// (measured: 0.513 s for NaN, 0.531 s for infinity).
 static void TestBadSample(void)
 {
     enum

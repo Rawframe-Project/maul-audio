@@ -325,7 +325,7 @@ preset linux-clang-20-asan
 fuzz_seconds=10
 [ "$tier" = full ] && fuzz_seconds=60
 step "fuzzing, $fuzz_seconds seconds per target"
-configure fuzz -DCMAKE_C_COMPILER=clang-20 -DMAUL_AUDIO_FUZZ=ON -DMAUL_AUDIO_DEVICE=OFF \
+configure fuzz -DCMAKE_C_COMPILER=clang-20 -DMAUL_AUDIO_FUZZ=ON \
     -DMAUL_AUDIO_BUILD_TESTS=OFF -DMAUL_AUDIO_BUILD_BENCH=OFF -DMAUL_AUDIO_BUILD_SAMPLES=OFF
 cmake --build "$out/check-fuzz" -j "$jobs" >>"$out/check-fuzz.log"
 tools/fuzz_seeds.sh "$out/corpus"

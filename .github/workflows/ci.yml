@@ -261,8 +261,9 @@ jobs:
           cmake --build out/headers --config Release
 
   # The two loaders of hostile files, the geometry a host hands over
-  # (fuzz_scene) and the spatializer's calls against a hostile host
-  # (fuzz_spatializer) under libFuzzer, one cell per target, from the
+  # (fuzz_scene), the spatializer's calls against a hostile host
+  # (fuzz_spatializer) and the voice processors' defs and frames
+  # (fuzz_voice) under libFuzzer, one cell per target, from the
   # committed seeds and the shipped files (tools/fuzz_seeds.sh):
   # briefly on a pull request, longer on main, ten minutes at night. Each
   # target's corpus carries from run to run in a cache of its own. Every
@@ -281,7 +282,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_hrtf, fuzz_bake, fuzz_scene, fuzz_spatializer]
+        target: [fuzz_hrtf, fuzz_bake, fuzz_scene, fuzz_spatializer, fuzz_voice]
     env:
       TARGET: ${{ matrix.target }}
       FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && 20 || (github.event_name == 'schedule' || inputs.nightly) && 600 || 90 }}
@@ -297,7 +298,7 @@ jobs:
           restore-keys: fuzz-corpus-${{ matrix.target }}-
       - name: Build
         run: |
-          cmake -B out/fuzz -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON -D${PREFIX}_DEVICE=OFF \
+          cmake -B out/fuzz -G Ninja -DCMAKE_C_COMPILER=clang-20 -D${PREFIX}_FUZZ=ON \
             -D${PREFIX}_BUILD_TESTS=OFF -D${PREFIX}_BUILD_BENCH=OFF -D${PREFIX}_BUILD_SAMPLES=OFF \
             -D${PREFIX}_WERROR=ON
           cmake --build out/fuzz --target "$TARGET"
