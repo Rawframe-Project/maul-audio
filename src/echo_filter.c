@@ -5,9 +5,10 @@
 // the partitions; both filters estimate the echo; the two paths' test compares their errors; the
 // leakage (the regression of the error's power on the echo estimate's, on their changes) sets each
 // bin's rate as min(leak |Y|^2 / |E|^2, 0.5) blended with the residual-to-error ratio of the block
-// (Valin 2007), or, until the filter has learnt a partition's worth, a plain rate from the render's
-// energy against the error's; the background adapts with steps proportionate to each partition's
-// share of the filter, and one partition a block in turn is constrained to a linear convolution.
+// (Valin 2007), or, until the filter has learnt a partition's worth, a plain rate from the echo's
+// expected energy (the render's times the echo's gain over it) against the error's; the background
+// adapts with steps proportionate to each partition's share of the filter, and one partition a
+// block in turn is constrained to a linear convolution.
 
 #include "echo_filter.h"
 
@@ -23,6 +24,15 @@
 #define LEAK_SHARE 0.7
 #define RER_SHARE  0.3
 #define START_RATE 0.25
+// How fast the echo's gain over the render may rise until the filter
+// has adapted, in dB a second; it falls at once. Slowly enough that a
+// near end speaking is not taken for a loud echo: at 20, a quiet echo
+// (0.25 of the render) under loud near-end bursts is 45.6 dB down at 9
+// s, against 79.6 dB at 10. Fast enough that double talk does not hold
+// the start back: at 3 or 5, an echo at the render's level heard through
+// 5 s of continuous double talk is 31 to 36 dB down after, against 83 dB
+// at 10.
+#define GAIN_RISE_DB 10.0
 // The leakage's floor (as a share of the echo) and its first value.
 #define LEAK_FLOOR 0.005
 #define LEAK_START 0.25
@@ -36,11 +46,11 @@
 // 1e-20 is far below any weight that adds to an estimate.
 #define WEIGHT_TINY 1e-20f
 // The largest weight kept, each part of a bin: the most gain the filter
-// models in a bin, 78 dB, and the bound on every float the canceller
-// stores for samples within 2^64 of zero (voice.h). With blocks of at
-// most 4,096 frames, transforms of at most 2^13 (2^12 complex points in
-// 12 stages, each at most doubling the sum of squares) and at most 128
-// partitions:
+// models in a bin of one partition, 78 dB a partition, and the bound on
+// every float the canceller stores for samples within 2^64 of zero
+// (voice.h). With blocks of at most 4,096 frames, transforms of at most
+// 2^13 (2^12 complex points in 12 stages, each at most doubling the sum of
+// squares) and at most 128 partitions:
 // - the render through the pre-emphasis stays under 2^65 and its bins
 //   under 2^78; the capture through the notch (the L1 norm of its
 //   response at most 2.39) and the pre-emphasis under 2^66.3;
@@ -181,6 +191,7 @@ void maudInitEchoFilter(maudEchoFilter* filter, uint32_t block, uint32_t partiti
         .recent = pow(0.65, scale),
         .window1 = pow(0.6, scale),
         .window2 = pow(0.85, scale),
+        .gainRise = pow(10.0, GAIN_RISE_DB * ((double)block / sampleRate) / 10.0),
     };
     maudResetEchoFilter(filter);
 }
@@ -209,6 +220,7 @@ void maudResetEchoFilter(maudEchoFilter* f)
     f->variance = 1.0;
     f->drop1 = f->drop2 = f->noise1 = f->noise2 = 0.0;
     f->started = 0.0;
+    f->echoGain = 1.0;
     f->adapted = false;
     f->constrain = 0;
     f->still = 0;
@@ -475,18 +487,39 @@ static void Constrain(maudEchoFilter* f)
 // The rates' inputs: the residual-to-error ratio of the block (from the
 // render's energy, so a filter that has learnt nothing still learns,
 // and the leakage), and until the filter has adapted, the start rate.
-static double Rates(maudEchoFilter* f, const float* render, const Sums* s, double* startRate)
+//
+// The start rate is Speex's, min(0.25 Sxx / See, 0.25), with the
+// render's energy Sxx taken times the echo's gain over the render. The
+// error's energy See guards against a near end speaking, which raises
+// it and slows the step. Against the render's energy alone, an echo g
+// times louder raises See as a near end does, and its rate falls as
+// 1 / g^2; against the echo's expected energy, it does not.
+// The gain is the capture's energy over the render's, at least 1, never
+// above this block's ratio and rising no faster than GAIN_RISE_DB:
+// - a near end speaking lifts the ratio, but the gain follows only
+//   slowly, and falls back to the echo's own on the first block
+//   without it;
+// - a silent render leaves the gain as it was, and takes no start step;
+// - a silent capture takes it to 1, Speex's rate.
+// Every term is finite: Sxx is above its floor, the energies are in
+// double, and the rate is at most 0.25.
+static double Rates(maudEchoFilter* f, const float* render, const float* capture, const Sums* s,
+                    double* startRate)
 {
     double sxx = 0.0;
+    double scc = 0.0;
     for (uint32_t i = 0; i < f->block; ++i)
     {
         sxx += (double)render[i] * (double)render[i];
+        scc += (double)capture[i] * (double)capture[i];
     }
     double rer = fmin((1e-4 * sxx + 3.0 * f->leak * s->echo) / (s->background + 1e-12), MU_MAX);
     *startRate = 0.0;
     if (!f->adapted && sxx > f->block * 1e-6)
     {
-        *startRate = fmin(START_RATE * sxx / (s->background + 1e-12), START_RATE);
+        f->echoGain = fmax(fmin(scc / sxx, f->echoGain * f->gainRise), 1.0);
+        double echo = f->echoGain * sxx;
+        *startRate = fmin(START_RATE * echo / (s->background + 1e-12), START_RATE);
         f->started += *startRate;
         f->adapted = f->started > f->partitions;
     }
@@ -522,7 +555,7 @@ void maudRunEchoFilter(maudEchoFilter* f, const float* render, const float* capt
     Padded(f, yb + n, f->echoSpectrum);
     Leakage(f, &s);
     double startRate = 0.0;
-    double rer = Rates(f, render, &s, &startRate);
+    double rer = Rates(f, render, capture, &s, &startRate);
     // A background error of zeros takes no step (each is a multiple of
     // its spectrum): the shares and steps are skipped, and once every
     // partition has been constrained since the last step, the

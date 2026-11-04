@@ -78,6 +78,9 @@ typedef struct maudEchoFilter
     double noise2;
     // Until it has adapted, the start rate's sum.
     double started;
+    // Until it has adapted, the echo's gain over the render, in energy,
+    // at least 1.
+    double echoGain;
     bool adapted;
     // The partition the gradient constraint takes next, and the blocks
     // since the background last took a step (no more than the
@@ -88,6 +91,8 @@ typedef struct maudEchoFilter
     double recent;
     double window1;
     double window2;
+    // The most the echo's gain may rise in a block.
+    double gainRise;
 } maudEchoFilter;
 
 // The bytes a filter of partitions of block frames takes (block a power

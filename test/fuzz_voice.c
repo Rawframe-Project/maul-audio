@@ -5,7 +5,8 @@
 // chooses the detector, the gain control, the noise suppressor or the
 // echo canceller; then come its def's fields, each either drawn within
 // its range or taken as raw bits, the frame count, the signal's level,
-// shape and seed, and the lengths of the cuts. The same frames go
+// shape and seed, and the lengths of the cuts; for the echo canceller,
+// before them, the echo's path. The same frames go
 // through one processor whole and through another in those cuts, and
 // each call is held to its header's promises:
 //
@@ -364,12 +365,23 @@ static void Echo(Input* in)
         return;
     }
     Expect(maudCreateEchoCanceller(&def, &cut) == maud_success);
+    // The echo's path: its gain over the render, from 2^-8 to 2^16 (above
+    // 1 the render played that much quieter, below it the echo, so that
+    // both stay within the samples' range); with bit 5 no near end, only
+    // the echo; with bit 7 the render stopping for stretches, as a far end
+    // that pauses.
+    uint8_t path = Byte(in);
+    float gain = ldexpf(1.0f, (int)((path & 31u) % 25u) - 8);
     Signal signal;
     Fill(in, &signal, 1);
-    // The capture holds some of the render, as a loudspeaker's echo.
+    // The capture holds the render's echo, as a loudspeaker's, over the
+    // near end: 0.8 of the near end and 0.15 of the level at most, within
+    // the level and so within 2^64; the render is at most 0.5 of it.
     for (uint32_t i = 0; i < signal.frames; ++i)
     {
-        s_whole[i] += 0.3f * s_render[i];
+        bool stopped = (path & 0x80u) != 0 && (i / 1000u) % 3u == 0;
+        s_render[i] = stopped ? 0.0f : s_render[i] / fmaxf(gain, 1.0f);
+        s_whole[i] = ((path & 0x20u) != 0 ? 0.0f : 0.8f * s_whole[i]) + 0.3f * gain * s_render[i];
         s_cut[i] = s_whole[i];
     }
     int before = s_allocations;
