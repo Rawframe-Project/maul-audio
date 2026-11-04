@@ -33,6 +33,9 @@
 // 5 s of continuous double talk is 31 to 36 dB down after, against 83 dB
 // at 10.
 #define GAIN_RISE_DB 10.0
+// The most the background's error may keep of the capture's energy
+// for the filter to count as having learnt an echo path: 3 dB under it.
+#define LEARNT_ERROR 0.5
 // The leakage's floor (as a share of the echo) and its first value.
 #define LEAK_FLOOR 0.005
 #define LEAK_START 0.25
@@ -501,6 +504,11 @@ static void Constrain(maudEchoFilter* f)
 //   without it;
 // - a silent render leaves the gain as it was, and takes no start step;
 // - a silent capture takes it to 1, Speex's rate.
+// The filter has adapted once the start rate's sum passes the
+// partitions and the background's error is LEARNT_ERROR under the
+// capture: a silent capture, which takes the full start rate against an
+// error of nothing, learns no echo path, and the start goes on once the
+// echo is heard.
 // Every term is finite: Sxx is above its floor, the energies are in
 // double, and the rate is at most 0.25.
 static double Rates(maudEchoFilter* f, const float* render, const float* capture, const Sums* s,
@@ -521,7 +529,7 @@ static double Rates(maudEchoFilter* f, const float* render, const float* capture
         double echo = f->echoGain * sxx;
         *startRate = fmin(START_RATE * echo / (s->background + 1e-12), START_RATE);
         f->started += *startRate;
-        f->adapted = f->started > f->partitions;
+        f->adapted = f->started > f->partitions && s->background < LEARNT_ERROR * scc;
     }
     return rer;
 }

@@ -412,7 +412,9 @@ extern "C"
         // The share of the echo it estimates that is still in its output,
         // 0.005 to 1: high while it learns or after the path changes.
         float leakage;
-        // Whether it has learnt the echo path once.
+        // Whether it has learnt an echo path once: its estimate has taken
+        // the capture 3 dB down or more. A capture that holds none of the
+        // render, muted or through a headset, leaves it false.
         bool adapted;
         // The probability that the last frame held speech, 0.1 to 1; 0
         // until two blocks have been processed.
