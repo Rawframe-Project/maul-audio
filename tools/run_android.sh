@@ -39,6 +39,19 @@ again() {
     done
 }
 
+# An idempotent adb step's output, tried up to three times while adb
+# fails: only the try that succeeded is kept, so an answer a lost try
+# printed before its connection dropped is not given twice.
+ask() {
+    tries=1
+    until output=$("$adb" "$@"); do
+        [ "$tries" -lt 3 ] || return 1
+        tries=$((tries + 1))
+        sleep 1
+    done
+    printf '%s\n' "$output"
+}
+
 if [ "$1" = --push ]; then
     again shell mkdir -p "$3" > /dev/null
     again push --sync "$2" "$3"
@@ -74,7 +87,7 @@ done
 run=1
 while :; do
     "$adb" shell "cd $dir && { env$libs$vars ./$name$quoted; echo \$? > status.$run; }" || true
-    if ! answer=$(again shell "cat $dir/status.$run 2> /dev/null || echo missing"); then
+    if ! answer=$(ask shell "cat $dir/status.$run 2> /dev/null || echo missing"); then
         echo "run_android.sh: $name's status could not be read: adb lost the device 3 times" >&2
         status=1
         break
