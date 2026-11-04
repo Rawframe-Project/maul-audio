@@ -57,8 +57,12 @@ maudResult maudCreateVoiceDetector(const maudVoiceDetectorDef* def, maudVoiceDet
     detector->allocator = def->allocator;
     detector->channels = channels;
     detector->scale = 1.0f / (float)channels;
+    // The hangover in frames of a hundredth of the rate's frames, rounded
+    // down: a few more than 100 a second at a rate not a multiple of 100.
+    uint32_t frameSamples = def->sampleRate / 100;
+    float perSecond = (float)def->sampleRate / (float)frameSamples;
     maudInitVadCore(&detector->core, def->sampleRate, def->aggressiveness,
-                    (uint32_t)(def->hangover * 100.0f + 0.5f));
+                    (uint32_t)(def->hangover * perSecond + 0.5f));
     *detectorOut = detector;
     return maud_success;
 }

@@ -40,13 +40,10 @@ typedef struct Run
     uint32_t frames;
 } Run;
 
-static Run Detect(const Signal* signal, uint8_t aggressiveness, uint32_t chunk)
+static Run DetectWith(const Signal* signal, const maudVoiceDetectorDef* def, uint32_t chunk)
 {
-    maudVoiceDetectorDef def = maudDefaultVoiceDetectorDef();
-    def.sampleRate = signal->rate;
-    def.aggressiveness = aggressiveness;
     maudVoiceDetector* detector = nullptr;
-    CHECK(maudCreateVoiceDetector(&def, &detector) == maud_success, "create a detector");
+    CHECK(maudCreateVoiceDetector(def, &detector) == maud_success, "create a detector");
     Run run = {.active = calloc(signal->frames + 1, sizeof(bool)),
                .probability = calloc(signal->frames + 1, sizeof(float))};
     for (uint32_t at = 0; at < signal->count; at += chunk)
@@ -65,6 +62,14 @@ static Run Detect(const Signal* signal, uint8_t aggressiveness, uint32_t chunk)
     }
     maudDestroyVoiceDetector(detector);
     return run;
+}
+
+static Run Detect(const Signal* signal, uint8_t aggressiveness, uint32_t chunk)
+{
+    maudVoiceDetectorDef def = maudDefaultVoiceDetectorDef();
+    def.sampleRate = signal->rate;
+    def.aggressiveness = aggressiveness;
+    return DetectWith(signal, &def, chunk);
 }
 
 static void FreeRun(Run* run)
@@ -220,6 +225,22 @@ static void TestRumble(void)
     FreeSignal(&signal);
 }
 
+// How many frames the detector stays on after the signal's last speech.
+static uint32_t HeldOn(const Signal* signal, const Run* run)
+{
+    uint32_t last = 0;
+    for (uint32_t f = 0; f < run->frames; ++f)
+    {
+        last = signal->speech[f] ? f : last;
+    }
+    uint32_t on = 0;
+    while (last + 1 + on < run->frames && run->active[last + 1 + on])
+    {
+        on++;
+    }
+    return on;
+}
+
 // Each word turns the detector on within 30 ms, and the last one leaves
 // it on for the hangover and no more than 30 ms past it.
 static void TestOnsetAndHangover(void)
@@ -242,17 +263,27 @@ static void TestOnsetAndHangover(void)
         }
     }
     CHECK(worst <= 3, "words are caught within 30 ms");
-    uint32_t last = 0;
-    for (uint32_t f = 0; f < run.frames; ++f)
-    {
-        last = signal.speech[f] ? f : last;
-    }
-    uint32_t on = 0;
-    while (last + 1 + on < run.frames && run.active[last + 1 + on])
-    {
-        on++;
-    }
+    uint32_t on = HeldOn(&signal, &run);
     CHECK(on >= 19 && on <= 23, "the hangover holds 200 ms after the last word");
+    FreeRun(&run);
+    FreeSignal(&signal);
+}
+
+// At 8,099 frames a second a frame is 80 of them, 9.88 ms, so a 10 s
+// hangover is 1012 frames (10 s to 0.3 ms), not the 1000 a 10 ms frame
+// gives (9.88 s).
+static void TestHangoverAtAnyRate(void)
+{
+    Signal signal = MakeSignal(8099, 14.0);
+    AddNoise(&signal, -60, 9);
+    AddSpeech(&signal, -30, 1.0, 2.6);
+    maudVoiceDetectorDef def = maudDefaultVoiceDetectorDef();
+    def.sampleRate = signal.rate;
+    def.hangover = 10.0f;
+    Run run = DetectWith(&signal, &def, 80);
+    uint32_t on = HeldOn(&signal, &run);
+    printf("a 10 s hangover at 8,099: %u frames of 80\n", (unsigned)on);
+    CHECK(on >= 1011 && on <= 1015, "the hangover holds 10 s at a rate not a multiple of 100");
     FreeRun(&run);
     FreeSignal(&signal);
 }
@@ -375,6 +406,7 @@ int main(void)
     TestClicks();
     TestRumble();
     TestOnsetAndHangover();
+    TestHangoverAtAnyRate();
     TestNoiseStep();
     TestTone();
     TestLayoutAndChunks();

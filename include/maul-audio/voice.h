@@ -34,7 +34,9 @@ extern "C"
         // admits less noise and misses more quiet speech.
         uint8_t aggressiveness;
         // How long the detector stays active after speech ends, in
-        // seconds, from 0 to 10, rounded to its 10 ms steps.
+        // seconds, from 0 to 10, rounded to its frames (a hundredth of
+        // sampleRate's frames, rounded down: 10 ms, or a hair less at a
+        // rate that is not a multiple of 100).
         float hangover;
         // Where its memory comes from; all zero for the library's default.
         maudAllocator allocator;

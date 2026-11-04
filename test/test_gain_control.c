@@ -282,6 +282,29 @@ static void TestPace(void)
     FreeSignal(&signal);
 }
 
+// At 8,099 frames a second a frame is 80 of them, 9.88 ms, so 101 a
+// second: loud speech takes the gain down by a 101st of 6 dB a frame, not
+// the 100th a 10 ms frame would take.
+static void TestPaceAtAnyRate(void)
+{
+    Signal signal = MakeSignal(8099, 8.0);
+    Trace trace = Run(&signal, -6, -80);
+    const float share = 6.0f * 80.0f / 8099.0f;
+    float steepest = 0.0f;
+    for (uint32_t f = 1; f < trace.frames; ++f)
+    {
+        float change = trace.gainDb[f] - trace.gainDb[f - 1];
+        steepest = change < steepest ? change : steepest;
+    }
+    printf("at 8,099: the steepest fall %.6f dB a frame, its share %.6f\n", (double)-steepest,
+           (double)share);
+    CHECK(steepest < -0.99f * share, "the gain falls at its pace");
+    // Within the rounding of two floats near 15 dB.
+    CHECK(steepest >= -(share + 1e-5f), "no faster than 6 dB a second");
+    free(trace.gainDb);
+    FreeSignal(&signal);
+}
+
 // Whatever comes in, no sample leaves above -1 dBFS.
 static void TestLimiter(void)
 {
@@ -399,6 +422,7 @@ int main(void)
     TestLimiterShape();
     TestNoise();
     TestPace();
+    TestPaceAtAnyRate();
     TestLimiter();
     TestLayoutAndChunks();
     TestDefs();
