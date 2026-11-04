@@ -7,8 +7,8 @@
 # the target read them as such (CMakeLists.txt and the targets say what
 # the first byte chooses): the HRTF set behind 0x01, the bakes behind
 # 0x03 (fields of order 1, as the office bakes have). fuzz_scene's seeds
-# are built by tools/fuzz_scene_seeds.py; fuzz_spatializer has none, and
-# finds its calls from an empty input. Files already in the
+# are built by tools/fuzz_scene_seeds.py; fuzz_spatializer and fuzz_voice
+# have none, and find their calls from an empty input. Files already in the
 # directories (a corpus carried from an earlier run) stay.
 #
 #   tools/fuzz_seeds.sh <corpus root>
@@ -25,4 +25,4 @@ for bake in data/bake/*.maudbake; do
     { printf '\003'; cat "$bake"; } > "$root/fuzz_bake/seed-$(basename "$bake" .maudbake)"
 done
 python3 tools/fuzz_scene_seeds.py "$root/fuzz_scene"
-mkdir -p "$root/fuzz_spatializer"
+mkdir -p "$root/fuzz_spatializer" "$root/fuzz_voice"

@@ -12,7 +12,8 @@
 // counts as no nearer than 0.1 m and no farther than 10^9 m; the gain
 // ramps; one call or many give the same samples; a reset forgets, a
 // sample that is not finite too;
-// a head radius at either end of its bounds is taken. On the shipped
+// a head radius at either end of its bounds is taken; with the near
+// field, a source exactly at an ear renders as one just outside it. On the shipped
 // SADIE II set: a source on the right reaches the right ear first and
 // louder, and the left one the left. Bad calls write nothing, and
 // processing never allocates.
@@ -1076,6 +1077,45 @@ static void TestBadSample(const maudHrtf* hrtf)
     }
 }
 
+// With the near field, a source exactly at an ear leaves that ear no
+// direction to see it from: it takes the source's direction from the
+// head's centre, and so renders, finite, as a source just outside the
+// ear on that line does.
+static void TestAtEar(const maudHrtf* hrtf)
+{
+    maudBinauralDef def = maudDefaultBinauralDef();
+    def.hrtf = hrtf;
+    def.maxFrames = 512;
+    def.headRadius = 0.15f;
+    maudBinaural* at = nullptr;
+    maudBinaural* outside = nullptr;
+    CHECK(maudCreateBinaural(&def, &at) == maud_success &&
+              maudCreateBinaural(&def, &outside) == maud_success,
+          "two effects");
+    Noise(s_in, 512, 23);
+    CHECK(Process(at, At(0.15f, 0.0f, 0.0f), s_in, s_left, s_right, 512) == maud_success &&
+              Process(outside, At(0.151f, 0.0f, 0.0f), s_in, s_left2, s_right2, 512) ==
+                  maud_success,
+          "process");
+    bool finite = true;
+    double energy = 0.0;
+    double apart = 0.0;
+    for (int i = 0; i < 512; ++i)
+    {
+        finite = finite && isfinite(s_left[i]) && isfinite(s_right[i]);
+        energy += (double)s_left[i] * (double)s_left[i] + (double)s_right[i] * (double)s_right[i];
+        double l = (double)s_left[i] - (double)s_left2[i];
+        double r = (double)s_right[i] - (double)s_right2[i];
+        apart += l * l + r * r;
+    }
+    printf("a source at the ear: %.1f dB from one 1 mm outside it\n",
+           10.0 * log10(apart / energy + 1e-300));
+    CHECK(finite && energy > 0.0, "finite, and heard");
+    CHECK(apart <= 1e-10 * energy, "as a source just outside the ear on the line from the centre");
+    maudDestroyBinaural(at);
+    maudDestroyBinaural(outside);
+}
+
 int main(void)
 {
     maudHrtf* hrtf = LoadCrafted();
@@ -1097,6 +1137,7 @@ int main(void)
         TestNearField(hrtf);
         TestAnyLength(hrtf);
         TestBadSample(hrtf);
+        TestAtEar(hrtf);
         maudDestroyHrtf(hrtf);
     }
     TestShippedSet();
