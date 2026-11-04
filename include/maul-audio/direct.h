@@ -171,6 +171,10 @@ extern "C"
     /// first call after creation or a reset starts at these. Band shapes
     /// are refitted only when a band moves by 0.05 dB or more.
     ///
+    /// Samples must be finite: one that is not (NaN or infinite) spoils the
+    /// effect's state, and so its output after, until
+    /// maudDirectEffect_Reset.
+    ///
     /// @param effect      The effect.
     /// @param params      This call's params.
     /// @param samples     frameCount samples.

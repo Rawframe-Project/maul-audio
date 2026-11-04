@@ -10,7 +10,8 @@
 // nothing past a call's last frame; only the direction counts, from
 // subnormal positions to FLT_MAX, and with the near field a position
 // counts as no nearer than 0.1 m and no farther than 10^9 m; the gain
-// ramps; one call or many give the same samples; a reset forgets;
+// ramps; one call or many give the same samples; a reset forgets, a
+// sample that is not finite too;
 // a head radius at either end of its bounds is taken. On the shipped
 // SADIE II set: a source on the right reaches the right ear first and
 // louder, and the left one the left. Bad calls write nothing, and
@@ -1039,6 +1040,42 @@ static void TestShippedSet(void)
 #endif
 }
 
+// A sample that is not finite spoils the effect, the near field's
+// filters included, until a reset, after which it renders as a new one.
+static void TestBadSample(const maudHrtf* hrtf)
+{
+    static float bad[512];
+    const float bads[2] = {NAN, INFINITY};
+    Noise(s_in, 512, 5);
+    for (int b = 0; b < 2; ++b)
+    {
+        maudBinaural* clean = CreateWith(hrtf, 512, true);
+        maudBinaural* spoiled = CreateWith(hrtf, 512, true);
+        memcpy(bad, s_in, sizeof(bad));
+        bad[7] = bads[b];
+        CHECK(Process(spoiled, At(1.0f, 0.2f, -2.0f), bad, s_left2, s_right2, 512) ==
+                      maud_success &&
+                  Process(spoiled, At(1.0f, 0.2f, -2.0f), s_in, s_left2, s_right2, 512) ==
+                      maud_success,
+              "a bad sample, then a good block");
+        CHECK(!isfinite(s_left2[511]), "spoiled until a reset");
+        CHECK(maudBinaural_Reset(spoiled) == maud_success, "reset");
+        for (uint32_t at = 0; at < 4096; at += 512)
+        {
+            CHECK(Process(clean, At(1.0f, 0.2f, -2.0f), s_in, s_left + at, s_right + at, 512) ==
+                          maud_success &&
+                      Process(spoiled, At(1.0f, 0.2f, -2.0f), s_in, s_left2 + at, s_right2 + at,
+                              512) == maud_success,
+                  "process");
+        }
+        CHECK(memcmp(s_left, s_left2, sizeof(s_left)) == 0 &&
+                  memcmp(s_right, s_right2, sizeof(s_right)) == 0,
+              "after a reset, as a new effect");
+        maudDestroyBinaural(clean);
+        maudDestroyBinaural(spoiled);
+    }
+}
+
 int main(void)
 {
     maudHrtf* hrtf = LoadCrafted();
@@ -1059,6 +1096,7 @@ int main(void)
         TestNoAllocation(hrtf);
         TestNearField(hrtf);
         TestAnyLength(hrtf);
+        TestBadSample(hrtf);
         maudDestroyHrtf(hrtf);
     }
     TestShippedSet();

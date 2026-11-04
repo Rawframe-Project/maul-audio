@@ -11,7 +11,8 @@
 // the weighted dipole, whatever the length of the direction, from
 // subnormal to FLT_MAX; a source exactly at the silence threshold is
 // silent; no absorption at all is taken; bad calls write nothing;
-// processing allocates nothing.
+// processing allocates nothing; a sample that is not finite spoils the
+// output until a reset, after which it is as a new effect's.
 
 #include "test_harness.h"
 #include "test_lengths.h"
@@ -487,6 +488,35 @@ static void TestMisuse(void)
     CHECK(maudCreateDirectEffect(&def, &none) == maud_errorInvalid, "no cookie");
 }
 
+// A sample that is not finite spoils the filters until a reset, after
+// which the effect renders as a new one.
+static void TestBadSample(void)
+{
+    maudDirectParams params = maudDefaultDirectParams();
+    params.distance = 5.0f;
+    static float fresh[480];
+    static float after[480];
+    static float bad[480];
+    const float bads[2] = {NAN, INFINITY};
+    for (int b = 0; b < 2; ++b)
+    {
+        maudDirectEffect* clean = Create();
+        maudDirectEffect* spoiled = Create();
+        Run(clean, &params, 4, fresh);
+        memset(bad, 0, sizeof(bad));
+        bad[7] = bads[b];
+        CHECK(maudDirectEffect_Process(spoiled, &params, bad, after, 480) == maud_success,
+              "a bad sample");
+        Run(spoiled, &params, 4, after);
+        CHECK(!isfinite(after[479]), "spoiled until a reset");
+        CHECK(maudDirectEffect_Reset(spoiled) == maud_success, "reset");
+        Run(spoiled, &params, 4, after);
+        CHECK(memcmp(fresh, after, sizeof(fresh)) == 0, "after a reset, as a new effect");
+        maudDestroyDirectEffect(clean);
+        maudDestroyDirectEffect(spoiled);
+    }
+}
+
 int main(void)
 {
     TestPassThrough();
@@ -498,5 +528,6 @@ int main(void)
     TestAnyLength();
     TestMisuse();
     TestSilent();
+    TestBadSample();
     return s_failures == 0 ? 0 : 1;
 }

@@ -8,7 +8,7 @@ An input or duplex stream asks for it in its def's `voice` flags: `maud_voiceEch
 
 ## The library's processors
 
-Each processor stands alone: no context, no stream, its own def and allocator. It takes interleaved float frames in any count, so it runs in a stream's callback or anywhere else, and its output does not depend on how the frames are cut. Processing is real-time safe. Each is used by one thread at a time.
+Each processor stands alone: no context, no stream, its own def and allocator. It takes interleaved float frames in any count, so it runs in a stream's callback or anywhere else, and its output does not depend on how the frames are cut. Processing is real-time safe. Each is used by one thread at a time. Samples must be finite: no processor checks them, since that would cost every sample, and a NaN or an infinity spoils a processor's state, and so all its output after, until it is destroyed and made again.
 
 | Processor | What it does | Delay |
 |---|---|---|

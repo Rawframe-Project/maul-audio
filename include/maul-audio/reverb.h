@@ -122,6 +122,9 @@ extern "C"
     /// filters then takes some tens of microseconds on the calling
     /// thread, bounded and without allocation.
     ///
+    /// Samples must be finite: one that is not (NaN or infinite) spoils the
+    /// reverb's state, and so its tail after, until maudReverb_Reset.
+    ///
     /// @param reverb      The reverb.
     /// @param params      This call's params.
     /// @param samples     frameCount samples of the send.
