@@ -48,7 +48,9 @@ exe=$1
 shift
 name=$(basename "$exe")
 dir=/data/local/tmp/maul-audio/$name.$$
-again shell mkdir -p "$dir" > /dev/null
+# Fresh, so that a status file an earlier run of the same name and
+# process left (its removal lost) cannot be read as this run's.
+again shell "rm -rf $dir && mkdir -p $dir" > /dev/null
 again push "$exe" "$dir/$name" > /dev/null 2>&1
 libs=""
 if [ -n "${RUN_ANDROID_LIBS:-}" ]; then
