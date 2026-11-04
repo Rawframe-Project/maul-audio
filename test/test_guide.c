@@ -255,7 +255,7 @@ static void GuideNoise(void)
     {
         result = maudNoiseSuppressor_Suppress(suppressor, frames, frameCount, &state);   // in place
     }
-    // state.speechProbability; the output lags the input by 10 ms.
+    // state.speechProbability; the output lags the input by 20 ms.
     maudDestroyNoiseSuppressor(suppressor);
     // clang-format on
     CHECK(result == maud_success && state.frameCount == frameCount / 480,
