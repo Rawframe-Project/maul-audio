@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// The version, the result names and the family's result values.
+// The version, the result names, the family's result values, and the
+// result attribute.
 
 #include "test_harness.h"
 
 #include "maul-audio/base.h"
 
 #include <string.h>
+
+// The suites build as C23, where every compiler the family takes has
+// [[nodiscard]], so MAUD_NODISCARD expands to it and a dropped status
+// warns (GCC 14 reports its C23 as 202000L).
+#define TEXT(x)     #x
+#define EXPANDED(x) TEXT(x)
+static_assert(sizeof(EXPANDED(MAUD_NODISCARD)) > 1, "MAUD_NODISCARD is the attribute in C23");
 
 static void TestVersionMatchesHeader(void)
 {
