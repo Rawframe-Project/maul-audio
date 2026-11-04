@@ -154,7 +154,7 @@ The libraries are one product family: a program may link several of them, and a 
 | Rule | Tool |
 |---|---|
 | Formatting, include order, braces, `const` placement | `clang-format` at the version CI pins |
-| Naming of locals, parameters and fields; cognitive complexity | `clang-tidy` |
+| Naming of locals, parameters and fields; cognitive complexity | `clang-tidy`, over the library's sources and its own headers: every call passes `--header-filter` from `tools/tidy_filter.sh`, anchored at the build tree's `CMAKE_HOME_DIRECTORY`, since clang-tidy run from the checkout reports no header finding without one, and a changed header tidies every source |
 | Public API C17, C23 and C++17 clean; MSVC header build | header tests (`cmake/Testing.cmake`, `cmake/HeaderCheck/`) |
 | SPDX lines, comment style, history markers, banned calls, mutable file-scope state, `<math.h>` allow list, file names, shell scripts through shellcheck | `tools/check_source.py` |
 | Module graph | `tools/check_modules.py` |
