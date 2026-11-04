@@ -570,6 +570,10 @@ extern "C"
     /// for a second at 48 kHz), its start crossfaded over 128 frames and
     /// the rest over a block.
     ///
+    /// The send's samples must be finite: one that is not (NaN or infinite)
+    /// spoils the bed for about the response's length after it
+    /// (reflectionDuration).
+    ///
     /// @param spatializer  The spatializer.
     /// @param orientation  The listener's orientation at the call's end, a
     ///                     quaternion of any nonzero length; the bed turns

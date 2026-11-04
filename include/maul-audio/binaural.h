@@ -93,6 +93,9 @@ extern "C"
     /// starts when it ends, the latest one winning. The first call after
     /// creation or a reset starts at its parameters.
     ///
+    /// Samples must be finite: one that is not (NaN or infinite) spoils the
+    /// effect's state, and so its output after, until maudBinaural_Reset.
+    ///
     /// @param effect      The effect.
     /// @param params      The source's parameters.
     /// @param samples     frameCount samples.

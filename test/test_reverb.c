@@ -10,7 +10,8 @@
 // diffuse, each directional channel carrying near a third of W's energy;
 // splitting the stream into other blocks changes nothing; a change of
 // times ramps across its call; silence stays silent; a reset silences the
-// tail; nothing allocates while processing; bad calls write nothing.
+// tail, and clears a sample that is not finite; nothing allocates while
+// processing; bad calls write nothing.
 
 #include "test_harness.h"
 
@@ -789,6 +790,60 @@ static void TestTail(void)
     maudDestroyReverb(r);
 }
 
+// A sample that is not finite spoils the tail until a reset, after which
+// the reverb renders as one that has heard only silence.
+static void TestBadSample(void)
+{
+    maudReverbParams params = {
+        {1.5f, 1.5f, 1.5f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
+    static float bad[480];
+    static float silent[480];
+    static float scratch[4][480];
+    static float fresh[4][480 * 8];
+    static float after[4][480 * 8];
+    uint32_t seed = 9;
+    for (int n = 0; n < 480; ++n)
+    {
+        seed = seed * 1664525u + 1013904223u;
+        s_in[n] = (float)(int32_t)(seed >> 8) / 8388608.0f - 1.0f;
+    }
+    const float bads[2] = {NAN, INFINITY};
+    for (int b = 0; b < 2; ++b)
+    {
+        maudReverb* clean = Create();
+        maudReverb* spoiled = Create();
+        memcpy(bad, s_in, sizeof(bad));
+        bad[7] = bads[b];
+        memset(scratch, 0, sizeof(scratch));
+        float* into[4] = {scratch[0], scratch[1], scratch[2], scratch[3]};
+        CHECK(maudReverb_Process(clean, &params, silent, into, 480) == maud_success &&
+                  maudReverb_Process(spoiled, &params, bad, into, 480) == maud_success,
+              "silence, and a bad sample");
+        // The tail starts 23 ms after the send: three more blocks reach
+        // past it.
+        for (int k = 0; k < 3; ++k)
+        {
+            CHECK(maudReverb_Process(spoiled, &params, s_in, into, 480) == maud_success,
+                  "good blocks");
+        }
+        CHECK(!isfinite(scratch[0][479]), "spoiled until a reset");
+        CHECK(maudReverb_Reset(spoiled) == maud_success, "reset");
+        memset(fresh, 0, sizeof(fresh));
+        memset(after, 0, sizeof(after));
+        for (int at = 0; at < 480 * 8; at += 480)
+        {
+            float* one[4] = {fresh[0] + at, fresh[1] + at, fresh[2] + at, fresh[3] + at};
+            float* two[4] = {after[0] + at, after[1] + at, after[2] + at, after[3] + at};
+            CHECK(maudReverb_Process(clean, &params, s_in, one, 480) == maud_success &&
+                      maudReverb_Process(spoiled, &params, s_in, two, 480) == maud_success,
+                  "process");
+        }
+        CHECK(memcmp(fresh, after, sizeof(fresh)) == 0, "after a reset, as after silence");
+        maudDestroyReverb(clean);
+        maudDestroyReverb(spoiled);
+    }
+}
+
 int main(void)
 {
     TestTail();
@@ -798,5 +853,6 @@ int main(void)
     TestSend();
     TestBandLevel();
     TestBehaviour();
+    TestBadSample();
     return s_failures == 0 ? 0 : 1;
 }

@@ -9,7 +9,8 @@
 // ahead there at low frequencies; one
 // call or many decode the same samples; each ear written over a channel
 // of the bed decodes the same samples as apart; decoding never allocates, and
-// the set may go once the decoder exists; bad calls write nothing. The
+// the set may go once the decoder exists; bad calls write nothing; a
+// sample that is not finite spoils the output until a reset. The
 // build's parts alone: the FFT against a direct DFT, the weighted least
 // squares by its defining properties, the directions' weights by the
 // area of their bands, the transform size by its bounds.
@@ -528,6 +529,43 @@ static void TestSize(void)
     CHECK(maudMagLsSize(&set, 767, 0.0) == 2048, "the largest delay counted");
 }
 
+// A sample that is not finite spoils the output until a reset, after
+// which the decoder renders as a new one.
+static void TestBadSample(const maudHrtf* hrtf)
+{
+    for (uint32_t c = 0; c < 4; ++c)
+    {
+        Noise(s_bed[c], FRAMES, 11 + c);
+    }
+    static float left[FRAMES];
+    static float right[FRAMES];
+    static float bad[FRAMES];
+    const float bads[2] = {NAN, INFINITY};
+    for (int b = 0; b < 2; ++b)
+    {
+        maudBinauralDecoder* clean = Create(hrtf, 1, FRAMES);
+        maudBinauralDecoder* spoiled = Create(hrtf, 1, FRAMES);
+        memcpy(bad, s_bed[0], sizeof(bad));
+        bad[FRAMES - 1] = bads[b];
+        const float* badBed[4] = {bad, s_bed[1], s_bed[2], s_bed[3]};
+        const float* bed[4] = {s_bed[0], s_bed[1], s_bed[2], s_bed[3]};
+        float* fresh[2] = {s_left, s_right};
+        float* after[2] = {left, right};
+        CHECK(maudBinauralDecoder_Decode(spoiled, badBed, after, FRAMES) == maud_success &&
+                  maudBinauralDecoder_Decode(spoiled, bed, after, FRAMES) == maud_success,
+              "a bad sample, then a good block");
+        CHECK(!isfinite(left[0]), "spoiled until a reset");
+        CHECK(maudBinauralDecoder_Reset(spoiled) == maud_success, "reset");
+        CHECK(maudBinauralDecoder_Decode(clean, bed, fresh, FRAMES) == maud_success &&
+                  maudBinauralDecoder_Decode(spoiled, bed, after, FRAMES) == maud_success,
+              "decode");
+        CHECK(memcmp(s_left, left, sizeof(left)) == 0 && memcmp(s_right, right, sizeof(right)) == 0,
+              "after a reset, as a new decoder");
+        maudDestroyBinauralDecoder(clean);
+        maudDestroyBinauralDecoder(spoiled);
+    }
+}
+
 int main(void)
 {
     TestSize();
@@ -558,6 +596,7 @@ int main(void)
     TestInPlace(hrtf);
     TestMisuse(hrtf);
     TestFailureSilence(hrtf);
+    TestBadSample(hrtf);
     // The decoder keeps its own filters: the set may go first.
     long live = s_live;
     maudBinauralDecoder* decoder = Create(hrtf, 3, FRAMES);

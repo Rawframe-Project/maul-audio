@@ -111,6 +111,10 @@ extern "C"
     /// a 10 ms frame waits for the next call, so the results do not
     /// depend on how the frames are cut.
     ///
+    /// Samples must be finite: one that is not (NaN or infinite) spoils the
+    /// detector's state, and so all it reports after, until it is destroyed
+    /// and made again.
+    ///
     /// @param detector    The detector.
     /// @param frames      frameCount frames in the def's layout; may be NULL
     ///                    when frameCount is 0.
@@ -236,6 +240,10 @@ extern "C"
     /// output does not depend on how the frames are cut. The gain follows
     /// what the frames before them showed, so it adds no delay.
     ///
+    /// Samples must be finite: one that is not (NaN or infinite) spoils the
+    /// gain control's state, and so its output after, until it is destroyed
+    /// and made again.
+    ///
     /// @param gain        The gain control.
     /// @param frames      frameCount frames in the def's layout; may be NULL
     ///                    when frameCount is 0.
@@ -344,6 +352,10 @@ extern "C"
     /// input by 20 ms, two of its 10 ms hops: a hop goes out from the
     /// 20 ms frame that reaches into the next. The first 10 ms out are
     /// silence.
+    ///
+    /// Samples must be finite: one that is not (NaN or infinite) spoils the
+    /// noise suppressor's state, and so its output after, until it is
+    /// destroyed and made again.
     ///
     /// @param suppressor  The noise suppressor.
     /// @param frames      frameCount frames in the def's layout; may be
@@ -459,6 +471,10 @@ extern "C"
     /// cut. It works in blocks of the smallest power of two of frames
     /// lasting 8 ms or more (128 at 16,000, 512 at 48,000) and lags the
     /// input by two: the first two blocks out are silence.
+    ///
+    /// Samples of both must be finite: one that is not (NaN or infinite)
+    /// spoils the echo canceller's state, and so its output after, until it
+    /// is destroyed and made again.
     ///
     /// @param canceller   The echo canceller.
     /// @param capture     frameCount mono frames of the capture; may be NULL

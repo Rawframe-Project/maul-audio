@@ -149,5 +149,6 @@ Coupled spaces (a hall behind an open door) decay in two slopes. A reverb made w
 - Processing allocates nothing, takes no lock and costs in proportion to its frames, so it runs on the audio thread. Making and destroying an effect allocates and belongs elsewhere.
 - Parameters change smoothly across a call: a program sets the values for the end of the block, and the effect ramps from the last call's.
 - Each effect is used by one thread at a time; the HRTF set and the speaker panner may be shared.
+- Samples must be finite. No effect checks them, since that would cost every sample. A NaN or an infinity spoils what an effect keeps between calls: the binaural and direct effects' output and the reverb's tail stay spoiled until their `_Reset`; the binaural decoder's output, for its filters' length or until its reset; the spatializer's reflections, for about `reflectionDuration`. The encoder, the rotation, the panner and the speaker decoder keep nothing, so only that sample's frame goes wrong.
 - Results are the same on one platform and build for the same inputs. The test suite's golden renders hold them there and within a small tolerance across platforms.
 - The README's cost table gives what each effect costs on one core.

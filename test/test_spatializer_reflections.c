@@ -14,7 +14,8 @@
 // before the first path does; before any response the bed is silent; a
 // new response swaps in without a jump, at the convolver's next tail
 // boundary, so each render is preceded by enough silence for it to be
-// heard whole; misuse is refused. In an office
+// heard whole; misuse is refused; a send sample that is not finite
+// spoils the bed only while the response passes over it. In an office
 // (1 s): the reverb at the published level and delay starts where the
 // reflections' response ends and has the energy of a response rendered
 // on past the join (0.35 to 0.6 s, within 15 %; measured 7 %), and
@@ -489,6 +490,59 @@ static void TestHybrid(void)
     maudDestroyScene(scene);
 }
 
+// A send sample that is not finite spoils the bed while the response
+// passes over it, then the bed is finite again: within the 0.5 s
+// response, two of its tail blocks (1,024 each) and a render of 480
+// (measured: 0.515 s for NaN, 0.525 s for infinity).
+static void TestBadSample(void)
+{
+    enum
+    {
+        LONG = 36000,
+        AT = 963,
+        CLEAR = 24000 + 2 * 1024 + 480
+    };
+    static float send[LONG];
+    static float bed[4][LONG];
+    maudScene* scene = Floor();
+    maudSpatializer* s = Create(scene);
+    const maudQuaternion upright = {0.0f, 0.0f, 0.0f, 1.0f};
+    maudPose listener = {{0.3f, 2.0f, -0.2f}, upright};
+    CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "an estimate");
+    const float bads[2] = {NAN, INFINITY};
+    for (int b = 0; b < 2; ++b)
+    {
+        uint32_t seed = 21;
+        for (int i = 0; i < LONG; ++i)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            send[i] = (float)(int32_t)(seed >> 8) / 83886080.0f - 0.1f;
+        }
+        send[AT] = bads[b];
+        memset(bed, 0, sizeof(bed));
+        for (int at = 0; at < LONG; at += 480)
+        {
+            float* into[4] = {bed[0] + at, bed[1] + at, bed[2] + at, bed[3] + at};
+            CHECK(maudSpatializer_RenderReflections(s, &upright, send + at, into, 480) ==
+                      maud_success,
+                  "render");
+        }
+        int last = -1;
+        for (int i = 0; i < LONG; ++i)
+        {
+            bool finite = isfinite(bed[0][i]) && isfinite(bed[1][i]) && isfinite(bed[2][i]) &&
+                          isfinite(bed[3][i]);
+            last = finite ? last : i;
+        }
+        printf("a bad send sample: the bed not finite until %.3f s after it\n",
+               (double)(last - AT) / 48000.0);
+        CHECK(last > AT, "the bed spoiled");
+        CHECK(last < AT + CLEAR, "the bed finite again once the response has passed");
+    }
+    maudDestroySpatializer(s);
+    maudDestroyScene(scene);
+}
+
 int main(void)
 {
     TestFloor();
@@ -496,5 +550,6 @@ int main(void)
     TestAnyLength();
     TestHybrid();
     TestMisuse();
+    TestBadSample();
     return s_failures == 0 ? 0 : 1;
 }

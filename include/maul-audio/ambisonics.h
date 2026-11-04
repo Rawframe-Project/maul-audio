@@ -152,6 +152,10 @@ extern "C"
     /// Decodes frames of a bed for both ears, written to samplesOut[0]
     /// (left) and samplesOut[1] (right).
     ///
+    /// The bed's samples must be finite: one that is not (NaN or infinite)
+    /// spoils the output for the filters' length after it, or until
+    /// maudBinauralDecoder_Reset.
+    ///
     /// @param decoder     The decoder.
     /// @param bed         The decoder's order's channel count of channels,
     ///                    frameCount each.
