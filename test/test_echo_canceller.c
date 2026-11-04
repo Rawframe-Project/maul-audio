@@ -12,7 +12,8 @@
 // and does not depend on how the frames are cut; on a bent echo path a
 // first second with nothing played leaves the echo taken down as from
 // the start, and silence alone leaves it unadapted with a high leakage;
-// refusals; and no allocation while processing. (Its quality on
+// the probability of speech is 0 until the first frame, two blocks in,
+// and from 0.1 after; refusals; and no allocation while processing. (Its quality on
 // recorded speech is measured outside the tests, against Speex's.)
 
 #include "test_harness.h"
@@ -189,6 +190,22 @@ static void TestQuietFirst(void)
     CHECK(quiet > 20.0 && fabs(quiet - played) < 2.0, "a quiet start leaves the leakage to learn");
 }
 
+// Before its first frame, two blocks in, nothing has been weighed: the
+// probability of speech is 0. From that frame on it is 0.1 or more, even
+// over silence.
+static void TestFirstFrame(void)
+{
+    memset(s_render, 0, 2 * 128 * sizeof(float));
+    memset(s_capture, 0, 2 * 128 * sizeof(float));
+    maudEchoCanceller* c = Create(16000);
+    maudEchoState before = Run(c, s_capture, 2 * 128 - 1, 2 * 128 - 1);
+    maudEchoState after = Run(c, s_capture + 2 * 128 - 1, 1, 1);
+    maudDestroyEchoCanceller(c);
+    CHECK(before.speechProbability == 0.0f, "0 before the first frame");
+    CHECK(after.speechProbability >= 0.1f && after.speechProbability <= 1.0f,
+          "from 0.1 once the first frame is weighed");
+}
+
 static void TestDoubleTalk(void)
 {
     const uint32_t rate = 16000;
@@ -355,6 +372,7 @@ int main(void)
     TestConverges(48000, 512);
     TestDoubleTalk();
     TestQuietFirst();
+    TestFirstFrame();
     TestFraming();
     TestNearAlone();
     TestRefused();

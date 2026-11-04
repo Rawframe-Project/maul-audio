@@ -410,7 +410,8 @@ extern "C"
         float leakage;
         // Whether it has learnt the echo path once.
         bool adapted;
-        // The probability that the last frame held speech, 0.1 to 1.
+        // The probability that the last frame held speech, 0.1 to 1; 0
+        // until the first frame, two blocks in.
         float speechProbability;
         // The frames processed so far.
         uint64_t frameCount;
