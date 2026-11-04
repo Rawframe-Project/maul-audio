@@ -35,18 +35,30 @@
 // then cancellation), so a floor of 1e-30 still left them subnormal;
 // 1e-20 is far below any weight that adds to an estimate.
 #define WEIGHT_TINY 1e-20f
-// The largest weight kept, each part of a bin, which bounds every float
-// the canceller stores for samples within 2^64 of zero (voice.h). With
-// blocks of at most 4,096 frames, transforms of at most 2^13 and at
-// most 128 partitions: the notch passes at most 2.39 times its input
-// (the L1 norm of its response) and the pre-emphasis twice, so the
-// render's bins stay under 2^78; the estimate's under 2^7 2^78 2^21,
-// and its samples under 2^107; the error's bins under 2^12 2^107; the
-// de-emphasis (a pole at most 0.979) multiplies by 48 at most, so the
-// suppressor's transforms stay under 2^13 2^113, all within a float's
-// 2^128. An echo path's weights are a few times a block's length at
-// most, far below it.
-#define WEIGHT_LIMIT 1048576.0
+// The largest weight kept, each part of a bin: the most gain the filter
+// models in a bin, 78 dB, and the bound on every float the canceller
+// stores for samples within 2^64 of zero (voice.h). With blocks of at
+// most 4,096 frames, transforms of at most 2^13 (2^12 complex points in
+// 12 stages, each at most doubling the sum of squares) and at most 128
+// partitions:
+// - the render through the pre-emphasis stays under 2^65 and its bins
+//   under 2^78; the capture through the notch (the L1 norm of its
+//   response at most 2.39) and the pre-emphasis under 2^66.3;
+// - the estimate's bins stay under 2^7 2^78 2^13.5 = 2^98.5; the
+//   inverse's split at most doubles them, its stages add 2^12, and it
+//   divides by 2^12, so its stages stay under 2^111.5 and its samples
+//   under 2^99.5;
+// - the error's samples stay under 2^99.6 and its bins (of 2^12
+//   samples) under 2^111.6;
+// - the de-emphasis (a pole at most 0.979) multiplies by 48 at most, to
+//   under 2^105.2;
+// - the suppressor's frame of 2^13 samples has a root sum of squares
+//   under 2^6.5 2^105.2, so its bins' is under 2^13 2^105.2 = 2^118.2
+//   and each bin under that; its gains are at most 1; the inverse's
+//   split multiplies the root sum of squares by 2^0.5 at most and its
+//   stages by 2^6, so every value stays under 2^124.7, within a float's
+//   2^128.
+#define WEIGHT_LIMIT 8192.0
 
 typedef struct Sums
 {
