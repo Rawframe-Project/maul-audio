@@ -44,9 +44,14 @@
 // 0.1 s (13 blocks at 8 and 16 kHz, 10 at 48 kHz) the chance that such
 // a capture ends the start is under 1e-130 an hour; for a narrowband
 // capture of only 8 degrees of freedom a block (1.7e-2 a block), under
-// 3.2e-18 an hour at 8 and 16 kHz and 5.3e-13 at 48 kHz. A capture that
-// follows the render, a tone at the render's own frequency, is an echo
-// to any filter and is learnt as one.
+// 3.2e-18 an hour at 8 and 16 kHz and 5.3e-13 at 48 kHz. The product
+// over the span takes the blocks as independent, which holds while the
+// render changes from block to block (noise, speech). Under a steady
+// render tone, a narrowband near end within a few Hz of it changes
+// little from block to block, so the estimate can track it across the
+// span. A capture that follows the render, a tone at the render's own
+// frequency or within a few Hz of a steady one, is an echo to any
+// filter and is learnt as one.
 #define LEARNT_ERROR 0.5
 #define LEARNT_SPAN  0.1
 // The leakage's floor (as a share of the echo) and its first value.
