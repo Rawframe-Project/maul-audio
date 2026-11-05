@@ -11,6 +11,8 @@
 #ifndef MAUL_AUDIO_SRC_RAMP_H
 #define MAUL_AUDIO_SRC_RAMP_H
 
+#include "maul-audio/base.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 

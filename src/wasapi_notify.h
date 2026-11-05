@@ -10,6 +10,8 @@
 
 #define COBJMACROS
 #define CONST_VTABLE
+#include "maul-audio/base.h"
+
 #include <mmdeviceapi.h>
 #include <stdatomic.h>
 #include <stdbool.h>
