@@ -10,7 +10,8 @@
 // triangle from its lower to its upper corner through its centre, so
 // the triangles' builder serves. A ray enters an instance's frame as R^T (o
 // - p) / s with its direction R^T d / s, unnormalised, so its distances
-// are the world's.
+// are the world's; where either passes the float range, it is taken in
+// double and moved along itself to the mesh (Far).
 
 #include "allocator.h"
 #include "exact_scale.h"
@@ -333,26 +334,100 @@ maudResult maudScene_Commit(maudScene* scene)
     return result;
 }
 
-// A ray in an instance's frame.
+// A ray in an instance's frame. Near, its distances are the world's;
+// far, a local distance u is the world's t * 2^exponent - start.
 typedef struct Local
 {
     float origin[3];
     float direction[3];
+    bool far;
+    int exponent;
+    double start;
 } Local;
 
-static Local Enter(const maudPlacedInstance* p, const float* origin, const float* direction)
+// The frame's ray where R^T (o - p) / s or R^T d / s passes the float
+// range: an origin more than 2^128 s from the instance, or a direction
+// that long. In double, the direction is scaled by a power of two, which
+// is exact, to a largest component in [0.5, 1), and the origin moved
+// along it to its nearest approach to the centre of the mesh's box, so
+// that both are floats again wherever the ray can meet the mesh. Double's
+// rounding at that distance, under 2^-52 of it, is far below the mesh's
+// size whenever the float ray could tell its triangles apart.
+static Local Far(const maudPlacedInstance* p, const maudSceneMesh* mesh, const float* origin,
+                 const float* direction)
 {
-    Local l;
+    const float* r = p->rotation;
+    double s = (double)p->inverseScale;
+    double d[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        d[i] = (double)origin[i] - (double)p->position[i];
+    }
+    double o[3];
+    double u[3];
+    double largest = 0.0;
+    for (int i = 0; i < 3; ++i)
+    {
+        o[i] = ((double)r[i] * d[0] + (double)r[3 + i] * d[1] + (double)r[6 + i] * d[2]) * s;
+        u[i] = ((double)r[i] * (double)direction[0] + (double)r[3 + i] * (double)direction[1] +
+                (double)r[6 + i] * (double)direction[2]) *
+               s;
+        largest = fmax(largest, fabs(u[i]));
+    }
+    Local l = {.far = true};
+    (void)frexp(largest, &l.exponent);
+    const maudBvhNode* root = &mesh->nodes[0];
+    double toward = 0.0;
+    double squared = 0.0;
+    for (int i = 0; i < 3; ++i)
+    {
+        u[i] = ldexp(u[i], -l.exponent);
+        double centre = 0.5 * (double)root->min[i] + 0.5 * (double)root->max[i];
+        toward += (centre - o[i]) * u[i];
+        squared += u[i] * u[i];
+    }
+    l.start = toward / squared;
+    for (int i = 0; i < 3; ++i)
+    {
+        l.origin[i] = (float)(o[i] + l.start * u[i]);
+        l.direction[i] = (float)u[i];
+    }
+    return l;
+}
+
+static Local Enter(const maudPlacedInstance* p, const maudSceneMesh* mesh, const float* origin,
+                   const float* direction)
+{
+    Local l = {.far = false};
     float d[3] = {origin[0] - p->position[0], origin[1] - p->position[1],
                   origin[2] - p->position[2]};
+    bool finite = true;
     for (int i = 0; i < 3; ++i)
     {
         const float* r = p->rotation;
         l.origin[i] = (r[i] * d[0] + r[3 + i] * d[1] + r[6 + i] * d[2]) * p->inverseScale;
         l.direction[i] = (r[i] * direction[0] + r[3 + i] * direction[1] + r[6 + i] * direction[2]) *
                          p->inverseScale;
+        finite = finite && isfinite(l.origin[i]) && isfinite(l.direction[i]);
     }
-    return l;
+    return finite ? l : Far(p, mesh, origin, direction);
+}
+
+// A world distance as the frame's.
+static float Inward(const Local* l, float t)
+{
+    return l->far ? (float)(ldexp((double)t, l->exponent) - l->start) : t;
+}
+
+// A distance in the frame as the world's, within [low, high].
+static float Outward(const Local* l, float u, float low, float high)
+{
+    if (!l->far)
+    {
+        return u;
+    }
+    float t = (float)ldexp((double)u + l->start, -l->exponent);
+    return t < low ? low : t > high ? high : t;
 }
 
 typedef struct Query
@@ -373,8 +448,9 @@ MAUD_NODISCARD static bool AnyVisit(const maudTriangle* entry, float* limit, voi
     const Query* q = context;
     const maudPlacedInstance* p = &q->scene->placed[entry->index];
     const maudSceneMesh* mesh = &q->scene->meshes[p->mesh];
-    Local l = Enter(p, q->origin, q->direction);
-    return maudBvhAnyHit(mesh->nodes, mesh->triangles, l.origin, l.direction, q->tMin, *limit);
+    Local l = Enter(p, mesh, q->origin, q->direction);
+    return maudBvhAnyHit(mesh->nodes, mesh->triangles, l.origin, l.direction, Inward(&l, q->tMin),
+                         Inward(&l, *limit));
 }
 
 bool maudInstancesAnyHit(const maudScene* scene, const float* origin, const float* direction,
@@ -395,10 +471,11 @@ MAUD_NODISCARD static bool ClosestVisit(const maudTriangle* entry, float* limit,
     uint32_t slot = entry->index;
     const maudPlacedInstance* p = &q->scene->placed[slot];
     const maudSceneMesh* mesh = &q->scene->meshes[p->mesh];
-    Local l = Enter(p, q->origin, q->direction);
+    Local l = Enter(p, mesh, q->origin, q->direction);
     float t = 0.0f;
-    const maudTriangle* hit =
-        maudBvhClosestHit(mesh->nodes, mesh->triangles, l.origin, l.direction, q->tMin, *limit, &t);
+    const maudTriangle* hit = maudBvhClosestHit(mesh->nodes, mesh->triangles, l.origin, l.direction,
+                                                Inward(&l, q->tMin), Inward(&l, *limit), &t);
+    t = Outward(&l, t, q->tMin, *limit);
     if (hit != nullptr && (t < *limit || (!q->found && slot < q->bestSlot)))
     {
         maudVector3 n = maudTriangleNormal(hit);
