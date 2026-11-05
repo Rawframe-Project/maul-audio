@@ -45,7 +45,7 @@ maudStreamDef maudDefaultStreamDef(void)
     };
 }
 
-static bool DefValid(const maudStreamDef* def)
+MAUD_NODISCARD static bool DefValid(const maudStreamDef* def)
 {
     if (def->cookie != STREAM_DEF_COOKIE || def->callback == nullptr ||
         (uint32_t)def->direction > maud_directionLoopback || (uint32_t)def->mode > maud_modePull ||
@@ -202,7 +202,7 @@ maudResult maudStream_Stop(maudContext* context, maudStreamId stream)
 
 // Whether a duplex stream's halves run on one clock, as the backend
 // says for their current devices.
-static bool SharesClock(const maudContext* context, const maudDuplex* duplex)
+MAUD_NODISCARD static bool SharesClock(const maudContext* context, const maudDuplex* duplex)
 {
     return context->backend->sharesClock != nullptr &&
            context->backend->sharesClock(context, duplex->output, duplex->input);
@@ -388,7 +388,8 @@ static maudResult BeginRender(maudContext* context, maudStreamId stream, maudDir
 // made: from its allocator hooks, or from the stream's callback while
 // this thread renders the stream. Such a call's frames may be the ones an
 // outer call is filling. A render another thread holds is not one.
-static bool CalledBackIn(const maudContext* context, maudStreamId stream, maudResult result)
+MAUD_NODISCARD static bool CalledBackIn(const maudContext* context, maudStreamId stream,
+                                        maudResult result)
 {
     if (result != maud_errorBusy || context == nullptr)
     {

@@ -17,7 +17,7 @@
 #define MAUD_RETRY_LAST_NS  4000000000
 
 // Whether the stream may be tried again at now.
-static inline bool maudRetryDue(const maudStreamBinding* binding, int64_t now)
+MAUD_NODISCARD static inline bool maudRetryDue(const maudStreamBinding* binding, int64_t now)
 {
     return now >= binding->retryAt;
 }

@@ -91,8 +91,8 @@ static void Sheared(const maudShearedRay* ray, const float* p, double* x, double
 // The test in double, for a triangle whose float values overflowed. A
 // value it cannot decide (a ray with no direction) fails the final range
 // test, so it is a miss, as is a distance past FLT_MAX.
-static bool HitInDouble(const maudShearedRay* ray, const float* a, const float* b, const float* c,
-                        float tMin, float tMax, float* t)
+MAUD_NODISCARD static bool HitInDouble(const maudShearedRay* ray, const float* a, const float* b,
+                                       const float* c, float tMin, float tMax, float* t)
 {
     double ax;
     double ay;

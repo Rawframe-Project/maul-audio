@@ -7,6 +7,8 @@
 #ifndef MAUL_AUDIO_SRC_UTF8_H
 #define MAUL_AUDIO_SRC_UTF8_H
 
+#include "maul-audio/base.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -33,6 +35,6 @@ size_t maudUtf16ToUtf8(char* out, size_t capacity, const uint16_t* units, size_t
 // key, which is an identity and is never cut or changed: false when a
 // character does not fit or a unit has no UTF-8 of its own (a surrogate
 // without its pair, U+0000), since two such keys could then be one.
-bool maudUtf16ToKey(char* out, size_t capacity, const uint16_t* units, size_t count);
+MAUD_NODISCARD bool maudUtf16ToKey(char* out, size_t capacity, const uint16_t* units, size_t count);
 
 #endif // MAUL_AUDIO_SRC_UTF8_H

@@ -50,8 +50,8 @@ typedef struct maudPathSearch
 } maudPathSearch;
 
 // Allocates the scratch; false when memory runs out (nothing to free).
-bool maudCreatePathSearch(const maudAllocator* allocator, uint32_t capacity,
-                          maudPathSearch* search);
+MAUD_NODISCARD bool maudCreatePathSearch(const maudAllocator* allocator, uint32_t capacity,
+                                         maudPathSearch* search);
 void maudDestroyPathSearch(const maudAllocator* allocator, maudPathSearch* search);
 
 // Attaches a point: its nearest probes within range, tested by one

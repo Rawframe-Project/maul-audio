@@ -19,11 +19,11 @@
 // order), the stream channel it carries: orderOut[pcm] = stream. A side
 // speaker stands in for a rear one and the reverse. False when a
 // channel has no match.
-bool maudAlsaChannelOrder(maudChannelLayout layout, const unsigned int* positions, uint32_t count,
-                          uint8_t* orderOut);
+MAUD_NODISCARD bool maudAlsaChannelOrder(maudChannelLayout layout, const unsigned int* positions,
+                                         uint32_t count, uint8_t* orderOut);
 
 // Whether order maps every channel to itself.
-bool maudAlsaOrderIsIdentity(const uint8_t* order, uint32_t count);
+MAUD_NODISCARD bool maudAlsaOrderIsIdentity(const uint8_t* order, uint32_t count);
 
 // Copies frames interleaved frames of channels channels between the
 // stream's order and the PCM's, order[pcm] = stream: from stream to pcm

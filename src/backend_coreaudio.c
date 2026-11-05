@@ -32,8 +32,8 @@ const maudCoreAudioHal maudCoreAudioSystemHal = {
 
 // Copies a string property of object as UTF-8 into out; false when it
 // is missing or does not fit.
-static bool ReadText(AudioObjectID object, AudioObjectPropertySelector selector, char* out,
-                     size_t capacity)
+MAUD_NODISCARD static bool ReadText(AudioObjectID object, AudioObjectPropertySelector selector,
+                                    char* out, size_t capacity)
 {
     AudioObjectPropertyAddress address =
         maudCoreAudioAddress(selector, kAudioObjectPropertyScopeGlobal);
@@ -53,7 +53,7 @@ static bool ReadText(AudioObjectID object, AudioObjectPropertySelector selector,
 // character that fits and a surrogate without its pair as U+FFFD; false
 // when the device has none. CFStringGetCString would refuse a name that
 // does not fit, or one holding such a surrogate.
-static bool ReadName(AudioObjectID object, char* out, size_t capacity)
+MAUD_NODISCARD static bool ReadName(AudioObjectID object, char* out, size_t capacity)
 {
     AudioObjectPropertyAddress address =
         maudCoreAudioAddress(kAudioObjectPropertyName, kAudioObjectPropertyScopeGlobal);
@@ -144,7 +144,7 @@ static void ReadRates(maudCoreAudio* coreaudio, AudioObjectID object, maudDevice
     }
 }
 
-static bool Hidden(AudioObjectID object)
+MAUD_NODISCARD static bool Hidden(AudioObjectID object)
 {
     AudioObjectPropertyAddress address =
         maudCoreAudioAddress(kAudioDevicePropertyIsHidden, kAudioObjectPropertyScopeGlobal);
@@ -157,8 +157,9 @@ static bool Hidden(AudioObjectID object)
 // Describes one direction of a device into endpoint and spec; false
 // when the device has no channels that way, or no UID or one past the
 // text limit, so that it takes no place in the scan.
-static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object, maudDirection direction,
-                     maudCoreAudioEndpoint* endpoint, maudDeviceSpec* spec)
+MAUD_NODISCARD static bool Describe(maudCoreAudio* coreaudio, AudioObjectID object,
+                                    maudDirection direction, maudCoreAudioEndpoint* endpoint,
+                                    maudDeviceSpec* spec)
 {
     AudioObjectPropertyScope scope = direction == maud_directionOutput
                                          ? kAudioObjectPropertyScopeOutput
@@ -389,8 +390,8 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
 // A HAL device has one clock: the halves of a duplex stream share it
 // when both are on one device, which their keys, the device's UID, say,
 // or when they share a voice-processing unit, which runs both.
-static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
-                        const maudStreamSlot* input)
+MAUD_NODISCARD static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
+                                       const maudStreamSlot* input)
 {
     const maudCoreAudio* coreaudio = context->native;
     if (coreaudio->streams[output - context->streams.slots].voicePartner != nullptr)

@@ -33,7 +33,7 @@ typedef struct maudWasapiApartment
 
 // Starts the thread and waits until it is in the apartment. False when
 // no thread could start or it could not join the apartment.
-bool maudStartWasapiApartment(maudWasapiApartment* apartment);
+MAUD_NODISCARD bool maudStartWasapiApartment(maudWasapiApartment* apartment);
 
 // Runs call(user) on the thread and returns once it has; on the thread
 // itself, runs it at once.

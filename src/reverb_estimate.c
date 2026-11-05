@@ -140,8 +140,8 @@ typedef struct Shading
 } Shading;
 
 // The hit's geometry, or false if the ray found nothing usable.
-static bool Shade(const maudReverbTrace* trace, const Path* path, const maudRay* ray,
-                  const maudRayHit* hit, Shading* s)
+MAUD_NODISCARD static bool Shade(const maudReverbTrace* trace, const Path* path, const maudRay* ray,
+                                 const maudRayHit* hit, Shading* s)
 {
     if (!(hit->distance >= ray->minDistance && hit->distance <= ray->maxDistance) ||
         hit->material >= trace->materialCount)
@@ -243,7 +243,8 @@ static void Gather(const maudReverbTrace* trace, const Path* path, const Shading
 }
 
 // Absorbs, moves and turns a path at its hit; false once it is spent.
-static bool Bounce(const maudReverbTrace* trace, uint32_t bounce, const Shading* s, Path* path)
+MAUD_NODISCARD static bool Bounce(const maudReverbTrace* trace, uint32_t bounce, const Shading* s,
+                                  Path* path)
 {
     path->distance += s->hitDistance;
     float left = 0.0f;
@@ -363,8 +364,8 @@ void maudTraceReverbBatch(const maudReverbTrace* trace, uint32_t batch,
 
 // The backward integral of the bins and past them tail, and the
 // crossings of -5 and -25 dB; false if it never falls 25 dB.
-static bool Integrate(const double* energy, double tail, double* decay, uint32_t* start,
-                      uint32_t* end)
+MAUD_NODISCARD static bool Integrate(const double* energy, double tail, double* decay,
+                                     uint32_t* start, uint32_t* end)
 {
     double sum = tail;
     for (uint32_t i = MAUD_REVERB_BINS; i-- > 0;)
@@ -411,7 +412,7 @@ static double Slope(const double* levels, uint32_t start, uint32_t end)
 // cut (their levels' least-squares slope), from the level of the last
 // bins (their mean, half their span before the cut). False if the bins
 // do not decay.
-static bool Extend(double* energy, uint32_t bins, double* tail)
+MAUD_NODISCARD static bool Extend(double* energy, uint32_t bins, double* tail)
 {
     double decay[MAUD_REVERB_BINS];
     uint32_t start = 0;

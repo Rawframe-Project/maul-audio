@@ -84,12 +84,12 @@ typedef struct Links
     uint8_t* linked;
 } Links;
 
-static bool Finite(maudVector3 v)
+MAUD_NODISCARD static bool Finite(maudVector3 v)
 {
     return isfinite(v.x) && isfinite(v.y) && isfinite(v.z);
 }
 
-static bool Within(float v, float low, float high)
+MAUD_NODISCARD static bool Within(float v, float low, float high)
 {
     return v >= low && v <= high;
 }
@@ -133,7 +133,7 @@ static maudVector3 ColumnTop(const Columns* c, uint32_t column)
 
 // Whether a normal of any length is within 45 degrees of vertical;
 // scaled exactly, its squares stay in range.
-static bool Floor(maudVector3 n)
+MAUD_NODISCARD static bool Floor(maudVector3 n)
 {
     float k = maudExactScale(fmaxf(fmaxf(fabsf(n.x), fabsf(n.y)), fabsf(n.z)));
     n = (maudVector3){n.x * k, n.y * k, n.z * k};

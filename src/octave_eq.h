@@ -13,6 +13,8 @@
 #ifndef MAUL_AUDIO_SRC_OCTAVE_EQ_H
 #define MAUL_AUDIO_SRC_OCTAVE_EQ_H
 
+#include "maul-audio/base.h"
+
 #include <stdint.h>
 
 #define MAUD_OCTAVES       10
@@ -54,7 +56,8 @@ void maudSetupOctaveEq(maudOctaveEqSetup* setup, double rate);
 // The weighted least-squares map for targets of this shape (per-octave
 // dB, each below 0): solve, MAUD_OCTAVES by MAUD_OCTAVE_POINTS. Targets
 // scaled by any positive factor share it. False if the fit fails.
-bool maudFitOctaveEq(const maudOctaveEqSetup* setup, const double* targets, double* solve);
+MAUD_NODISCARD bool maudFitOctaveEq(const maudOctaveEqSetup* setup, const double* targets,
+                                    double* solve);
 
 // The filters meeting the targets through solve (from maudFitOctaveEq
 // on targets of the same shape), and the broadband gain with them.

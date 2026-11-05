@@ -27,9 +27,9 @@ maudDeviceForm maudAlsaFormOfPcm(const char* name)
 
 // Lists one card device's endpoint in one direction, if the card has it
 // and its key fits the endpoint's buffer and textLimit.
-static bool ScanEndpoint(const maudAlsaApi* api, snd_ctl_t* ctl, const char* cardId,
-                         const char* cardName, int device, maudDirection direction,
-                         size_t textLimit, maudAlsaEndpoint* endpoint)
+MAUD_NODISCARD static bool ScanEndpoint(const maudAlsaApi* api, snd_ctl_t* ctl, const char* cardId,
+                                        const char* cardName, int device, maudDirection direction,
+                                        size_t textLimit, maudAlsaEndpoint* endpoint)
 {
     alignas(max_align_t) unsigned char infoBytes[MAUD_ALSA_STRUCT_BYTES];
     snd_pcm_info_t* info = (snd_pcm_info_t*)infoBytes;

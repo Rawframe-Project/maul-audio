@@ -28,7 +28,7 @@ static void Normal(const double* rows, const double* weights, uint32_t count, ui
 
 // g = L L^T in place, L in the lower triangle; false if g is not
 // positive definite.
-static bool Cholesky(double g[16][16], uint32_t k)
+MAUD_NODISCARD static bool Cholesky(double g[16][16], uint32_t k)
 {
     for (uint32_t j = 0; j < k; ++j)
     {

@@ -36,7 +36,7 @@ uint32_t maudIosSessionInputs(maudIosPort* ports, uint32_t capacity, size_t keyL
 
 // Makes the input whose UID is uid, length bytes, the session's
 // preferred input; false when it is not available.
-bool maudIosSessionPreferInput(const char* uid, size_t length);
+MAUD_NODISCARD bool maudIosSessionPreferInput(const char* uid, size_t length);
 
 // The forms the session's current route leads to, output and input.
 void maudIosSessionRoute(maudDeviceForm* output, maudDeviceForm* input);
@@ -46,6 +46,6 @@ void maudIosSessionRoute(maudDeviceForm* output, maudDeviceForm* input);
 // and activates the session while one runs or focus is asked for,
 // deactivating it, so that others resume, otherwise. false when the
 // session refuses.
-bool maudIosSessionUpdate(maudIos* ios, maudIosUse use);
+MAUD_NODISCARD bool maudIosSessionUpdate(maudIos* ios, maudIosUse use);
 
 #endif // MAUL_AUDIO_SRC_IOS_SESSION_H

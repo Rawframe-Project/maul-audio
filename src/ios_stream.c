@@ -176,7 +176,7 @@ static AudioStreamBasicDescription FormatOf(const maudStreamCore* core)
 }
 
 // Sets the unit's direction, client format, callback and slice size.
-static bool Configure(maudIosStream* entry)
+MAUD_NODISCARD static bool Configure(maudIosStream* entry)
 {
     const maudStreamCore* core = entry->core;
     AudioStreamBasicDescription format = FormatOf(core);
@@ -265,7 +265,7 @@ static void Disconnect(maudContext* context, maudIosStream* entry)
 
 // One buffer of interleaved frames for an input, after the list's
 // header.
-static bool AllocateCaptured(maudContext* context, maudIosStream* entry)
+MAUD_NODISCARD static bool AllocateCaptured(maudContext* context, maudIosStream* entry)
 {
     uint32_t channels = entry->core->period.channelCount;
     size_t data = (size_t)MAX_SLICE_FRAMES * channels * sizeof(float);
@@ -287,7 +287,7 @@ static bool AllocateCaptured(maudContext* context, maudIosStream* entry)
 // Points the session's preferred input at the port a pinned input
 // stream is on; a stream on the default leaves it. false when the port
 // is no longer available.
-static bool PreferPort(maudContext* context, const maudStreamCore* core)
+MAUD_NODISCARD static bool PreferPort(maudContext* context, const maudStreamCore* core)
 {
     const maudDeviceSlot* device = maudFindDevice(context, core->binding.current);
     static const char prefix[] = "port:";
@@ -356,7 +356,7 @@ static maudResult Connect(maudContext* context, maudIosStream* entry)
 // processing, whose halves run on one Voice-Processing I/O unit so that
 // it cancels the echo of what it plays. An input alone runs on RemoteIO,
 // which processes nothing.
-static bool Voiced(const maudStreamCore* core)
+MAUD_NODISCARD static bool Voiced(const maudStreamCore* core)
 {
     return core->duplexGroup != 0 && core->def.voice != maud_voiceNone;
 }
@@ -378,7 +378,7 @@ static maudStreamSlot* PartnerOf(maudContext* context, const maudStreamCore* cor
 // Sets the voice-processing unit's client formats, callbacks, processing
 // and slice size: bus 0 plays the output half, bus 1 captures the input
 // half, one channel (Capture spreads it).
-static bool ConfigureVoice(maudIosStream* input, maudIosStream* output)
+MAUD_NODISCARD static bool ConfigureVoice(maudIosStream* input, maudIosStream* output)
 {
     AudioUnit unit = input->unit;
     AudioStreamBasicDescription outputFormat = FormatOf(output->core);
@@ -587,14 +587,14 @@ void maudIosSetStreamActive(maudContext* context, maudStreamSlot* slot, bool act
         maudIosUpdateSession(context, false) && AudioOutputUnitStart(entry->unit) == noErr;
 }
 
-static bool Running(const maudStreamSlot* slot)
+MAUD_NODISCARD static bool Running(const maudStreamSlot* slot)
 {
     return atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning;
 }
 
 // Makes the stream's unit again, started if the stream runs; whether it
 // has one.
-static bool Remake(maudContext* context, maudStreamSlot* slot)
+MAUD_NODISCARD static bool Remake(maudContext* context, maudStreamSlot* slot)
 {
     Teardown(context, slot);
     if (maudIosAttachStream(context, slot) != maud_success)

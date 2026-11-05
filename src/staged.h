@@ -23,6 +23,8 @@
 
 #include "partitioned.h"
 
+#include "maul-audio/base.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -91,7 +93,7 @@ void maudCutStagedResponse(const maudStaged* s, const float* const* samples, uin
 // must stay unchanged while in use. Whether a change is still under way,
 // before which the response in use and the one before it are both read.
 void maudSetStagedResponse(maudStaged* s, const float* response);
-bool maudStagedSwitching(const maudStaged* s);
+MAUD_NODISCARD bool maudStagedSwitching(const maudStaged* s);
 
 // Convolves frames of input, adding each channel's output into out.
 void maudRunStaged(maudStaged* s, const float* in, float* const* out, uint32_t frames);

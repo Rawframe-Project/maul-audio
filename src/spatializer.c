@@ -112,7 +112,7 @@ static void Release(maudSpatializer* s)
     maudRelease(&allocator, s, sizeof(maudSpatializer), alignof(maudSpatializer));
 }
 
-static bool ReverbValid(const maudSpatializerDef* def)
+MAUD_NODISCARD static bool ReverbValid(const maudSpatializerDef* def)
 {
     for (int b = 0; b < MAUD_BANDS; ++b)
     {
@@ -129,7 +129,7 @@ static bool ReverbValid(const maudSpatializerDef* def)
 }
 
 // Whether a count passes one of the published bounds.
-static bool PastLimits(const maudSpatializerDef* def)
+MAUD_NODISCARD static bool PastLimits(const maudSpatializerDef* def)
 {
     return def->sourceCapacity > MAUD_MAX_SOURCES ||
            def->maxOcclusionSamples > MAUD_MAX_OCCLUSION_SAMPLES ||
@@ -143,7 +143,7 @@ static bool PastLimits(const maudSpatializerDef* def)
 
 // Allocates everything a spatializer holds but itself; false if any
 // allocation failed (Release frees what was made).
-static bool Allocate(maudSpatializer* s, const maudSpatializerDef* def)
+MAUD_NODISCARD static bool Allocate(maudSpatializer* s, const maudSpatializerDef* def)
 {
     s->points = maudAllocate(&def->allocator, (size_t)s->maxSamples * sizeof(maudVector3),
                              alignof(maudVector3));
@@ -331,7 +331,7 @@ void maudSpatializerRunHost(maudSpatializer* s, bool running)
     atomic_store_explicit(&s->host, running, memory_order_release);
 }
 
-static bool PatternValid(const maudDirectivityPattern* pattern)
+MAUD_NODISCARD static bool PatternValid(const maudDirectivityPattern* pattern)
 {
     float out[MAUD_BANDS];
     return maudGetDirectivity(pattern, (maudVector3){0.0f, 0.0f, -1.0f}, out) == maud_success;
@@ -587,12 +587,12 @@ static void Transmit(maudSpatializer* s, const maudPose* listener, Entry* entrie
     }
 }
 
-static bool Unit(float v)
+MAUD_NODISCARD static bool Unit(float v)
 {
     return v >= 0.0f && v <= 1.0f;
 }
 
-static bool MaterialValid(const maudAcousticMaterial* m)
+MAUD_NODISCARD static bool MaterialValid(const maudAcousticMaterial* m)
 {
     bool valid = Unit(m->scattering);
     for (int b = 0; b < MAUD_BANDS; ++b)
@@ -862,7 +862,7 @@ maudResult maudSpatializer_GetReverbResult(const maudSpatializer* spatializer,
 // The orientation at unit length, false for one of zero length or not
 // finite. A float's square neither underflows nor overflows in double,
 // so any length is turned to 1.
-static bool UnitOrientation(const maudQuaternion* q, maudQuaternion* unit)
+MAUD_NODISCARD static bool UnitOrientation(const maudQuaternion* q, maudQuaternion* unit)
 {
     double x = (double)q->x;
     double y = (double)q->y;

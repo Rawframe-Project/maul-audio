@@ -219,7 +219,8 @@ static uint32_t FieldFloats(const maudSpatializer* s)
 // the earlier one is released from a copy after that: host code the
 // work runs, its release among them, reads one whole bake or none, never
 // one being filled or freed.
-static bool Bake(maudSpatializer* s, const maudProbeGraph* graph, maudProbeBake* setBake)
+MAUD_NODISCARD static bool Bake(maudSpatializer* s, const maudProbeGraph* graph,
+                                maudProbeBake* setBake)
 {
     uint32_t fieldFloats = FieldFloats(s);
     maudProbeBake made;

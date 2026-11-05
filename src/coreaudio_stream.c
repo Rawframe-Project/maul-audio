@@ -277,7 +277,7 @@ static AudioStreamBasicDescription FormatOf(const maudStreamCore* core)
 }
 
 // Sets the unit's device, client format, callback and slice size.
-static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
+MAUD_NODISCARD static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
 {
     const maudStreamCore* core = entry->core;
     AudioStreamBasicDescription format = FormatOf(core);
@@ -369,7 +369,7 @@ static void Disconnect(maudContext* context, maudCoreAudioStream* entry)
 
 // One buffer of interleaved frames for an input, after the list's
 // header.
-static bool AllocateCaptured(maudContext* context, maudCoreAudioStream* entry)
+MAUD_NODISCARD static bool AllocateCaptured(maudContext* context, maudCoreAudioStream* entry)
 {
     uint32_t channels = entry->core->period.channelCount;
     size_t data = (size_t)MAX_SLICE_FRAMES * channels * sizeof(float);
@@ -456,7 +456,7 @@ static maudResult Connect(maudContext* context, maudCoreAudioStream* entry)
 
 // Whether a stream is a half of a duplex stream that asks for voice
 // processing, which runs on one voice-processing unit.
-static bool Voiced(const maudStreamCore* core)
+MAUD_NODISCARD static bool Voiced(const maudStreamCore* core)
 {
     return core->duplexGroup != 0 && core->def.voice != maud_voiceNone;
 }
@@ -478,8 +478,8 @@ static maudStreamSlot* PartnerOf(maudContext* context, const maudStreamCore* cor
 // Sets the voice-processing unit's devices, client formats, callbacks,
 // processing and slice size: bus 0 plays the output half, bus 1
 // captures the input half.
-static bool ConfigureVoice(maudCoreAudioStream* input, maudCoreAudioStream* output,
-                           AudioObjectID heard, AudioObjectID played)
+MAUD_NODISCARD static bool ConfigureVoice(maudCoreAudioStream* input, maudCoreAudioStream* output,
+                                          AudioObjectID heard, AudioObjectID played)
 {
     AudioUnit unit = input->unit;
     AudioStreamBasicDescription outputFormat = FormatOf(output->core);
@@ -646,7 +646,7 @@ static void Stop(maudCoreAudioStream* entry)
     }
 }
 
-static bool Running(const maudStreamSlot* slot)
+MAUD_NODISCARD static bool Running(const maudStreamSlot* slot)
 {
     return atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning;
 }

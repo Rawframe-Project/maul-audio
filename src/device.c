@@ -18,7 +18,7 @@ static maudDeviceId IdOf(const maudContext* context, const maudDeviceSlot* slot)
     return (maudDeviceId){(uint32_t)(slot - context->devices.slots) + 1, slot->generation};
 }
 
-static bool SameDevice(maudDeviceId a, maudDeviceId b)
+MAUD_NODISCARD static bool SameDevice(maudDeviceId a, maudDeviceId b)
 {
     return a.index1 == b.index1 && a.generation == b.generation;
 }
@@ -264,7 +264,7 @@ maudResult maudContext_GetDefaultDevice(const maudContext* context, maudDirectio
     return deviceOut->index1 != 0 ? maud_success : maud_empty;
 }
 
-static bool KeyIs(const maudDeviceSlot* slot, const char* key, size_t length)
+MAUD_NODISCARD static bool KeyIs(const maudDeviceSlot* slot, const char* key, size_t length)
 {
     return slot->key.length == length && memcmp(slot->key.bytes, key, length) == 0;
 }
@@ -351,7 +351,8 @@ bool maudSetDeviceFormat(maudContext* context, maudDeviceSlot* slot, const maudD
 }
 
 // Takes a scanned device's info; true when its native rate changed.
-static bool Update(maudContext* context, maudDeviceSlot* slot, const maudDeviceInfo* info)
+MAUD_NODISCARD static bool Update(maudContext* context, maudDeviceSlot* slot,
+                                  const maudDeviceInfo* info)
 {
     maudSetDeviceForm(context, slot, info->form);
     maudSetDeviceSpatializer(context, slot, info);

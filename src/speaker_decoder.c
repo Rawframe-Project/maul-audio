@@ -73,8 +73,8 @@ static void Harmonics(uint32_t order, const double* p, double* y)
 }
 
 // Folds the virtual speakers into the matrix; false if the panner fails.
-static bool Build(const maudSpeakerPanner* panner, uint32_t order, double m[][16],
-                  uint32_t speakers)
+MAUD_NODISCARD static bool Build(const maudSpeakerPanner* panner, uint32_t order, double m[][16],
+                                 uint32_t speakers)
 {
     uint32_t k = (order + 1) * (order + 1);
     double weights[16];
@@ -128,7 +128,7 @@ static double MeanEnergy(double m[][16], uint32_t speakers, uint32_t order)
     return total / VIRTUAL_SPEAKERS;
 }
 
-static bool DefValid(const maudSpeakerDecoderDef* def)
+MAUD_NODISCARD static bool DefValid(const maudSpeakerDecoderDef* def)
 {
     return def->cookie == MAUD_SPEAKER_DECODER_DEF_COOKIE && def->order >= 1 &&
            def->order <= MAUD_MAX_AMBISONIC_ORDER && maudGetLayoutChannelCount(def->layout) != 0 &&
@@ -220,8 +220,8 @@ maudResult maudSpeakerDecoder_GetMatrix(const maudSpeakerDecoder* decoder, float
     return maud_success;
 }
 
-static bool PointersValid(const maudSpeakerDecoder* decoder, const float* const* bed,
-                          float* const* out)
+MAUD_NODISCARD static bool PointersValid(const maudSpeakerDecoder* decoder, const float* const* bed,
+                                         float* const* out)
 {
     if (bed == nullptr || out == nullptr)
     {
@@ -248,8 +248,8 @@ static bool PointersValid(const maudSpeakerDecoder* decoder, const float* const*
 // speaker is cleared and summed from every channel in turn, so one over a
 // channel would clear input not yet read. Compared as addresses, since
 // the caller's arrays are different objects.
-static bool OverlapsBed(const maudSpeakerDecoder* decoder, const float* const* bed,
-                        float* const* out, uint32_t frames)
+MAUD_NODISCARD static bool OverlapsBed(const maudSpeakerDecoder* decoder, const float* const* bed,
+                                       float* const* out, uint32_t frames)
 {
     size_t bytes = (size_t)frames * sizeof(float);
     for (uint32_t s = 0; s < decoder->speakers; ++s)

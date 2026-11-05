@@ -29,12 +29,12 @@ void maudAlsaSetStreamActive(maudContext* context, maudStreamSlot* slot, bool ac
 // Moves what the PCM can take or has, recovering from an xrun
 // (maudAlsaRecover); a PCM with nothing to move now (-EAGAIN) is left
 // as it is. False when the PCM failed past recovery.
-bool maudAlsaTransfer(maudAlsaStream* entry);
+MAUD_NODISCARD bool maudAlsaTransfer(maudAlsaStream* entry);
 
 // After a transfer failed with result (negative, not -EAGAIN): counts an
 // xrun for -EPIPE, recovers the PCM, and starts a capture again. False
 // when the PCM failed past recovery, as when its card went away.
-bool maudAlsaRecover(const maudAlsaApi* api, snd_pcm_t* pcm, maudStreamCore* core,
-                     snd_pcm_sframes_t result);
+MAUD_NODISCARD bool maudAlsaRecover(const maudAlsaApi* api, snd_pcm_t* pcm, maudStreamCore* core,
+                                    snd_pcm_sframes_t result);
 
 #endif // MAUL_AUDIO_SRC_ALSA_STREAM_H

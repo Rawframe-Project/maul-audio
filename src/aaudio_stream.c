@@ -288,14 +288,14 @@ static void Close(maudAaudioStream* entry)
     }
 }
 
-static bool Running(const maudStreamSlot* slot)
+MAUD_NODISCARD static bool Running(const maudStreamSlot* slot)
 {
     return atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning;
 }
 
 // Whether an input stream waits for the microphone: the application
 // does not hold the permission, which Java says.
-static bool Unpermitted(maudContext* context, const maudStreamSlot* slot)
+MAUD_NODISCARD static bool Unpermitted(maudContext* context, const maudStreamSlot* slot)
 {
     maudAaudio* aaudio = context->native;
     return slot->core.def.direction == maud_directionInput && aaudio->hasJava &&

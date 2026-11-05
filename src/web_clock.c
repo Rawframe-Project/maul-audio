@@ -50,7 +50,8 @@ static int64_t Median(maudWebClock* clock, int64_t origin)
 
 // Watches frame-0 times past the bound: true once they have all been
 // past it for a step's length, the earliest of them in *earliest.
-static bool Lost(maudWebClock* clock, int64_t origin, int64_t least, int64_t now, int64_t* earliest)
+MAUD_NODISCARD static bool Lost(maudWebClock* clock, int64_t origin, int64_t least, int64_t now,
+                                int64_t* earliest)
 {
     if (origin - least <= MAUD_WEB_LOSS_NANOSECONDS)
     {

@@ -94,7 +94,7 @@ static void Release(maudContext* context, maudAlsa* alsa)
 }
 
 // Whether the ALSA structures the backend sets aside room for fit.
-static bool StructsFit(const maudAlsaApi* api)
+MAUD_NODISCARD static bool StructsFit(const maudAlsaApi* api)
 {
     return api->ctlCardInfoSizeof() <= MAUD_ALSA_STRUCT_BYTES &&
            api->pcmInfoSizeof() <= MAUD_ALSA_STRUCT_BYTES &&

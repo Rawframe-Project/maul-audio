@@ -127,7 +127,7 @@ typedef struct Rays
     void* context;
 } Rays;
 
-static bool Visible(const Rays* r, maudVector3 a, maudVector3 b)
+MAUD_NODISCARD static bool Visible(const Rays* r, maudVector3 a, maudVector3 b)
 {
     float d = Length(a, b);
     if (d == 0.0f)

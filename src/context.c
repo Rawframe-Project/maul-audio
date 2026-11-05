@@ -14,7 +14,7 @@
 #define MIN_RATE 8000u
 #define MAX_RATE 384000u
 
-static bool DefValid(const maudContextDef* def)
+MAUD_NODISCARD static bool DefValid(const maudContextDef* def)
 {
     return def->cookie == MAUD_CONTEXT_DEF_COOKIE && maudIsAllocatorValid(&def->allocator) &&
            def->limits.streams != 0 && def->limits.periodFrames != 0 &&
@@ -298,7 +298,7 @@ void maudContextRelease(maudContext* context, void* memory, size_t size, size_t 
 }
 
 // Whether the thread self renders one of the context's streams.
-static bool RendersStream(const maudContext* context, uintptr_t self)
+MAUD_NODISCARD static bool RendersStream(const maudContext* context, uintptr_t self)
 {
     for (uint32_t i = 0; i < context->streams.capacity; ++i)
     {

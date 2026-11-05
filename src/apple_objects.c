@@ -100,15 +100,16 @@ static UInt32 OutputType(maudDeviceForm form)
     }
 }
 
-static bool SetProperty(AudioUnit mixer, AudioUnitPropertyID property, AudioUnitScope scope,
-                        AudioUnitElement element, const void* value, UInt32 size)
+MAUD_NODISCARD static bool SetProperty(AudioUnit mixer, AudioUnitPropertyID property,
+                                       AudioUnitScope scope, AudioUnitElement element,
+                                       const void* value, UInt32 size)
 {
     return AudioUnitSetProperty(mixer, property, scope, element, value, size) == noErr;
 }
 
 // One input bus: its format, its callback, its source mode and no
 // distance attenuation.
-static bool ConfigureBus(maudAppleObjects* objects, uint32_t bus, bool bed)
+MAUD_NODISCARD static bool ConfigureBus(maudAppleObjects* objects, uint32_t bus, bool bed)
 {
     AudioUnit mixer = objects->mixer;
     AudioStreamBasicDescription format =
@@ -136,7 +137,7 @@ static bool ConfigureBus(maudAppleObjects* objects, uint32_t bus, bool bed)
                        bus, &distance, sizeof(distance));
 }
 
-static bool Configure(maudAppleObjects* objects, maudDeviceForm form)
+MAUD_NODISCARD static bool Configure(maudAppleObjects* objects, maudDeviceForm form)
 {
     AudioUnit mixer = objects->mixer;
     uint32_t count = objects->core->period.objectCount;
@@ -192,7 +193,7 @@ static bool Configure(maudAppleObjects* objects, maudDeviceForm form)
 
 // The staging block: the records, the buses, the mixer's list, then the
 // bed's slice, each object's slice and the mixer's slices.
-static bool Allocate(maudContext* context, maudAppleObjects* objects)
+MAUD_NODISCARD static bool Allocate(maudContext* context, maudAppleObjects* objects)
 {
     uint32_t count = objects->core->period.objectCount;
     size_t channels = objects->core->period.channelCount;

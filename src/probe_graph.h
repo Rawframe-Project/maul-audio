@@ -55,7 +55,7 @@ typedef struct maudProbeGraph
 } maudProbeGraph;
 
 // Whether a def's values are in range (points finite, a valid box).
-bool maudProbeSetDefValid(const maudProbeSetDef* def);
+MAUD_NODISCARD bool maudProbeSetDefValid(const maudProbeSetDef* def);
 
 // Builds a set for a valid def. maud_errorUnsupported when it asks for
 // generation without a closest-hit query; maud_errorLimit past
@@ -66,8 +66,8 @@ maudResult maudBuildProbeGraph(const maudProbeQueries* queries, const maudProbeS
 
 // Allocates a set's block for count probes and links, setting its
 // arrays, counts and size (not its values); false when memory runs out.
-bool maudLayProbeGraph(const maudAllocator* allocator, maudProbeGraph* graph, uint32_t count,
-                       uint32_t links);
+MAUD_NODISCARD bool maudLayProbeGraph(const maudAllocator* allocator, maudProbeGraph* graph,
+                                      uint32_t count, uint32_t links);
 
 // Releases a built set and zeroes it.
 void maudReleaseProbeGraph(const maudAllocator* allocator, maudProbeGraph* graph);

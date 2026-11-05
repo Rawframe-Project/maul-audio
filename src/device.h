@@ -53,7 +53,7 @@ maudResult maudSyncDevices(maudContext* context, const maudDeviceSpec* specs, ui
 // is never cut, so a device whose key does not fit is left out: a
 // backend asks before it gives the device a place in its scan, so that
 // the device takes none a device that fits could have.
-bool maudKeyFits(const maudContext* context, size_t keyLength);
+MAUD_NODISCARD bool maudKeyFits(const maudContext* context, size_t keyLength);
 
 // The live device of direction whose key is key, length bytes, or the
 // null id.
@@ -74,7 +74,8 @@ void maudSetDeviceSpatializer(maudContext* context, maudDeviceSlot* slot,
 // maud_notifyDeviceFormatChanged. True when its native rate changed,
 // which a backend whose streams follow it passes on with
 // maudRefreshNativeRates.
-bool maudSetDeviceFormat(maudContext* context, maudDeviceSlot* slot, const maudDeviceInfo* info);
+MAUD_NODISCARD bool maudSetDeviceFormat(maudContext* context, maudDeviceSlot* slot,
+                                        const maudDeviceInfo* info);
 
 // Makes a live device the default of its direction for role.
 void maudSetDefaultDevice(maudContext* context, maudDeviceRole role, maudDeviceId device);

@@ -64,7 +64,8 @@ extern "C"
 #endif
 
 // MAUD_NODISCARD marks a function whose result must be read: every
-// function that returns a status. The attribute is standard in C23 and
+// function that returns a status, and every internal one that returns
+// bool. The attribute is standard in C23 and
 // C++17 and left out for older dialects. MSVC keeps __cplusplus at
 // 199711L unless /Zc:__cplusplus is given, so _MSVC_LANG is read too. In
 // C, any dialect after C17 whose compiler has the attribute takes it:

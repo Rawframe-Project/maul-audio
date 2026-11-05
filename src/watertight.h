@@ -34,7 +34,7 @@ void maudShearRay(const float* origin, const float* direction, maudShearedRay* r
 
 // Whether the ray meets the triangle a, b, c at a distance within [tMin,
 // tMax]; if so, *t receives it.
-bool maudHitTriangle(const maudShearedRay* ray, const float* a, const float* b, const float* c,
-                     float tMin, float tMax, float* t);
+MAUD_NODISCARD bool maudHitTriangle(const maudShearedRay* ray, const float* a, const float* b,
+                                    const float* c, float tMin, float tMax, float* t);
 
 #endif // MAUL_AUDIO_SRC_WATERTIGHT_H

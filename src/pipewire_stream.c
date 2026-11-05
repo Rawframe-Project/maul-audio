@@ -207,7 +207,7 @@ static struct pw_properties* StreamProperties(const maudContext* context,
 
 // Iterates the loop until the stream has a format or failed, up to the
 // deadline.
-static bool WaitForFormat(maudPipewire* pipewire, const maudPipewireStream* entry)
+MAUD_NODISCARD static bool WaitForFormat(maudPipewire* pipewire, const maudPipewireStream* entry)
 {
     int64_t deadline = maudPipewireNow() + MAUD_PIPEWIRE_DEADLINE_NS;
     maudPipewireConnection* connection = &pipewire->connection;

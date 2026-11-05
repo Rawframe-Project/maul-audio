@@ -18,7 +18,7 @@
 #include <math.h>
 #include <string.h>
 
-static bool MeshValid(const maudMesh* mesh)
+MAUD_NODISCARD static bool MeshValid(const maudMesh* mesh)
 {
     if (mesh->triangleCount == 0)
     {
@@ -46,7 +46,7 @@ static bool MeshValid(const maudMesh* mesh)
     return true;
 }
 
-static bool MeshesValid(const maudMesh* meshes, uint32_t count, uint64_t* sum)
+MAUD_NODISCARD static bool MeshesValid(const maudMesh* meshes, uint32_t count, uint64_t* sum)
 {
     if (count > 0 && meshes == nullptr)
     {
@@ -94,7 +94,7 @@ static maudTriangle TriangleOf(const maudMesh* mesh, uint32_t i, uint32_t n)
 // Whether a triangle has an area: one with none (its corners on a line
 // or at one point) covers no surface and has no normal, so the
 // hierarchy leaves it out, and every hit has a unit normal.
-static bool HasArea(const maudTriangle* t)
+MAUD_NODISCARD static bool HasArea(const maudTriangle* t)
 {
     maudVector3 n = maudTriangleNormal(t);
     return n.x != 0.0f || n.y != 0.0f || n.z != 0.0f;
@@ -180,7 +180,7 @@ static void Release(maudScene* scene)
 
 // Builds every hierarchy and the instances' slots; false when memory
 // runs out.
-static bool Build(maudScene* scene, const maudSceneDef* def)
+MAUD_NODISCARD static bool Build(maudScene* scene, const maudSceneDef* def)
 {
     if (!maudBuildSceneMesh(&def->allocator, def->meshes, def->meshCount, &scene->statics))
     {

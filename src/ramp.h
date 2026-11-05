@@ -15,7 +15,7 @@
 #include <stdint.h>
 
 // Whether frames is short enough for the signed conversion.
-static inline bool maudRampSigned(uint32_t frames)
+MAUD_NODISCARD static inline bool maudRampSigned(uint32_t frames)
 {
     return frames <= (uint32_t)INT32_MAX;
 }

@@ -249,7 +249,7 @@ static void RunStream(void* user)
     }
 }
 
-static bool Hardware(const maudDeviceSlot* device)
+MAUD_NODISCARD static bool Hardware(const maudDeviceSlot* device)
 {
     return device != nullptr && device->key.length >= 3 && memcmp(device->key.bytes, "hw:", 3) == 0;
 }

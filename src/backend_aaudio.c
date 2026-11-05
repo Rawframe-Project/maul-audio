@@ -34,7 +34,7 @@
 
 // The default output's rate and channel count, from a stream opened on
 // it and closed; false when AAudio cannot open one.
-static bool Probe(uint32_t* rate, uint32_t* channels)
+MAUD_NODISCARD static bool Probe(uint32_t* rate, uint32_t* channels)
 {
     AAudioStreamBuilder* builder = nullptr;
     if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK)

@@ -77,7 +77,7 @@ void maudReleaseInstances(maudScene* scene)
          alignof(maudBvhNode));
 }
 
-static bool TransformValid(const maudSceneInstanceTransform* t)
+MAUD_NODISCARD static bool TransformValid(const maudSceneInstanceTransform* t)
 {
     maudQuaternion q = t->orientation;
     return isfinite(t->position.x) && isfinite(t->position.y) && isfinite(t->position.z) &&
@@ -86,8 +86,8 @@ static bool TransformValid(const maudSceneInstanceTransform* t)
            t->scale <= MAX_SCALE;
 }
 
-static bool Placeable(const maudScene* scene, uint32_t mesh,
-                      const maudSceneInstanceTransform* transform);
+MAUD_NODISCARD static bool Placeable(const maudScene* scene, uint32_t mesh,
+                                     const maudSceneInstanceTransform* transform);
 
 // Counts one misuse and returns maud_errorInvalid, for invalid arguments.
 static maudResult Invalid(maudScene* scene)
@@ -277,8 +277,8 @@ static maudTriangle WorldBox(const maudPlacedInstance* p, float scale, const mau
 // range, or its corners so far apart that the padding overflows, which
 // would give the hierarchy a box with an infinite corner and a NaN
 // midpoint.
-static bool Placeable(const maudScene* scene, uint32_t mesh,
-                      const maudSceneInstanceTransform* transform)
+MAUD_NODISCARD static bool Placeable(const maudScene* scene, uint32_t mesh,
+                                     const maudSceneInstanceTransform* transform)
 {
     const maudSceneMesh* placed = &scene->meshes[mesh];
     if (placed->triangleCount == 0)
@@ -368,7 +368,7 @@ typedef struct Query
     maudRayHit* hit;
 } Query;
 
-static bool AnyVisit(const maudTriangle* entry, float* limit, void* context)
+MAUD_NODISCARD static bool AnyVisit(const maudTriangle* entry, float* limit, void* context)
 {
     const Query* q = context;
     const maudPlacedInstance* p = &q->scene->placed[entry->index];
@@ -389,7 +389,7 @@ bool maudInstancesAnyHit(const maudScene* scene, const float* origin, const floa
     return maudBvhVisit(scene->top, scene->boxes, origin, direction, tMin, &limit, AnyVisit, &q);
 }
 
-static bool ClosestVisit(const maudTriangle* entry, float* limit, void* context)
+MAUD_NODISCARD static bool ClosestVisit(const maudTriangle* entry, float* limit, void* context)
 {
     Query* q = context;
     uint32_t slot = entry->index;
@@ -430,5 +430,6 @@ void maudInstancesClosestHit(const maudScene* scene, const float* origin, const 
         return;
     }
     Query q = {scene, origin, direction, tMin, UINT32_MAX, found, hit};
-    maudBvhVisit(scene->top, scene->boxes, origin, direction, tMin, best, ClosestVisit, &q);
+    // ClosestVisit never stops the visit; the hit is in *best and *hit.
+    (void)maudBvhVisit(scene->top, scene->boxes, origin, direction, tMin, best, ClosestVisit, &q);
 }

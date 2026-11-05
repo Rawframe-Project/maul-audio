@@ -32,14 +32,14 @@ static const PROPERTYKEY s_formFactor = {
     {0x1DA5D803, 0xD492, 0x4EDD, {0x8C, 0x23, 0xE0, 0xC0, 0xFF, 0xEE, 0x7F, 0x0E}}, 0};
 
 // Converts wide to UTF-8 in out; false when it does not fit.
-static bool ToUtf8(const wchar_t* wide, char* out, int capacity)
+MAUD_NODISCARD static bool ToUtf8(const wchar_t* wide, char* out, int capacity)
 {
     return WideCharToMultiByte(CP_UTF8, 0, wide, -1, out, capacity, nullptr, nullptr) > 0;
 }
 
 // Converts wide to UTF-8 in out, cut after the last whole character that
 // fits with the terminating NUL; false when not even that converts.
-static bool ToUtf8Cut(const wchar_t* wide, char* out, int capacity)
+MAUD_NODISCARD static bool ToUtf8Cut(const wchar_t* wide, char* out, int capacity)
 {
     if (ToUtf8(wide, out, capacity))
     {
@@ -74,7 +74,7 @@ static bool ToUtf8Cut(const wchar_t* wide, char* out, int capacity)
 
 // The endpoint ID of a device in UTF-8; false when it has none or it
 // does not fit.
-static bool IdOf(IMMDevice* device, char* out)
+MAUD_NODISCARD static bool IdOf(IMMDevice* device, char* out)
 {
     LPWSTR id = nullptr;
     bool ok = SUCCEEDED(IMMDevice_GetId(device, &id)) && ToUtf8(id, out, MAUD_WASAPI_KEY_BYTES);
@@ -157,8 +157,9 @@ static void ReadSpatializer(IMMDevice* device, maudDeviceInfo* info)
 // Describes one endpoint into endpoint and spec; false when it cannot,
 // or when its id is past the text limit, so that it takes no place in
 // the scan.
-static bool Describe(const maudContext* context, IMMDevice* device, maudDirection direction,
-                     maudWasapiEndpoint* endpoint, maudDeviceSpec* spec)
+MAUD_NODISCARD static bool Describe(const maudContext* context, IMMDevice* device,
+                                    maudDirection direction, maudWasapiEndpoint* endpoint,
+                                    maudDeviceSpec* spec)
 {
     IPropertyStore* store = nullptr;
     if (!IdOf(device, endpoint->key) || !maudKeyFits(context, strlen(endpoint->key)) ||

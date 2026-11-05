@@ -8,6 +8,8 @@
 #ifndef MAUL_AUDIO_SRC_PULSE_API_H
 #define MAUL_AUDIO_SRC_PULSE_API_H
 
+#include "maul-audio/base.h"
+
 #include <pulse/pulseaudio.h>
 #include <stdbool.h>
 
@@ -76,7 +78,7 @@ typedef struct maudPulseApi
 
 // Opens libpulse and fills the table. False, with the table zeroed,
 // when the library or a function is missing.
-bool maudLoadPulse(maudPulseApi* api);
+MAUD_NODISCARD bool maudLoadPulse(maudPulseApi* api);
 
 // Closes what maudLoadPulse opened.
 void maudUnloadPulse(maudPulseApi* api);

@@ -116,7 +116,7 @@ struct maudReverb
     uint64_t tailLeft;
 };
 
-static bool Prime(uint32_t n)
+MAUD_NODISCARD static bool Prime(uint32_t n)
 {
     if (n < 2)
     {
@@ -438,7 +438,7 @@ static void Blend(const Bank* from, const Bank* to, float t, Bank* out)
     }
 }
 
-static bool ParamsValid(const maudReverb* r, const maudReverbParams* p)
+MAUD_NODISCARD static bool ParamsValid(const maudReverb* r, const maudReverbParams* p)
 {
     for (int b = 0; b < MAUD_BANDS; ++b)
     {
@@ -502,7 +502,7 @@ static void Retarget(const maudReverb* r, Network* n, const float* times, const 
 // this call. A band without a tail is silent in it, at the first slope's
 // time; with a tail in no band the send stops, and the network runs on
 // until its sound has fallen TAIL_RING_DB, then is cleared.
-static bool RetargetTail(maudReverb* r, const maudReverbParams* p, uint32_t frames)
+MAUD_NODISCARD static bool RetargetTail(maudReverb* r, const maudReverbParams* p, uint32_t frames)
 {
     if (r->networkCount < 2)
     {

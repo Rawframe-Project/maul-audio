@@ -24,7 +24,7 @@ struct maudVoiceDetector
     maudVadCore core;
 };
 
-static bool DefValid(const maudVoiceDetectorDef* def)
+MAUD_NODISCARD static bool DefValid(const maudVoiceDetectorDef* def)
 {
     return def->cookie == MAUD_VOICE_DETECTOR_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && maudGetLayoutChannelCount(def->layout) != 0 &&

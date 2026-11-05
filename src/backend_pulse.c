@@ -390,7 +390,7 @@ static void OnState(pa_context* context, void* user)
 
 // Makes a context and starts connecting it, never spawning a server.
 // False when the connection fails at once.
-static bool Connect(maudPulse* pulse)
+MAUD_NODISCARD static bool Connect(maudPulse* pulse)
 {
     maudPulseServer* server = &pulse->server;
     server->ready = false;
@@ -455,7 +455,7 @@ static void DropAway(maudPulse* pulse)
 
 // Runs the loop on the calling thread until the first listing is
 // answered, the connection fails, or the deadline passes.
-static bool WaitForListing(maudPulse* pulse, int64_t deadline)
+MAUD_NODISCARD static bool WaitForListing(maudPulse* pulse, int64_t deadline)
 {
     maudPulseServer* server = &pulse->server;
     while (!(server->ready && server->pending == 0) && !server->lost)

@@ -9,6 +9,8 @@
 #ifndef MAUL_AUDIO_SRC_PIPEWIRE_API_H
 #define MAUL_AUDIO_SRC_PIPEWIRE_API_H
 
+#include "maul-audio/base.h"
+
 #include <pipewire/pipewire.h>
 #include <stdbool.h>
 
@@ -47,7 +49,7 @@ typedef struct maudPipewireApi
 
 // Opens libpipewire and fills the table. False, with the table zeroed,
 // when the library or a function is missing.
-bool maudLoadPipewire(maudPipewireApi* api);
+MAUD_NODISCARD bool maudLoadPipewire(maudPipewireApi* api);
 
 // Closes what maudLoadPipewire opened.
 void maudUnloadPipewire(maudPipewireApi* api);

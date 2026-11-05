@@ -28,7 +28,7 @@ int maudWebTakeDefaultMoved(int handle, int direction);
 
 // Once after the browser's default of a direction moved to another
 // device, posts the Default stand-in's route change and returns true.
-bool maudWebDefaultMoved(maudContext* context, maudDirection direction);
+MAUD_NODISCARD bool maudWebDefaultMoved(maudContext* context, maudDirection direction);
 
 // 1 if a capture node's track is on another device than the default
 // microphone.
@@ -36,7 +36,7 @@ int maudWebCaptureOffDefault(int handle, int node);
 
 // Whether an output stream on device may open: no other output plays
 // to another device. Default is the empty sink.
-bool maudWebSinkFree(const maudContext* context, maudDeviceId device);
+MAUD_NODISCARD bool maudWebSinkFree(const maudContext* context, maudDeviceId device);
 
 // Points the AudioContext at an output stream's device.
 void maudWebSetSink(maudContext* context, const maudStreamSlot* slot);

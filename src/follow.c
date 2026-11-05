@@ -12,7 +12,7 @@
 #include "notify.h"
 #include "retry.h"
 
-static bool SameDevice(maudDeviceId a, maudDeviceId b)
+MAUD_NODISCARD static bool SameDevice(maudDeviceId a, maudDeviceId b)
 {
     return a.index1 == b.index1 && a.generation == b.generation;
 }
@@ -54,7 +54,7 @@ static void Suspend(maudContext* context, maudStreamSlot* slot, maudSuspendReaso
 // one rate they opened at, as the ring between them and a voice unit
 // running both need: the half on a device at another rate is converted
 // by the platform from then on.
-static bool TakeDeviceRate(maudContext* context, maudStreamSlot* slot)
+MAUD_NODISCARD static bool TakeDeviceRate(maudContext* context, maudStreamSlot* slot)
 {
     maudStreamCore* core = &slot->core;
     const maudDeviceSlot* device = maudFindDevice(context, core->binding.current);
@@ -267,7 +267,7 @@ void maudHoldStreams(maudContext* context, bool held)
 
 // Whether a reason only keeps a stream from running, which a host
 // suspension replaces, as opposed to a lost device, which it does not.
-static bool OnlyWaiting(maudSuspendReason reason)
+MAUD_NODISCARD static bool OnlyWaiting(maudSuspendReason reason)
 {
     return reason == maud_suspendNone || reason == maud_suspendPolicy ||
            reason == maud_suspendPermission;

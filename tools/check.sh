@@ -199,8 +199,10 @@ labels_for() {
 }
 
 source_checks() {
-    step "source, module, length, documentation, snippet, API and test hygiene rules"
+    step "source, module, nodiscard, length, documentation, snippet, API and test hygiene rules"
     python3 tools/check_source.py
+    python3 tools/check_nodiscard.py --self-test
+    python3 tools/check_nodiscard.py
     python3 tools/check_modules.py
     python3 tools/check_float_env.py
     python3 tools/check_lengths.py

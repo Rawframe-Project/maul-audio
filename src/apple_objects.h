@@ -48,7 +48,7 @@ typedef struct maudAppleObjects
 
 // Whether an object stream can render through the mixer: a mono or
 // stereo bed, as the mixer's output.
-bool maudAppleObjectsFit(const maudStreamCore* core);
+MAUD_NODISCARD bool maudAppleObjectsFit(const maudStreamCore* core);
 
 // Makes and initializes the mixer for an object stream whose device
 // leads to form. maud_errorPlatform or maud_errorCapacity on failure,

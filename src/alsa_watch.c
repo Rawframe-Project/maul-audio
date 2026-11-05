@@ -25,7 +25,7 @@ int maudAlsaOpenWatch(const char* directory)
     return watch;
 }
 
-static bool IsCardNode(const char* name)
+MAUD_NODISCARD static bool IsCardNode(const char* name)
 {
     return strncmp(name, "controlC", 8) == 0 || strncmp(name, "pcmC", 4) == 0;
 }

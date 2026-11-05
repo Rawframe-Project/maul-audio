@@ -42,7 +42,7 @@ void maudLoseDevice(maudContext* context, maudDeviceId device);
 // Whether a backend's drain should reopen a stream left without its
 // platform stream: the host started it, and nothing but a failed reopen
 // (maud_suspendPlatform) keeps it from running.
-bool maudWantsReopen(const maudStreamSlot* slot);
+MAUD_NODISCARD bool maudWantsReopen(const maudStreamSlot* slot);
 
 // Records a backend's reopen of a stream at now: a failure waits longer
 // before the next try (retry.h) and suspends a running stream with

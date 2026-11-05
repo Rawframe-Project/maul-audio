@@ -83,7 +83,7 @@ static void Gather(maudSpeakerPanner* panner)
 
 // Whether the plane through points i, j and k has every other point on
 // one side, and so is a face of the hull.
-static bool Face(const maudSpeakerPanner* panner, uint32_t i, uint32_t j, uint32_t k)
+MAUD_NODISCARD static bool Face(const maudSpeakerPanner* panner, uint32_t i, uint32_t j, uint32_t k)
 {
     const float* a = panner->points[i];
     double u[3];
@@ -115,7 +115,8 @@ static bool Face(const maudSpeakerPanner* panner, uint32_t i, uint32_t j, uint32
 
 // The inverse of the matrix whose columns are a triangle's points; false
 // when they are (nearly) dependent.
-static bool Invert(const maudSpeakerPanner* panner, const uint32_t* t, float* inverse)
+MAUD_NODISCARD static bool Invert(const maudSpeakerPanner* panner, const uint32_t* t,
+                                  float* inverse)
 {
     double p[3][3];
     for (int v = 0; v < 3; ++v)
@@ -369,7 +370,7 @@ static void Gains(const maudSpeakerPanner* panner, maudVector3 direction, float*
     }
 }
 
-static bool Finite(maudVector3 v)
+MAUD_NODISCARD static bool Finite(maudVector3 v)
 {
     return isfinite(v.x) && isfinite(v.y) && isfinite(v.z);
 }
@@ -394,12 +395,12 @@ maudResult maudSpeakerPanner_GetGains(const maudSpeakerPanner* panner, maudVecto
     return maud_success;
 }
 
-static bool SourceValid(const maudPanSource* source)
+MAUD_NODISCARD static bool SourceValid(const maudPanSource* source)
 {
     return source != nullptr && Finite(source->direction) && isfinite(source->gain);
 }
 
-static bool OutValid(const maudSpeakerPanner* panner, float* const* out)
+MAUD_NODISCARD static bool OutValid(const maudSpeakerPanner* panner, float* const* out)
 {
     if (out == nullptr)
     {
