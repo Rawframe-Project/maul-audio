@@ -33,6 +33,27 @@
 // 5 s of continuous double talk is 31 to 36 dB down after, against 83 dB
 // at 10.
 #define GAIN_RISE_DB 10.0
+// The most the background's error may keep of the capture's energy for
+// the filter to count as having learnt an echo path, 3 dB under it, in
+// every block for LEARNT_SPAN seconds running. A block meets it by
+// chance only when the capture correlates with the estimate by
+// 1 / sqrt(2) or more. For a white capture of n samples independent of
+// the estimate (made before it), the correlation's square is Beta(1/2,
+// (n - 1) / 2) whatever the estimate, so a block meets it with
+// probability 2.3e-11 at 8 kHz (n = 64), and each block afresh. Over
+// 0.1 s (13 blocks at 8 and 16 kHz, 10 at 48 kHz) the chance that such
+// a capture ends the start is under 1e-130 an hour; for a narrowband
+// capture of only 8 degrees of freedom a block (1.7e-2 a block), under
+// 3.2e-18 an hour at 8 and 16 kHz and 5.3e-13 at 48 kHz. The product
+// over the span takes the blocks as independent, which holds while the
+// render changes from block to block (noise, speech). Under a steady
+// render tone, a narrowband near end within a few Hz of it changes
+// little from block to block, so the estimate can track it across the
+// span. A capture that follows the render, a tone at the render's own
+// frequency or within a few Hz of a steady one, is an echo to any
+// filter and is learnt as one.
+#define LEARNT_ERROR 0.5
+#define LEARNT_SPAN  0.1
 // The leakage's floor (as a share of the echo) and its first value.
 #define LEAK_FLOOR 0.005
 #define LEAK_START 0.25
@@ -192,6 +213,7 @@ void maudInitEchoFilter(maudEchoFilter* filter, uint32_t block, uint32_t partiti
         .window1 = pow(0.6, scale),
         .window2 = pow(0.85, scale),
         .gainRise = pow(10.0, GAIN_RISE_DB * ((double)block / sampleRate) / 10.0),
+        .learntBlocks = (uint32_t)ceil(LEARNT_SPAN * sampleRate / block),
     };
     maudResetEchoFilter(filter);
 }
@@ -221,6 +243,7 @@ void maudResetEchoFilter(maudEchoFilter* f)
     f->drop1 = f->drop2 = f->noise1 = f->noise2 = 0.0;
     f->started = 0.0;
     f->echoGain = 1.0;
+    f->learnt = 0;
     f->adapted = false;
     f->constrain = 0;
     f->still = 0;
@@ -501,6 +524,11 @@ static void Constrain(maudEchoFilter* f)
 //   without it;
 // - a silent render leaves the gain as it was, and takes no start step;
 // - a silent capture takes it to 1, Speex's rate.
+// The filter has adapted once the start rate's sum passes the
+// partitions and the background's error has been LEARNT_ERROR under the
+// capture for LEARNT_SPAN: a silent capture, which takes the full start
+// rate against an error of nothing, learns no echo path, and the start
+// goes on once the echo is heard.
 // Every term is finite: Sxx is above its floor, the energies are in
 // double, and the rate is at most 0.25.
 static double Rates(maudEchoFilter* f, const float* render, const float* capture, const Sums* s,
@@ -521,7 +549,8 @@ static double Rates(maudEchoFilter* f, const float* render, const float* capture
         double echo = f->echoGain * sxx;
         *startRate = fmin(START_RATE * echo / (s->background + 1e-12), START_RATE);
         f->started += *startRate;
-        f->adapted = f->started > f->partitions;
+        f->learnt = s->background < LEARNT_ERROR * scc ? f->learnt + 1 : 0;
+        f->adapted = f->started > f->partitions && f->learnt >= f->learntBlocks;
     }
     return rer;
 }

@@ -15,7 +15,9 @@
 // first second with nothing played leaves the echo taken down as from
 // the start, and silence alone leaves it unadapted with a high leakage;
 // an echo 18 dB louder than the render, with the near end speaking from
-// the start, is learnt within three seconds;
+// the start, is learnt within three seconds; a capture muted for the
+// first second leaves it unadapted, and the echo after is learnt as
+// after a second of both silent;
 // the probability of speech is 0 until two blocks have been processed,
 // and from 0.1 after; refusals; and no allocation while processing. (Its quality on
 // recorded speech is measured outside the tests, against Speex's.)
@@ -206,6 +208,54 @@ static void TestLoudEcho(void)
     CHECK(learnt, "an echo louder than the render learnt within three seconds");
     CHECK(held > 20.0, "and taken down between the near end's bursts");
     maudDestroyEchoCanceller(c);
+}
+
+// The echo taken down from the second second to the third after the
+// echo is first heard, at 16 kHz, when the capture is muted (zeros) for
+// the first second while the render plays, or while it too is silent
+// (dB under the echo); adapted says whether the canceller reported
+// having adapted at the end of that second.
+static double MutedErle(bool played, bool* adapted)
+{
+    const uint32_t rate = 16000;
+    const uint32_t block = 256;
+    uint32_t muted = rate;
+    uint32_t frames = muted + 3 * rate;
+    Scene(rate, frames, false);
+    for (uint32_t i = 0; i < muted; ++i)
+    {
+        s_render[i] = played ? s_render[i] : 0.0f;
+        s_echo[i] = 0.0f;
+        s_capture[i] = 0.0f;
+    }
+    maudEchoCanceller* c = Create(rate);
+    *adapted = false;
+    for (uint32_t at = 0; at < frames; at += 160)
+    {
+        maudEchoState state = {0};
+        CHECK(maudEchoCanceller_Cancel(c, s_capture + at, s_render + at, 160, &state) ==
+                  maud_success,
+              "cancel");
+        *adapted = at + 160 == muted ? state.adapted : *adapted;
+    }
+    maudDestroyEchoCanceller(c);
+    return 10.0 * log10(Energy(s_echo, frames - rate - 2 * block, frames - 2 * block) /
+                        Energy(s_capture, frames - rate, frames));
+}
+
+// A capture muted for the first second while the render plays: no echo
+// path learnt from the silence, and the echo after learnt within 6 dB of
+// one heard after a second of both silent.
+static void TestMutedStart(void)
+{
+    bool adapted = false;
+    double from = MutedErle(false, &adapted);
+    double muted = MutedErle(true, &adapted);
+    printf("a muted first second: %s while muted, %.1f dB taken in the third second heard, "
+           "%.1f dB after a silent second\n",
+           adapted ? "adapted" : "unadapted", muted, from);
+    CHECK(!adapted, "no echo path learnt from a muted capture");
+    CHECK(muted > from - 6.0, "and the echo learnt once it is heard");
 }
 
 // The echo left over the last second of a bent echo path at 16 kHz,
@@ -453,6 +503,7 @@ int main(void)
     TestLoud();
     TestDoubleTalk();
     TestLoudEcho();
+    TestMutedStart();
     TestQuietFirst();
     TestTwoBlocks();
     TestFraming();

@@ -20,6 +20,8 @@
 //   1 (the echo canceller's 0 until two blocks have been processed and
 //   from 0.1 after, its leakage from 0.005), the gain within the def's
 //   range and its speech level -100 until reliable, the frames counted;
+// - an echo canceller whose capture holds none of the render (muted)
+//   does not report having adapted;
 // - the gain control lets no sample out above -1 dBFS.
 
 #include "maul-audio/voice.h"
@@ -368,8 +370,8 @@ static void Echo(Input* in)
     // The echo's path: its gain over the render, from 2^-8 to 2^16 (above
     // 1 the render played that much quieter, below it the echo, so that
     // both stay within the samples' range); with bit 5 no near end, only
-    // the echo; with bit 7 the render stopping for stretches, as a far end
-    // that pauses.
+    // the echo; with bit 6 the capture muted, zeros; with bit 7 the render
+    // stopping for stretches, as a far end that pauses.
     uint8_t path = Byte(in);
     float gain = ldexpf(1.0f, (int)((path & 31u) % 25u) - 8);
     Signal signal;
@@ -382,6 +384,7 @@ static void Echo(Input* in)
         bool stopped = (path & 0x80u) != 0 && (i / 1000u) % 3u == 0;
         s_render[i] = stopped ? 0.0f : s_render[i] / fmaxf(gain, 1.0f);
         s_whole[i] = ((path & 0x20u) != 0 ? 0.0f : 0.8f * s_whole[i]) + 0.3f * gain * s_render[i];
+        s_whole[i] = (path & 0x40u) != 0 ? 0.0f : s_whole[i];
         s_cut[i] = s_whole[i];
     }
     int before = s_allocations;
@@ -410,6 +413,8 @@ static void Echo(Input* in)
     Expect(signal.frames < 2 * block ? one.speechProbability == 0.0f
                                      : Within(one.speechProbability, 0.1f, 1.0f));
     Expect(Within(one.leakage, 0.005f, 1.0f) && one.frameCount == signal.frames);
+    // voice.h: a capture that holds none of the render leaves adapted false.
+    Expect((path & 0x40u) == 0 || !one.adapted);
     maudDestroyEchoCanceller(whole);
     maudDestroyEchoCanceller(cut);
 }
