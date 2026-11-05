@@ -54,6 +54,37 @@
 // filter and is learnt as one.
 #define LEARNT_ERROR 0.5
 #define LEARNT_SPAN  0.1
+// Once adapted, a block whose capture is under ABSENT_SHARE of the
+// foreground estimate's energy is quiet, and its output is the capture
+// itself, nothing subtracted: the capture c less an estimate y with
+// |y|^2 >= 100 |c|^2 leaves at least (|y| - |c|)^2 >= 0.81 |y|^2, 19 dB
+// over the capture, whatever their correlation. A quiet block whose
+// correlation with the estimate is at most ABSENT_CORRELATION in
+// magnitude is absent (a capture muted, or a speaker gone): the
+// background takes no step for the first ABSENT_HOLD seconds of absence
+// running, and the foreground takes the background only when the
+// background's error is LEARNT_ERROR under the capture. So a mute keeps
+// the learnt path, and is heard as silence; a path that changes is
+// learnt as ever.
+// - 20 dB: an estimate ten times the capture's amplitude would add more
+//   echo than it could take out. A real path does not lose 20 dB from
+//   one block to the next but by a mute or a switch of device.
+// - 0.5: a quieter echo of the same path follows the estimate, its
+//   correlation near 1, and with no near end over it is learnt as any
+//   change is. A capture of zeros correlates with it by 0, and noise or
+//   a near end independent of it by about 1 / sqrt(n) over n samples:
+//   white noise passes 0.5 with probability 2.2e-5 a block at 8 kHz
+//   (n = 64) and 1.6e-9 at 16 kHz, a narrowband capture of only 8
+//   degrees of freedom a block 0.17. A block that passes it by chance
+//   is taken as present for what is learnt; its output is still the
+//   capture.
+// - 1 s: the longest absence the background is held through. After it,
+//   the background learns whatever the capture holds (a path both
+//   quieter and moved, which the estimate does not follow), and the
+//   foreground takes it once it explains the capture.
+#define ABSENT_SHARE       0.01
+#define ABSENT_CORRELATION 0.5
+#define ABSENT_HOLD        1.0
 // The leakage's floor (as a share of the echo) and its first value.
 #define LEAK_FLOOR 0.005
 #define LEAK_START 0.25
@@ -98,6 +129,11 @@ typedef struct Sums
     double background;
     double foreground;
     double echo;
+    // The capture's energy, the foreground's estimate's, and their
+    // product's sum.
+    double capture;
+    double estimate;
+    double cross;
 } Sums;
 
 // A weight within WEIGHT_LIMIT, as a float.
@@ -214,6 +250,7 @@ void maudInitEchoFilter(maudEchoFilter* filter, uint32_t block, uint32_t partiti
         .window2 = pow(0.85, scale),
         .gainRise = pow(10.0, GAIN_RISE_DB * ((double)block / sampleRate) / 10.0),
         .learntBlocks = (uint32_t)ceil(LEARNT_SPAN * sampleRate / block),
+        .holdBlocks = (uint32_t)ceil(ABSENT_HOLD * sampleRate / block),
     };
     maudResetEchoFilter(filter);
 }
@@ -244,6 +281,7 @@ void maudResetEchoFilter(maudEchoFilter* f)
     f->started = 0.0;
     f->echoGain = 1.0;
     f->learnt = 0;
+    f->absent = 0;
     f->adapted = false;
     f->constrain = 0;
     f->still = 0;
@@ -290,9 +328,10 @@ static void Estimate(const maudEchoFilter* f, const float* filter, float* out)
 // windows. The foreground takes the background's filter when it is
 // significantly better; the background starts again from the
 // foreground when it is four times as significantly worse, and its
-// error and estimate become the foreground's.
+// error and estimate become the foreground's. With keep, the foreground
+// does not take the background, which may still start again from it.
 static void Paths(maudEchoFilter* f, Sums* s, const float* yb, const float* yf, float* eb,
-                  const float* ef, float* ybOut)
+                  const float* ef, float* ybOut, bool keep)
 {
     double differ = 1e-10;
     for (uint32_t i = 0; i < f->block; ++i)
@@ -310,8 +349,9 @@ static void Paths(maudEchoFilter* f, Sums* s, const float* yb, const float* yf, 
     f->noise2 =
         maudFlushDouble(w2 * w2 * f->noise2 + (1.0 - w2) * (1.0 - w2) * s->foreground * differ);
     size_t bytes = (size_t)f->partitions * 2 * f->bins * sizeof(float);
-    if (drop * fabs(drop) > s->foreground * differ || f->drop1 * fabs(f->drop1) > 0.5 * f->noise1 ||
-        f->drop2 * fabs(f->drop2) > 0.25 * f->noise2)
+    if (!keep && (drop * fabs(drop) > s->foreground * differ ||
+                  f->drop1 * fabs(f->drop1) > 0.5 * f->noise1 ||
+                  f->drop2 * fabs(f->drop2) > 0.25 * f->noise2))
     {
         memcpy(f->foreground, f->background, bytes);
         f->drop1 = f->drop2 = f->noise1 = f->noise2 = 0.0;
@@ -531,16 +571,14 @@ static void Constrain(maudEchoFilter* f)
 // goes on once the echo is heard.
 // Every term is finite: Sxx is above its floor, the energies are in
 // double, and the rate is at most 0.25.
-static double Rates(maudEchoFilter* f, const float* render, const float* capture, const Sums* s,
-                    double* startRate)
+static double Rates(maudEchoFilter* f, const float* render, const Sums* s, double* startRate)
 {
     double sxx = 0.0;
-    double scc = 0.0;
     for (uint32_t i = 0; i < f->block; ++i)
     {
         sxx += (double)render[i] * (double)render[i];
-        scc += (double)capture[i] * (double)capture[i];
     }
+    double scc = s->capture;
     double rer = fmin((1e-4 * sxx + 3.0 * f->leak * s->echo) / (s->background + 1e-12), MU_MAX);
     *startRate = 0.0;
     if (!f->adapted && sxx > f->block * 1e-6)
@@ -578,13 +616,39 @@ void maudRunEchoFilter(maudEchoFilter* f, const float* render, const float* capt
         s.background += (double)eb[i] * (double)eb[i];
         s.foreground += (double)error[i] * (double)error[i];
         s.echo += (double)yb[n + i] * (double)yb[n + i];
+        s.capture += (double)capture[i] * (double)capture[i];
+        s.estimate += (double)yf[n + i] * (double)yf[n + i];
+        s.cross += (double)capture[i] * (double)yf[n + i];
     }
-    Paths(f, &s, yb + n, yf + n, eb, error, yb + n);
+    // An absence runs through a quiet block that passes the correlation
+    // by chance and ends at a block that is not quiet. Past the hold, the
+    // background steps toward whatever the capture holds, so through
+    // the rest of the run the foreground takes it only once it explains
+    // the capture; and the drops measured over the run say nothing of
+    // the path heard after it.
+    bool quiet = f->adapted && s.capture < ABSENT_SHARE * s.estimate;
+    bool absent = quiet && s.cross * s.cross <=
+                               ABSENT_CORRELATION * ABSENT_CORRELATION * s.capture * s.estimate;
+    if (!quiet && f->absent > f->holdBlocks)
+    {
+        f->drop1 = f->drop2 = f->noise1 = f->noise2 = 0.0;
+    }
+    f->absent = absent ? f->absent + (f->absent <= f->holdBlocks) : quiet ? f->absent : 0;
+    bool learnt = s.background <= LEARNT_ERROR * s.capture;
+    if (!absent || learnt)
+    {
+        Paths(f, &s, yb + n, yf + n, eb, error, yb + n, f->absent > f->holdBlocks && !learnt);
+    }
+    if (quiet)
+    {
+        memcpy(error, capture, n * sizeof(float));
+        memset(echo, 0, n * sizeof(float));
+    }
     Padded(f, eb, f->errorSpectrum);
     Padded(f, yb + n, f->echoSpectrum);
     Leakage(f, &s);
     double startRate = 0.0;
-    double rer = Rates(f, render, capture, &s, &startRate);
+    double rer = Rates(f, render, &s, &startRate);
     // A background error of zeros takes no step (each is a multiple of
     // its spectrum): the shares and steps are skipped, and once every
     // partition has been constrained since the last step, the
@@ -595,6 +659,7 @@ void maudRunEchoFilter(maudEchoFilter* f, const float* render, const float* capt
     {
         still = still && eb[i] == 0.0f;
     }
+    still = still || (f->absent > 0 && f->absent <= f->holdBlocks);
     f->still = !still ? 0 : f->still < f->partitions ? f->still + 1 : f->still;
     if (!still)
     {
