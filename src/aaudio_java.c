@@ -183,7 +183,8 @@ void maudAaudioCloseJava(maudAaudio* aaudio)
     if (java->devices != nullptr)
     {
         (*env)->CallVoidMethod(env, java->devices, java->close);
-        Thrown(env);
+        // Closing goes on whatever close threw; the clear keeps JNI usable.
+        (void)Thrown(env);
         (*env)->DeleteGlobalRef(env, java->devices);
     }
     if (java->context != nullptr)
@@ -258,7 +259,8 @@ static void Walk(maudAaudio* aaudio, JNIEnv* env, jobjectArray pair, maudDirecti
     jint* values = (*env)->GetIntArrayElements(env, numbers, nullptr);
     if (values == nullptr)
     {
-        Thrown(env);
+        // The walk ends either way; the clear drops the OutOfMemoryError.
+        (void)Thrown(env);
         return;
     }
     for (jsize i = 0; i < count; ++i)
@@ -336,7 +338,8 @@ void maudAaudioAskToRecord(maudAaudio* aaudio)
         return;
     }
     (*env)->CallVoidMethod(env, java->devices, java->askToRecord);
-    Thrown(env);
+    // The request has no answer to give; the clear keeps JNI usable.
+    (void)Thrown(env);
     Leave(java->vm, attached);
 }
 
