@@ -11,7 +11,8 @@
 #
 # adb can lose its connection to the device ("error: closed"). The steps
 # before the verdict (install, clearing the log, the start, a command the
-# test asks for) are idempotent, so each is tried up to three times. Each
+# test asks for) are idempotent, so each is tried up to three times; one
+# lost all three times fails the run, saying which it was. Each
 # run starts with the application fresh: one an earlier run left, as
 # when its uninstall was lost, is removed with its data before the
 # install. The system handles a package's removal in its own time, from
@@ -52,18 +53,31 @@ ask() {
     printf '%s\n' "$output"
 }
 
+# An adb step before the verdict, tried as again tries it. When adb loses
+# it three times, the run ends, failed, saying which step was lost, and
+# the application is removed once.
+must() {
+    what=$1
+    shift
+    if ! again "$@" > /dev/null; then
+        echo "run_android_app.sh: adb lost $what" >&2
+        "$adb" uninstall "$package" > /dev/null 2>&1 || true
+        exit 1
+    fi
+}
+
 if ! installed=$(ask shell pm list packages "$package"); then
     echo "run_android_app.sh: adb lost whether $package is installed" >&2
     exit 1
 fi
 if printf '%s\n' "$installed" | tr -d '\r' | grep -qx "package:$package"; then
-    again uninstall "$package" > /dev/null
+    must "the removal of an install an earlier run left" uninstall "$package"
 fi
-again install -r "$apk" > /dev/null
+must "the install" install -r "$apk"
 if ! timeout 60 "$adb" shell am wait-for-broadcast-idle > /dev/null; then
     echo "run_android_app.sh: the system's broadcasts were not seen idle in 60 s"
 fi
-again shell run-as "$package" rm -f files/out
+must "the removal of files/out" shell run-as "$package" rm -f files/out
 # absent only from a test that ran: a run-as that fails answers nothing.
 if left=$(ask shell "run-as $package sh -c 'if [ -e files/out ]; then echo present; else echo absent; fi'"); then
     left=$(printf '%s' "$left" | tr -d '\r')
@@ -75,9 +89,9 @@ if [ "$left" != absent ]; then
     again uninstall "$package" > /dev/null || true
     exit 1
 fi
-again logcat -c
+must "the clearing of the log" logcat -c
 start=$(date +%s)
-again shell am start -W -n "$package/android.app.NativeActivity" > /dev/null
+must "the start" shell am start -W -n "$package/android.app.NativeActivity"
 out=$(mktemp)
 done=0
 while [ $(($(date +%s) - start)) -lt 120 ]; do
@@ -88,7 +102,7 @@ while [ $(($(date +%s) - start)) -lt 120 ]; do
         done=$((done + 1))
         line=$(printf '%s\n' "$commands" | sed -n "${done}p")
         echo "running: $line"
-        again shell "${line#adb: }" > /dev/null
+        must "the command the test asked for, $line" shell "${line#adb: }"
     done
     grep -q '^result: ' "$out" && break
     sleep 0.5
