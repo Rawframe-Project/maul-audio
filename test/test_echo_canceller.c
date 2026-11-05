@@ -350,7 +350,7 @@ static void Resonate(float* x, uint32_t frames, uint32_t rate)
 // three, at 16 kHz, when the render is narrowband (noise of the seed
 // through Resonate, heard 5 ms late) and the muted capture is faint
 // noise in its band, 80 dB under the echo (dB under the echo).
-static double NarrowErle(uint32_t seed)
+static double NarrowErle(uint32_t seed, double* loudest)
 {
     const uint32_t rate = 16000;
     const uint32_t edge = 512;
@@ -373,10 +373,21 @@ static double NarrowErle(uint32_t seed)
         s_render[i] *= scale;
         s_echo[i] = i >= rate / 200 ? s_render[i - rate / 200] : 0.0f;
         s_capture[i] = i >= from && i < to ? faint * s_other[i] : s_echo[i];
+        s_near[i] = s_capture[i];
     }
     maudEchoCanceller* c = Create(rate);
     (void)Run(c, s_capture, frames, rate / 100);
     maudDestroyEchoCanceller(c);
+    // Each 10 ms block of the output while muted against the capture it
+    // came from, two blocks of 128 earlier, from 64 ms into the mute: the
+    // first blocks still carry the residual of the echo heard before it.
+    *loudest = -HUGE_VAL;
+    for (uint32_t at = from + 2 * edge; at + rate / 100 <= to; at += rate / 100)
+    {
+        double out = Energy(s_capture, at, at + rate / 100);
+        double in = Energy(s_near, at - 256, at + rate / 100 - 256);
+        *loudest = fmax(*loudest, 10.0 * log10(out / in));
+    }
     return 10.0 *
            log10(Energy(s_echo, to, to + rate - edge) / Energy(s_capture, to + edge, to + rate));
 }
@@ -386,18 +397,69 @@ static double NarrowErle(uint32_t seed)
 // chance now and then: past the hold the background steps toward that
 // capture, and the foreground must not take it from a block that
 // passed. The echo after is taken down 50 dB or more from its first
-// second, for each of eight seeds.
+// second, for each of eight seeds, and no 10 ms of the output while
+// muted is more than a decibel over the capture.
 static void TestNarrowMute(void)
 {
     double least = HUGE_VAL;
+    double loudest = -HUGE_VAL;
     for (uint32_t seed = 1; seed <= 8; ++seed)
     {
-        least = fmin(least, NarrowErle(seed));
+        double block = 0.0;
+        least = fmin(least, NarrowErle(seed, &block));
+        loudest = fmax(loudest, block);
     }
     printf("a narrowband mute: at least %.1f dB taken in the first second after it, over eight "
-           "seeds\n",
-           least);
+           "seeds; while muted, no 10 ms of output over %+.1f dB of the capture\n",
+           least, loudest);
     CHECK(least > 50.0, "the echo path kept through a faint narrowband mute");
+    CHECK(loudest < 1.0, "nothing subtracted from a faint capture while muted");
+}
+
+// After a mute of two seconds at 16 kHz, the echo returns 32 dB quieter
+// on the same path, with a near end of noise at twice its energy: a
+// capture under 0.01 of the estimate, correlated with it by about 0.58.
+// Over the two seconds after: the output over the capture and over the
+// near end (dB).
+static void QuieterReturn(double* overCapture, double* overNear)
+{
+    const uint32_t rate = 16000;
+    const uint32_t edge = 512;
+    const uint32_t lag = 256;
+    uint32_t from = 3 * rate;
+    uint32_t back = 5 * rate;
+    uint32_t frames = 7 * rate;
+    Scene(rate, frames, false);
+    float level = sqrtf((float)(Energy(s_echo, 0, from) / from));
+    for (uint32_t i = from; i < frames; ++i)
+    {
+        s_echo[i] = i < back ? 0.0f : 0.025f * s_echo[i];
+        s_near[i] = i < back ? 0.0f : 0.025f * 1.4142f * level * Gaussian();
+        s_capture[i] = s_echo[i] + s_near[i];
+    }
+    memcpy(s_other, s_capture, frames * sizeof(float));
+    maudEchoCanceller* c = Create(rate);
+    (void)Run(c, s_capture, frames, rate / 100);
+    maudDestroyEchoCanceller(c);
+    double out = Energy(s_capture, back + edge, frames);
+    *overCapture = 10.0 * log10(out / Energy(s_other, back + edge - lag, frames - lag));
+    *overNear = 10.0 * log10(out / Energy(s_near, back + edge - lag, frames - lag));
+}
+
+// An echo that returns from a mute much quieter, under a near end: the
+// stale estimate is not subtracted, which would leave the output over
+// the capture, nor the near end suppressed with it. The output is no
+// more than a decibel over the capture and the near end no more than 3
+// dB down.
+static void TestQuieterReturn(void)
+{
+    double overCapture = 0.0;
+    double overNear = 0.0;
+    QuieterReturn(&overCapture, &overNear);
+    printf("an echo back 32 dB quieter under a near end: the output %+.1f dB over the capture, "
+           "%+.1f dB over the near end\n",
+           overCapture, overNear);
+    CHECK(overCapture < 1.0 && overNear > -3.0, "a quieter return passed through");
 }
 
 // The echo after the third second heard through a path 40 dB quieter
@@ -725,6 +787,7 @@ int main(void)
     TestMutedStart();
     TestMidcallMute();
     TestNarrowMute();
+    TestQuieterReturn();
     TestQuietPath();
     TestQuietFirst();
     TestTwoBlocks();

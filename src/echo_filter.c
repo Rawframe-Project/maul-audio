@@ -54,15 +54,18 @@
 // filter and is learnt as one.
 #define LEARNT_ERROR 0.5
 #define LEARNT_SPAN  0.1
-// Once adapted, a block whose capture holds none of what the foreground
-// estimates is absent (a capture muted, or a speaker gone): the capture
-// under ABSENT_SHARE of the estimate's energy and its correlation
-// with it at most ABSENT_CORRELATION in magnitude. In such a block the
-// output is the capture itself, nothing subtracted; the background takes
-// no step for the first ABSENT_HOLD seconds of absence running; and the
-// foreground takes the background only when the background's error is
-// LEARNT_ERROR under the capture. So a mute keeps the learnt path, and
-// is heard as silence; a path that changes is learnt as ever.
+// Once adapted, a block whose capture is under ABSENT_SHARE of the
+// foreground estimate's energy is quiet, and its output is the capture
+// itself, nothing subtracted: the capture c less an estimate y with
+// |y|^2 >= 100 |c|^2 leaves at least (|y| - |c|)^2 >= 0.81 |y|^2, 19 dB
+// over the capture, whatever their correlation. A quiet block whose
+// correlation with the estimate is at most ABSENT_CORRELATION in
+// magnitude is absent (a capture muted, or a speaker gone): the
+// background takes no step for the first ABSENT_HOLD seconds of absence
+// running, and the foreground takes the background only when the
+// background's error is LEARNT_ERROR under the capture. So a mute keeps
+// the learnt path, and is heard as silence; a path that changes is
+// learnt as ever.
 // - 20 dB: an estimate ten times the capture's amplitude would add more
 //   echo than it could take out. A real path does not lose 20 dB from
 //   one block to the next but by a mute or a switch of device.
@@ -73,8 +76,8 @@
 //   white noise passes 0.5 with probability 2.2e-5 a block at 8 kHz
 //   (n = 64) and 1.6e-9 at 16 kHz, a narrowband capture of only 8
 //   degrees of freedom a block 0.17. A block that passes it by chance
-//   is taken as present: its output is the capture less the estimate,
-//   as without the test.
+//   is taken as present for what is learnt; its output is still the
+//   capture.
 // - 1 s: the longest absence the background is held through. After it,
 //   the background learns whatever the capture holds (a path both
 //   quieter and moved, which the estimate does not follow), and the
@@ -636,7 +639,7 @@ void maudRunEchoFilter(maudEchoFilter* f, const float* render, const float* capt
     {
         Paths(f, &s, yb + n, yf + n, eb, error, yb + n, f->absent > f->holdBlocks && !learnt);
     }
-    if (absent)
+    if (quiet)
     {
         memcpy(error, capture, n * sizeof(float));
         memset(echo, 0, n * sizeof(float));
