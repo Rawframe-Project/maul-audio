@@ -17,7 +17,8 @@
 // an echo 18 dB louder than the render, with the near end speaking from
 // the start, is learnt within three seconds; a capture muted for the
 // first second leaves it unadapted, and the echo after is learnt as
-// after a second of both silent; a capture muted in a call leaves the
+// after a second of both silent; a capture muted in a call, to zeros or
+// to faint noise, under a broadband or a narrowband render, leaves the
 // output silent and the echo path kept; a path 40 dB quieter and moved
 // is learnt anew, and a near end over it comes through;
 // the probability of speech is 0 until two blocks have been processed,
@@ -260,46 +261,143 @@ static void TestMutedStart(void)
     CHECK(muted > from - 6.0, "and the echo learnt once it is heard");
 }
 
-// The echo taken down over the third second after a capture muted
-// (zeros) for muted frames from the third second comes back, at 16 kHz
-// (dB under the echo); held is the output while muted, in dB under the
-// echo it stands for, and adapted the state at the end.
-static double MidcallErle(uint32_t muted, double* held, bool* adapted)
+// What a muted capture holds: zeros, or white noise at 1e-5, as a
+// microphone muted in hardware may still give.
+typedef enum Muted
 {
-    const uint32_t rate = 16000;
-    const uint32_t block = 256;
+    Zeros,
+    Noise
+} Muted;
+
+// The echo taken down over the third second after a capture muted for
+// muted frames from the third second comes back (dB under the echo);
+// held is the output while muted, in dB under the echo it stands for,
+// and adapted the state at the end.
+static double MidcallErle(uint32_t rate, uint32_t muted, Muted holds, double* held, bool* adapted)
+{
+    // Frames left out at each window's edge, past the output's lag.
+    const uint32_t edge = 512;
     uint32_t from = 3 * rate;
     uint32_t frames = from + muted + 3 * rate;
     Scene(rate, frames, false);
-    memset(s_capture + from, 0, muted * sizeof(float));
+    for (uint32_t i = from; i < from + muted; ++i)
+    {
+        s_capture[i] = holds == Zeros ? 0.0f : 1e-5f * Gaussian();
+    }
     maudEchoCanceller* c = Create(rate);
-    maudEchoState state = Run(c, s_capture, frames, 160);
+    maudEchoState state = Run(c, s_capture, frames, rate / 100);
     maudDestroyEchoCanceller(c);
     *adapted = state.adapted;
-    *held = 10.0 * log10(Energy(s_echo, from, from + muted - 2 * block) /
-                         (Energy(s_capture, from + 2 * block, from + muted) + 1e-30));
-    return 10.0 * log10(Energy(s_echo, frames - rate - 2 * block, frames - 2 * block) /
+    *held = 10.0 * log10(Energy(s_echo, from, from + muted - edge) /
+                         (Energy(s_capture, from + edge, from + muted) + 1e-30));
+    return 10.0 * log10(Energy(s_echo, frames - rate - edge, frames - edge) /
                         Energy(s_capture, frames - rate, frames));
 }
 
-// A capture muted in a call, for half a second or for three: the output
-// stays silent while muted, nothing of the estimate subtracted, and the
-// echo after is taken down within 6 dB of one never muted.
+// A capture muted in a call at 16 kHz, for half a second or for three,
+// to zeros, and at 8 kHz for three to faint white noise: the output
+// stays silent while muted,
+// nothing of the estimate subtracted, and the echo after is taken down
+// within 6 dB of the same scene never muted.
 static void TestMidcallMute(void)
 {
-    double held = 0.0;
-    bool adapted = false;
-    double never = MidcallErle(0, &held, &adapted);
-    double brief = MidcallErle(16000 / 2, &held, &adapted);
-    printf("a mute in a call: %.1f dB taken in the third second after half a second, ", brief);
-    CHECK(held > 60.0 && adapted, "silent while muted half a second, still adapted");
-    double heldBrief = held;
-    double longer = MidcallErle(3 * 16000, &held, &adapted);
-    printf("%.1f dB after three, %.1f dB never muted; the output %.1f and %.1f dB under the echo "
-           "while muted\n",
-           longer, never, heldBrief, held);
-    CHECK(held > 60.0 && adapted, "silent while muted three seconds, still adapted");
-    CHECK(brief > never - 6.0 && longer > never - 6.0, "the echo path kept through a mute");
+    struct
+    {
+        uint32_t rate;
+        uint32_t muted;
+        Muted holds;
+        const char* name;
+    } mutes[] = {
+        {16000, 8000, Zeros, "half a second of zeros"},
+        {16000, 48000, Zeros, "three seconds of zeros"},
+        {8000, 24000, Noise, "three seconds of faint white noise at 8 kHz"},
+    };
+    printf("a mute in a call, the echo taken in the third second after it:");
+    for (size_t k = 0; k < sizeof(mutes) / sizeof(mutes[0]); ++k)
+    {
+        double held = 0.0;
+        bool adapted = false;
+        double never = MidcallErle(mutes[k].rate, 0, mutes[k].holds, &held, &adapted);
+        double after = MidcallErle(mutes[k].rate, mutes[k].muted, mutes[k].holds, &held, &adapted);
+        printf("%s %s, %.1f dB against %.1f dB never muted (the output %.1f dB under the echo "
+               "while muted)",
+               k > 0 ? ";" : "", mutes[k].name, after, never, held);
+        CHECK(held > 60.0 && adapted, "silent while muted, still adapted");
+        CHECK(after > never - 6.0, "the echo path kept through a mute");
+    }
+    printf("\n");
+}
+
+// x through a two-pole resonator at 1 kHz about 500 Hz wide: about 8
+// degrees of freedom in a block of 8 ms.
+static void Resonate(float* x, uint32_t frames, uint32_t rate)
+{
+    double r = 1.0 - 3.14159265 * 500.0 / rate;
+    double a1 = 2.0 * r * cos(2.0 * 3.14159265 * 1000.0 / rate);
+    double a2 = -r * r;
+    double y1 = 0.0;
+    double y2 = 0.0;
+    for (uint32_t i = 0; i < frames; ++i)
+    {
+        double y = (double)x[i] + a1 * y1 + a2 * y2;
+        y2 = y1;
+        y1 = y;
+        x[i] = (float)y;
+    }
+}
+
+// The echo taken down over the first second after a capture muted for
+// three, at 16 kHz, when the render is narrowband (noise of the seed
+// through Resonate, heard 5 ms late) and the muted capture is faint
+// noise in its band, 80 dB under the echo (dB under the echo).
+static double NarrowErle(uint32_t seed)
+{
+    const uint32_t rate = 16000;
+    const uint32_t edge = 512;
+    uint32_t from = 3 * rate;
+    uint32_t to = 6 * rate;
+    uint32_t frames = 9 * rate;
+    s_state = seed;
+    for (uint32_t i = 0; i < frames; ++i)
+    {
+        s_render[i] = 0.1f * Gaussian();
+        s_other[i] = Gaussian();
+    }
+    double before = Energy(s_render, 0, frames);
+    Resonate(s_render, frames, rate);
+    Resonate(s_other, frames, rate);
+    float scale = sqrtf((float)(before / Energy(s_render, 0, frames)));
+    float faint = 1e-4f * 0.1f * sqrtf((float)(frames / Energy(s_other, 0, frames)));
+    for (uint32_t i = 0; i < frames; ++i)
+    {
+        s_render[i] *= scale;
+        s_echo[i] = i >= rate / 200 ? s_render[i - rate / 200] : 0.0f;
+        s_capture[i] = i >= from && i < to ? faint * s_other[i] : s_echo[i];
+    }
+    maudEchoCanceller* c = Create(rate);
+    (void)Run(c, s_capture, frames, rate / 100);
+    maudDestroyEchoCanceller(c);
+    return 10.0 *
+           log10(Energy(s_echo, to, to + rate - edge) / Energy(s_capture, to + edge, to + rate));
+}
+
+// A narrowband render, as speech is for stretches, and a faint capture
+// in its band while muted, which passes the absence's correlation by
+// chance now and then: past the hold the background steps toward that
+// capture, and the foreground must not take it from a block that
+// passed. The echo after is taken down 50 dB or more from its first
+// second, for each of eight seeds.
+static void TestNarrowMute(void)
+{
+    double least = HUGE_VAL;
+    for (uint32_t seed = 1; seed <= 8; ++seed)
+    {
+        least = fmin(least, NarrowErle(seed));
+    }
+    printf("a narrowband mute: at least %.1f dB taken in the first second after it, over eight "
+           "seeds\n",
+           least);
+    CHECK(least > 50.0, "the echo path kept through a faint narrowband mute");
 }
 
 // The echo after the third second heard through a path 40 dB quieter
@@ -626,6 +724,7 @@ int main(void)
     TestLoudEcho();
     TestMutedStart();
     TestMidcallMute();
+    TestNarrowMute();
     TestQuietPath();
     TestQuietFirst();
     TestTwoBlocks();

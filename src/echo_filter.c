@@ -67,13 +67,14 @@
 //   echo than it could take out. A real path does not lose 20 dB from
 //   one block to the next but by a mute or a switch of device.
 // - 0.5: a quieter echo of the same path follows the estimate, its
-//   correlation near 1, and is learnt as any change is. A capture of
-//   zeros correlates with it by 0, and noise or a near end independent
-//   of it by about 1 / sqrt(n) over n samples: white noise passes 0.5
-//   with probability 2.2e-5 a block at 8 kHz (n = 64) and 1.6e-9 at
-//   16 kHz, a narrowband capture of only 8 degrees of freedom a block
-//   0.17. A block that passes it by chance is taken as present: its
-//   output is the capture less the estimate, as without the test.
+//   correlation near 1, and with no near end over it is learnt as any
+//   change is. A capture of zeros correlates with it by 0, and noise or
+//   a near end independent of it by about 1 / sqrt(n) over n samples:
+//   white noise passes 0.5 with probability 2.2e-5 a block at 8 kHz
+//   (n = 64) and 1.6e-9 at 16 kHz, a narrowband capture of only 8
+//   degrees of freedom a block 0.17. A block that passes it by chance
+//   is taken as present: its output is the capture less the estimate,
+//   as without the test.
 // - 1 s: the longest absence the background is held through. After it,
 //   the background learns whatever the capture holds (a path both
 //   quieter and moved, which the estimate does not follow), and the
@@ -324,9 +325,10 @@ static void Estimate(const maudEchoFilter* f, const float* filter, float* out)
 // windows. The foreground takes the background's filter when it is
 // significantly better; the background starts again from the
 // foreground when it is four times as significantly worse, and its
-// error and estimate become the foreground's.
+// error and estimate become the foreground's. With keep, the foreground
+// does not take the background, which may still start again from it.
 static void Paths(maudEchoFilter* f, Sums* s, const float* yb, const float* yf, float* eb,
-                  const float* ef, float* ybOut)
+                  const float* ef, float* ybOut, bool keep)
 {
     double differ = 1e-10;
     for (uint32_t i = 0; i < f->block; ++i)
@@ -344,8 +346,9 @@ static void Paths(maudEchoFilter* f, Sums* s, const float* yb, const float* yf, 
     f->noise2 =
         maudFlushDouble(w2 * w2 * f->noise2 + (1.0 - w2) * (1.0 - w2) * s->foreground * differ);
     size_t bytes = (size_t)f->partitions * 2 * f->bins * sizeof(float);
-    if (drop * fabs(drop) > s->foreground * differ || f->drop1 * fabs(f->drop1) > 0.5 * f->noise1 ||
-        f->drop2 * fabs(f->drop2) > 0.25 * f->noise2)
+    if (!keep && (drop * fabs(drop) > s->foreground * differ ||
+                  f->drop1 * fabs(f->drop1) > 0.5 * f->noise1 ||
+                  f->drop2 * fabs(f->drop2) > 0.25 * f->noise2))
     {
         memcpy(f->foreground, f->background, bytes);
         f->drop1 = f->drop2 = f->noise1 = f->noise2 = 0.0;
@@ -614,13 +617,24 @@ void maudRunEchoFilter(maudEchoFilter* f, const float* render, const float* capt
         s.estimate += (double)yf[n + i] * (double)yf[n + i];
         s.cross += (double)capture[i] * (double)yf[n + i];
     }
-    bool absent =
-        f->adapted && s.capture < ABSENT_SHARE * s.estimate &&
-        s.cross * s.cross <= ABSENT_CORRELATION * ABSENT_CORRELATION * s.capture * s.estimate;
-    f->absent = absent ? f->absent + (f->absent <= f->holdBlocks) : 0;
-    if (!absent || s.background <= LEARNT_ERROR * s.capture)
+    // An absence runs through a quiet block that passes the correlation
+    // by chance and ends at a block that is not quiet. Past the hold, the
+    // background steps toward whatever the capture holds, so through
+    // the rest of the run the foreground takes it only once it explains
+    // the capture; and the drops measured over the run say nothing of
+    // the path heard after it.
+    bool quiet = f->adapted && s.capture < ABSENT_SHARE * s.estimate;
+    bool absent = quiet && s.cross * s.cross <=
+                               ABSENT_CORRELATION * ABSENT_CORRELATION * s.capture * s.estimate;
+    if (!quiet && f->absent > f->holdBlocks)
     {
-        Paths(f, &s, yb + n, yf + n, eb, error, yb + n);
+        f->drop1 = f->drop2 = f->noise1 = f->noise2 = 0.0;
+    }
+    f->absent = absent ? f->absent + (f->absent <= f->holdBlocks) : quiet ? f->absent : 0;
+    bool learnt = s.background <= LEARNT_ERROR * s.capture;
+    if (!absent || learnt)
+    {
+        Paths(f, &s, yb + n, yf + n, eb, error, yb + n, f->absent > f->holdBlocks && !learnt);
     }
     if (absent)
     {
