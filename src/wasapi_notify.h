@@ -10,6 +10,8 @@
 
 #define COBJMACROS
 #define CONST_VTABLE
+#include "maul-audio/base.h"
+
 #include <mmdeviceapi.h>
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -27,6 +29,6 @@ typedef struct maudWasapiNotifier
 void maudInitWasapiNotifier(maudWasapiNotifier* notifier);
 
 // Whether anything changed since the last call.
-bool maudTakeWasapiChanges(maudWasapiNotifier* notifier);
+MAUD_NODISCARD bool maudTakeWasapiChanges(maudWasapiNotifier* notifier);
 
 #endif // MAUL_AUDIO_SRC_WASAPI_NOTIFY_H

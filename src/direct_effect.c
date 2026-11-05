@@ -52,7 +52,7 @@ maudDirectParams maudDefaultDirectParams(void)
     };
 }
 
-static bool Unit(float v)
+MAUD_NODISCARD static bool Unit(float v)
 {
     return v >= 0.0f && v <= 1.0f;
 }
@@ -86,7 +86,7 @@ maudResult maudGetDirectivity(const maudDirectivityPattern* pattern, maudVector3
     return maud_success;
 }
 
-static bool DefValid(const maudDirectEffectDef* def)
+MAUD_NODISCARD static bool DefValid(const maudDirectEffectDef* def)
 {
     if (def->cookie != MAUD_DIRECT_EFFECT_DEF_COOKIE || def->sampleRate < MIN_RATE ||
         def->sampleRate > MAX_RATE || !maudIsAllocatorValid(&def->allocator))
@@ -164,7 +164,7 @@ maudResult maudDirectEffect_Reset(maudDirectEffect* effect)
     return maud_success;
 }
 
-static bool ParamsValid(const maudDirectParams* p)
+MAUD_NODISCARD static bool ParamsValid(const maudDirectParams* p)
 {
     if (!(p->gain >= 0.0f) || !isfinite(p->gain) || !(p->distance >= 0.0f) ||
         !isfinite(p->distance) || !Unit(p->occlusion))
@@ -203,7 +203,7 @@ static float Targets(const maudDirectEffect* effect, const maudDirectParams* p, 
     return loudest > SILENT ? p->gain * loudest : 0.0f;
 }
 
-static bool Moved(const double* from, const double* to)
+MAUD_NODISCARD static bool Moved(const double* from, const double* to)
 {
     for (int b = 0; b < MAUD_BANDS; ++b)
     {
@@ -217,7 +217,8 @@ static bool Moved(const double* from, const double* to)
 
 // Brings the filters to the targets if they moved, previous receiving
 // the filters the call starts from; true if they changed.
-static bool Refit(maudDirectEffect* effect, const double* targets, maudBandEqFilters* previous)
+MAUD_NODISCARD static bool Refit(maudDirectEffect* effect, const double* targets,
+                                 maudBandEqFilters* previous)
 {
     *previous = effect->filters;
     if (!Moved(effect->targets, targets))

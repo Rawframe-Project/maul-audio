@@ -7,6 +7,8 @@
 #ifndef MAUL_AUDIO_SRC_LEAST_SQUARES_H
 #define MAUL_AUDIO_SRC_LEAST_SQUARES_H
 
+#include "maul-audio/base.h"
+
 #include <stdint.h>
 
 // For count rows of k values (row-major, k at most 16) and a weight per
@@ -14,7 +16,7 @@
 // map from values at the rows to the weighted least-squares
 // coefficients: solve times the rows is the identity. false, and solve
 // untouched, when Y^T W Y is not positive definite.
-bool maudWeightedPseudoInverse(const double* rows, const double* weights, uint32_t count,
-                               uint32_t k, double* solve);
+MAUD_NODISCARD bool maudWeightedPseudoInverse(const double* rows, const double* weights,
+                                              uint32_t count, uint32_t k, double* solve);
 
 #endif // MAUL_AUDIO_SRC_LEAST_SQUARES_H

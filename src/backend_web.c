@@ -503,8 +503,8 @@ static void SetStreamActive(maudContext* context, maudStreamSlot* slot, bool act
 }
 
 // One AudioContext renders both halves of a duplex stream.
-static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
-                        const maudStreamSlot* input)
+MAUD_NODISCARD static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
+                                       const maudStreamSlot* input)
 {
     (void)context;
     (void)output;

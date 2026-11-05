@@ -352,7 +352,7 @@ static void BindDefaults(maudPipewire* pipewire, uint32_t globalId)
 // when the session manager that owns it restarts, so that the next one
 // of its name is bound. The defaults it named stay until the new one's
 // properties arrive.
-static bool UnbindRemovedMetadata(maudPipewire* pipewire, uint32_t id)
+MAUD_NODISCARD static bool UnbindRemovedMetadata(maudPipewire* pipewire, uint32_t id)
 {
     struct pw_proxy** metadata = nullptr;
     struct spa_hook* listener = nullptr;
@@ -624,7 +624,7 @@ static void Release(maudContext* context, maudPipewire* pipewire)
 
 // Connects a core to the daemon and asks for the registry. False when
 // the daemon does not answer.
-static bool ConnectCore(maudPipewire* pipewire)
+MAUD_NODISCARD static bool ConnectCore(maudPipewire* pipewire)
 {
     maudPipewireConnection* connection = &pipewire->connection;
     connection->core = pipewire->api.contextConnect(connection->context, nullptr, 0);
@@ -645,7 +645,7 @@ static bool ConnectCore(maudPipewire* pipewire)
 
 // Sets up the loop and the context, which starts libpipewire's data
 // thread, and connects the first core.
-static bool Connect(maudPipewire* pipewire)
+MAUD_NODISCARD static bool Connect(maudPipewire* pipewire)
 {
     maudPipewireConnection* connection = &pipewire->connection;
     pipewire->api.init(nullptr, nullptr);
@@ -821,8 +821,8 @@ static maudResult OpenStream(const maudContext* context, const maudStreamDef* de
 }
 
 // The halves of a duplex stream share a node group (StreamProperties).
-static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
-                        const maudStreamSlot* input)
+MAUD_NODISCARD static bool SharesClock(const maudContext* context, const maudStreamSlot* output,
+                                       const maudStreamSlot* input)
 {
     (void)context;
     (void)output;

@@ -29,7 +29,7 @@ typedef struct maudAaudioListing
 // aaudio->signals.changed whenever Android's devices change and stores
 // each focus change in aaudio->signals.focus. false when any of it
 // fails.
-bool maudAaudioOpenJava(maudAaudio* aaudio, void* vm, void* context);
+MAUD_NODISCARD bool maudAaudioOpenJava(maudAaudio* aaudio, void* vm, void* context);
 
 // Closes the object and drops the references.
 void maudAaudioCloseJava(maudAaudio* aaudio);
@@ -42,7 +42,7 @@ void maudAaudioListJava(maudAaudio* aaudio, maudDirection direction,
 
 // Whether the application holds the microphone permission; true when
 // Java cannot say, so that AAudio's own refusal stands.
-bool maudAaudioMayRecord(maudAaudio* aaudio);
+MAUD_NODISCARD bool maudAaudioMayRecord(maudAaudio* aaudio);
 
 // Asks for the microphone, once, where the Context is an Activity.
 void maudAaudioAskToRecord(maudAaudio* aaudio);

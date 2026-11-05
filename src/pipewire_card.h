@@ -12,11 +12,11 @@
 
 // Reads a Route param into route; false when it is not one or lacks its
 // direction or device. A route without a port type has an unknown form.
-bool maudPipewireReadRoute(const struct spa_pod* param, maudPipewireRoute* route);
+MAUD_NODISCARD bool maudPipewireReadRoute(const struct spa_pod* param, maudPipewireRoute* route);
 
 // Keeps a card's route: it replaces the one of its profile device and
 // direction, or is added; false when the card holds as many as it can.
-bool maudPipewireStoreRoute(maudPipewireCard* card, const maudPipewireRoute* route);
+MAUD_NODISCARD bool maudPipewireStoreRoute(maudPipewireCard* card, const maudPipewireRoute* route);
 
 // Binds the Device global id and follows its routes.
 void maudPipewireAddCard(maudPipewire* pipewire, uint32_t globalId);

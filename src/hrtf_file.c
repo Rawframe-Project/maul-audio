@@ -100,7 +100,7 @@ static size_t CharacterLength(const uint8_t* text, size_t available)
     return valid ? extra + 1 : 0;
 }
 
-static bool IsUtf8(const uint8_t* text, size_t count)
+MAUD_NODISCARD static bool IsUtf8(const uint8_t* text, size_t count)
 {
     size_t i = 0;
     while (i < count)
@@ -116,7 +116,8 @@ static bool IsUtf8(const uint8_t* text, size_t count)
 }
 
 // The header's counts, each within the format's bounds.
-static bool CountsValid(const maudHrtfFile* file, uint32_t nameBytes, uint32_t licenseBytes)
+MAUD_NODISCARD static bool CountsValid(const maudHrtfFile* file, uint32_t nameBytes,
+                                       uint32_t licenseBytes)
 {
     return file->sampleRate >= MIN_RATE && file->sampleRate <= MAX_RATE && file->taps >= MIN_TAPS &&
            file->taps <= MAX_TAPS && file->ringCount >= 1 && file->ringCount <= MAX_RINGS &&
@@ -127,7 +128,7 @@ static bool CountsValid(const maudHrtfFile* file, uint32_t nameBytes, uint32_t l
 
 // Elevations rising strictly within [-90, 90], every ring with an
 // azimuth, the counts adding up to the header's.
-static bool RingsValid(const maudHrtfFile* file)
+MAUD_NODISCARD static bool RingsValid(const maudHrtfFile* file)
 {
     uint64_t directions = 0;
     float previous = -INFINITY;

@@ -11,7 +11,7 @@
 #include "maul-audio/spatializer.h"
 
 // Whether a pose is finite with a nonzero orientation.
-bool maudPoseValid(const maudPose* pose);
+MAUD_NODISCARD bool maudPoseValid(const maudPose* pose);
 
 // v turned by the inverse of the rotation q (q of any nonzero length).
 maudVector3 maudUnrotate(maudQuaternion q, maudVector3 v);

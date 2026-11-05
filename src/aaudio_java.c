@@ -42,7 +42,7 @@ static void Leave(JavaVM* vm, bool attached)
 }
 
 // Whether a Java exception is pending; clears it.
-static bool Thrown(JNIEnv* env)
+MAUD_NODISCARD static bool Thrown(JNIEnv* env)
 {
     if (!(*env)->ExceptionCheck(env))
     {
@@ -108,7 +108,7 @@ static jclass LoadDevices(JNIEnv* env, jobject context)
 }
 
 // Finds the class's methods and makes the object; false when any fails.
-static bool Make(maudAaudio* aaudio, JNIEnv* env, jobject context)
+MAUD_NODISCARD static bool Make(maudAaudio* aaudio, JNIEnv* env, jobject context)
 {
     jclass type = LoadDevices(env, context);
     if (type == nullptr)
@@ -183,7 +183,8 @@ void maudAaudioCloseJava(maudAaudio* aaudio)
     if (java->devices != nullptr)
     {
         (*env)->CallVoidMethod(env, java->devices, java->close);
-        Thrown(env);
+        // Closing goes on whatever close threw; the clear keeps JNI usable.
+        (void)Thrown(env);
         (*env)->DeleteGlobalRef(env, java->devices);
     }
     if (java->context != nullptr)
@@ -200,7 +201,7 @@ void maudAaudioCloseJava(maudAaudio* aaudio)
 // character past U+FFFF as two encoded surrogates, so the string is read
 // as UTF-16 instead: as many units as out has bytes, which encode to at
 // least as many bytes. False when Java threw.
-static bool ReadText(JNIEnv* env, jstring text, char* out, size_t capacity)
+MAUD_NODISCARD static bool ReadText(JNIEnv* env, jstring text, char* out, size_t capacity)
 {
     jchar units[MAUD_AAUDIO_NAME_BYTES > MAUD_AAUDIO_KEY_BYTES ? MAUD_AAUDIO_NAME_BYTES
                                                                : MAUD_AAUDIO_KEY_BYTES];
@@ -222,7 +223,7 @@ static bool ReadText(JNIEnv* env, jstring text, char* out, size_t capacity)
 // Reads a Java string, NULL as empty, into out, at most
 // MAUD_AAUDIO_KEY_BYTES, as UTF-8 for a key, whole and unchanged: false
 // when Java threw or it does not fit, a unit taking at least a byte.
-static bool ReadKey(JNIEnv* env, jstring text, char* out, size_t capacity)
+MAUD_NODISCARD static bool ReadKey(JNIEnv* env, jstring text, char* out, size_t capacity)
 {
     jchar units[MAUD_AAUDIO_KEY_BYTES];
     jsize length = text != nullptr ? (*env)->GetStringLength(env, text) : 0;
@@ -258,7 +259,8 @@ static void Walk(maudAaudio* aaudio, JNIEnv* env, jobjectArray pair, maudDirecti
     jint* values = (*env)->GetIntArrayElements(env, numbers, nullptr);
     if (values == nullptr)
     {
-        Thrown(env);
+        // The walk ends either way; the clear drops the OutOfMemoryError.
+        (void)Thrown(env);
         return;
     }
     for (jsize i = 0; i < count; ++i)
@@ -336,7 +338,8 @@ void maudAaudioAskToRecord(maudAaudio* aaudio)
         return;
     }
     (*env)->CallVoidMethod(env, java->devices, java->askToRecord);
-    Thrown(env);
+    // The request has no answer to give; the clear keeps JNI usable.
+    (void)Thrown(env);
     Leave(java->vm, attached);
 }
 

@@ -61,7 +61,8 @@ static AudioObjectType StaticObjectOf(maudSpeaker speaker)
 
 // The static object of each of the layout's channels, a mono layout's
 // at the front centre; false when one has none.
-static bool BedOf(maudChannelLayout layout, AudioObjectType* types, uint32_t channels)
+MAUD_NODISCARD static bool BedOf(maudChannelLayout layout, AudioObjectType* types,
+                                 uint32_t channels)
 {
     for (uint32_t c = 0; c < channels; ++c)
     {
@@ -77,7 +78,8 @@ static bool BedOf(maudChannelLayout layout, AudioObjectType* types, uint32_t cha
 
 // The first object format the client supports: its rate is the stream's
 // or the stream cannot run here.
-static bool FormatFits(ISpatialAudioClient* client, uint32_t rate, WAVEFORMATEX* formatOut)
+MAUD_NODISCARD static bool FormatFits(ISpatialAudioClient* client, uint32_t rate,
+                                      WAVEFORMATEX* formatOut)
 {
     IAudioFormatEnumerator* formats = nullptr;
     WAVEFORMATEX* format = nullptr;
@@ -100,8 +102,8 @@ static bool FormatFits(ISpatialAudioClient* client, uint32_t rate, WAVEFORMATEX*
 
 // The block: the bed's objects, the held objects, the records, then the
 // frames, a pass's worth of the bed and of each object.
-static bool Allocate(maudContext* context, maudWasapiObjects* objects, uint32_t channels,
-                     uint32_t count)
+MAUD_NODISCARD static bool Allocate(maudContext* context, maudWasapiObjects* objects,
+                                    uint32_t channels, uint32_t count)
 {
     size_t pointers = (size_t)(channels + count) * sizeof(ISpatialAudioObject*);
     size_t records = (size_t)count * sizeof(maudStreamObject);
@@ -248,7 +250,8 @@ void maudWasapiCloseObjects(maudContext* context, maudWasapiObjects* objects)
 
 // Copies frames into an object's buffer for the pass; false when it has
 // none, as when its stream ended.
-static bool Write(ISpatialAudioObject* object, const float* frames, size_t stride, UINT32 count)
+MAUD_NODISCARD static bool Write(ISpatialAudioObject* object, const float* frames, size_t stride,
+                                 UINT32 count)
 {
     BYTE* buffer = nullptr;
     UINT32 bytes = 0;

@@ -41,8 +41,9 @@ uint32_t maudBvhCapacity(uint32_t count);
 uint32_t maudBuildBvh(maudTriangle* triangles, uint32_t count, maudBvhNode* nodes);
 
 // Whether a ray hits anything within [tMin, tMax].
-bool maudBvhAnyHit(const maudBvhNode* nodes, const maudTriangle* triangles, const float* origin,
-                   const float* direction, float tMin, float tMax);
+MAUD_NODISCARD bool maudBvhAnyHit(const maudBvhNode* nodes, const maudTriangle* triangles,
+                                  const float* origin, const float* direction, float tMin,
+                                  float tMax);
 
 // The nearest hit within [tMin, tMax], ties to the lower index; NULL if
 // none, else the triangle, its distance in *t.
@@ -57,8 +58,8 @@ typedef bool maudBvhVisitFn(const maudTriangle* entry, float* limit, void* conte
 // Visits the leaf entries whose boxes a ray enters within [tMin,
 // *limit], the nearer box first, boxes entered past *limit (as visits
 // lower it) skipped; returns whether a visit stopped it.
-bool maudBvhVisit(const maudBvhNode* nodes, const maudTriangle* entries, const float* origin,
-                  const float* direction, float tMin, float* limit, maudBvhVisitFn* visit,
-                  void* context);
+MAUD_NODISCARD bool maudBvhVisit(const maudBvhNode* nodes, const maudTriangle* entries,
+                                 const float* origin, const float* direction, float tMin,
+                                 float* limit, maudBvhVisitFn* visit, void* context);
 
 #endif // MAUL_AUDIO_SRC_BVH_H

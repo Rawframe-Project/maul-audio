@@ -59,12 +59,12 @@ struct maudGainControl
     float release;
 };
 
-static bool Within(float value, float low, float high)
+MAUD_NODISCARD static bool Within(float value, float low, float high)
 {
     return value >= low && value <= high;
 }
 
-static bool DefValid(const maudGainControlDef* def)
+MAUD_NODISCARD static bool DefValid(const maudGainControlDef* def)
 {
     return def->cookie == MAUD_GAIN_CONTROL_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && maudGetLayoutChannelCount(def->layout) != 0 &&

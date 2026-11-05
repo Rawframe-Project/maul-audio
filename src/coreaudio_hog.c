@@ -9,7 +9,7 @@
 
 #include <unistd.h>
 
-static bool Owner(AudioObjectID object, pid_t* ownerOut)
+MAUD_NODISCARD static bool Owner(AudioObjectID object, pid_t* ownerOut)
 {
     AudioObjectPropertyAddress address =
         maudCoreAudioAddress(kAudioDevicePropertyHogMode, kAudioObjectPropertyScopeGlobal);
@@ -17,7 +17,7 @@ static bool Owner(AudioObjectID object, pid_t* ownerOut)
     return AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, ownerOut) == noErr;
 }
 
-static bool Toggle(AudioObjectID object)
+MAUD_NODISCARD static bool Toggle(AudioObjectID object)
 {
     AudioObjectPropertyAddress address =
         maudCoreAudioAddress(kAudioDevicePropertyHogMode, kAudioObjectPropertyScopeGlobal);

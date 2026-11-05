@@ -48,7 +48,7 @@ static maudResult CheckOffline(maudContext* context)
     return maud_success;
 }
 
-static bool DefValid(const maudOfflineDeviceDef* def)
+MAUD_NODISCARD static bool DefValid(const maudOfflineDeviceDef* def)
 {
     return def->cookie == OFFLINE_DEVICE_DEF_COOKIE &&
            (uint32_t)def->direction <= maud_directionInput &&

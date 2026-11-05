@@ -18,16 +18,16 @@ void* maudContextAllocate(maudContext* context, size_t size, size_t alignment);
 void maudContextRelease(maudContext* context, void* memory, size_t size, size_t alignment);
 
 // Whether the calling thread is rendering one of the context's streams.
-bool maudIsRenderingThread(const maudContext* context);
+MAUD_NODISCARD bool maudIsRenderingThread(const maudContext* context);
 
 // Whether the calling thread is running the host's allocator for the
 // context.
-bool maudIsAllocatingThread(const maudContext* context);
+MAUD_NODISCARD bool maudIsAllocatingThread(const maudContext* context);
 
 // Whether a control call must be refused: the calling thread is
 // rendering one of the context's streams or running its allocator. A
 // refusal counts one misuse.
-bool maudRefuseControl(maudContext* context);
+MAUD_NODISCARD bool maudRefuseControl(maudContext* context);
 
 // Counts one misuse against the context.
 void maudCountMisuse(maudContext* context);

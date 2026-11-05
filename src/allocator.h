@@ -14,7 +14,7 @@
 #include <stdbool.h>
 
 // Whether an allocator is usable: both functions set, or neither.
-bool maudIsAllocatorValid(const maudAllocator* allocator);
+MAUD_NODISCARD bool maudIsAllocatorValid(const maudAllocator* allocator);
 
 // size bytes aligned to alignment, a power of two, or NULL.
 void* maudAllocate(const maudAllocator* allocator, size_t size, size_t alignment);

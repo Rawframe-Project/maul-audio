@@ -35,8 +35,8 @@ typedef struct maudProbeBake
 
 // Allocates a bake for count probes; false when memory runs out or the
 // sizes overflow (nothing to release then).
-bool maudCreateProbeBake(const maudAllocator* allocator, uint32_t count, uint32_t fieldFloats,
-                         maudProbeBake* bake);
+MAUD_NODISCARD bool maudCreateProbeBake(const maudAllocator* allocator, uint32_t count,
+                                        uint32_t fieldFloats, maudProbeBake* bake);
 void maudReleaseProbeBake(const maudAllocator* allocator, maudProbeBake* bake);
 
 // The bake's values at a point, as a reverberation estimate's: times,
@@ -45,8 +45,8 @@ void maudReleaseProbeBake(const maudAllocator* allocator, maudProbeBake* bake);
 // levels in dB; a probe without a tail weighs in at -96 dB, and the
 // tail's time is blended over the probes with one. False when no probe
 // is in sight (nothing written).
-bool maudInterpolateBake(const maudProbeGraph* graph, const maudProbeBake* bake,
-                         maudAnyHitFunction* anyHit, void* context, maudVector3 point,
-                         maudReverbResult* result, float* field);
+MAUD_NODISCARD bool maudInterpolateBake(const maudProbeGraph* graph, const maudProbeBake* bake,
+                                        maudAnyHitFunction* anyHit, void* context,
+                                        maudVector3 point, maudReverbResult* result, float* field);
 
 #endif // MAUL_AUDIO_SRC_PROBE_BAKE_H

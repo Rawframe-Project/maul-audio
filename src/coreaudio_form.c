@@ -85,7 +85,8 @@ static AudioObjectPropertyAddress SourceOf(const maudCoreAudioWatch* watch)
 }
 
 // Whether the scan's count endpoints include the watched one.
-static bool Scanned(const maudCoreAudio* coreaudio, uint32_t count, const maudCoreAudioWatch* watch)
+MAUD_NODISCARD static bool Scanned(const maudCoreAudio* coreaudio, uint32_t count,
+                                   const maudCoreAudioWatch* watch)
 {
     for (uint32_t i = 0; i < count; ++i)
     {

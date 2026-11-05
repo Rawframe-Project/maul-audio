@@ -18,8 +18,8 @@ maudRay maudPathRay(const maudPose* listener, const maudPose* source, float minD
 // transmission by the material's (a material outside the table blocks
 // fully) and gives the next minimum distance. False when the hit is a
 // miss, which ends the walk.
-bool maudCrossSurface(const maudRayHit* hit, const maudRay* ray,
-                      const maudAcousticMaterial* materials, uint32_t materialCount,
-                      float* transmission, float* nextMin);
+MAUD_NODISCARD bool maudCrossSurface(const maudRayHit* hit, const maudRay* ray,
+                                     const maudAcousticMaterial* materials, uint32_t materialCount,
+                                     float* transmission, float* nextMin);
 
 #endif // MAUL_AUDIO_SRC_TRANSMISSION_H

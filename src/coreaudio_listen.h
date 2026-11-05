@@ -18,7 +18,7 @@ void maudCoreAudioListen(maudCoreAudio* coreaudio);
 // listeners, removes the system object's and the data sources' and adds
 // the system object's again (the next rescan adds the data sources');
 // false, doing nothing, when no restart was seen since the last call.
-bool maudCoreAudioRelisten(maudCoreAudio* coreaudio);
+MAUD_NODISCARD bool maudCoreAudioRelisten(maudCoreAudio* coreaudio);
 
 // Removes every listener and waits out a change block in flight.
 void maudCoreAudioStopListening(maudCoreAudio* coreaudio);

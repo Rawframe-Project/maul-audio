@@ -87,7 +87,8 @@ static float Distance(maudVector3 a, maudVector3 b)
 
 // Whether every link of a found path is clear; blocked ones are added
 // to the search's list.
-static bool Clear(maudPathing* p, const maudProbeGraph* g, const uint32_t* probes, uint32_t links)
+MAUD_NODISCARD static bool Clear(maudPathing* p, const maudProbeGraph* g, const uint32_t* probes,
+                                 uint32_t links)
 {
     maudRay rays[MAUD_PATH_VERTICES];
     uint8_t occluded[MAUD_PATH_VERTICES] = {0};

@@ -14,7 +14,7 @@
 
 #define MAX_RATE 384000u
 
-static bool DefValid(const maudHrtfDef* def)
+MAUD_NODISCARD static bool DefValid(const maudHrtfDef* def)
 {
     return def->cookie == MAUD_HRTF_DEF_COOKIE && def->bytes != nullptr &&
            (def->sampleRate == 0 || (def->sampleRate >= 8000 && def->sampleRate <= MAX_RATE)) &&

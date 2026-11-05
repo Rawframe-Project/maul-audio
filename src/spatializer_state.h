@@ -122,7 +122,7 @@ maudResult maudSpatializerInvalid(maudSpatializer* s);
 // Whether a call that changes the spatializer must be refused because
 // host code the spatializer is running made it; a refusal counts one
 // misuse.
-bool maudSpatializerBusy(maudSpatializer* s);
+MAUD_NODISCARD bool maudSpatializerBusy(maudSpatializer* s);
 
 // Marks host code as running from the spatializer, or as returned.
 void maudSpatializerRunHost(maudSpatializer* s, bool running);
@@ -138,7 +138,7 @@ uint32_t maudTraceFrom(maudSpatializer* s, maudVector3 position, maudReverbResul
 // An estimate from the baked set in use at a position, into the
 // spatializer's reverberation result and, with reflections, published;
 // false without a set in use or a probe in sight.
-bool maudBakedReverb(maudSpatializer* s, maudVector3 position);
+MAUD_NODISCARD bool maudBakedReverb(maudSpatializer* s, maudVector3 position);
 
 // A direct step's pathing: paths for the occluded sources that ask, up
 // to maxPaths in slot order, over the set in use.

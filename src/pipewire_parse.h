@@ -23,8 +23,8 @@ uint32_t maudPipewireChoiceDefault(const struct spa_pod* value);
 
 // Whether a node's properties put it on a card's profile device, and
 // which: both the card's id and the profile device must read whole.
-bool maudPipewireNodeCard(const struct spa_dict* props, uint32_t* cardIdOut,
-                          int32_t* profileDeviceOut);
+MAUD_NODISCARD bool maudPipewireNodeCard(const struct spa_dict* props, uint32_t* cardIdOut,
+                                         int32_t* profileDeviceOut);
 
 // Reads the node name out of a default metadata value, {"name": "..."},
 // into name, of nameBytes; empty when there is none or it does not fit.

@@ -8,6 +8,8 @@
 #ifndef MAUL_AUDIO_SRC_ALSA_API_H
 #define MAUL_AUDIO_SRC_ALSA_API_H
 
+#include "maul-audio/base.h"
+
 #include <alsa/asoundlib.h>
 #include <stdbool.h>
 
@@ -80,7 +82,7 @@ typedef struct maudAlsaApi
 
 // Opens libasound and fills the table. False, with the table zeroed,
 // when the library or a function is missing.
-bool maudLoadAlsa(maudAlsaApi* api);
+MAUD_NODISCARD bool maudLoadAlsa(maudAlsaApi* api);
 
 // Closes what maudLoadAlsa opened.
 void maudUnloadAlsa(maudAlsaApi* api);

@@ -24,7 +24,7 @@ void maudIosSetStreamActive(maudContext* context, maudStreamSlot* slot, bool act
 // Sets the session for the streams there are and those that run, and
 // keeps it active while making a unit (preparing), as iOS initializes an
 // input unit only in an active session; false when it refuses.
-bool maudIosUpdateSession(maudContext* context, bool preparing);
+MAUD_NODISCARD bool maudIosUpdateSession(maudContext* context, bool preparing);
 
 // Makes every stream's unit again, after the media services were reset
 // and took the units with them; a started stream whose unit cannot be

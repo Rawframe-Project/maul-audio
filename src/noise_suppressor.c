@@ -171,7 +171,7 @@ static Biquad HighPass(double hz, double rate)
                     (1.0 - alpha) / a0};
 }
 
-static bool DefValid(const maudNoiseSuppressorDef* def)
+MAUD_NODISCARD static bool DefValid(const maudNoiseSuppressorDef* def)
 {
     return def->cookie == MAUD_NOISE_SUPPRESSOR_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && def->sampleRate % 100 == 0 &&

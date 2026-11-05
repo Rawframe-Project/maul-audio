@@ -537,7 +537,7 @@ static maudResult Open(maudContext* context, maudStreamSlot* slot)
 
 // Whether the stream has a client, or an object stream its spatial
 // render stream.
-static bool Connected(const maudWasapiStream* entry)
+MAUD_NODISCARD static bool Connected(const maudWasapiStream* entry)
 {
     return entry->client != nullptr || entry->objects.stream != nullptr;
 }
@@ -579,7 +579,7 @@ static void Stop(maudWasapiStream* entry)
     entry->written = 0;
 }
 
-static bool Running(const maudStreamSlot* slot)
+MAUD_NODISCARD static bool Running(const maudStreamSlot* slot)
 {
     return atomic_load_explicit(&slot->core.state, memory_order_acquire) == maud_streamRunning;
 }
@@ -631,7 +631,7 @@ void maudWasapiSetStreamActive(maudContext* context, maudStreamSlot* slot, bool 
 
 // A started stream whose thread ended on a failure, or that has no
 // client, once its retry is due (retry.h).
-static bool ToResume(maudContext* context, maudStreamSlot* slot, int64_t now)
+MAUD_NODISCARD static bool ToResume(maudContext* context, maudStreamSlot* slot, int64_t now)
 {
     const maudWasapiStream* entry = EntryOf(context, slot);
     bool ended = entry->threadRunning && atomic_load_explicit(&entry->failed, memory_order_acquire);

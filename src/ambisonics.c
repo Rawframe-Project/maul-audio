@@ -20,7 +20,7 @@ uint32_t maudGetAmbisonicChannelCount(uint32_t order)
     return order >= 1 && order <= MAUD_MAX_AMBISONIC_ORDER ? (order + 1) * (order + 1) : 0;
 }
 
-static bool Finite(maudVector3 v)
+MAUD_NODISCARD static bool Finite(maudVector3 v)
 {
     return isfinite(v.x) && isfinite(v.y) && isfinite(v.z);
 }
@@ -43,7 +43,7 @@ maudResult maudGetAmbisonicGains(uint32_t order, maudVector3 direction, float* g
     return maud_success;
 }
 
-static bool BedValid(float* const* bed, uint32_t channels)
+MAUD_NODISCARD static bool BedValid(float* const* bed, uint32_t channels)
 {
     if (bed == nullptr)
     {
@@ -59,7 +59,7 @@ static bool BedValid(float* const* bed, uint32_t channels)
     return true;
 }
 
-static bool SourceValid(const maudPanSource* source)
+MAUD_NODISCARD static bool SourceValid(const maudPanSource* source)
 {
     return source != nullptr && Finite(source->direction) && isfinite(source->gain);
 }
@@ -114,7 +114,7 @@ maudResult maudEncodeAmbisonic(uint32_t order, const maudPanSource* from, const 
 
 // A unit quaternion in the listener's frame as a rotation matrix in the
 // field's axes, P R P^T with field = P listener.
-static bool FieldRotation(const maudQuaternion* q, double rotation[3][3])
+MAUD_NODISCARD static bool FieldRotation(const maudQuaternion* q, double rotation[3][3])
 {
     if (q == nullptr || !isfinite(q->x) || !isfinite(q->y) || !isfinite(q->z) || !isfinite(q->w))
     {

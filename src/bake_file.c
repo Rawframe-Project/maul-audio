@@ -137,7 +137,7 @@ static void PartBytes(const Header* h, uint64_t bytes[PART_COUNT])
 
 // Whether the file has a part: the head, probes, rows and neighbours
 // always, the layers as it has them.
-static bool HasPart(const Header* h, int part)
+MAUD_NODISCARD static bool HasPart(const Header* h, int part)
 {
     return part == PART_REVERB   ? (h->layers & LAYER_REVERB) != 0
            : part == PART_LAYOUT ? (h->layers & LAYER_FIELDS) != 0
@@ -301,7 +301,7 @@ static uint32_t Neighbour(const uint8_t* data, const Layout* l, uint32_t e)
 }
 
 // Whether probe j's row lists i: a bisection, the row rising.
-static bool Lists(const uint8_t* data, const Layout* l, uint32_t j, uint32_t i)
+MAUD_NODISCARD static bool Lists(const uint8_t* data, const Layout* l, uint32_t j, uint32_t i)
 {
     uint32_t low = Row(data, l, j);
     uint32_t high = Row(data, l, j + 1);
@@ -385,7 +385,7 @@ static maudResult HeaderValid(const uint8_t* data, size_t size, Header* h, Layou
     return maud_success;
 }
 
-static bool LinksValid(const uint8_t* data, const Header* h, const Layout* l)
+MAUD_NODISCARD static bool LinksValid(const uint8_t* data, const Header* h, const Layout* l)
 {
     if (Row(data, l, 0) != 0 || Row(data, l, h->probes) != 2 * (uint64_t)h->links)
     {
@@ -417,7 +417,7 @@ static bool LinksValid(const uint8_t* data, const Header* h, const Layout* l)
     return true;
 }
 
-static bool ValuesValid(const uint8_t* data, const Header* h, const Layout* l)
+MAUD_NODISCARD static bool ValuesValid(const uint8_t* data, const Header* h, const Layout* l)
 {
     uint64_t values = (h->layers & LAYER_REVERB) ? (uint64_t)h->probes * MAUD_BANDS : 0;
     for (uint64_t i = 0; i < values; ++i)

@@ -9,6 +9,8 @@
 #ifndef MAUL_AUDIO_SRC_WORKER_H
 #define MAUL_AUDIO_SRC_WORKER_H
 
+#include "maul-audio/base.h"
+
 #include <stdbool.h>
 
 #if !defined(_WIN32)
@@ -33,7 +35,8 @@ typedef struct maudWorker
 // Starts run(user) on a new thread named name (at most 15 bytes, ASCII,
 // a string that outlives the thread), named before this returns and
 // before it runs anything. False when no thread could start.
-bool maudStartWorker(maudWorker* worker, void (*run)(void* user), void* user, const char* name);
+MAUD_NODISCARD bool maudStartWorker(maudWorker* worker, void (*run)(void* user), void* user,
+                                    const char* name);
 
 // Waits for the worker's run to return. Nothing when it is not running.
 void maudJoinWorker(maudWorker* worker);

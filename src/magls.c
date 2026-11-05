@@ -122,7 +122,7 @@ static void Directions(const maudHrtf* hrtf, Work* work)
 
 // The weighted pseudo-inverse of the harmonics; false if the set's
 // directions cannot carry the order.
-static bool Solve(Work* work)
+MAUD_NODISCARD static bool Solve(Work* work)
 {
     return maudWeightedPseudoInverse(work->harmonics, work->weights, work->directions,
                                      work->channels, work->solve);

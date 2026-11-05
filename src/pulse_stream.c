@@ -168,8 +168,8 @@ static int StreamProgress(const maudPulseStream* entry)
 
 // Runs the stream's loop on the calling thread until progress settles
 // or the deadline passes.
-static bool WaitFor(maudPulseStream* entry, int (*progress)(const maudPulseStream*),
-                    int64_t deadline)
+MAUD_NODISCARD static bool WaitFor(maudPulseStream* entry, int (*progress)(const maudPulseStream*),
+                                   int64_t deadline)
 {
     const maudPulseApi* api = entry->api;
     for (int settled = progress(entry); settled == 0; settled = progress(entry))
@@ -231,7 +231,8 @@ static void DescribeFormat(const maudStreamCore* core, pa_sample_spec* spec, pa_
 // moves it with. A loopback stream records the monitor of the sink it
 // is on now, which the server names after the sink, and the library
 // moves it. A period of latency at the server, two queued.
-static bool ConnectStream(maudContext* context, maudPulseStream* entry, int64_t deadline)
+MAUD_NODISCARD static bool ConnectStream(maudContext* context, maudPulseStream* entry,
+                                         int64_t deadline)
 {
     const maudPulseApi* api = entry->api;
     maudStreamCore* core = entry->core;
@@ -382,7 +383,7 @@ static void StopThread(maudPulseStream* entry)
 }
 
 // Whether the stream's connection is up and its pa_stream ready.
-static bool Healthy(const maudPulseStream* entry)
+MAUD_NODISCARD static bool Healthy(const maudPulseStream* entry)
 {
     return entry->used && ContextProgress(entry) == 1 && StreamProgress(entry) == 1;
 }

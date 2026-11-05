@@ -66,8 +66,8 @@ struct maudScene
 // Copies count meshes' triangles that have an area, numbered across all
 // of them, and builds their hierarchy; false when memory runs out
 // (nothing to release).
-bool maudBuildSceneMesh(const maudAllocator* allocator, const maudMesh* meshes, uint32_t count,
-                        maudSceneMesh* out);
+MAUD_NODISCARD bool maudBuildSceneMesh(const maudAllocator* allocator, const maudMesh* meshes,
+                                       uint32_t count, maudSceneMesh* out);
 void maudReleaseSceneMesh(const maudAllocator* allocator, maudSceneMesh* mesh);
 
 // A triangle's unit geometric normal as wound; 0 for a degenerate one.
@@ -75,12 +75,12 @@ maudVector3 maudTriangleNormal(const maudTriangle* t);
 
 // The instances' slots and top level, for the def's capacity; false
 // when memory runs out (maudReleaseInstances frees what was made).
-bool maudAllocateInstances(maudScene* scene, uint32_t capacity);
+MAUD_NODISCARD bool maudAllocateInstances(maudScene* scene, uint32_t capacity);
 void maudReleaseInstances(maudScene* scene);
 
 // Whether a ray hits a committed instance within [tMin, tMax].
-bool maudInstancesAnyHit(const maudScene* scene, const float* origin, const float* direction,
-                         float tMin, float tMax);
+MAUD_NODISCARD bool maudInstancesAnyHit(const maudScene* scene, const float* origin,
+                                        const float* direction, float tMin, float tMax);
 
 // A committed instance's hit nearer than *best, or at it when the
 // static scene has none there (found false) and the instance's slot is

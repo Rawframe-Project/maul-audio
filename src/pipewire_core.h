@@ -174,6 +174,6 @@ int64_t maudPipewireNow(void);
 // Waits on the calling thread until PipeWire has answered everything
 // asked so far, or the deadline passes. False on the deadline or a
 // lost connection.
-bool maudPipewireRoundtrip(maudPipewire* pipewire, int64_t deadline);
+MAUD_NODISCARD bool maudPipewireRoundtrip(maudPipewire* pipewire, int64_t deadline);
 
 #endif // MAUL_AUDIO_SRC_PIPEWIRE_CORE_H

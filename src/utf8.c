@@ -32,7 +32,7 @@ size_t maudCopyUtf8(char* out, size_t capacity, const char* text)
 
 // Writes code point as UTF-8 at out + length when it fits before the
 // NUL's byte; false when it does not.
-static bool Put(char* out, size_t capacity, size_t* length, uint32_t code)
+MAUD_NODISCARD static bool Put(char* out, size_t capacity, size_t* length, uint32_t code)
 {
     unsigned char bytes[4];
     size_t size = 0;
@@ -67,12 +67,12 @@ static bool Put(char* out, size_t capacity, size_t* length, uint32_t code)
     return true;
 }
 
-static bool IsHigh(uint16_t unit)
+MAUD_NODISCARD static bool IsHigh(uint16_t unit)
 {
     return unit >= 0xD800u && unit < 0xDC00u;
 }
 
-static bool IsLow(uint16_t unit)
+MAUD_NODISCARD static bool IsLow(uint16_t unit)
 {
     return unit >= 0xDC00u && unit < 0xE000u;
 }

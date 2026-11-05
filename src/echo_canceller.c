@@ -71,7 +71,7 @@ struct maudEchoCanceller
     uint64_t frames;
 };
 
-static bool DefValid(const maudEchoCancellerDef* def)
+MAUD_NODISCARD static bool DefValid(const maudEchoCancellerDef* def)
 {
     return def->cookie == MAUD_ECHO_CANCELLER_DEF_COOKIE && def->sampleRate >= MIN_RATE &&
            def->sampleRate <= MAX_RATE && def->tailTime >= MIN_TAIL && def->tailTime <= MAX_TAIL &&

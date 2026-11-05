@@ -117,7 +117,7 @@ void maudAttachPath(const maudProbeGraph* graph, float range, maudVector3 point,
     }
 }
 
-static bool Less(const maudPathSearch* s, uint32_t a, uint32_t b)
+MAUD_NODISCARD static bool Less(const maudPathSearch* s, uint32_t a, uint32_t b)
 {
     return s->cost[a] < s->cost[b] || (s->cost[a] == s->cost[b] && a < b);
 }
@@ -197,7 +197,7 @@ static uint32_t Pop(maudPathSearch* s, uint32_t* size)
     return probe;
 }
 
-static bool Blocked(const maudPathSearch* s, uint32_t a, uint32_t b)
+MAUD_NODISCARD static bool Blocked(const maudPathSearch* s, uint32_t a, uint32_t b)
 {
     uint32_t low = a < b ? a : b;
     uint32_t high = a < b ? b : a;

@@ -38,7 +38,7 @@ struct maudBinauralDecoder
     float* history;
 };
 
-static bool DefValid(const maudBinauralDecoderDef* def)
+MAUD_NODISCARD static bool DefValid(const maudBinauralDecoderDef* def)
 {
     return def->cookie == DEF_COOKIE && def->hrtf != nullptr && def->order >= 1 &&
            def->order <= MAUD_MAX_AMBISONIC_ORDER && def->maxFrames >= 1 &&
@@ -136,8 +136,8 @@ maudResult maudBinauralDecoder_Reset(maudBinauralDecoder* decoder)
     return maud_success;
 }
 
-static bool ChannelsValid(const maudBinauralDecoder* decoder, const float* const* bed,
-                          float* const out[2])
+MAUD_NODISCARD static bool ChannelsValid(const maudBinauralDecoder* decoder,
+                                         const float* const* bed, float* const out[2])
 {
     if (bed == nullptr || out == nullptr || out[0] == nullptr || out[1] == nullptr)
     {

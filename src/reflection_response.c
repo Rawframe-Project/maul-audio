@@ -92,8 +92,8 @@ static void Weights(const double* centres, double logHz, double* w)
 
 // Fills the three basis spectra of a bin: shared noise times W's
 // magnitude times each band's weight; false if the bin is silent.
-static bool Spectra(const double* energy, uint32_t bin, uint32_t hop, uint32_t n, double rate,
-                    double* frames)
+MAUD_NODISCARD static bool Spectra(const double* energy, uint32_t bin, uint32_t hop, uint32_t n,
+                                   double rate, double* frames)
 {
     if (!(energy[0] > QUIET || energy[1] > QUIET || energy[2] > QUIET))
     {

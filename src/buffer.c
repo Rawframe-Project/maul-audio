@@ -11,8 +11,8 @@
 
 // Checks the arguments shared by both directions: a channel count, and
 // arrays wherever samples are due, with a total that fits in memory.
-static bool ArgumentsValid(bool havePlanar, uint32_t channelCount, uint32_t frameCount,
-                           bool haveInterleaved)
+MAUD_NODISCARD static bool ArgumentsValid(bool havePlanar, uint32_t channelCount,
+                                          uint32_t frameCount, bool haveInterleaved)
 {
     if (channelCount == 0)
     {
@@ -31,7 +31,7 @@ static bool ArgumentsValid(bool havePlanar, uint32_t channelCount, uint32_t fram
     return havePlanar && haveInterleaved;
 }
 
-static bool ChannelsPresent(const float* const* channels, uint32_t channelCount)
+MAUD_NODISCARD static bool ChannelsPresent(const float* const* channels, uint32_t channelCount)
 {
     for (uint32_t c = 0; c < channelCount; ++c)
     {

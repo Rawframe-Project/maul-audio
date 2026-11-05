@@ -81,7 +81,7 @@ struct maudBinaural
     bool primed;
 };
 
-static bool DefValid(const maudBinauralDef* def)
+MAUD_NODISCARD static bool DefValid(const maudBinauralDef* def)
 {
     return def->cookie == DEF_COOKIE && def->hrtf != nullptr && def->maxFrames >= 1 &&
            def->headRadius >= MIN_RADIUS && def->headRadius <= MAX_RADIUS &&
@@ -260,7 +260,7 @@ static maudVector3 Key(const maudBinaural* effect, maudVector3 position)
     return (maudVector3){unit.x * distance, unit.y * distance, unit.z * distance};
 }
 
-static bool Same(maudVector3 a, maudVector3 b)
+MAUD_NODISCARD static bool Same(maudVector3 a, maudVector3 b)
 {
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
@@ -386,7 +386,7 @@ static void Render(maudBinaural* effect, const float* x, float* const out[2], ui
     }
 }
 
-static bool ParamsValid(const maudBinauralParams* params)
+MAUD_NODISCARD static bool ParamsValid(const maudBinauralParams* params)
 {
     return isfinite(params->position.x) && isfinite(params->position.y) &&
            isfinite(params->position.z) && isfinite(params->gain);
