@@ -8,7 +8,9 @@
 // face the counterclockwise side, a triangle with one corner 1e17 m off
 // included, and a sliver whose edges cancel from every corner; a
 // triangle with no area is never hit, as a static triangle or in an
-// instance, yet keeps its number for ties and counts toward the limit; an instance of a mesh
+// instance, yet keeps its number for ties and counts toward the limit; a
+// ray with a direction component too small for a finite inverse gets the
+// same answer from any-hit and closest-hit; an instance of a mesh
 // with nothing left to hit is taken and misses; an empty scene misses;
 // plugged into a spatializer's hooks, a wall occludes and its two faces transmit; bad meshes are
 // refused; memory running out at any allocation is a capacity error with nothing left.
@@ -399,6 +401,36 @@ static void TestNoArea(void)
     maudDestroyScene(scene);
 }
 
+// A ray whose x direction is a denormal under 2^-128, so that its
+// inverse is infinite, from x = 0, the box's high x, toward a triangle it
+// meets 27.5 m past its end, within one rounding of it. The face at the
+// origin's x is at distance 0, not 0 times infinity, a NaN that would
+// drop the range's end: the leaf is entered within the range or not at
+// all, and any-hit agrees with closest-hit that the ray misses.
+static void TestTinyDirection(void)
+{
+    static const maudVector3 v[] = {{0.0f, 0x1.241b98p-49f, 0x1.c363ccp+127f},
+                                    {-0x1.0e31b4p-68f, -0x1.35c29p+0f, 0x1.3dc29p+3f},
+                                    {-0x1.b714b2p-114f, 0x1.fdf3b6p-77f, 0x1.4d50f6p-101f}};
+    static const uint32_t corners[] = {0, 1, 2};
+    static const uint32_t material[] = {0};
+    maudMesh mesh = {v, 3, corners, material, 1};
+    maudScene* scene = Build(&mesh, 1);
+    maudRay ray = {{0.0f, 0x1.7ae148p+0f, -0x1.8fb16ap+30f},
+                   {-0x1.36ca8p-132f, -0x1.e556cp-31f, 1.0f},
+                   0.0f,
+                   0x1.8fb16ap+30f};
+    maudRayHit h;
+    uint8_t occluded = 2;
+    maudFindClosestHit(&ray, 1, &h, scene);
+    maudFindAnyHit(&ray, 1, &occluded, scene);
+    printf("a denormal direction: closest-hit at %g, any-hit %u\n", (double)h.distance, occluded);
+    CHECK(occluded == (h.distance == INFINITY ? 0 : 1),
+          "a denormal direction: any-hit agrees with closest-hit");
+    CHECK(h.distance == INFINITY, "a denormal direction: the triangle past the ray's end missed");
+    maudDestroyScene(scene);
+}
+
 static void TestHooks(void)
 {
     static const maudVector3 v[] = {
@@ -534,6 +566,7 @@ int main(void)
     TestTiesAndNormals();
     TestFarCorner();
     TestNoArea();
+    TestTinyDirection();
     TestHooks();
     TestMisuse();
     TestNoMemory();

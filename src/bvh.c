@@ -25,7 +25,8 @@
 
 // Plain comparisons, which compile to single instructions where fminf
 // and fmaxf, keeping NaN's rules, become library calls. No NaN reaches
-// them: vertices are finite and parallel slabs are handled apart.
+// them: vertices are finite, parallel slabs are handled apart, and a face
+// at the origin's coordinate is at distance 0 (Enter).
 static float Min(float a, float b)
 {
     return a < b ? a : b;
@@ -291,8 +292,14 @@ static float Enter(const Ray* ray, const maudBvhNode* node, float tMin, float tM
             }
             continue;
         }
-        float t0 = (node->min[i] - ray->origin[i]) * ray->inverse[i];
-        float t1 = (node->max[i] - ray->origin[i]) * ray->inverse[i];
+        // A face at the origin's coordinate is at distance 0 whatever the
+        // direction. Under 2^-128 or so a component's inverse is infinite,
+        // and 0 times it a NaN, which would take the place of the range's
+        // end in Max and Min: past tMax, a box would be entered anyway.
+        float d0 = node->min[i] - ray->origin[i];
+        float d1 = node->max[i] - ray->origin[i];
+        float t0 = d0 == 0.0f ? 0.0f : d0 * ray->inverse[i];
+        float t1 = d1 == 0.0f ? 0.0f : d1 * ray->inverse[i];
         near = Max(near, Min(t0, t1));
         far = Min(far, Max(t0, t1) * EXIT_SCALE);
     }
@@ -341,10 +348,17 @@ bool maudBvhAnyHit(const maudBvhNode* nodes, const maudTriangle* triangles, cons
     }
     while (top > 0)
     {
-        const maudBvhNode* node = &nodes[stack[--top].node];
+        // A box entered past tMax holds no hit, by the rule closest-hit
+        // and the visit keep with their limits.
+        Pending pending = stack[--top];
+        if (pending.enter > tMax)
+        {
+            continue;
+        }
+        const maudBvhNode* node = &nodes[pending.node];
         if (node->count == 0)
         {
-            PushChildren(&ray, nodes, (uint32_t)(node - nodes), tMin, tMax, stack, &top);
+            PushChildren(&ray, nodes, pending.node, tMin, tMax, stack, &top);
             continue;
         }
         for (uint32_t i = 0; i < node->count; ++i)
