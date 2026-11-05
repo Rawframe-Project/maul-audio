@@ -281,6 +281,21 @@ static void Unpack(const maudRay* ray, float* origin, float* direction)
     direction[2] = ray->direction.z;
 }
 
+// Whether a ray can be answered at all: its origin and direction finite,
+// the direction not zero, its distances not NaN. Any other ray misses in
+// both queries alike, rather than as the tests' arithmetic falls: an
+// infinite direction component would meet a static triangle at distance
+// 0 and miss the same mesh as an instance, and a NaN distance would bound
+// nothing.
+MAUD_NODISCARD static bool Answerable(const maudRay* ray)
+{
+    maudVector3 o = ray->origin;
+    maudVector3 d = ray->direction;
+    return isfinite(o.x) && isfinite(o.y) && isfinite(o.z) && isfinite(d.x) && isfinite(d.y) &&
+           isfinite(d.z) && (d.x != 0.0f || d.y != 0.0f || d.z != 0.0f) &&
+           !isnan(ray->minDistance) && !isnan(ray->maxDistance);
+}
+
 static MAUD_NOINLINE void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded,
                                  void* scene)
 {
@@ -302,6 +317,11 @@ static MAUD_NOINLINE void AnyHit(const maudRay* rays, uint32_t count, uint8_t* o
         Unpack(&rays[i], origin, direction);
         float tMin = rays[i].minDistance;
         float tMax = rays[i].maxDistance;
+        if (!Answerable(&rays[i]))
+        {
+            occluded[i] = 0;
+            continue;
+        }
         occluded[i] =
             (s->statics.triangleCount > 0 && maudBvhAnyHit(s->statics.nodes, s->statics.triangles,
                                                            origin, direction, tMin, tMax)) ||
@@ -434,6 +454,10 @@ static MAUD_NOINLINE void ClosestHit(const maudRay* rays, uint32_t count, maudRa
     for (uint32_t i = 0; i < count; ++i)
     {
         hits[i] = (maudRayHit){INFINITY, {0.0f, 0.0f, 0.0f}, 0};
+        if (!Answerable(&rays[i]))
+        {
+            continue;
+        }
         float origin[3];
         float direction[3];
         Unpack(&rays[i], origin, direction);

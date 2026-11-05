@@ -154,7 +154,9 @@ extern "C"
 
     /// Answers any-hit queries against a scene (a maudAnyHitFunction): a ray
     /// hits when a triangle lies within [minDistance, maxDistance] along
-    /// it. A ray through an edge or vertex shared by triangles hits.
+    /// it. A ray through an edge or vertex shared by triangles hits. A
+    /// ray whose origin or direction is not finite, whose direction is
+    /// zero, or whose distance is NaN misses.
     ///
     /// @param rays         count rays.
     /// @param count        The rays.
@@ -171,7 +173,9 @@ extern "C"
     /// the nearest triangle within a ray's distances, equal distances
     /// going to the triangle listed first (meshes in order, then their
     /// triangles); its unit normal faces the side the triangle is wound
-    /// counterclockwise from. A miss has distance INFINITY.
+    /// counterclockwise from. A miss has distance INFINITY. A ray whose
+    /// origin or direction is not finite, whose direction is zero, or
+    /// whose distance is NaN misses.
     ///
     /// @param rays     count rays.
     /// @param count    The rays.

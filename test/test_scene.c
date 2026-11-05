@@ -8,7 +8,9 @@
 // face the counterclockwise side, a triangle with one corner 1e17 m off
 // included, and a sliver whose edges cancel from every corner; a
 // triangle with no area is never hit, as a static triangle or in an
-// instance, yet keeps its number for ties and counts toward the limit; an instance of a mesh
+// instance, yet keeps its number for ties and counts toward the limit; a
+// ray whose origin or direction is not finite, whose direction is zero or
+// whose distance is NaN misses; an instance of a mesh
 // with nothing left to hit is taken and misses; an empty scene misses;
 // plugged into a spatializer's hooks, a wall occludes and its two faces transmit; bad meshes are
 // refused; memory running out at any allocation is a capacity error with nothing left.
@@ -399,6 +401,76 @@ static void TestNoArea(void)
     maudDestroyScene(scene);
 }
 
+// A ray that cannot be answered misses in both queries, against a static
+// floor and the same floor as an instance: an origin or direction not
+// finite, a direction of zero, a NaN distance. An infinite maxDistance and
+// a negative minDistance are answered, and meet the floor.
+static void TestUnanswerable(void)
+{
+    static const maudVector3 v[] = {
+        {-10.0f, 0.0f, -10.0f}, {10.0f, 0.0f, -10.0f}, {10.0f, 0.0f, 10.0f}, {-10.0f, 0.0f, 10.0f}};
+    static const uint32_t corners[] = {0, 2, 1, 0, 3, 2};
+    static const uint32_t material[] = {0, 0};
+    maudMesh mesh = {v, 4, corners, material, 2};
+    const float n = NAN;
+    const float inf = INFINITY;
+    const maudRay unanswerable[] = {
+        {{n, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 0.0f, 10.0f},
+        {{0.0f, inf, 0.0f}, {0.0f, -1.0f, 0.0f}, 0.0f, 10.0f},
+        {{0.0f, 5.0f, 0.0f}, {n, -1.0f, 0.0f}, 0.0f, 10.0f},
+        {{0.0f, 5.0f, 0.0f}, {0.0f, -inf, 0.0f}, 0.0f, 10.0f},
+        {{0.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 10.0f},
+        {{0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, n, 10.0f},
+        {{0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 0.0f, n},
+    };
+    const maudRay answered[] = {
+        {{0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 0.0f, inf},
+        {{0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, -20.0f, 10.0f},
+    };
+    for (int instanced = 0; instanced < 2; ++instanced)
+    {
+        maudSceneDef def = maudDefaultSceneDef();
+        def.meshes = instanced ? nullptr : &mesh;
+        def.meshCount = instanced ? 0 : 1;
+        def.instanceMeshes = instanced ? &mesh : nullptr;
+        def.instanceMeshCount = instanced ? 1 : 0;
+        def.instanceCapacity = instanced ? 1 : 0;
+        maudScene* scene = nullptr;
+        CHECK(maudCreateScene(&def, &scene) == maud_success, "a floor's scene");
+        if (instanced)
+        {
+            maudSceneInstanceTransform t = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f};
+            maudSceneInstanceId id;
+            CHECK(maudCreateSceneInstance(scene, 0, &t, &id) == maud_success &&
+                      maudScene_Commit(scene) == maud_success,
+                  "the floor placed");
+        }
+        uint32_t missed = 0;
+        for (size_t r = 0; r < sizeof(unanswerable) / sizeof(unanswerable[0]); ++r)
+        {
+            maudRayHit h;
+            uint8_t occluded = 2;
+            maudFindClosestHit(&unanswerable[r], 1, &h, scene);
+            maudFindAnyHit(&unanswerable[r], 1, &occluded, scene);
+            missed += h.distance == INFINITY && occluded == 0 ? 1u : 0u;
+        }
+        uint32_t met = 0;
+        for (size_t r = 0; r < sizeof(answered) / sizeof(answered[0]); ++r)
+        {
+            maudRayHit h;
+            uint8_t occluded = 2;
+            maudFindClosestHit(&answered[r], 1, &h, scene);
+            maudFindAnyHit(&answered[r], 1, &occluded, scene);
+            met += h.distance == 5.0f && occluded == 1 ? 1u : 0u;
+        }
+        printf("unanswerable rays, %s floor: %u of 7 missed in both, %u of 2 answered\n",
+               instanced ? "an instanced" : "a static", missed, met);
+        CHECK(missed == 7, "a ray that cannot be answered misses");
+        CHECK(met == 2, "an infinite maxDistance and a negative minDistance are answered");
+        maudDestroyScene(scene);
+    }
+}
+
 static void TestHooks(void)
 {
     static const maudVector3 v[] = {
@@ -534,6 +606,7 @@ int main(void)
     TestTiesAndNormals();
     TestFarCorner();
     TestNoArea();
+    TestUnanswerable();
     TestHooks();
     TestMisuse();
     TestNoMemory();
