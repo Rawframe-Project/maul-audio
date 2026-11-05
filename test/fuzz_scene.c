@@ -30,6 +30,10 @@
 //   an invalid argument counts as misuse;
 // - with every instance destroyed and committed, the rays answer
 //   exactly as before any instance was made.
+//
+// A broken promise prints one line, "test/fuzz_scene.c:LINE: expectation
+// failed: " with the promise and the values that broke it, never the
+// input's bytes: the line a finding's report keeps (tools/fuzz_target.sh).
 
 #include "bake_file.h"
 #include "fpenv.h"
@@ -38,7 +42,9 @@
 #include "maul-audio/scene.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -60,13 +66,21 @@ enum
 
 static const float s_ranges[4] = {0.5f, 1.5f, 5.0f, 40.0f};
 
-static void Expect(bool condition)
+// Prints the promise a line broke and the values that broke it, flushed
+// before the abort, and aborts.
+[[noreturn]] [[gnu::format(printf, 2, 3)]] static void Broken(int line, const char* format, ...)
 {
-    if (!condition)
-    {
-        abort();
-    }
+    fprintf(stderr, "test/fuzz_scene.c:%d: expectation failed: ", line);
+    va_list values;
+    va_start(values, format);
+    vfprintf(stderr, format, values);
+    va_end(values);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
 }
+
+#define EXPECT(condition, ...) ((condition) ? (void)0 : Broken(__LINE__, __VA_ARGS__))
 
 // The input read from its start, zeros past its end.
 typedef struct Input
@@ -152,11 +166,17 @@ static void CheckRays(maudScene* scene, const maudVector3* points, uint32_t coun
         maudFindClosestHit(&ray, 1, &hit, scene);
         maudFindAnyHit(&ray, 1, &occluded, scene);
         bool missed = hit.distance == INFINITY;
-        Expect(missed || (hit.distance >= ray.minDistance && hit.distance <= ray.maxDistance &&
-                          fabsf(sqrtf(hit.normal.x * hit.normal.x + hit.normal.y * hit.normal.y +
-                                      hit.normal.z * hit.normal.z) -
-                                1.0f) < 1e-3f));
-        Expect(occluded == (missed ? 0 : 1));
+        float normal = sqrtf(hit.normal.x * hit.normal.x + hit.normal.y * hit.normal.y +
+                             hit.normal.z * hit.normal.z);
+        EXPECT(missed || (hit.distance >= ray.minDistance && hit.distance <= ray.maxDistance &&
+                          fabsf(normal - 1.0f) < 1e-3f),
+               "a hit within its ray's distances with a unit normal, distance %a in [%a, %a], "
+               "normal length %a",
+               (double)hit.distance, (double)ray.minDistance, (double)ray.maxDistance,
+               (double)normal);
+        EXPECT(occluded == (missed ? 0 : 1),
+               "any-hit agrees with closest-hit, any-hit %u, closest distance %a in [%a, %a]",
+               occluded, (double)hit.distance, (double)ray.minDistance, (double)ray.maxDistance);
     }
 }
 
@@ -164,22 +184,30 @@ static void CheckRays(maudScene* scene, const maudVector3* points, uint32_t coun
 // both ends, each link within range and measured.
 static void CheckGraph(const maudProbeGraph* g)
 {
-    Expect(g->offsets[0] == 0 && g->offsets[g->count] == 2 * g->links);
+    EXPECT(g->offsets[0] == 0 && g->offsets[g->count] == 2 * g->links,
+           "a set's rows span its links from both ends, offsets %u to %u, links %u", g->offsets[0],
+           g->offsets[g->count], g->links);
     for (uint32_t i = 0; i < g->count; ++i)
     {
         for (uint32_t e = g->offsets[i]; e < g->offsets[i + 1]; ++e)
         {
             uint32_t j = g->neighbours[e];
-            Expect(j < g->count && j != i);
-            Expect(e == g->offsets[i] || g->neighbours[e - 1] < j);
+            EXPECT(j < g->count && j != i,
+                   "a row names other probes of the set, probe %u, neighbour %u of %u", i, j,
+                   g->count);
+            EXPECT(e == g->offsets[i] || g->neighbours[e - 1] < j,
+                   "a row is ascending, probe %u, neighbour %u after %u", i, j,
+                   g->neighbours[e - 1]);
             float length = Distance(g->points[i], g->points[j]);
-            Expect(length <= g->range && g->lengths[e] == length);
+            EXPECT(length <= g->range && g->lengths[e] == length,
+                   "a link is within range and measured, length %a, range %a, stored %a",
+                   (double)length, (double)g->range, (double)g->lengths[e]);
             bool back = false;
             for (uint32_t f = g->offsets[j]; f < g->offsets[j + 1]; ++f)
             {
                 back = back || g->neighbours[f] == i;
             }
-            Expect(back);
+            EXPECT(back, "a link is listed from both ends, probe %u, neighbour %u", i, j);
         }
     }
 }
@@ -189,19 +217,24 @@ static void CheckGraph(const maudProbeGraph* g)
 static void CheckSaved(const maudProbeGraph* g, const maudAllocator* allocator)
 {
     size_t bytes = maudBakeFileBytes(g, nullptr, 0, 0);
-    Expect(bytes > 0);
+    EXPECT(bytes > 0, "a set has a bake's size, %zu bytes", bytes);
     uint8_t* file = malloc(bytes);
-    Expect(file != nullptr);
+    EXPECT(file != nullptr, "the bake's buffer is allocated, %zu bytes", bytes);
     maudWriteBakeFile(g, nullptr, 0, 0, file);
     const maudBakeLimits limits = {MAX_PROBES, MAX_PAIRS, 0, 0};
     maudProbeGraph read;
     maudProbeBake bake;
-    Expect(maudReadBakeFile(file, bytes, &limits, allocator, &read, &bake) == maud_success);
-    Expect(read.count == g->count && read.links == g->links && read.range == g->range);
-    Expect(memcmp(read.points, g->points, (size_t)g->count * sizeof(maudVector3)) == 0 &&
-           memcmp(read.offsets, g->offsets, ((size_t)g->count + 1) * sizeof(uint32_t)) == 0 &&
-           memcmp(read.neighbours, g->neighbours, 2 * (size_t)g->links * sizeof(uint32_t)) == 0 &&
-           memcmp(read.lengths, g->lengths, 2 * (size_t)g->links * sizeof(float)) == 0);
+    maudResult result = maudReadBakeFile(file, bytes, &limits, allocator, &read, &bake);
+    EXPECT(result == maud_success, "a saved set reads back, result %d", (int)result);
+    EXPECT(read.count == g->count && read.links == g->links && read.range == g->range,
+           "a saved set reads back the same, probes %u of %u, links %u of %u, range %a of %a",
+           read.count, g->count, read.links, g->links, (double)read.range, (double)g->range);
+    EXPECT(memcmp(read.points, g->points, (size_t)g->count * sizeof(maudVector3)) == 0 &&
+               memcmp(read.offsets, g->offsets, ((size_t)g->count + 1) * sizeof(uint32_t)) == 0 &&
+               memcmp(read.neighbours, g->neighbours, 2 * (size_t)g->links * sizeof(uint32_t)) ==
+                   0 &&
+               memcmp(read.lengths, g->lengths, 2 * (size_t)g->links * sizeof(float)) == 0,
+           "a saved set reads back the same points, rows and lengths, %u probes", g->count);
     maudReleaseProbeGraph(allocator, &read);
     free(file);
 }
@@ -252,7 +285,9 @@ static void CheckProbes(maudScene* scene, const maudVector3* points, uint32_t co
         }
     }
     bool valid = maudProbeSetDefValid(&def);
-    Expect(valid == expected);
+    EXPECT(valid == expected,
+           "a generation's def is valid exactly when in range, valid %d, expected %d", valid,
+           expected);
     bool over = columns > (double)MAUD_MAX_PROBE_COLUMNS;
     if (!valid || (!over && columns > FUZZ_COLUMNS))
     {
@@ -268,7 +303,9 @@ static void CheckProbes(maudScene* scene, const maudVector3* points, uint32_t co
     uint64_t token = maudFloatEnvEnter();
     maudResult built = maudBuildProbeGraph(&queries, &def, &graph);
     maudFloatEnvLeave(token);
-    Expect(over ? built == maud_errorLimit : built == maud_success || built == maud_errorCapacity);
+    EXPECT(over ? built == maud_errorLimit : built == maud_success || built == maud_errorCapacity,
+           "a generation is refused for its limit exactly when over it, result %d, %a columns",
+           (int)built, columns);
     if (built == maud_success)
     {
         CheckGraph(&graph);
@@ -352,17 +389,23 @@ static maudResult Create(maudScene* scene, const Call* call, uint32_t capacity, 
     if (!valid)
     {
         // Both refusals apply to an invalid call on a full scene.
-        Expect(r == maud_errorInvalid || (full && r == maud_errorCapacity));
+        EXPECT(r == maud_errorInvalid || (full && r == maud_errorCapacity),
+               "an invalid instance is refused, result %d, full %d", (int)r, full);
     }
     else if (SurelyInRange(&call->transform, reach))
     {
-        Expect(r == (full ? maud_errorCapacity : maud_success));
+        EXPECT(r == (full ? maud_errorCapacity : maud_success),
+               "a valid instance surely in range is made unless full, result %d, full %d", (int)r,
+               full);
     }
     else
     {
-        Expect(r == maud_errorInvalid || r == (full ? maud_errorCapacity : maud_success));
+        EXPECT(r == maud_errorInvalid || r == (full ? maud_errorCapacity : maud_success),
+               "a valid instance near the range is made or refused as invalid, result %d, full %d",
+               (int)r, full);
     }
-    Expect((r == maud_success) == (id.index1 != 0));
+    EXPECT((r == maud_success) == (id.index1 != 0),
+           "an instance has an id exactly when made, result %d, index %u", (int)r, id.index1);
     if (r == maud_success && made->count < MAX_CALLS)
     {
         made->ids[made->count] = id;
@@ -386,25 +429,33 @@ static maudResult Change(maudScene* scene, const Call* call, uint32_t capacity, 
         bool sure = valid && SurelyInRange(&call->transform, reach);
         if (!known)
         {
-            Expect(r == maud_errorInvalid);
+            EXPECT(r == maud_errorInvalid, "moving an unknown id is invalid, result %d", (int)r);
         }
         else if (!live)
         {
             // Both refusals apply to an invalid transform for a destroyed id.
-            Expect(r == maud_errorStale || (!sure && r == maud_errorInvalid));
+            EXPECT(r == maud_errorStale || (!sure && r == maud_errorInvalid),
+                   "moving a destroyed instance is stale, result %d, surely valid %d", (int)r,
+                   sure);
         }
         else if (!valid || sure)
         {
-            Expect(r == (valid ? maud_success : maud_errorInvalid));
+            EXPECT(r == (valid ? maud_success : maud_errorInvalid),
+                   "a live instance moves exactly when its transform is valid, result %d, valid %d",
+                   (int)r, valid);
         }
         else
         {
-            Expect(r == maud_success || r == maud_errorInvalid);
+            EXPECT(r == maud_success || r == maud_errorInvalid,
+                   "a move near the range is made or refused as invalid, result %d", (int)r);
         }
         return r;
     }
     maudResult r = maudDestroySceneInstance(scene, id);
-    Expect(r == (!known ? maud_errorInvalid : live ? maud_success : maud_errorStale));
+    EXPECT(r == (!known ? maud_errorInvalid
+                 : live ? maud_success
+                        : maud_errorStale),
+           "destroying answers by the id, result %d, known %d, live %d", (int)r, known, live);
     if (live)
     {
         made->live[slot] = false;
@@ -444,27 +495,37 @@ static void CheckInstances(maudScene* scene, const Call* calls, uint32_t callCou
             break;
         default:
             r = maudScene_Commit(scene);
-            Expect(r == maud_success);
+            EXPECT(r == maud_success, "a commit succeeds, result %d", (int)r);
             CheckRays(scene, points, count);
             break;
         }
         // Each refusal for an invalid argument counts, nothing else.
-        Expect(maudScene_GetMisuse(scene) - misuse == (r == maud_errorInvalid ? 1u : 0u));
+        uint64_t counted = maudScene_GetMisuse(scene) - misuse;
+        EXPECT(counted == (r == maud_errorInvalid ? 1u : 0u),
+               "each refusal for an invalid argument counts, nothing else, result %d, counted %llu",
+               (int)r, (unsigned long long)counted);
     }
     for (uint32_t i = 0; i < made.count; ++i)
     {
         if (made.live[i])
         {
-            Expect(maudDestroySceneInstance(scene, made.ids[i]) == maud_success);
+            maudResult r = maudDestroySceneInstance(scene, made.ids[i]);
+            EXPECT(r == maud_success, "a live instance is destroyed, result %d", (int)r);
         }
     }
-    Expect(maudScene_Commit(scene) == maud_success);
+    maudResult committed = maudScene_Commit(scene);
+    EXPECT(committed == maud_success, "a commit succeeds, result %d", (int)committed);
     maudFindClosestHit(rays, rayCount, after, scene);
     for (uint32_t i = 0; i < rayCount; ++i)
     {
-        Expect(after[i].distance == before[i].distance && after[i].normal.x == before[i].normal.x &&
-               after[i].normal.y == before[i].normal.y && after[i].normal.z == before[i].normal.z &&
-               after[i].material == before[i].material);
+        EXPECT(after[i].distance == before[i].distance && after[i].normal.x == before[i].normal.x &&
+                   after[i].normal.y == before[i].normal.y &&
+                   after[i].normal.z == before[i].normal.z &&
+                   after[i].material == before[i].material,
+               "the rays answer as before any instance, distance %a against %a, material %u "
+               "against %u",
+               (double)after[i].distance, (double)before[i].distance, after[i].material,
+               before[i].material);
     }
 }
 
@@ -530,7 +591,8 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     def.instanceCapacity = capacity;
     maudScene* scene = nullptr;
     maudResult made = maudCreateScene(&def, &scene);
-    Expect(made == (valid ? maud_success : maud_errorInvalid));
+    EXPECT(made == (valid ? maud_success : maud_errorInvalid),
+           "a scene is made exactly when its mesh is valid, result %d, valid %d", (int)made, valid);
     CheckRays(scene, points, count);
     if (scene != nullptr && instancing)
     {
