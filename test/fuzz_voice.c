@@ -23,11 +23,17 @@
 // - an echo canceller whose capture holds none of the render (muted)
 //   does not report having adapted;
 // - the gain control lets no sample out above -1 dBFS.
+//
+// A broken promise prints one line, "test/fuzz_voice.c:LINE: expectation
+// failed: " with the promise and the values that broke it, never the
+// input's bytes: the line a finding's report keeps (tools/fuzz_target.sh).
 
 #include "maul-audio/voice.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,12 +49,39 @@ enum
 // The ceiling the gain control holds, -1 dBFS, as its suite reads it.
 #define CEILING 0.8912510f
 
-static void Expect(bool condition)
+// Prints the promise a line broke and the values that broke it, flushed
+// before the abort, and aborts.
+[[noreturn]] [[gnu::format(printf, 2, 3)]] static void Broken(int line, const char* format, ...)
 {
-    if (!condition)
+    fprintf(stderr, "test/fuzz_voice.c:%d: expectation failed: ", line);
+    va_list values;
+    va_start(values, format);
+    vfprintf(stderr, format, values);
+    va_end(values);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
+}
+
+#define EXPECT(condition, ...) ((condition) ? (void)0 : Broken(__LINE__, __VA_ARGS__))
+
+// A call that must succeed, its result printed when it does not.
+#define EXPECT_SUCCESS(call, promise)                                                              \
+    do                                                                                             \
+    {                                                                                              \
+        maudResult result_ = (call);                                                               \
+        EXPECT(result_ == maud_success, promise ", result %d", (int)result_);                      \
+    } while (0)
+
+// The first sample at which two outputs differ, or count when none does.
+static size_t FirstDifference(const float* a, const float* b, size_t count)
+{
+    size_t at = 0;
+    while (at < count && memcmp(&a[at], &b[at], sizeof(float)) == 0)
     {
-        abort();
+        ++at;
     }
+    return at;
 }
 
 // The input read from its start, zeros past its end.
@@ -209,34 +242,48 @@ static void Detector(Input* in)
     maudVoiceDetector* whole = nullptr;
     maudVoiceDetector* cut = nullptr;
     maudResult made = maudCreateVoiceDetector(&def, &whole);
-    Expect(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr);
+    EXPECT(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr,
+           "a processor is made exactly when its def is valid, result %d, valid %d", (int)made,
+           valid);
     if (!valid || channels > MAX_CHANNELS)
     {
         maudDestroyVoiceDetector(whole);
         return;
     }
-    Expect(maudCreateVoiceDetector(&def, &cut) == maud_success);
+    EXPECT_SUCCESS(maudCreateVoiceDetector(&def, &cut), "the second processor is made");
     Signal signal;
     Fill(in, &signal, channels);
     int before = s_allocations;
     maudVoiceState one;
     maudVoiceState two;
-    Expect(maudVoiceDetector_Detect(whole, s_whole, signal.frames, &one) == maud_success);
-    Expect(maudVoiceDetector_Detect(cut, s_cut, 0, &two) == maud_success);
+    EXPECT_SUCCESS(maudVoiceDetector_Detect(whole, s_whole, signal.frames, &one),
+                   "the whole signal is detected");
+    EXPECT_SUCCESS(maudVoiceDetector_Detect(cut, s_cut, 0, &two), "an empty call is detected");
     for (uint32_t at = 0, c = 0; at < signal.frames; ++c)
     {
         uint32_t n = CutLength(&signal, c, signal.frames - at);
-        Expect(maudVoiceDetector_Detect(cut, s_cut + (size_t)at * channels, n, &two) ==
-               maud_success);
+        EXPECT_SUCCESS(maudVoiceDetector_Detect(cut, s_cut + (size_t)at * channels, n, &two),
+                       "a cut of the signal is detected");
         at += n;
     }
-    Expect(s_allocations == before);
-    Expect(one.active == two.active && memcmp(&one.probability, &two.probability, 4) == 0 &&
-           memcmp(&one.levelDbfs, &two.levelDbfs, 4) == 0 &&
-           memcmp(&one.noiseDbfs, &two.noiseDbfs, 4) == 0 && one.frameCount == two.frameCount);
-    Expect(Within(one.probability, 0.0f, 1.0f) && isfinite(one.levelDbfs) &&
-           isfinite(one.noiseDbfs));
-    Expect(one.frameCount == signal.frames / (def.sampleRate / 100));
+    EXPECT(s_allocations == before, "processing allocates nothing, %d allocations",
+           s_allocations - before);
+    EXPECT(one.active == two.active && memcmp(&one.probability, &two.probability, 4) == 0 &&
+               memcmp(&one.levelDbfs, &two.levelDbfs, 4) == 0 &&
+               memcmp(&one.noiseDbfs, &two.noiseDbfs, 4) == 0 && one.frameCount == two.frameCount,
+           "detection does not depend on how the signal is cut, active %d and %d, probability %a "
+           "and %a, level %a and %a, noise %a and %a, frames %llu and %llu",
+           one.active, two.active, (double)one.probability, (double)two.probability,
+           (double)one.levelDbfs, (double)two.levelDbfs, (double)one.noiseDbfs,
+           (double)two.noiseDbfs, (unsigned long long)one.frameCount,
+           (unsigned long long)two.frameCount);
+    EXPECT(Within(one.probability, 0.0f, 1.0f) && isfinite(one.levelDbfs) &&
+               isfinite(one.noiseDbfs),
+           "a probability within [0, 1] and finite levels, %a, level %a, noise %a",
+           (double)one.probability, (double)one.levelDbfs, (double)one.noiseDbfs);
+    EXPECT(one.frameCount == signal.frames / (def.sampleRate / 100),
+           "every whole 10 ms frame is counted, %llu of %u frames at %u Hz",
+           (unsigned long long)one.frameCount, signal.frames, def.sampleRate);
     maudDestroyVoiceDetector(whole);
     maudDestroyVoiceDetector(cut);
 }
@@ -264,37 +311,50 @@ static void Gain(Input* in)
     maudGainControl* whole = nullptr;
     maudGainControl* cut = nullptr;
     maudResult made = maudCreateGainControl(&def, &whole);
-    Expect(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr);
+    EXPECT(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr,
+           "a processor is made exactly when its def is valid, result %d, valid %d", (int)made,
+           valid);
     if (!valid || channels > MAX_CHANNELS)
     {
         maudDestroyGainControl(whole);
         return;
     }
-    Expect(maudCreateGainControl(&def, &cut) == maud_success);
+    EXPECT_SUCCESS(maudCreateGainControl(&def, &cut), "the second processor is made");
     Signal signal;
     Fill(in, &signal, channels);
     int before = s_allocations;
     maudGainState one;
     maudGainState two;
-    Expect(maudGainControl_Apply(whole, s_whole, signal.frames, &one) == maud_success);
-    Expect(maudGainControl_Apply(cut, s_cut, 0, &two) == maud_success);
+    EXPECT_SUCCESS(maudGainControl_Apply(whole, s_whole, signal.frames, &one),
+                   "the whole signal is applied");
+    EXPECT_SUCCESS(maudGainControl_Apply(cut, s_cut, 0, &two), "an empty call is applied");
     for (uint32_t at = 0, c = 0; at < signal.frames; ++c)
     {
         uint32_t n = CutLength(&signal, c, signal.frames - at);
-        Expect(maudGainControl_Apply(cut, s_cut + (size_t)at * channels, n, &two) == maud_success);
+        EXPECT_SUCCESS(maudGainControl_Apply(cut, s_cut + (size_t)at * channels, n, &two),
+                       "a cut of the signal is applied");
         at += n;
     }
-    Expect(s_allocations == before);
+    EXPECT(s_allocations == before, "processing allocates nothing, %d allocations",
+           s_allocations - before);
     size_t count = (size_t)signal.frames * channels;
-    Expect(memcmp(s_whole, s_cut, count * sizeof(float)) == 0 &&
-           memcmp(&one, &two, sizeof(one)) == 0);
-    Expect(Finite(s_whole, count));
+    size_t differs = FirstDifference(s_whole, s_cut, count);
+    EXPECT(differs == count && memcmp(&one, &two, sizeof(one)) == 0,
+           "the output and state do not depend on how the signal is cut, first difference at "
+           "sample %zu of %zu, states %s",
+           differs, count, memcmp(&one, &two, sizeof(one)) == 0 ? "equal" : "differ");
+    EXPECT(Finite(s_whole, count), "the output is finite, %zu samples", count);
     for (size_t i = 0; i < count; ++i)
     {
-        Expect(fabsf(s_whole[i]) <= CEILING);
+        EXPECT(fabsf(s_whole[i]) <= CEILING, "the output stays under the ceiling, sample %zu, %a",
+               i, (double)s_whole[i]);
     }
-    Expect(Within(one.gainDb, def.minGainDb, def.maxGainDb) && isfinite(one.noiseDbfs));
-    Expect(one.speechReliable ? isfinite(one.speechDbfs) : one.speechDbfs == -100.0f);
+    EXPECT(Within(one.gainDb, def.minGainDb, def.maxGainDb) && isfinite(one.noiseDbfs),
+           "the gain within its range and a finite noise floor, %a in [%a, %a], noise %a",
+           (double)one.gainDb, (double)def.minGainDb, (double)def.maxGainDb, (double)one.noiseDbfs);
+    EXPECT(one.speechReliable ? isfinite(one.speechDbfs) : one.speechDbfs == -100.0f,
+           "a speech level finite when reliable, -100 otherwise, reliable %d, %a",
+           one.speechReliable, (double)one.speechDbfs);
     maudDestroyGainControl(whole);
     maudDestroyGainControl(cut);
 }
@@ -316,34 +376,46 @@ static void Noise(Input* in)
     maudNoiseSuppressor* whole = nullptr;
     maudNoiseSuppressor* cut = nullptr;
     maudResult made = maudCreateNoiseSuppressor(&def, &whole);
-    Expect(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr);
+    EXPECT(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr,
+           "a processor is made exactly when its def is valid, result %d, valid %d", (int)made,
+           valid);
     if (!valid || channels > MAX_CHANNELS)
     {
         maudDestroyNoiseSuppressor(whole);
         return;
     }
-    Expect(maudCreateNoiseSuppressor(&def, &cut) == maud_success);
+    EXPECT_SUCCESS(maudCreateNoiseSuppressor(&def, &cut), "the second processor is made");
     Signal signal;
     Fill(in, &signal, channels);
     int before = s_allocations;
     maudNoiseState one;
     maudNoiseState two;
-    Expect(maudNoiseSuppressor_Suppress(whole, s_whole, signal.frames, &one) == maud_success);
-    Expect(maudNoiseSuppressor_Suppress(cut, s_cut, 0, &two) == maud_success);
+    EXPECT_SUCCESS(maudNoiseSuppressor_Suppress(whole, s_whole, signal.frames, &one),
+                   "the whole signal is suppressed");
+    EXPECT_SUCCESS(maudNoiseSuppressor_Suppress(cut, s_cut, 0, &two),
+                   "an empty call is suppressed");
     for (uint32_t at = 0, c = 0; at < signal.frames; ++c)
     {
         uint32_t n = CutLength(&signal, c, signal.frames - at);
-        Expect(maudNoiseSuppressor_Suppress(cut, s_cut + (size_t)at * channels, n, &two) ==
-               maud_success);
+        EXPECT_SUCCESS(maudNoiseSuppressor_Suppress(cut, s_cut + (size_t)at * channels, n, &two),
+                       "a cut of the signal is suppressed");
         at += n;
     }
-    Expect(s_allocations == before);
+    EXPECT(s_allocations == before, "processing allocates nothing, %d allocations",
+           s_allocations - before);
     size_t count = (size_t)signal.frames * channels;
-    Expect(memcmp(s_whole, s_cut, count * sizeof(float)) == 0 &&
-           memcmp(&one, &two, sizeof(one)) == 0);
-    Expect(Finite(s_whole, count));
-    Expect(Within(one.speechProbability, 0.0f, 1.0f) && isfinite(one.noiseDbfs));
-    Expect(one.frameCount == signal.frames / (def.sampleRate / 100));
+    size_t differs = FirstDifference(s_whole, s_cut, count);
+    EXPECT(differs == count && memcmp(&one, &two, sizeof(one)) == 0,
+           "the output and state do not depend on how the signal is cut, first difference at "
+           "sample %zu of %zu, states %s",
+           differs, count, memcmp(&one, &two, sizeof(one)) == 0 ? "equal" : "differ");
+    EXPECT(Finite(s_whole, count), "the output is finite, %zu samples", count);
+    EXPECT(Within(one.speechProbability, 0.0f, 1.0f) && isfinite(one.noiseDbfs),
+           "a speech probability within [0, 1] and a finite noise floor, %a, noise %a",
+           (double)one.speechProbability, (double)one.noiseDbfs);
+    EXPECT(one.frameCount == signal.frames / (def.sampleRate / 100),
+           "every whole 10 ms frame is counted, %llu of %u frames at %u Hz",
+           (unsigned long long)one.frameCount, signal.frames, def.sampleRate);
     maudDestroyNoiseSuppressor(whole);
     maudDestroyNoiseSuppressor(cut);
 }
@@ -360,13 +432,15 @@ static void Echo(Input* in)
     maudEchoCanceller* whole = nullptr;
     maudEchoCanceller* cut = nullptr;
     maudResult made = maudCreateEchoCanceller(&def, &whole);
-    Expect(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr);
+    EXPECT(valid ? made == maud_success : made == maud_errorInvalid && whole == nullptr,
+           "a processor is made exactly when its def is valid, result %d, valid %d", (int)made,
+           valid);
     if (!valid)
     {
         maudDestroyEchoCanceller(whole);
         return;
     }
-    Expect(maudCreateEchoCanceller(&def, &cut) == maud_success);
+    EXPECT_SUCCESS(maudCreateEchoCanceller(&def, &cut), "the second processor is made");
     // The echo's path: its gain over the render, from 2^-8 to 2^16 (above
     // 1 the render played that much quieter, below it the echo, so that
     // both stay within the samples' range); with bit 5 no near end, only
@@ -403,18 +477,25 @@ static void Echo(Input* in)
     int before = s_allocations;
     maudEchoState one;
     maudEchoState two;
-    Expect(maudEchoCanceller_Cancel(whole, s_whole, s_render, signal.frames, &one) == maud_success);
-    Expect(maudEchoCanceller_Cancel(cut, s_cut, s_render, 0, &two) == maud_success);
+    EXPECT_SUCCESS(maudEchoCanceller_Cancel(whole, s_whole, s_render, signal.frames, &one),
+                   "the whole signal is cancelled");
+    EXPECT_SUCCESS(maudEchoCanceller_Cancel(cut, s_cut, s_render, 0, &two),
+                   "an empty call is cancelled");
     for (uint32_t at = 0, c = 0; at < signal.frames; ++c)
     {
         uint32_t n = CutLength(&signal, c, signal.frames - at);
-        Expect(maudEchoCanceller_Cancel(cut, s_cut + at, s_render + at, n, &two) == maud_success);
+        EXPECT_SUCCESS(maudEchoCanceller_Cancel(cut, s_cut + at, s_render + at, n, &two),
+                       "a cut of the signal is cancelled");
         at += n;
     }
-    Expect(s_allocations == before);
-    Expect(memcmp(s_whole, s_cut, (size_t)signal.frames * sizeof(float)) == 0 &&
-           memcmp(&one, &two, sizeof(one)) == 0);
-    Expect(Finite(s_whole, signal.frames));
+    EXPECT(s_allocations == before, "processing allocates nothing, %d allocations",
+           s_allocations - before);
+    size_t differs = FirstDifference(s_whole, s_cut, signal.frames);
+    EXPECT(differs == signal.frames && memcmp(&one, &two, sizeof(one)) == 0,
+           "the output and state do not depend on how the signal is cut, first difference at "
+           "sample %zu of %u, states %s",
+           differs, signal.frames, memcmp(&one, &two, sizeof(one)) == 0 ? "equal" : "differ");
+    EXPECT(Finite(s_whole, signal.frames), "the output is finite, %u samples", signal.frames);
     // The probability of speech is 0 until two blocks have been
     // processed: blocks of the smallest power of two of frames lasting
     // 8 ms or more.
@@ -423,11 +504,17 @@ static void Echo(Input* in)
     {
         block *= 2;
     }
-    Expect(signal.frames < 2 * block ? one.speechProbability == 0.0f
-                                     : Within(one.speechProbability, 0.1f, 1.0f));
-    Expect(Within(one.leakage, 0.005f, 1.0f) && one.frameCount == signal.frames);
+    EXPECT(signal.frames < 2 * block ? one.speechProbability == 0.0f
+                                     : Within(one.speechProbability, 0.1f, 1.0f),
+           "a speech probability of 0 before two blocks, within [0.1, 1] after, %a after %u frames "
+           "of blocks of %u",
+           (double)one.speechProbability, signal.frames, block);
+    EXPECT(Within(one.leakage, 0.005f, 1.0f) && one.frameCount == signal.frames,
+           "a leakage within [0.005, 1] and every frame counted, %a, %llu of %u frames",
+           (double)one.leakage, (unsigned long long)one.frameCount, signal.frames);
     // voice.h: a capture that holds none of the render leaves adapted false.
-    Expect((path & 0x40u) == 0 || !one.adapted);
+    EXPECT((path & 0x40u) == 0 || !one.adapted,
+           "a capture that holds none of the render leaves adapted false, adapted %d", one.adapted);
     maudDestroyEchoCanceller(whole);
     maudDestroyEchoCanceller(cut);
 }

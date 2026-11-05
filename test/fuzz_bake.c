@@ -8,23 +8,37 @@
 // file. A refusal must name the file's fault (its format, its version,
 // the limits or another fields' layout), and a file the reader takes must
 // write back to the same bytes.
+//
+// A broken promise prints one line, "test/fuzz_bake.c:LINE: expectation
+// failed: " with the promise and the values that broke it, never the
+// input's bytes: the line a finding's report keeps (tools/fuzz_target.sh).
 
 #include "bake_file.h"
 #include "crc32.h"
 
+#include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 
-static void Expect(bool condition)
+// Prints the promise a line broke and the values that broke it, flushed
+// before the abort, and aborts.
+[[noreturn]] [[gnu::format(printf, 2, 3)]] static void Broken(int line, const char* format, ...)
 {
-    if (!condition)
-    {
-        abort();
-    }
+    fprintf(stderr, "test/fuzz_bake.c:%d: expectation failed: ", line);
+    va_list values;
+    va_start(values, format);
+    vfprintf(stderr, format, values);
+    va_end(values);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
 }
+
+#define EXPECT(condition, ...) ((condition) ? (void)0 : Broken(__LINE__, __VA_ARGS__))
 
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
@@ -34,7 +48,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     }
     size_t count = size - 1;
     uint8_t* bytes = malloc(count > 0 ? count : 1);
-    Expect(bytes != nullptr);
+    EXPECT(bytes != nullptr, "the input's copy is allocated, %zu bytes", count);
     memcpy(bytes, data + 1, count);
     // The header: magic, version, then the checksum of every byte after.
     if ((data[0] & 1) != 0 && count >= 16)
@@ -51,16 +65,25 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     maudProbeGraph graph;
     maudProbeBake bake;
     maudResult read = maudReadBakeFile(bytes, count, &limits, &allocator, &graph, &bake);
-    Expect(read == maud_success || read == maud_errorFormat || read == maud_errorVersion ||
-           read == maud_errorCapacity || read == maud_errorUnsupported);
+    EXPECT(read == maud_success || read == maud_errorFormat || read == maud_errorVersion ||
+               read == maud_errorCapacity || read == maud_errorUnsupported,
+           "a refusal names the file's fault, result %d", (int)read);
     if (read == maud_success)
     {
         size_t again = maudBakeFileBytes(&graph, &bake, order, limits.fieldBins);
-        Expect(again == count);
+        EXPECT(again == count, "a bake read writes back to its size, %zu bytes of %zu", again,
+               count);
         uint8_t* written = malloc(again);
-        Expect(written != nullptr);
+        EXPECT(written != nullptr, "the written bake is allocated, %zu bytes", again);
         maudWriteBakeFile(&graph, &bake, order, limits.fieldBins, written);
-        Expect(memcmp(written, bytes, count) == 0);
+        size_t at = 0;
+        while (at < count && written[at] == bytes[at])
+        {
+            ++at;
+        }
+        EXPECT(at == count,
+               "a bake read writes back to the same bytes, first difference at byte %zu of %zu", at,
+               count);
         free(written);
         maudReleaseProbeGraph(&allocator, &graph);
         maudReleaseProbeBake(&allocator, &bake);

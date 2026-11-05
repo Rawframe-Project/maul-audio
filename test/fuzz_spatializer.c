@@ -26,11 +26,17 @@
 // - a reverberation result has its times within 0.1 to 20 s and finite
 //   levels and delay;
 // - a render adds finite samples to the bed.
+//
+// A broken promise prints one line, "test/fuzz_spatializer.c:LINE: expectation
+// failed: " with the promise and the values that broke it, never the
+// input's bytes: the line a finding's report keeps (tools/fuzz_target.sh).
 
 #include "maul-audio/spatializer.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,13 +49,21 @@ enum
     FRAMES = 128
 };
 
-static void Expect(bool condition)
+// Prints the promise a line broke and the values that broke it, flushed
+// before the abort, and aborts.
+[[noreturn]] [[gnu::format(printf, 2, 3)]] static void Broken(int line, const char* format, ...)
 {
-    if (!condition)
-    {
-        abort();
-    }
+    fprintf(stderr, "test/fuzz_spatializer.c:%d: expectation failed: ", line);
+    va_list values;
+    va_start(values, format);
+    vfprintf(stderr, format, values);
+    va_end(values);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
 }
+
+#define EXPECT(condition, ...) ((condition) ? (void)0 : Broken(__LINE__, __VA_ARGS__))
 
 // The input read from its start, zeros past its end.
 typedef struct Input
@@ -120,7 +134,7 @@ static uint32_t Hash(const maudRay* ray, uint32_t seed)
 static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void* context)
 {
     const Host* host = context;
-    Expect(count <= 64);
+    EXPECT(count <= 64, "any-hit asks at most 64 rays at a time, %u", count);
     for (uint32_t i = 0; i < count; ++i)
     {
         occluded[i] = (uint8_t)((Hash(&rays[i], host->seed) >> 3) & 1u);
@@ -130,7 +144,7 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
 static void ClosestHit(const maudRay* rays, uint32_t count, maudRayHit* hits, void* context)
 {
     const Host* host = context;
-    Expect(count <= 64);
+    EXPECT(count <= 64, "closest-hit asks at most 64 rays at a time, %u", count);
     for (uint32_t i = 0; i < count; ++i)
     {
         uint32_t h = Hash(&rays[i], host->seed);
@@ -198,33 +212,48 @@ static bool MaterialValid(const maudAcousticMaterial* m)
 
 static void CheckDirect(const maudDirectResult* r, uint32_t maxSurfaces)
 {
-    Expect(isfinite(r->distance) && r->distance >= 0.0f);
+    EXPECT(isfinite(r->distance) && r->distance >= 0.0f,
+           "a direct result's distance is finite and not negative, %a", (double)r->distance);
     double x = (double)r->direction.x;
     double y = (double)r->direction.y;
     double z = (double)r->direction.z;
-    Expect(fabs(sqrt(x * x + y * y + z * z) - 1.0) < 1e-5);
+    double length = sqrt(x * x + y * y + z * z);
+    EXPECT(fabs(length - 1.0) < 1e-5, "a direct result's direction is a unit vector, length %a",
+           length);
     for (int b = 0; b < MAUD_BANDS; ++b)
     {
-        Expect(Unit(r->directivity[b]) && Unit(r->transmission[b]));
+        EXPECT(Unit(r->directivity[b]) && Unit(r->transmission[b]),
+               "a band's directivity and transmission are within [0, 1], band %d, %a and %a", b,
+               (double)r->directivity[b], (double)r->transmission[b]);
     }
-    Expect(Unit(r->occlusion) && r->surfaceCount <= maxSurfaces);
+    EXPECT(Unit(r->occlusion) && r->surfaceCount <= maxSurfaces,
+           "occlusion is within [0, 1] and the surfaces within the limit, %a, %u of %u",
+           (double)r->occlusion, r->surfaceCount, maxSurfaces);
 }
 
 static void CheckReverb(const maudReverbResult* r)
 {
     for (int b = 0; b < MAUD_BANDS; ++b)
     {
-        Expect(r->reverbTime[b] >= 0.1f && r->reverbTime[b] <= 20.0f);
-        Expect(r->tailTime[b] == 0.0f || (r->tailTime[b] >= 0.1f && r->tailTime[b] <= 20.0f));
-        Expect(isfinite(r->level[b]) && isfinite(r->tailLevel[b]));
+        EXPECT(r->reverbTime[b] >= 0.1f && r->reverbTime[b] <= 20.0f,
+               "a band's reverb time is within [0.1, 20] s, band %d, %a", b,
+               (double)r->reverbTime[b]);
+        EXPECT(r->tailTime[b] == 0.0f || (r->tailTime[b] >= 0.1f && r->tailTime[b] <= 20.0f),
+               "a band's tail time is 0 or within [0.1, 20] s, band %d, %a", b,
+               (double)r->tailTime[b]);
+        EXPECT(isfinite(r->level[b]) && isfinite(r->tailLevel[b]),
+               "a band's levels are finite, band %d, %a and %a", b, (double)r->level[b],
+               (double)r->tailLevel[b]);
     }
-    Expect(isfinite(r->delay) && r->delay >= 0.0f);
+    EXPECT(isfinite(r->delay) && r->delay >= 0.0f,
+           "the reverb's delay is finite and not negative, %a", (double)r->delay);
 }
 
 // A step's results, read after a latch.
 static void CheckStep(maudSpatializer* s, const maudSourceId* ids, uint32_t maxSurfaces)
 {
-    Expect(maudSpatializer_LatchResults(s) > 0);
+    uint64_t latched = maudSpatializer_LatchResults(s);
+    EXPECT(latched > 0, "a step's results are latched, step %llu", (unsigned long long)latched);
     for (int i = 0; i < SLOTS; ++i)
     {
         maudDirectResult r;
@@ -234,7 +263,8 @@ static void CheckStep(maudSpatializer* s, const maudSourceId* ids, uint32_t maxS
         }
     }
     maudReverbResult reverb;
-    Expect(maudSpatializer_GetReverbResult(s, &reverb) == maud_success);
+    maudResult got = maudSpatializer_GetReverbResult(s, &reverb);
+    EXPECT(got == maud_success, "a step's reverb result is read, result %d", (int)got);
     CheckReverb(&reverb);
 }
 
@@ -252,7 +282,8 @@ static maudResult CreateSource(maudSpatializer* s, Input* in, maudSourceId* id)
         def.directivity.power[b] = Value(in);
     }
     maudResult r = maudCreateSource(s, &def, id);
-    Expect((r == maud_success) == (id->index1 != 0));
+    EXPECT((r == maud_success) == (id->index1 != 0),
+           "a source has an id exactly when made, result %d, index %u", (int)r, id->index1);
     return r;
 }
 
@@ -272,7 +303,8 @@ static maudResult SetMaterials(maudSpatializer* s, Input* in, uint32_t capacity)
         valid = valid && MaterialValid(&m[i]);
     }
     maudResult r = maudSpatializer_SetMaterials(s, count > 0 ? m : nullptr, count);
-    Expect((r == maud_success) == valid);
+    EXPECT((r == maud_success) == valid,
+           "materials are set exactly when valid, result %d, valid %d", (int)r, valid);
     return r;
 }
 
@@ -295,15 +327,21 @@ static maudResult Render(maudSpatializer* s, Input* in, uint32_t order)
     maudResult r = maudSpatializer_RenderReflections(s, &q, send, bed, frames);
     if (order == 0)
     {
-        Expect(r == (OrientationValid(q) ? maud_errorUnsupported : maud_errorInvalid));
+        EXPECT(r == (OrientationValid(q) ? maud_errorUnsupported : maud_errorInvalid),
+               "order 0 is unsupported for a valid orientation, invalid otherwise, result %d, "
+               "valid %d",
+               (int)r, OrientationValid(q));
         return r;
     }
-    Expect((r == maud_success) == OrientationValid(q));
+    EXPECT((r == maud_success) == OrientationValid(q),
+           "a field rotates exactly when its orientation is valid, result %d, valid %d", (int)r,
+           OrientationValid(q));
     for (uint32_t c = 0; c < (order + 1) * (order + 1); ++c)
     {
         for (uint32_t i = 0; i < frames; ++i)
         {
-            Expect(isfinite(channels[c][i]));
+            EXPECT(isfinite(channels[c][i]), "a rotated field is finite, channel %u, frame %u, %a",
+                   c, i, (double)channels[c][i]);
         }
     }
     return r;
@@ -338,7 +376,8 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         def.reflectionDuration = 0.05f;
     }
     maudSpatializer* s = nullptr;
-    Expect(maudCreateSpatializer(&def, &s) == maud_success);
+    maudResult made = maudCreateSpatializer(&def, &s);
+    EXPECT(made == maud_success, "the spatializer is made, result %d", (int)made);
     maudSourceId ids[SLOTS] = {{0, 0}};
     uint64_t misuse = 0;
     for (int call = 0; call < MAX_CALLS && in.at < in.size; ++call)
@@ -364,7 +403,9 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
             r = maudSource_SetPose(s, *id, &pose);
             if (id->index1 != 0)
             {
-                Expect((r == maud_success) == PoseValid(&pose));
+                EXPECT((r == maud_success) == PoseValid(&pose),
+                       "a source's pose is set exactly when valid, result %d, valid %d", (int)r,
+                       PoseValid(&pose));
             }
             break;
         }
@@ -376,7 +417,10 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         {
             maudPose listener = Pose(&in);
             r = maudSpatializer_SimulateDirect(s, &listener);
-            Expect((r == maud_success) == PoseValid(&listener));
+            EXPECT(
+                (r == maud_success) == PoseValid(&listener),
+                "a direct step runs exactly when the listener's pose is valid, result %d, valid %d",
+                (int)r, PoseValid(&listener));
             if (r == maud_success)
             {
                 CheckStep(s, ids, def.maxSurfaces);
@@ -387,9 +431,11 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         {
             maudPose listener = Pose(&in);
             r = maudSpatializer_SimulateReverb(s, &listener);
-            Expect(r == (!PoseValid(&listener) ? maud_errorInvalid
+            EXPECT(r == (!PoseValid(&listener) ? maud_errorInvalid
                          : def.reverbRays == 0 ? maud_errorUnsupported
-                                               : maud_success));
+                                               : maud_success),
+                   "a reverb step answers by the pose and the rays, result %d, valid %d, rays %u",
+                   (int)r, PoseValid(&listener), def.reverbRays);
             break;
         }
         default:
@@ -397,7 +443,9 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
             break;
         }
         misuse += r == maud_errorInvalid ? 1u : 0u;
-        Expect(maudSpatializer_GetMisuse(s) == misuse);
+        uint64_t counted = maudSpatializer_GetMisuse(s);
+        EXPECT(counted == misuse, "each refusal for an invalid argument counts, %llu of %llu",
+               (unsigned long long)counted, (unsigned long long)misuse);
     }
     maudDestroySpatializer(s);
     return 0;
