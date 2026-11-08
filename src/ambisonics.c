@@ -99,7 +99,16 @@ maudResult maudEncodeAmbisonic(uint32_t order, const maudPanSource* from, const 
     for (uint32_t c = 0; c < channels; ++c)
     {
         float a = start[c] * from->gain;
-        float step = frameCount > 0 ? (end[c] * to->gain - a) / (float)frameCount : 0.0f;
+        float b = end[c] * to->gain;
+        if (!isfinite(b - a))
+        {
+            for (uint32_t n = 0; n < frameCount; ++n)
+            {
+                bed[c][n] += maudWideRampGain(a, b, n, frameCount) * samples[n];
+            }
+            continue;
+        }
+        float step = frameCount > 0 ? (b - a) / (float)frameCount : 0.0f;
         if (maudRampSigned(frameCount))
         {
             AddRamped(bed[c], samples, a, step, frameCount, true);

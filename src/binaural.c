@@ -437,6 +437,14 @@ static maudResult Run(maudBinaural* effect, const maudBinauralParams* params, co
     float step = frames > 0 ? (params->gain - from) / (float)frames : 0.0f;
     for (uint32_t ear = 0; ear < 2; ++ear)
     {
+        if (!isfinite(params->gain - from))
+        {
+            for (uint32_t n = 0; n < frames; ++n)
+            {
+                out[ear][n] *= maudWideRampGain(from, params->gain, n, frames);
+            }
+            continue;
+        }
         for (uint32_t n = 0; n < frames; ++n)
         {
             // frames is at most MAUD_MAX_BINAURAL_FRAMES.
