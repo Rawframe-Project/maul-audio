@@ -27,4 +27,14 @@ static inline float maudFramePlace(uint32_t n, bool isSigned)
     return isSigned ? (float)(int32_t)(n + 1) : (float)(n + 1);
 }
 
+// A ramp's gain at frame n of frames, from a to b, for a ramp whose
+// change b - a does not fit a float (two finite gains of opposite sign
+// near the float range). Taken in double, every frame's gain lies
+// between a and b, and the last is b.
+static inline float maudWideRampGain(float a, float b, uint32_t n, uint32_t frames)
+{
+    double change = (double)b - (double)a;
+    return (float)((double)a + change * ((double)n + 1.0) / (double)frames);
+}
+
 #endif // MAUL_AUDIO_SRC_RAMP_H
