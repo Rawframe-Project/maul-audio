@@ -293,6 +293,50 @@ static void TestAnyLength(void)
     }
 }
 
+// Two finite gains of opposite sign near the float range, whose change
+// does not fit a float: every frame's gain still lies on the ramp.
+static void TestWideRamp(void)
+{
+    float channels[4][8] = {{0}};
+    float* bed[4] = {channels[0], channels[1], channels[2], channels[3]};
+    float in[8] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    maudVector3 ahead = {0.0f, 0.0f, -1.0f};
+    maudPanSource from = {ahead, 3.0e38f};
+    maudPanSource to = {ahead, -3.0e38f};
+    CHECK(maudEncodeAmbisonic(1, &from, &to, in, bed, 8) == maud_success, "encode");
+    float gains[4];
+    CHECK(maudGetAmbisonicGains(1, ahead, gains) == maud_success, "gains");
+    bool onRamp = true;
+    for (int c = 0; c < 4; ++c)
+    {
+        for (int n = 0; n < 8; ++n)
+        {
+            double want = (double)gains[c] * (3.0e38 - 6.0e38 * (double)(n + 1) / 8.0);
+            onRamp = onRamp && isfinite(channels[c][n]) &&
+                     fabs((double)channels[c][n] - want) <= 1e-6 * 3.0e38;
+        }
+    }
+    CHECK(onRamp, "a ramp between gains near the float range");
+    // An ordinary ramp keeps its float arithmetic, bit for bit.
+    float plain[4][8] = {{0}};
+    float* plainBed[4] = {plain[0], plain[1], plain[2], plain[3]};
+    float samples[8] = {1.0f, -0.5f, 0.25f, 2.0f, -1.0f, 0.75f, 0.1f, -3.0f};
+    maudPanSource near = {ahead, 0.8f};
+    maudPanSource far = {ahead, -0.6f};
+    CHECK(maudEncodeAmbisonic(1, &near, &far, samples, plainBed, 8) == maud_success, "encode");
+    bool exact = true;
+    for (int c = 0; c < 4; ++c)
+    {
+        float a = gains[c] * 0.8f;
+        float step = (gains[c] * -0.6f - a) / 8.0f;
+        for (int n = 0; n < 8; ++n)
+        {
+            exact = exact && plain[c][n] == (a + step * (float)(n + 1)) * samples[n];
+        }
+    }
+    CHECK(exact, "an ordinary ramp, bit for bit");
+}
+
 int main(void)
 {
     TestGains();
@@ -300,6 +344,7 @@ int main(void)
     TestRotation();
     TestRotationRamp();
     TestEncode();
+    TestWideRamp();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
 }

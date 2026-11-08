@@ -461,6 +461,41 @@ static void TestAnyLength(void)
     }
 }
 
+// Two finite gains of opposite sign near the float range, whose change
+// does not fit a float: every frame's gain still lies on the ramp.
+static void TestWideRamp(void)
+{
+    maudSpeakerPanner* panner = Create(maud_layoutMono);
+    float channel[8] = {0};
+    float* out[1] = {channel};
+    float in[8] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    maudPanSource from = {Towards(0.0, 0.0), 3.0e38f};
+    maudPanSource to = {Towards(0.0, 0.0), -3.0e38f};
+    CHECK(maudSpeakerPanner_Pan(panner, &from, &to, in, out, 8) == maud_success, "pan");
+    bool onRamp = true;
+    for (int n = 0; n < 8; ++n)
+    {
+        double want = 3.0e38 - 6.0e38 * (double)(n + 1) / 8.0;
+        onRamp = onRamp && isfinite(channel[n]) && fabs((double)channel[n] - want) <= 1e-6 * 3.0e38;
+    }
+    CHECK(onRamp && channel[7] == -3.0e38f, "a ramp between gains near the float range");
+    // An ordinary ramp keeps its float arithmetic, bit for bit.
+    float plain[8] = {0};
+    float* plainOut[1] = {plain};
+    float samples[8] = {1.0f, -0.5f, 0.25f, 2.0f, -1.0f, 0.75f, 0.1f, -3.0f};
+    maudPanSource near = {Towards(0.0, 0.0), 0.8f};
+    maudPanSource far = {Towards(0.0, 0.0), -0.6f};
+    CHECK(maudSpeakerPanner_Pan(panner, &near, &far, samples, plainOut, 8) == maud_success, "pan");
+    float step = (-0.6f - 0.8f) / 8.0f;
+    bool exact = true;
+    for (int n = 0; n < 8; ++n)
+    {
+        exact = exact && plain[n] == (0.8f + step * (float)(n + 1)) * samples[n];
+    }
+    CHECK(exact, "an ordinary ramp, bit for bit");
+    maudDestroySpeakerPanner(panner);
+}
+
 int main(void)
 {
     TestOnSpeakers();
@@ -471,5 +506,6 @@ int main(void)
     TestPoles();
     TestStereoAndMono();
     TestPan();
+    TestWideRamp();
     return s_failures == 0 ? 0 : 1;
 }
