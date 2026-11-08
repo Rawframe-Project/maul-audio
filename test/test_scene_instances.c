@@ -14,7 +14,9 @@
 // count as misuse; a freed slot is taken again
 // under a new id; an allocator that fails at any of the scene's blocks
 // is a capacity error with nothing leaked; a ray grazing a turned box far
-// from its own origin is not culled.
+// from its own origin is not culled; an instance answers a ray whose
+// origin or direction passes the float range in its frame as the same
+// mesh fixed in the world does.
 
 #include "test_harness.h"
 
@@ -524,6 +526,74 @@ static void TestGrazingTurned(void)
     maudDestroyScene(scene);
 }
 
+// A box +-1e35 in its own coordinates, placed at a scale of 0.001, so
+// +-1e32 in the world, against the same box fixed in the world. Rays from
+// 4e35 and 1e36 m off, and one whose direction is 2^120 long, take the
+// frame's origin or direction past the float range (a scale of 0.001
+// multiplies both by 1000); the instance answers them as the fixed box
+// does: hit, at the same distance within 1e-5 of it, with the same normal.
+static void TestFar(void)
+{
+    Box local;
+    MakeBox(&local, (maudVector3){-1e35f, -1e35f, -1e35f}, (maudVector3){1e35f, 1e35f, 1e35f}, 0);
+    Box world;
+    MakeBox(&world, (maudVector3){-1e32f, -1e32f, -1e32f}, (maudVector3){1e32f, 1e32f, 1e32f}, 0);
+    maudScene* scenes[2] = {nullptr, nullptr};
+    maudSceneDef fixed = maudDefaultSceneDef();
+    fixed.meshes = &world.mesh;
+    fixed.meshCount = 1;
+    CHECK(maudCreateScene(&fixed, &scenes[0]) == maud_success, "the box fixed in the world");
+    maudSceneDef placed = maudDefaultSceneDef();
+    placed.instanceMeshes = &local.mesh;
+    placed.instanceMeshCount = 1;
+    placed.instanceCapacity = 1;
+    CHECK(maudCreateScene(&placed, &scenes[1]) == maud_success, "the box as an instance");
+    maudSceneInstanceTransform t = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 0.001f};
+    maudSceneInstanceId id;
+    CHECK(maudCreateSceneInstance(scenes[1], 0, &t, &id) == maud_success &&
+              maudScene_Commit(scenes[1]) == maud_success,
+          "the box placed at 0.001");
+    // From x = from toward (0, 3e31, -2e31), the direction 2^power long.
+    const struct
+    {
+        float from;
+        int power;
+    } rays[] = {{-4e35f, 0}, {-1e36f, 0}, {-1e33f, 120}};
+    int agreed = 0;
+    for (int r = 0; r < 3; ++r)
+    {
+        double d[3] = {-(double)rays[r].from, 3e31, -2e31};
+        double length = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        double unit = ldexp(1.0, rays[r].power);
+        maudRay ray = {{rays[r].from, 0.0f, 0.0f},
+                       {(float)(d[0] / length * unit), (float)(d[1] / length * unit),
+                        (float)(d[2] / length * unit)},
+                       0.0f,
+                       (float)(2.0 * length / unit)};
+        maudRayHit hits[2];
+        uint8_t occluded[2] = {2, 2};
+        for (int k = 0; k < 2; ++k)
+        {
+            maudFindClosestHit(&ray, 1, &hits[k], scenes[k]);
+            maudFindAnyHit(&ray, 1, &occluded[k], scenes[k]);
+        }
+        printf("a far ray from %g, direction 2^%d long: fixed at %g, instance at %g, any-hit %u "
+               "and %u\n",
+               (double)rays[r].from, rays[r].power, (double)hits[0].distance,
+               (double)hits[1].distance, occluded[0], occluded[1]);
+        agreed += hits[0].distance < INFINITY && occluded[0] == 1 && occluded[1] == 1 &&
+                          fabs((double)hits[1].distance / (double)hits[0].distance - 1.0) < 1e-5 &&
+                          hits[1].normal.x == hits[0].normal.x &&
+                          hits[1].normal.y == hits[0].normal.y &&
+                          hits[1].normal.z == hits[0].normal.z
+                      ? 1
+                      : 0;
+    }
+    CHECK(agreed == 3, "an instance answers a far ray as the box fixed in the world");
+    maudDestroyScene(scenes[0]);
+    maudDestroyScene(scenes[1]);
+}
+
 int main(void)
 {
     MakeBox(&s_unit, (maudVector3){-0.5f, -0.5f, -0.5f}, (maudVector3){0.5f, 0.5f, 0.5f}, 10);
@@ -537,5 +607,6 @@ int main(void)
     TestAnyLength();
     TestFailingAllocator();
     TestGrazingTurned();
+    TestFar();
     return s_failures == 0 ? 0 : 1;
 }
