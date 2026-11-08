@@ -1,9 +1,9 @@
 #!/bin/sh
 # Runs a test application in the Android emulator: installs it on the
 # device ANDROID_SERIAL names (else the only one), starts its activity,
-# and waits, two minutes at most, for the closing line the test writes
-# to files/out, "result: N failures", read with run-as (the application
-# is debuggable). A line "adb: <command>" the test writes is run once,
+# and waits, two minutes at most from the start, for the closing line
+# the test writes to files/out, "result: N failures", read with run-as
+# (the application is debuggable). A line "adb: <command>" the test writes is run once,
 # as "adb shell <command>", so that the test drives what only the
 # system can do (granting a permission). Passes when the line says 0
 # failures; otherwise shows the application's crashes from the log. The
@@ -11,13 +11,19 @@
 #
 # adb can lose its connection to the device ("error: closed"). The steps
 # before the verdict (install, clearing the log, the start, a command the
-# test asks for) are idempotent, so each is tried up to three times. The
-# application's data is cleared after the install, since install -r
-# keeps it: a files/out an earlier run left (its uninstall lost) would
-# otherwise be read as this run's result. pm clear can fail and still
-# exit 0 on some Android versions, so files/out is removed as well, and
-# the device must answer that it is gone before the start. Stopping and
-# uninstalling it after the verdict cannot change the verdict.
+# test asks for) are idempotent, so each is tried up to three times. Each
+# run starts with the application fresh: one an earlier run left, as
+# when its uninstall was lost, is removed with its data before the
+# install. The system handles a package's removal in its own time, from
+# its broadcasts, and a handler that gets to one after the test started
+# acts on the new run's data (the media provider orphans the documents
+# the package owns), so the runner waits, a minute at most, until the
+# broadcasts are delivered. Should the removal be lost too, install -r
+# keeps the data, so files/out is removed as well, and the device must
+# answer that it is gone before the start. Each answer is read whole
+# before its carriage returns are stripped: through a pipe, a read adb
+# lost would pass as an empty answer. Stopping and uninstalling it after
+# the verdict cannot change the verdict.
 set -eu
 adb=${ADB:-adb}
 apk=$1
@@ -46,19 +52,31 @@ ask() {
     printf '%s\n' "$output"
 }
 
-start=$(date +%s)
+if ! installed=$(ask shell pm list packages "$package"); then
+    echo "run_android_app.sh: adb lost whether $package is installed" >&2
+    exit 1
+fi
+if printf '%s\n' "$installed" | tr -d '\r' | grep -qx "package:$package"; then
+    again uninstall "$package" > /dev/null
+fi
 again install -r "$apk" > /dev/null
-again shell pm clear "$package" > /dev/null
+if ! timeout 60 "$adb" shell am wait-for-broadcast-idle > /dev/null; then
+    echo "run_android_app.sh: the system's broadcasts were not seen idle in 60 s"
+fi
 again shell run-as "$package" rm -f files/out
 # absent only from a test that ran: a run-as that fails answers nothing.
-left=$(ask shell "run-as $package sh -c 'if [ -e files/out ]; then echo present; else echo absent; fi'" |
-    tr -d '\r')
+if left=$(ask shell "run-as $package sh -c 'if [ -e files/out ]; then echo present; else echo absent; fi'"); then
+    left=$(printf '%s' "$left" | tr -d '\r')
+else
+    left=lost
+fi
 if [ "$left" != absent ]; then
-    echo "run_android_app.sh: an earlier run's files/out is still there ($left)" >&2
+    echo "run_android_app.sh: an earlier run's files/out may still be there (the device answered '$left')" >&2
     again uninstall "$package" > /dev/null || true
     exit 1
 fi
 again logcat -c
+start=$(date +%s)
 again shell am start -W -n "$package/android.app.NativeActivity" > /dev/null
 out=$(mktemp)
 done=0
