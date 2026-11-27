@@ -27,6 +27,18 @@ static inline float maudFramePlace(uint32_t n, bool isSigned)
     return isSigned ? (float)(int32_t)(n + 1) : (float)(n + 1);
 }
 
+// A ramp's gain at frame n, a + step (n + 1), held between low and high,
+// the smaller and the larger of its two ends. The rounding of the step
+// and of the sum can carry a frame a little past the end, and near the
+// float range past it to infinity; held, every frame's gain lies between
+// the ends.
+static inline float maudRampGain(float a, float step, float low, float high, uint32_t n,
+                                 bool isSigned)
+{
+    float gain = a + step * maudFramePlace(n, isSigned);
+    return gain < low ? low : (gain > high ? high : gain);
+}
+
 // A ramp's gain at frame n of frames, from a to b, for a ramp whose
 // change b - a does not fit a float (two finite gains of opposite sign
 // near the float range). Taken in double, every frame's gain lies

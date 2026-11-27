@@ -234,11 +234,14 @@ MAUD_NODISCARD static bool Refit(maudDirectEffect* effect, const double* targets
 }
 
 // The output under the overall gain, ramped across the block.
-static inline void ScaleRamped(float* out, float start, float step, uint32_t frames, bool isSigned)
+static inline void ScaleRamped(float* out, float start, float end, float step, uint32_t frames,
+                               bool isSigned)
 {
+    float low = start < end ? start : end;
+    float high = start < end ? end : start;
     for (uint32_t n = 0; n < frames; ++n)
     {
-        out[n] *= start + step * maudFramePlace(n, isSigned);
+        out[n] *= maudRampGain(start, step, low, high, n, isSigned);
     }
 }
 
@@ -287,11 +290,11 @@ static maudResult Run(maudDirectEffect* effect, const maudDirectParams* params, 
     float step = (overall - start) / (float)frames;
     if (maudRampSigned(frames))
     {
-        ScaleRamped(out, start, step, frames, true);
+        ScaleRamped(out, start, overall, step, frames, true);
     }
     else
     {
-        ScaleRamped(out, start, step, frames, false);
+        ScaleRamped(out, start, overall, step, frames, false);
     }
     effect->overall = overall;
     return maud_success;

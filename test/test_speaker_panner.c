@@ -15,6 +15,7 @@
 
 #include "maul-audio/speakers.h"
 
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -482,6 +483,36 @@ static void TestWideRamp(void)
     maudDestroySpeakerPanner(panner);
 }
 
+// A gain moving from FLT_MAX / 2 to FLT_MAX, over every length to 256:
+// every frame's gain lies between the two, none infinite. In float the
+// step's rounding carried the last frame of 25 of those lengths past
+// FLT_MAX.
+static void TestRampToTheTop(void)
+{
+    maudSpeakerPanner* panner = Create(maud_layoutMono);
+    static float channel[256];
+    static float in[256];
+    float* out[1] = {channel};
+    for (int n = 0; n < 256; ++n)
+    {
+        in[n] = 1.0f;
+    }
+    maudPanSource from = {Towards(0.0, 0.0), FLT_MAX / 2.0f};
+    maudPanSource to = {Towards(0.0, 0.0), FLT_MAX};
+    bool between = true;
+    for (uint32_t frames = 1; frames <= 256; ++frames)
+    {
+        memset(channel, 0, sizeof(channel));
+        CHECK(maudSpeakerPanner_Pan(panner, &from, &to, in, out, frames) == maud_success, "pan");
+        for (uint32_t n = 0; n < frames; ++n)
+        {
+            between = between && channel[n] >= FLT_MAX / 2.0f && channel[n] <= FLT_MAX;
+        }
+    }
+    CHECK(between, "a ramp to FLT_MAX stays between its ends");
+    maudDestroySpeakerPanner(panner);
+}
+
 int main(void)
 {
     TestOnSpeakers();
@@ -493,5 +524,6 @@ int main(void)
     TestStereoAndMono();
     TestPan();
     TestWideRamp();
+    TestRampToTheTop();
     return s_failures == 0 ? 0 : 1;
 }

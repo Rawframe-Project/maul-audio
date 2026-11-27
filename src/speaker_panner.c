@@ -417,12 +417,14 @@ MAUD_NODISCARD static bool OutValid(const maudSpeakerPanner* panner, float* cons
 }
 
 // One speaker's share of the source, its gain ramped across the block.
-static inline void AddRamped(float* out, const float* in, float a, float step, uint32_t frames,
-                             bool isSigned)
+static inline void AddRamped(float* out, const float* in, float a, float b, float step,
+                             uint32_t frames, bool isSigned)
 {
+    float low = a < b ? a : b;
+    float high = a < b ? b : a;
     for (uint32_t n = 0; n < frames; ++n)
     {
-        out[n] += (a + step * maudFramePlace(n, isSigned)) * in[n];
+        out[n] += maudRampGain(a, step, low, high, n, isSigned) * in[n];
     }
 }
 
@@ -458,11 +460,11 @@ maudResult maudSpeakerPanner_Pan(const maudSpeakerPanner* panner, const maudPanS
         float step = frameCount > 0 ? (b - a) / (float)frameCount : 0.0f;
         if (maudRampSigned(frameCount))
         {
-            AddRamped(channels[c], samples, a, step, frameCount, true);
+            AddRamped(channels[c], samples, a, b, step, frameCount, true);
         }
         else
         {
-            AddRamped(channels[c], samples, a, step, frameCount, false);
+            AddRamped(channels[c], samples, a, b, step, frameCount, false);
         }
     }
     return maud_success;
