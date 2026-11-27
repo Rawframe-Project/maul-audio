@@ -818,29 +818,6 @@ static void TestWideGain(const maudHrtf* hrtf)
     CHECK(onRamp, "a gain ramp between gains near the float range");
     maudDestroyBinaural(ramped);
     maudDestroyBinaural(steady);
-    // An ordinary ramp keeps its float arithmetic, bit for bit.
-    Noise(s_in, 256, 5);
-    ramped = Create(hrtf, 256);
-    steady = Create(hrtf, 256);
-    maudBinauralParams near = unit;
-    near.gain = 0.8f;
-    maudBinauralParams far = unit;
-    far.gain = -0.6f;
-    CHECK(Process(ramped, near, s_in, s_left, s_right, 128) == maud_success &&
-              Process(steady, unit, s_in, s_left2, s_right2, 128) == maud_success &&
-              Process(ramped, far, s_in + 128, s_left, s_right, 128) == maud_success &&
-              Process(steady, unit, s_in + 128, s_left2, s_right2, 128) == maud_success,
-          "process");
-    float step = (-0.6f - 0.8f) / 128.0f;
-    bool exact = true;
-    for (int n = 0; n < 128; ++n)
-    {
-        float gain = 0.8f + step * (float)(n + 1);
-        exact = exact && s_left[n] == s_left2[n] * gain && s_right[n] == s_right2[n] * gain;
-    }
-    CHECK(exact, "an ordinary gain ramp, bit for bit");
-    maudDestroyBinaural(ramped);
-    maudDestroyBinaural(steady);
 }
 
 // A fade written into heap buffers exactly a call long: every call

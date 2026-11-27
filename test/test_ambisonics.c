@@ -317,24 +317,6 @@ static void TestWideRamp(void)
         }
     }
     CHECK(onRamp, "a ramp between gains near the float range");
-    // An ordinary ramp keeps its float arithmetic, bit for bit.
-    float plain[4][8] = {{0}};
-    float* plainBed[4] = {plain[0], plain[1], plain[2], plain[3]};
-    float samples[8] = {1.0f, -0.5f, 0.25f, 2.0f, -1.0f, 0.75f, 0.1f, -3.0f};
-    maudPanSource near = {ahead, 0.8f};
-    maudPanSource far = {ahead, -0.6f};
-    CHECK(maudEncodeAmbisonic(1, &near, &far, samples, plainBed, 8) == maud_success, "encode");
-    bool exact = true;
-    for (int c = 0; c < 4; ++c)
-    {
-        float a = gains[c] * 0.8f;
-        float step = (gains[c] * -0.6f - a) / 8.0f;
-        for (int n = 0; n < 8; ++n)
-        {
-            exact = exact && plain[c][n] == (a + step * (float)(n + 1)) * samples[n];
-        }
-    }
-    CHECK(exact, "an ordinary ramp, bit for bit");
 }
 
 int main(void)

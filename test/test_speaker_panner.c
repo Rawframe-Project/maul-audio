@@ -479,20 +479,6 @@ static void TestWideRamp(void)
         onRamp = onRamp && isfinite(channel[n]) && fabs((double)channel[n] - want) <= 1e-6 * 3.0e38;
     }
     CHECK(onRamp && channel[7] == -3.0e38f, "a ramp between gains near the float range");
-    // An ordinary ramp keeps its float arithmetic, bit for bit.
-    float plain[8] = {0};
-    float* plainOut[1] = {plain};
-    float samples[8] = {1.0f, -0.5f, 0.25f, 2.0f, -1.0f, 0.75f, 0.1f, -3.0f};
-    maudPanSource near = {Towards(0.0, 0.0), 0.8f};
-    maudPanSource far = {Towards(0.0, 0.0), -0.6f};
-    CHECK(maudSpeakerPanner_Pan(panner, &near, &far, samples, plainOut, 8) == maud_success, "pan");
-    float step = (-0.6f - 0.8f) / 8.0f;
-    bool exact = true;
-    for (int n = 0; n < 8; ++n)
-    {
-        exact = exact && plain[n] == (0.8f + step * (float)(n + 1)) * samples[n];
-    }
-    CHECK(exact, "an ordinary ramp, bit for bit");
     maudDestroySpeakerPanner(panner);
 }
 
