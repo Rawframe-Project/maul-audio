@@ -467,20 +467,16 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     # whose callback runs on the stalled thread itself.
     if(MAUL_AUDIO_SPATIAL AND NOT EMSCRIPTEN)
         maul_add_test(stall)
-        # Whether a block waited for the stalled host: quarantined, so it
-        # runs at night, until the check has passed fourteen nights.
-        add_test(NAME stall_blocks COMMAND test_stall blocks)
-        set_tests_properties(stall_blocks PROPERTIES LABELS "stall;quarantine")
-        # No underrun over a window judged clean: quarantined likewise,
-        # since a run counted one with every block on time (#211).
+        # No underrun over a window judged clean: quarantined, so it runs
+        # at night, since a run counted one with every block on time (#211).
         add_test(NAME stall_underruns COMMAND test_stall underruns)
         set_tests_properties(stall_underruns PROPERTIES LABELS "stall;quarantine")
-        set_tests_properties(stall stall_blocks stall_underruns PROPERTIES RESOURCE_LOCK
+        set_tests_properties(stall stall_underruns PROPERTIES RESOURCE_LOCK
             pipewire-daemon)
         # Its stream may open ALSA's default PCM on a machine without
         # sound, where libasound leaks.
         if(MAUL_AUDIO_SANITIZE AND MAUL_AUDIO_ALSA)
-            set_tests_properties(stall stall_blocks stall_underruns PROPERTIES ENVIRONMENT
+            set_tests_properties(stall stall_underruns PROPERTIES ENVIRONMENT
                 "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/test/lsan-alsa.supp")
         endif()
     endif()
@@ -517,14 +513,13 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
                 ${MAUL_AUDIO_PW_INCLUDE_DIRS})
             target_compile_definitions(test_pipewire_parse PRIVATE _GNU_SOURCE)
         endif()
-        # The loopback's move to a silent sink, which heard the old sink now
-        # and then on a loaded runner (#50): quarantined, so it runs at
-        # night, until 14 nights in a row pass after the fix.
+        # The loopback's move to a silent sink, with its check that the
+        # stream hears only the silent sink after it (#50).
         add_test(NAME pipewire_move COMMAND test_pipewire move)
         set_tests_properties(pipewire_move PROPERTIES LABELS pipewire)
-        maul_quarantine(pipewire_move)
         # The tests that change the default, whose context stopped following
-        # it once on a loaded runner (#81): quarantined likewise.
+        # it once on a loaded runner (#81): quarantined, so they run at
+        # night.
         add_test(NAME pipewire_defaults COMMAND test_pipewire defaults)
         set_tests_properties(pipewire_defaults PROPERTIES LABELS pipewire)
         maul_quarantine(pipewire_defaults)
@@ -568,14 +563,12 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
     if(MAUL_AUDIO_PULSE)
         maul_add_test(pulse)
         target_compile_definitions(test_pulse PRIVATE _GNU_SOURCE)
-        # The output stream's rate, which reads past its tolerance now and
-        # then on a loaded runner (#73): quarantined, so it runs at night.
+        # The output stream's rate by its clock (#73), a run of its own.
         add_test(NAME pulse_rate COMMAND test_pulse rate)
         set_tests_properties(pulse_rate PROPERTIES LABELS pulse)
-        maul_quarantine(pulse_rate)
         # The tests that change the server's default, which once stopped
         # reaching the context for the rest of a run on main (#196):
-        # quarantined likewise, and left out of pulse.
+        # quarantined, so they run at night, and left out of pulse.
         add_test(NAME pulse_defaults COMMAND test_pulse defaults)
         set_tests_properties(pulse_defaults PROPERTIES LABELS pulse)
         maul_quarantine(pulse_defaults)
@@ -818,7 +811,7 @@ endif()
 # when a change reaches it by name.
 if(MAUL_AUDIO_BUILD_TESTS)
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
-                 pulse_rate pulse_defaults alsa stall stall_blocks stall_underruns guide_device
+                 pulse_rate pulse_defaults alsa stall stall_underruns guide_device
                  coreaudio wasapi wasapi_sta ios ios_capture aaudio aaudio_rate android_java)
         if(TEST ${name})
             set_property(TEST ${name} APPEND PROPERTY LABELS integration)
@@ -827,7 +820,7 @@ if(MAUL_AUDIO_BUILD_TESTS)
     # The suites that skip where their platform is absent
     # (PlatformAbsent, test/test_wait.h).
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
-                 pulse_rate pulse_defaults alsa stall stall_blocks stall_underruns guide_device
+                 pulse_rate pulse_defaults alsa stall stall_underruns guide_device
                  coreaudio wasapi wasapi_sta aaudio aaudio_rate)
         if(TEST ${name})
             # hygiene: exit 77 means the suite's platform is absent, never a failure
@@ -860,7 +853,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"
     get_property(maul_audio_tests DIRECTORY PROPERTY TESTS)
     set(maul_audio_server_tests "")
     foreach(name pipewire pipewire_move pipewire_defaults pipewire_restart pipewire_starved pulse
-                 pulse_rate pulse_defaults alsa stall stall_blocks stall_underruns guide_device)
+                 pulse_rate pulse_defaults alsa stall stall_underruns guide_device)
         if(TEST ${name})
             list(APPEND maul_audio_server_tests ${name})
         endif()

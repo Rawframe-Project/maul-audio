@@ -601,9 +601,8 @@ static void TestMark(maudContext* context)
           "an unmarked one has no mark");
 }
 
-// Its rate by its own clock, which reads past the tolerance now and then
-// on a loaded machine (#73): checked only in the quarantined run,
-// pulse_rate, until that is fixed.
+// Its rate by its own clock, checked in a run of its own, pulse_rate
+// (#73).
 static void TestOutputRate(maudContext* context)
 {
     Blocks blocks = {0};
@@ -1518,9 +1517,9 @@ int main(int argc, char** argv)
     {
         pthread_detach(watchdog);
     }
-    // The quarantined runs: pulse_rate ("test_pulse rate"), the output
-    // stream's rate alone, and pulse_defaults ("test_pulse defaults"),
-    // the tests that change the server's default.
+    // The runs of their own: pulse_rate ("test_pulse rate"), the output
+    // stream's rate alone, and pulse_defaults ("test_pulse defaults",
+    // quarantined), the tests that change the server's default.
     bool rateOnly = argc > 1 && strcmp(argv[1], "rate") == 0;
     bool defaultsOnly = argc > 1 && strcmp(argv[1], "defaults") == 0;
     s_control = pthread_self();

@@ -1251,8 +1251,8 @@ static void PrintTrace(const Blocks* blocks, int64_t setAt, int64_t movedAt)
                   "pactl list source-outputs short; pw-link -l");
 }
 
-// Whether this is the quarantined run, pipewire_move ("test_pipewire
-// move"): the loopback's move alone, with its check of the silent sink.
+// Whether this is the run pipewire_move ("test_pipewire move"): the
+// loopback's move alone, with its check of the silent sink.
 static bool s_moveOnly;
 
 // Whether this is the quarantined run, pipewire_defaults ("test_pipewire
@@ -1310,9 +1310,8 @@ static void TestLoopback(maudContext* context, Helper* helper)
     int64_t movedAt = maudGetHostNanoseconds();
     StaysBelow(context, &following, UINT32_MAX);
     atomic_store(&following.peak, 0);
-    // Heard the old sink now and then on a loaded runner (#50): judged
-    // only in the quarantined run, pipewire_move, until 14 nights in a
-    // row pass after the fix.
+    // Judged in the run of the move alone, pipewire_move (#50); the whole
+    // suite's run leaves it out.
     bool silent = !s_moveOnly || StaysBelow(context, &following, 10);
     CHECK(silent, "and hears the silent sink");
     uint32_t joined = JoinedBlocks(&following);
