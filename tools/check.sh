@@ -220,7 +220,18 @@ source_checks() {
         echo "skipped the organization's documentation check: no checkout at $org"
     fi
     if [ -f "$org/maul/family_sync.py" ]; then
-        python3 "$org/maul/family_sync.py" --check --root "$root/.." maul-audio
+        # Against the family release this library pins, the commit of its
+        # shared workflows' pin, whatever the checkout at $org has moved on
+        # to since.
+        local pin
+        pin=$(grep -ohE 'Rawframe-Project/\.github/\.github/workflows/[^@ ]+@[0-9a-f]{40}' \
+            .github/workflows/ci.yml | head -1 || true)
+        pin=${pin##*@}
+        if [ -z "$pin" ]; then
+            echo "no pin of the shared workflows in .github/workflows/ci.yml" >&2
+            exit 1
+        fi
+        python3 "$org/maul/family_sync.py" --check --root "$root/.." --ref "$pin" maul-audio
     fi
 }
 
