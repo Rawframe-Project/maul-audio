@@ -447,6 +447,14 @@ maudResult maudSpeakerPanner_Pan(const maudSpeakerPanner* panner, const maudPanS
         {
             continue;
         }
+        if (!isfinite(b - a))
+        {
+            for (uint32_t n = 0; n < frameCount; ++n)
+            {
+                channels[c][n] += maudWideRampGain(a, b, n, frameCount) * samples[n];
+            }
+            continue;
+        }
         float step = frameCount > 0 ? (b - a) / (float)frameCount : 0.0f;
         if (maudRampSigned(frameCount))
         {
