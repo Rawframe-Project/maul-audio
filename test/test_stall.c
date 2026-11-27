@@ -25,11 +25,9 @@
 // returns. So when a block started at least two periods before the stall
 // ended, some block that started during the stall must have finished
 // during it. How long a block took says nothing either way: a slow
-// runner stretches a block that never waited. The check runs as
-// `test_stall blocks` (stall_blocks), quarantined until it has passed
-// fourteen nights. So does the check of no underrun over a clean window,
-// as `test_stall underruns` (stall_underruns), since a run counted one
-// with every block on time.
+// runner stretches a block that never waited. The check of no underrun
+// over a clean window runs as `test_stall underruns` (stall_underruns),
+// quarantined, since a run counted one with every block on time.
 
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
@@ -244,7 +242,6 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
 
 int main(int argc, char** argv)
 {
-    bool blocks = argc > 1 && strcmp(argv[1], "blocks") == 0;
     bool underruns = argc > 1 && strcmp(argv[1], "underruns") == 0;
     maudBackendKind requiredKind = maud_backendNative;
     if (getenv("MAUD_REQUIRE_PIPEWIRE") != nullptr)
@@ -372,7 +369,7 @@ int main(int argc, char** argv)
            "before its end\n",
            finished, atomic_load(&shared->startedInStall),
            firstStart != 0 ? (double)(shared->stallEnd - firstStart) / 1e6 : 0.0);
-    if (blocks && room)
+    if (room)
     {
         CHECK(finished > 0, "no block waited for the stalled host");
     }
