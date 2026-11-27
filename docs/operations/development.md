@@ -15,7 +15,7 @@ How to build and test the library while working on it, regenerate its data, and 
 
 GCC 14 or Clang 19 and newer (the family refuses older compilers, since the library is C23), CMake 3.25, Ninja, and the development headers of PipeWire, PulseAudio and ALSA on Linux. The checks also need `clang-format` at the version CI pins (22.1.5, from pip), `clang-tidy-20` and Python 3. The organization's CI image (`ghcr.io/rawframe-project/ci-cpp`) has all of them, and runs locally with Docker.
 
-On the shared development machine the default `gcc` is 13: pass `-DCMAKE_C_COMPILER=gcc-14` or `clang-20`. Run large builds and full test runs through the workspace's heavy-job wrapper (`/home/rawframe-project/tools/heavy.sh`).
+On Ubuntu 24.04, the workspace's WSL distribution included, the default `gcc` is 13: pass `-DCMAKE_C_COMPILER=gcc-14` or `clang-20`. Run large builds and full test runs through the workspace's heavy-job wrapper (`$RAWFRAME_ROOT/tools/heavy.sh`).
 
 ## Building and testing
 
@@ -36,8 +36,8 @@ The backend suites need a platform; [Test environments](test-environments.md) sa
 The family's shared files (the conventions page, formatting and analysis settings, CMake modules, the test harness and the checks in `tools/`) are written by the organization's sync tool and must not be edited here:
 
 ```sh
-python3 /home/rawframe-project/.github/maul/family_sync.py --check maul-audio
-python3 /home/rawframe-project/.github/maul/family_sync.py --write maul-audio
+python3 ../../.github/maul/family_sync.py --check maul-audio
+python3 ../../.github/maul/family_sync.py --write maul-audio
 ```
 
 A change to one is made in the canonical copy first, through the manager. `AGENTS.md` lists the files.

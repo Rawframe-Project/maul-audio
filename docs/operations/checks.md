@@ -4,7 +4,7 @@ What runs before a push, on a pull request, on `main` and every night, and the b
 
 ## Local tiers
 
-`tools/check.sh` runs the Linux checks in three tiers, each including the one before. Every build is a CI cell's CMake preset (`CMakePresets.json`), in `out/<preset>`, so a local run and CI run the same commands. The organization's CI image has every tool the tiers need; run the `pr` and `full` tiers through the workspace's heavy-job wrapper on the shared machine.
+`tools/check.sh` runs the Linux checks in three tiers, each including the one before. Every build is a CI cell's CMake preset (`CMakePresets.json`), in `out/<preset>`, so a local run and CI run the same commands. The organization's CI image has every tool the tiers need; run the `pr` and `full` tiers through the workspace's heavy-job wrapper (on Windows, in the workspace's WSL distribution through its `tools/linux.sh`).
 
 | Tier | What it runs | Budget |
 |---|---|---|
