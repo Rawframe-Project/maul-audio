@@ -8,7 +8,7 @@
 // equally among the speakers around them; stereo folds the rear to the
 // front; mono passes through; panning ramps and adds; a direction's
 // length does not count, from subnormal to FLT_MAX; bad calls write
-// nothing.
+// nothing, a source held in a channel among them.
 
 #include "test_harness.h"
 #include "test_lengths.h"
@@ -513,6 +513,42 @@ static void TestRampToTheTop(void)
     maudDestroySpeakerPanner(panner);
 }
 
+// A source that shares a byte with a channel is refused, the channels
+// left as they were: in the channel, or partly over it. One that ends
+// where a channel starts is apart.
+static void TestOverlap(void)
+{
+    maudSpeakerPanner* panner = Create(maud_layout5Point1);
+    float channels[6][16];
+    float* out[6];
+    for (int c = 0; c < 6; ++c)
+    {
+        out[c] = channels[c];
+        for (int n = 0; n < 16; ++n)
+        {
+            channels[c][n] = 0.25f;
+        }
+    }
+    maudPanSource from = {Towards(10.0, 0.0), 1.0f};
+    maudPanSource to = {Towards(-60.0, 0.0), 0.5f};
+    CHECK(maudSpeakerPanner_Pan(panner, &from, &to, channels[2], out, 8) == maud_errorInvalid,
+          "a source in a channel");
+    CHECK(maudSpeakerPanner_Pan(panner, &from, &to, channels[4] + 7, out, 8) == maud_errorInvalid,
+          "a source over a channel's last frame");
+    bool kept = true;
+    for (int c = 0; c < 6; ++c)
+    {
+        for (int n = 0; n < 16; ++n)
+        {
+            kept = kept && channels[c][n] == 0.25f;
+        }
+    }
+    CHECK(kept, "nothing written by a refused call");
+    CHECK(maudSpeakerPanner_Pan(panner, &from, &to, channels[0] + 8, out, 8) == maud_success,
+          "a source right after a channel");
+    maudDestroySpeakerPanner(panner);
+}
+
 int main(void)
 {
     TestOnSpeakers();
@@ -525,5 +561,6 @@ int main(void)
     TestPan();
     TestWideRamp();
     TestRampToTheTop();
+    TestOverlap();
     return s_failures == 0 ? 0 : 1;
 }

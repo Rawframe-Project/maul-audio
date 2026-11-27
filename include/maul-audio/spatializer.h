@@ -580,7 +580,8 @@ extern "C"
     ///                     linearly from the last call's.
     /// @param send         frameCount samples.
     /// @param bed          (order + 1)^2 channels of frameCount samples, added
-    ///                     to.
+    ///                     to; send may be one of them, each of its frames
+    ///                     read before it is added to.
     /// @param frameCount   The frames; 0 does nothing.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or
     ///         an orientation of zero length or not finite, as the

@@ -128,7 +128,9 @@ extern "C"
     /// @param reverb      The reverb.
     /// @param params      This call's params.
     /// @param samples     frameCount samples of the send.
-    /// @param bed         Four channels of frameCount samples, added to.
+    /// @param bed         Four channels of frameCount samples, added to; samples
+    ///                    may be one of them, each of its frames read before
+    ///                    it is added to.
     /// @param frameCount  The frames; 0 does nothing.
     /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
     ///         a time, level or delay out of range or not finite (a tail's

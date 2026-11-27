@@ -13,7 +13,7 @@ alsa_stream: allocator alsa_api alsa_chmap alsa_core clock context context_core 
 alsa_watch:
 ambisonic_rotation:
 apple_objects: allocator context context_core period
-ambisonics: ambisonic_rotation ramp spherical_harmonics
+ambisonics: ambisonic_rotation overlap ramp spherical_harmonics
 backend: context_core
 backend_aaudio: aaudio_core aaudio_java aaudio_stream allocator backend context device focus layout
 backend_alsa: allocator alsa_core alsa_scan alsa_stream alsa_watch backend context device
@@ -78,6 +78,7 @@ notify: backend context context_core invariant
 occlusion:
 octave_eq: least_squares
 offline: context context_core device follow
+overlap:
 partitioned: real_fft
 period:
 path_refine:
@@ -108,8 +109,8 @@ scene_state: bvh
 spatializer: air_absorption allocator direct_step fpenv host_tasks occlusion pathing probe_sets reflections reverb_estimate spatializer_state transmission
 spatializer_paths: bake_file fpenv pathing probe_bake probe_graph probe_sets reflections reverb_estimate spatializer_state
 spatializer_state: pathing probe_sets reflections reverb_estimate
-speaker_decoder: allocator spherical_harmonics
-speaker_panner: allocator ramp spherical_harmonics
+speaker_decoder: allocator overlap spherical_harmonics
+speaker_panner: allocator overlap ramp spherical_harmonics
 spherical_harmonics: exact_scale
 staged: partitioned
 stream: backend clock context context_core duplex follow period stream_open thread

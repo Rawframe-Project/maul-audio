@@ -99,7 +99,9 @@ extern "C"
     /// @param effect      The effect.
     /// @param params      The source's parameters.
     /// @param samples     frameCount samples.
-    /// @param samplesOut  Two channels of frameCount samples each, apart from samples.
+    /// @param samplesOut  Two channels of frameCount samples each; either may be
+    ///                    samples itself, which is read whole before either
+    ///                    is written.
     /// @param frameCount  0 to the def's maxFrames; 0 does nothing.
     /// @return `maud_success`; `maud_errorInvalid` for a NULL pointer or a
     ///         parameter that is not finite; `maud_errorCapacity` for more

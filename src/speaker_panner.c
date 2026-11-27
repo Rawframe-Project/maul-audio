@@ -12,6 +12,7 @@
 // for energy.
 
 #include "allocator.h"
+#include "overlap.h"
 #include "ramp.h"
 #include "spherical_harmonics.h"
 
@@ -416,6 +417,23 @@ MAUD_NODISCARD static bool OutValid(const maudSpeakerPanner* panner, float* cons
     return true;
 }
 
+// Whether the source's frames share a byte with a channel. Each channel
+// is added to in turn from the source, so a source in one of them would
+// be read changed by the channels after it.
+MAUD_NODISCARD static bool OverlapsSource(const maudSpeakerPanner* panner, const float* samples,
+                                          float* const* channels, uint32_t frames)
+{
+    size_t bytes = (size_t)frames * sizeof(float);
+    for (uint32_t c = 0; c < panner->channels; ++c)
+    {
+        if (maudSpansOverlap(samples, channels[c], bytes))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // One speaker's share of the source, its gain ramped across the block.
 static inline void AddRamped(float* out, const float* in, float a, float b, float step,
                              uint32_t frames, bool isSigned)
@@ -433,7 +451,7 @@ maudResult maudSpeakerPanner_Pan(const maudSpeakerPanner* panner, const maudPanS
                                  float* const* channels, uint32_t frameCount)
 {
     if (panner == nullptr || !SourceValid(from) || !SourceValid(to) || samples == nullptr ||
-        !OutValid(panner, channels))
+        !OutValid(panner, channels) || OverlapsSource(panner, samples, channels, frameCount))
     {
         return maud_errorInvalid;
     }
