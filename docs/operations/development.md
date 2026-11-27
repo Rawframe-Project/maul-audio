@@ -27,7 +27,7 @@ cmake --build --preset linux-clang-20-asan
 ctest --preset linux-clang-20-asan -L reverb        # one suite, by its label
 ```
 
-Each suite is `test/test_<name>.c`, registered as `<name>` with the label `<name>`. Debug presets turn the library's internal assertions on (`MAUD_ASSERT`, [invariant.h](../../src/invariant.h)); the `-asan` presets add AddressSanitizer and UBSan, `-tsan` ThreadSanitizer. [Checks](checks.md) lists the tiers of `tools/check.sh` and what CI runs.
+Each suite is `test/test_<name>.c`, registered as `<name>` with the label `<name>`. Debug presets turn the library's internal assertions on (`MAUD_ASSERT`, [invariant.h](../../src/invariant.h)); the `-asan` presets add AddressSanitizer and UBSan, `-tsan` ThreadSanitizer. [Checks](checks.md) lists the tiers of `tools/check.sh` and what CI runs. The `changed` tier runs before every push once `git config core.hooksPath tools/hooks` installs `tools/hooks/pre-push`; inside the Rawframe workspace on Windows the hook runs it in the workspace's WSL distribution.
 
 The backend suites need a platform; [Test environments](test-environments.md) says how each one runs. A backend suite whose platform is absent exits 77, which CTest reports as skipped and CI as a failure.
 
