@@ -98,9 +98,9 @@ static void TestInvalidArgumentsAreRefused(void)
 
 // Interleaved frames that share a byte with a channel's samples are
 // refused both ways, the output left as it was: a planar buffer laid out
-// channel after channel and interleaved into itself, and frames that
-// reach only a channel's last sample. Frames that end where a channel
-// starts are apart.
+// channel after channel and interleaved into itself, frames whose last
+// sample is a channel's first, and a channel whose last sample is the
+// frames' first. Frames that end where a channel starts are apart.
 static void TestOverlapIsRefused(void)
 {
     float buffer[16];
@@ -112,12 +112,20 @@ static void TestOverlapIsRefused(void)
     CHECK(maudInterleave(inPlace, 2, 4, buffer) == maud_errorInvalid, "interleaved in place");
     float* outPlace[2] = {buffer, buffer + 4};
     CHECK(maudDeinterleave(buffer, 2, 4, outPlace) == maud_errorInvalid, "deinterleaved in place");
-    const float* lastSample[2] = {buffer + 8, buffer + 12};
-    CHECK(maudInterleave(lastSample, 2, 4, buffer + 1) == maud_errorInvalid,
-          "frames over a channel's last sample");
-    float* lastOut[2] = {buffer + 8, buffer + 12};
-    CHECK(maudDeinterleave(buffer + 1, 2, 4, lastOut) == maud_errorInvalid,
-          "a channel's last sample over the frames");
+    // Frames over [1, 9), a channel from 8.
+    const float* firstSample[2] = {buffer + 8, buffer + 12};
+    CHECK(maudInterleave(firstSample, 2, 4, buffer + 1) == maud_errorInvalid,
+          "the frames' last sample on a channel's first");
+    float* firstOut[2] = {buffer + 8, buffer + 12};
+    CHECK(maudDeinterleave(buffer + 1, 2, 4, firstOut) == maud_errorInvalid,
+          "a channel's first sample on the frames' last");
+    // A channel over [0, 4), frames from 3.
+    const float* lastSample[2] = {buffer, buffer + 12};
+    CHECK(maudInterleave(lastSample, 2, 4, buffer + 3) == maud_errorInvalid,
+          "a channel's last sample on the frames' first");
+    float* lastOut[2] = {buffer, buffer + 12};
+    CHECK(maudDeinterleave(buffer + 3, 2, 4, lastOut) == maud_errorInvalid,
+          "the frames' first sample on a channel's last");
     bool kept = true;
     for (int i = 0; i < 16; ++i)
     {
