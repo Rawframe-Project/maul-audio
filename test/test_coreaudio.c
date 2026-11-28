@@ -15,7 +15,8 @@
 // Sound > Output restores it. Without the variable it leaves the default
 // alone, plays on BlackHole by its key, opens no other input, and leaves
 // out the checks of the default, its moves and the inputs apart, saying
-// so.
+// so. A 7.1 stream plays into BlackHole's 16-channel device, whose
+// channels are not in WAV's order, where it is installed, as in CI.
 
 #include "test_clock.h"
 #include "test_harness.h"
@@ -38,6 +39,9 @@
 #include <unistd.h>
 
 #define BLACKHOLE_UID "BlackHole2ch_UID"
+// BlackHole's 16-channel device, which labels its channels in Core
+// Audio's label order from Left: L R C LFE Ls Rs Lc Rc Cs Lsd Rsd and on.
+#define BLACKHOLE16_UID "BlackHole16ch_UID"
 // The macOS runners' own virtual device, at 44.1 kHz where BlackHole
 // runs at 48 kHz.
 #define NULL_DEVICE_UID "NullAudioDevice_UID"
@@ -710,6 +714,99 @@ static void TestCapture(maudContext* context)
           "no converted capture at another rate");
 }
 
+// The most channels a channel test hears.
+#define HEARD_CHANNELS 12u
+
+// Output: each channel plays its own level, (c + 1) / 16. Input: the
+// level of each channel in the last frame captured, in thousandths.
+typedef struct Channels
+{
+    atomic_uint count;
+    atomic_uint heard[HEARD_CHANNELS];
+} Channels;
+
+static void PlayChannels(const maudStreamBlock* block, void* user)
+{
+    Channels* channels = user;
+    uint32_t count = maudGetLayoutChannelCount(block->layout);
+    for (uint32_t f = 0; block->output != nullptr && f < block->frameCount; ++f)
+    {
+        for (uint32_t c = 0; c < count; ++c)
+        {
+            block->output[(size_t)f * count + c] = (float)(c + 1) / 16.0f;
+        }
+    }
+    if (block->input != nullptr && block->frameCount > 0)
+    {
+        const float* last = block->input + (size_t)(block->frameCount - 1) * count;
+        for (uint32_t c = 0; c < count && c < HEARD_CHANNELS; ++c)
+        {
+            atomic_store(&channels->heard[c], (unsigned)(fabsf(last[c]) * 1000.0f + 0.5f));
+        }
+    }
+    atomic_fetch_add(&channels->count, 1);
+}
+
+// Whether a channel was heard at the level of the stream channel
+// played, or silent for -1.
+static bool HeardAs(const Channels* channels, uint32_t channel, int played)
+{
+    unsigned expected = played < 0 ? 0u : (unsigned)((float)(played + 1) / 16.0f * 1000.0f + 0.5f);
+    unsigned heard = atomic_load(&channels->heard[channel]);
+    return heard + 5u >= expected && heard <= expected + 5u;
+}
+
+// Each channel of a 7.1 stream reaches the device channel whose label
+// names its speaker. BlackHole's 16-channel device has Ls and Rs on its
+// channels 5 and 6 and the side directs Lsd and Rsd on 10 and 11, and no
+// rear surrounds: so the stream's backs play on the surrounds and its
+// sides on the side directs, where in order they would play on 7 and 8,
+// left center and right center. A 7.1.4 capture hears the device's
+// first 12 channels in order, since BlackHole has no top back right.
+static void TestChannelLabels(maudContext* context)
+{
+    maudDeviceId output = FindByKey(context, maud_directionOutput, BLACKHOLE16_UID);
+    maudDeviceId input = FindByKey(context, maud_directionInput, BLACKHOLE16_UID);
+    if (output.index1 == 0 || input.index1 == 0)
+    {
+        CHECK(!s_required, "BlackHole 16ch, as MAUD_REQUIRE_COREAUDIO says");
+        printf("no BlackHole 16ch: the channel labels are not checked\n");
+        return;
+    }
+    Channels played = {0};
+    maudStreamDef def = maudDefaultStreamDef();
+    def.device = output;
+    def.layout = maud_layout7Point1;
+    def.periodFrames = 256;
+    def.callback = PlayChannels;
+    def.user = &played;
+    maudStreamId player = {0, 0};
+    CHECK(maudCreateStream(context, &def, &player) == maud_success, "a 7.1 stream on 16 channels");
+    Channels heard = {0};
+    def.direction = maud_directionInput;
+    def.device = input;
+    def.layout = maud_layout7Point1Point4;
+    def.user = &heard;
+    maudStreamId recorder = {0, 0};
+    CHECK(maudCreateStream(context, &def, &recorder) == maud_success,
+          "a 7.1.4 capture of the first 12");
+    CHECK(maudStream_Start(context, player) == maud_success, "play");
+    CHECK(maudStream_Start(context, recorder) == maud_success, "capture");
+    POLL_UNTIL(5000, "40 captured blocks", Drain(context), atomic_load(&heard.count) >= 40);
+    // Device channel d carries stream channel route[d].
+    static const int route[HEARD_CHANNELS] = {0, 1, 2, 3, 4, 5, -1, -1, -1, 6, 7, -1};
+    bool routed = true;
+    for (uint32_t d = 0; d < HEARD_CHANNELS; ++d)
+    {
+        routed = routed && HeardAs(&heard, d, route[d]);
+        printf("BlackHole 16ch channel %u: %u thousandths\n", d + 1, atomic_load(&heard.heard[d]));
+    }
+    CHECK(atomic_load(&heard.count) >= 40, "captured blocks arrive");
+    CHECK(routed, "each 7.1 channel on the device channel its label names");
+    CHECK(Destroy(context, recorder), "destroy the capture");
+    CHECK(Destroy(context, player), "destroy the player");
+}
+
 // The other inputs: one at BlackHole's rate runs a duplex with the
 // slip; one at another rate is refused, since CoreAudio's input side
 // cannot convert and the library never changes a device's rate.
@@ -1256,6 +1353,7 @@ int main(void)
     TestOutputStream(context);
     TestObjects(context);
     TestCapture(context);
+    TestChannelLabels(context);
     TestDuplex(context);
     TestVoice(context);
     TestXruns(context);

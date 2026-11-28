@@ -38,8 +38,9 @@ context_core: period
 coreaudio_core: apple_objects context_core device
 coreaudio_hog: coreaudio_core
 coreaudio_form: coreaudio_core
+coreaudio_labels:
 coreaudio_listen: coreaudio_core coreaudio_form
-coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog device follow period retry thread voice xrun
+coreaudio_stream: apple_objects clock context context_core coreaudio_core coreaudio_hog coreaudio_labels device follow period retry thread voice xrun
 crc32:
 device: context context_core follow notify utf8
 direct_effect: air_absorption allocator band_eq exact_scale ramp
