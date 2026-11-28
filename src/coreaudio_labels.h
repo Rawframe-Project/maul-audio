@@ -66,6 +66,13 @@ MAUD_NODISCARD uint32_t maudCoreAudioLabelsOf(uint32_t tag, uint32_t bitmap,
 MAUD_NODISCARD bool maudCoreAudioChannelsByLabel(maudChannelLayout layout, const uint32_t* labels,
                                                  uint32_t labelCount, uint32_t* deviceOut);
 
+// The largest of the library's layouts (7.1.4, 7.1, 5.1, quad, stereo,
+// mono) whose every speaker labelCount labels name, as
+// maudCoreAudioChannelsByLabel matches them, or maud_layoutNone when
+// they name none whole.
+MAUD_NODISCARD maudChannelLayout maudCoreAudioLayoutOfLabels(const uint32_t* labels,
+                                                             uint32_t labelCount);
+
 // Whether deviceOf sends every one of count channels to its own index.
 MAUD_NODISCARD bool maudCoreAudioChannelsInOrder(const uint32_t* deviceOf, uint32_t count);
 

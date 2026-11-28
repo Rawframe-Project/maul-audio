@@ -773,6 +773,10 @@ static void TestChannelLabels(maudContext* context)
         printf("no BlackHole 16ch: the channel labels are not checked\n");
         return;
     }
+    maudDeviceInfo info = {0};
+    CHECK(maudDevice_GetInfo(context, output, &info) == maud_success &&
+              info.nativeLayout == maud_layout7Point1,
+          "BlackHole 16ch's native layout: the 7.1 its labels name, not its count's none");
     Channels played = {0};
     maudStreamDef def = maudDefaultStreamDef();
     def.device = output;

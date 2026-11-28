@@ -166,6 +166,43 @@ static void TestUnknown(void)
     CHECK(Refused(maud_layoutNone, some, 2), "no layout");
 }
 
+// The layout a device's labels name: the largest named whole.
+static void TestLayoutOfLabels(void)
+{
+    static const uint32_t sidesFirst[] = {L, R, C, LFE, LS, RS, RLS, RRS};
+    CHECK(maudCoreAudioLayoutOfLabels(sidesFirst, 8) == maud_layout7Point1, "7.1 in any order");
+    static const uint32_t atmos[] = {L, R, C, LFE, LS, RS, RLS, RRS, VHL, VHR, LTR, RTR};
+    CHECK(maudCoreAudioLayoutOfLabels(atmos, 12) == maud_layout7Point1Point4, "7.1.4");
+    static const uint32_t fiveOne[] = {L, C, R, LS, RS, LFE};
+    CHECK(maudCoreAudioLayoutOfLabels(fiveOne, 6) == maud_layout5Point1, "5.1");
+    // Eight channels whose last two are left and right center: no
+    // backs, so 5.1, not the count's 7.1.
+    static const uint32_t centers[] = {L, R, C, LFE, LS, RS, 7, 8};
+    CHECK(maudCoreAudioLayoutOfLabels(centers, 8) == maud_layout5Point1,
+          "eight channels with centers for backs: 5.1");
+    // Six channels of 6.0 (L R Ls Rs C Cs): no LFE, so quad.
+    static const uint32_t hexagonal[] = {L, R, LS, RS, C, 9};
+    CHECK(maudCoreAudioLayoutOfLabels(hexagonal, 6) == maud_layoutQuad, "6.0: quad");
+    uint32_t counting[16];
+    for (uint32_t i = 0; i < 16; ++i)
+    {
+        counting[i] = L + i;
+    }
+    CHECK(maudCoreAudioLayoutOfLabels(counting, 16) == maud_layout7Point1,
+          "sixteen labels counted from Left: 7.1");
+    static const uint32_t stereo[] = {L, R};
+    CHECK(maudCoreAudioLayoutOfLabels(stereo, 2) == maud_layoutStereo, "stereo");
+    static const uint32_t mono[] = {MONO};
+    CHECK(maudCoreAudioLayoutOfLabels(mono, 1) == maud_layoutMono, "mono");
+    static const uint32_t unknown[] = {UNKNOWN, UNKNOWN};
+    CHECK(maudCoreAudioLayoutOfLabels(unknown, 2) == maud_layoutNone, "unknown labels: none");
+    static const uint32_t discrete[] = {(1u << 16) | 0u, (1u << 16) | 1u};
+    CHECK(maudCoreAudioLayoutOfLabels(discrete, 2) == maud_layoutNone, "discrete labels: none");
+    static const uint32_t leftOnly[] = {L, UNKNOWN};
+    CHECK(maudCoreAudioLayoutOfLabels(leftOnly, 2) == maud_layoutNone, "a left alone: none");
+    CHECK(maudCoreAudioLayoutOfLabels(nullptr, 0) == maud_layoutNone, "no labels: none");
+}
+
 // The unit's channel map from the device channel of each stream
 // channel, and the order that needs none.
 static void TestChannelMap(void)
@@ -197,5 +234,6 @@ int main(void)
     TestBitmap();
     TestUnknown();
     TestChannelMap();
+    TestLayoutOfLabels();
     return s_failures == 0 ? 0 : 1;
 }

@@ -35,11 +35,14 @@ typedef struct maudCoreAudioEndpoint
     char name[MAUD_COREAUDIO_NAME_BYTES];
 } maudCoreAudioEndpoint;
 
-// One direction of a device whose data source the context listens to.
+// One direction of a device whose data source or preferred channel
+// layout the context listens to, and which of the two.
 typedef struct maudCoreAudioWatch
 {
     AudioObjectID object;
     maudDirection direction;
+    bool source;
+    bool layout;
 } maudCoreAudioWatch;
 
 // A stream's AUHAL unit, run by the HAL's IO thread while it plays.

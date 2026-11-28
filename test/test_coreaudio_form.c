@@ -6,11 +6,15 @@
 // channels are its buffers' sum, and none when the bytes read do not
 // hold every buffer it counts; a form comes from the data
 // source of the direction's scope, else from an HDMI or DisplayPort
-// transport; a listener is added once per scanned endpoint with a data
-// source, up to the capacity, and removed when the endpoint leaves the
-// scan or the context stops listening.
+// transport; a listener is added once per scanned endpoint for its data
+// source and its preferred channel layout, up to the capacity, and
+// removed when the endpoint leaves the scan or the context stops
+// listening; a preferred channel layout is read as its labels, from
+// descriptions, a bitmap or a tag the system expands.
 
 #include "coreaudio_form.h"
+#include "coreaudio_labels.h"
+#include "coreaudio_layout.h"
 #include "test_harness.h"
 
 #include <stddef.h>
@@ -31,11 +35,19 @@ typedef struct FakeDevice
     bool sourceFails;
     // Whether adding a listener to it fails.
     bool addFails;
+    // Whether it has a preferred channel layout, and the layout: its tag,
+    // its bitmap, and its descriptions' labels.
+    bool hasLayout;
+    AudioChannelLayoutTag layoutTag;
+    UInt32 bitmap;
+    const UInt32* labels;
+    UInt32 labelCount;
 } FakeDevice;
 
 typedef struct Listened
 {
     AudioObjectID object;
+    AudioObjectPropertySelector selector;
     AudioObjectPropertyScope scope;
 } Listened;
 
@@ -72,6 +84,27 @@ static OSStatus FakeGetData(AudioObjectID object, const AudioObjectPropertyAddre
     (void)qualifierSize;
     (void)qualifier;
     const FakeDevice* device = Find(object);
+    if (device != nullptr && device->hasLayout &&
+        address->mSelector == kAudioDevicePropertyPreferredChannelLayout)
+    {
+        size_t bytes = offsetof(AudioChannelLayout, mChannelDescriptions) +
+                       (size_t)device->labelCount * sizeof(AudioChannelDescription);
+        if (*size < bytes)
+        {
+            return kAudioHardwareBadPropertySizeError;
+        }
+        AudioChannelLayout* layout = data;
+        memset(layout, 0, bytes);
+        layout->mChannelLayoutTag = device->layoutTag;
+        layout->mChannelBitmap = device->bitmap;
+        layout->mNumberChannelDescriptions = device->labelCount;
+        for (UInt32 i = 0; i < device->labelCount; ++i)
+        {
+            layout->mChannelDescriptions[i].mChannelLabel = device->labels[i];
+        }
+        *size = (UInt32)bytes;
+        return noErr;
+    }
     UInt32 value = 0;
     if (device != nullptr && address->mSelector == kAudioDevicePropertyDataSource &&
         !device->sourceFails)
@@ -94,8 +127,11 @@ static OSStatus FakeGetData(AudioObjectID object, const AudioObjectPropertyAddre
 static Boolean FakeHas(AudioObjectID object, const AudioObjectPropertyAddress* address)
 {
     const FakeDevice* device = Find(object);
-    return device != nullptr && address->mSelector == kAudioDevicePropertyDataSource &&
-           SourceIn(device, address->mScope) != 0;
+    return device != nullptr &&
+           ((address->mSelector == kAudioDevicePropertyDataSource &&
+             SourceIn(device, address->mScope) != 0) ||
+            (address->mSelector == kAudioDevicePropertyPreferredChannelLayout &&
+             device->hasLayout));
 }
 
 static OSStatus FakeAdd(AudioObjectID object, const AudioObjectPropertyAddress* address,
@@ -108,7 +144,7 @@ static OSStatus FakeAdd(AudioObjectID object, const AudioObjectPropertyAddress* 
     {
         return kAudioHardwareUnspecifiedError;
     }
-    s_listened[s_listenedCount++] = (Listened){object, address->mScope};
+    s_listened[s_listenedCount++] = (Listened){object, address->mSelector, address->mScope};
     return noErr;
 }
 
@@ -120,7 +156,8 @@ static OSStatus FakeRemove(AudioObjectID object, const AudioObjectPropertyAddres
     s_removes++;
     for (uint32_t i = 0; i < s_listenedCount; ++i)
     {
-        if (s_listened[i].object == object && s_listened[i].scope == address->mScope)
+        if (s_listened[i].object == object && s_listened[i].selector == address->mSelector &&
+            s_listened[i].scope == address->mScope)
         {
             s_listened[i] = s_listened[--s_listenedCount];
             return noErr;
@@ -132,16 +169,23 @@ static OSStatus FakeRemove(AudioObjectID object, const AudioObjectPropertyAddres
 
 static const maudCoreAudioHal s_hal = {FakeGetData, FakeHas, FakeAdd, FakeRemove};
 
-static bool Listening(AudioObjectID object, AudioObjectPropertyScope scope)
+static bool ListeningTo(AudioObjectID object, AudioObjectPropertySelector selector,
+                        AudioObjectPropertyScope scope)
 {
     for (uint32_t i = 0; i < s_listenedCount; ++i)
     {
-        if (s_listened[i].object == object && s_listened[i].scope == scope)
+        if (s_listened[i].object == object && s_listened[i].selector == selector &&
+            s_listened[i].scope == scope)
         {
             return true;
         }
     }
     return false;
+}
+
+static bool Listening(AudioObjectID object, AudioObjectPropertyScope scope)
+{
+    return ListeningTo(object, kAudioDevicePropertyDataSource, scope);
 }
 
 static void SetDevices(const FakeDevice* devices, uint32_t count)
@@ -322,7 +366,7 @@ static void TestWatch(void)
     // count as watched.
     const AudioObjectID fourth[2] = {2, 1};
     const maudDirection fourthDirections[2] = {in, out};
-    context.watched[1] = (maudCoreAudioWatch){1, out};
+    context.watched[1] = (maudCoreAudioWatch){.object = 1, .direction = out};
     Scan(&context, fourth, fourthDirections, 2);
     CHECK(Listening(1, kAudioObjectPropertyScopeOutput) && context.coreaudio.watchedCount == 2,
           "a stale entry is not a listener");
@@ -335,7 +379,7 @@ static void TestWatch(void)
           "a failed add");
 
     // Stopping removes every listener added.
-    context.watched[2] = (maudCoreAudioWatch){4, out};
+    context.watched[2] = (maudCoreAudioWatch){.object = 4, .direction = out};
     maudCoreAudioUnwatchSources(&context.coreaudio);
     CHECK(s_listenedCount == 0 && context.coreaudio.watchedCount == 0 && s_strayRemoves == 0,
           "all removed");
@@ -349,6 +393,109 @@ static void TestWatch(void)
     Begin(&context, 4, nullptr);
     Scan(&context, first, firstDirections, 4);
     CHECK(s_adds == 0 && context.coreaudio.watchedCount == 0, "not listening");
+}
+
+// A device's preferred channel layout is listened to as its data source
+// is, alone or beside it, and both are removed together.
+static void TestLayoutWatch(void)
+{
+    AudioObjectPropertyListenerBlock listener =
+        ^(UInt32 count, const AudioObjectPropertyAddress* addresses) {
+          (void)count;
+          (void)addresses;
+        };
+    const FakeDevice devices[2] = {
+        {.object = 5, .hasLayout = true},
+        {.object = 6, .outputSource = FOUR('i', 's', 'p', 'k'), .hasLayout = true},
+    };
+    SetDevices(devices, 2);
+    Context context;
+    Begin(&context, 4, listener);
+    const AudioObjectID objects[2] = {5, 6};
+    const maudDirection directions[2] = {maud_directionOutput, maud_directionOutput};
+    Scan(&context, objects, directions, 2);
+    CHECK(context.coreaudio.watchedCount == 2 && s_listenedCount == 3,
+          "a layout alone, and a layout beside a source");
+    CHECK(ListeningTo(5, kAudioDevicePropertyPreferredChannelLayout,
+                      kAudioObjectPropertyScopeOutput) &&
+              !Listening(5, kAudioObjectPropertyScopeOutput) &&
+              ListeningTo(6, kAudioDevicePropertyPreferredChannelLayout,
+                          kAudioObjectPropertyScopeOutput) &&
+              Listening(6, kAudioObjectPropertyScopeOutput),
+          "each property in the endpoint's scope");
+    Scan(&context, objects + 1, directions, 1);
+    CHECK(s_removes == 1 && s_strayRemoves == 0 && s_listenedCount == 2,
+          "a device that leaves stops being heard");
+    maudCoreAudioUnwatchSources(&context.coreaudio);
+    CHECK(s_listenedCount == 0 && s_removes == 3 && s_strayRemoves == 0,
+          "the source and the layout removed together");
+}
+
+// A preferred channel layout read as labels, and the layout they name.
+static void TestReadLabels(void)
+{
+    uint32_t labels[MAUD_COREAUDIO_MAX_LABELS];
+    static const UInt32 sidesFirst[] = {kAudioChannelLabel_Left,
+                                        kAudioChannelLabel_Right,
+                                        kAudioChannelLabel_Center,
+                                        kAudioChannelLabel_LFEScreen,
+                                        kAudioChannelLabel_LeftSurround,
+                                        kAudioChannelLabel_RightSurround,
+                                        kAudioChannelLabel_RearSurroundLeft,
+                                        kAudioChannelLabel_RearSurroundRight};
+    FakeDevice device = {.object = 30,
+                         .hasLayout = true,
+                         .layoutTag = kAudioChannelLayoutTag_UseChannelDescriptions,
+                         .labels = sidesFirst,
+                         .labelCount = 8};
+    SetDevices(&device, 1);
+    uint32_t count = maudCoreAudioReadLabels(&s_hal, 30, kAudioObjectPropertyScopeOutput, labels);
+    CHECK(count == 8 && labels[4] == kAudioChannelLabel_LeftSurround &&
+              labels[6] == kAudioChannelLabel_RearSurroundLeft,
+          "descriptions read in order");
+    CHECK(maudCoreAudioLayoutOfLabels(labels, count) == maud_layout7Point1, "naming 7.1");
+
+    device = (FakeDevice){.object = 31,
+                          .hasLayout = true,
+                          .layoutTag = kAudioChannelLayoutTag_UseChannelBitmap,
+                          .bitmap = kAudioChannelBit_Left | kAudioChannelBit_Right |
+                                    kAudioChannelBit_Center | kAudioChannelBit_LFEScreen |
+                                    kAudioChannelBit_LeftSurround | kAudioChannelBit_RightSurround};
+    SetDevices(&device, 1);
+    count = maudCoreAudioReadLabels(&s_hal, 31, kAudioObjectPropertyScopeOutput, labels);
+    CHECK(count == 6 && maudCoreAudioLayoutOfLabels(labels, count) == maud_layout5Point1,
+          "a bitmap naming 5.1");
+
+    // The system expands a named tag: MPEG 7.1 C, the AudioUnit 7.1
+    // layout, sides before backs.
+    device = (FakeDevice){
+        .object = 32, .hasLayout = true, .layoutTag = kAudioChannelLayoutTag_MPEG_7_1_C};
+    SetDevices(&device, 1);
+    count = maudCoreAudioReadLabels(&s_hal, 32, kAudioObjectPropertyScopeOutput, labels);
+    bool same = count == 8;
+    for (uint32_t i = 0; same && i < 8; ++i)
+    {
+        same = labels[i] == sidesFirst[i];
+    }
+    CHECK(same, "a tag expanded by the system");
+
+    static UInt32 many[MAUD_COREAUDIO_MAX_LABELS + 1];
+    for (uint32_t i = 0; i <= MAUD_COREAUDIO_MAX_LABELS; ++i)
+    {
+        many[i] = kAudioChannelLabel_Discrete_0 + i;
+    }
+    device = (FakeDevice){.object = 33,
+                          .hasLayout = true,
+                          .layoutTag = kAudioChannelLayoutTag_UseChannelDescriptions,
+                          .labels = many,
+                          .labelCount = MAUD_COREAUDIO_MAX_LABELS + 1};
+    SetDevices(&device, 1);
+    CHECK(maudCoreAudioReadLabels(&s_hal, 33, kAudioObjectPropertyScopeOutput, labels) == 0,
+          "more channels than the room: none");
+    device = (FakeDevice){.object = 34};
+    SetDevices(&device, 1);
+    CHECK(maudCoreAudioReadLabels(&s_hal, 34, kAudioObjectPropertyScopeOutput, labels) == 0,
+          "no preferred layout: none");
 }
 
 // A stream configuration of count buffers with the given channels, in
@@ -389,5 +536,7 @@ int main(void)
     TestChannels();
     TestForms();
     TestWatch();
+    TestLayoutWatch();
+    TestReadLabels();
     return s_failures == 0 ? 0 : 1;
 }

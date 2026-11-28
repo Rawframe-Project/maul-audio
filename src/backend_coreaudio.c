@@ -14,6 +14,8 @@
 #include "context.h"
 #include "coreaudio_core.h"
 #include "coreaudio_form.h"
+#include "coreaudio_labels.h"
+#include "coreaudio_layout.h"
 #include "coreaudio_listen.h"
 #include "coreaudio_stream.h"
 #include "device.h"
@@ -176,8 +178,16 @@ MAUD_NODISCARD static bool Describe(maudCoreAudio* coreaudio, AudioObjectID obje
         memcpy(endpoint->name, endpoint->key, sizeof(endpoint->key));
     }
     endpoint->object = object;
+    // The layout the device's labels name whole, within its channels,
+    // else the count's.
+    uint32_t labels[MAUD_COREAUDIO_MAX_LABELS];
+    uint32_t labelCount = maudCoreAudioReadLabels(coreaudio->hal, object, scope, labels);
+    maudChannelLayout named =
+        maudCoreAudioLayoutOfLabels(labels, labelCount < channels ? labelCount : channels);
     *spec = (maudDeviceSpec){
-        .info = {.direction = direction, .nativeLayout = maudLayoutWithChannels(channels)},
+        .info = {.direction = direction,
+                 .nativeLayout =
+                     named != maud_layoutNone ? named : maudLayoutWithChannels(channels)},
         .name = endpoint->name,
         .nameLength = maudCutUtf8(endpoint->name, coreaudio->context->def.limits.deviceTextBytes),
         .key = endpoint->key,

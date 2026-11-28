@@ -84,6 +84,22 @@ static AudioObjectPropertyAddress SourceOf(const maudCoreAudioWatch* watch)
     return maudCoreAudioAddress(kAudioDevicePropertyDataSource, ScopeOf(watch->direction));
 }
 
+static AudioObjectPropertyAddress LayoutOf(const maudCoreAudioWatch* watch)
+{
+    return maudCoreAudioAddress(kAudioDevicePropertyPreferredChannelLayout,
+                                ScopeOf(watch->direction));
+}
+
+// Listens to the property at address of the watched device; whether it
+// does.
+MAUD_NODISCARD static bool Listen(maudCoreAudio* coreaudio, const maudCoreAudioWatch* watch,
+                                  AudioObjectPropertyAddress address)
+{
+    return coreaudio->hal->has(watch->object, &address) &&
+           coreaudio->hal->addListener(watch->object, &address, coreaudio->queue,
+                                       coreaudio->listener) == noErr;
+}
+
 // Whether the scan's count endpoints include the watched one.
 MAUD_NODISCARD static bool Scanned(const maudCoreAudio* coreaudio, uint32_t count,
                                    const maudCoreAudioWatch* watch)
@@ -101,10 +117,21 @@ MAUD_NODISCARD static bool Scanned(const maudCoreAudio* coreaudio, uint32_t coun
 
 static void Unwatch(maudCoreAudio* coreaudio, uint32_t index)
 {
-    AudioObjectPropertyAddress address = SourceOf(&coreaudio->watched[index]);
-    OSStatus status = coreaudio->hal->removeListener(coreaudio->watched[index].object, &address,
-                                                     coreaudio->queue, coreaudio->listener);
-    (void)status;
+    const maudCoreAudioWatch* watch = &coreaudio->watched[index];
+    if (watch->source)
+    {
+        AudioObjectPropertyAddress address = SourceOf(watch);
+        OSStatus status = coreaudio->hal->removeListener(watch->object, &address, coreaudio->queue,
+                                                         coreaudio->listener);
+        (void)status;
+    }
+    if (watch->layout)
+    {
+        AudioObjectPropertyAddress address = LayoutOf(watch);
+        OSStatus status = coreaudio->hal->removeListener(watch->object, &address, coreaudio->queue,
+                                                         coreaudio->listener);
+        (void)status;
+    }
     coreaudio->watched[index] = coreaudio->watched[--coreaudio->watchedCount];
 }
 
@@ -123,18 +150,21 @@ void maudCoreAudioWatchSources(maudCoreAudio* coreaudio, uint32_t count)
     }
     for (uint32_t i = 0; i < count && coreaudio->watchedCount < coreaudio->watchCapacity; ++i)
     {
-        maudCoreAudioWatch watch = {coreaudio->endpoints[i].object,
-                                    coreaudio->specs[i].info.direction};
+        maudCoreAudioWatch watch = {.object = coreaudio->endpoints[i].object,
+                                    .direction = coreaudio->specs[i].info.direction};
         bool watched = false;
         for (uint32_t w = 0; w < coreaudio->watchedCount && !watched; ++w)
         {
             watched = coreaudio->watched[w].object == watch.object &&
                       coreaudio->watched[w].direction == watch.direction;
         }
-        AudioObjectPropertyAddress address = SourceOf(&watch);
-        if (!watched && coreaudio->hal->has(watch.object, &address) &&
-            coreaudio->hal->addListener(watch.object, &address, coreaudio->queue,
-                                        coreaudio->listener) == noErr)
+        if (watched)
+        {
+            continue;
+        }
+        watch.source = Listen(coreaudio, &watch, SourceOf(&watch));
+        watch.layout = Listen(coreaudio, &watch, LayoutOf(&watch));
+        if (watch.source || watch.layout)
         {
             coreaudio->watched[coreaudio->watchedCount++] = watch;
         }

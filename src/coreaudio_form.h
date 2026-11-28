@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // What a CoreAudio device leads to: its channels, its data source, else
-// its transport, and the listeners that see its data source change.
+// its transport, and the listeners that see its data source or its
+// preferred channel layout change.
 
 #ifndef MAUL_AUDIO_SRC_COREAUDIO_FORM_H
 #define MAUL_AUDIO_SRC_COREAUDIO_FORM_H
@@ -20,12 +21,13 @@ uint32_t maudCoreAudioChannelsOf(const AudioBufferList* list, UInt32 size);
 maudDeviceForm maudCoreAudioFormOf(const maudCoreAudioHal* hal, AudioObjectID object,
                                    maudDirection direction);
 
-// Listens to the data source of each of the scan's count endpoints that
-// has one, and stops listening to those no longer scanned. A change
-// raises the context's changed flag, as a device list change does.
+// Listens to the data source and the preferred channel layout of each
+// of the scan's count endpoints that has them, and stops listening to
+// those no longer scanned. A change raises the context's changed flag,
+// as a device list change does.
 void maudCoreAudioWatchSources(maudCoreAudio* coreaudio, uint32_t count);
 
-// Stops listening to every data source.
+// Stops listening to every data source and channel layout.
 void maudCoreAudioUnwatchSources(maudCoreAudio* coreaudio);
 
 #endif // MAUL_AUDIO_SRC_COREAUDIO_FORM_H

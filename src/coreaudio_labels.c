@@ -191,6 +191,23 @@ bool maudCoreAudioChannelsByLabel(maudChannelLayout layout, const uint32_t* labe
     return true;
 }
 
+maudChannelLayout maudCoreAudioLayoutOfLabels(const uint32_t* labels, uint32_t labelCount)
+{
+    static const maudChannelLayout largestFirst[] = {
+        maud_layout7Point1Point4, maud_layout7Point1, maud_layout5Point1,
+        maud_layoutQuad,          maud_layoutStereo,  maud_layoutMono,
+    };
+    uint32_t deviceOf[MAUD_LABEL_MAX_STREAM_CHANNELS];
+    for (size_t i = 0; i < sizeof(largestFirst) / sizeof(largestFirst[0]); ++i)
+    {
+        if (maudCoreAudioChannelsByLabel(largestFirst[i], labels, labelCount, deviceOf))
+        {
+            return largestFirst[i];
+        }
+    }
+    return maud_layoutNone;
+}
+
 bool maudCoreAudioChannelsInOrder(const uint32_t* deviceOf, uint32_t count)
 {
     for (uint32_t c = 0; c < count; ++c)
