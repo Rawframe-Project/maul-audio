@@ -14,7 +14,7 @@ permissions: {}
 
 jobs:
   gate:
-    uses: Rawframe-Project/.github/.github/workflows/pr-gate.yml@e97877376e70afeb52eedb2e42c7a3e39a48ebbf # v0.0.58
+    uses: Rawframe-Project/.github/.github/workflows/pr-gate.yml@d8742259cb7ede326cb9aba0b5d25e9ce8149b66 # v0.0.59
     permissions:
       pull-requests: write
       issues: read
