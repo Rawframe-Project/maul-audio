@@ -11,6 +11,7 @@
 // source panned straight to them does.
 
 #include "allocator.h"
+#include "overlap.h"
 #include "spherical_harmonics.h"
 
 #include "maul-audio/ambisonics.h"
@@ -246,19 +247,16 @@ MAUD_NODISCARD static bool PointersValid(const maudSpeakerDecoder* decoder, cons
 
 // Whether a speaker's frames share a byte with a channel of the bed. Each
 // speaker is cleared and summed from every channel in turn, so one over a
-// channel would clear input not yet read. Compared as addresses, since
-// the caller's arrays are different objects.
+// channel would clear input not yet read.
 MAUD_NODISCARD static bool OverlapsBed(const maudSpeakerDecoder* decoder, const float* const* bed,
                                        float* const* out, uint32_t frames)
 {
     size_t bytes = (size_t)frames * sizeof(float);
     for (uint32_t s = 0; s < decoder->speakers; ++s)
     {
-        uintptr_t speaker = (uintptr_t)out[s];
         for (uint32_t c = 0; c < decoder->channels; ++c)
         {
-            uintptr_t channel = (uintptr_t)bed[c];
-            if (speaker < channel + bytes && channel < speaker + bytes)
+            if (maudSpansOverlap(out[s], bed[c], bytes))
             {
                 return true;
             }

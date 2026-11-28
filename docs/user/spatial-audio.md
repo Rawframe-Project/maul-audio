@@ -87,7 +87,7 @@ if (result == maud_success)
 maudDestroyBinauralDecoder(decoder);
 ```
 
-A bed of order 1 to 3 has `maudGetAmbisonicChannelCount(order)` planar channels (16 at the third), in AmbiX's ACN order with SN3D weights, so other ambisonic tools read it. Higher orders place sources more sharply and cost more. Encoding adds into the bed, so clear it before each block. The bed's channels are the program's buffers; the encoder and rotation keep no state.
+A bed of order 1 to 3 has `maudGetAmbisonicChannelCount(order)` planar channels (16 at the third), in AmbiX's ACN order with SN3D weights, so other ambisonic tools read it. Higher orders place sources more sharply and cost more. Encoding adds into the bed, so clear it before each block. The source's samples must not be one of the bed's channels: the encoder, like the speaker panner, adds into each channel in turn from them, and refuses such a call with `maud_errorInvalid`, leaving the bed as it was. The binaural effect, the reverb and the reflections read their input before they write over it, so their input may be one of their own channels. The bed's channels are the program's buffers; the encoder and rotation keep no state.
 
 ## Speakers
 

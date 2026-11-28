@@ -8,7 +8,8 @@
 // (measured: 9 % at most, at 125 Hz in a 0.6 s room) and 8 % in the top
 // octave (measured: 5 %), including after the times change; the tail is
 // diffuse, each directional channel carrying near a third of W's energy;
-// splitting the stream into other blocks changes nothing; a change of
+// splitting the stream into other blocks changes nothing, nor does the
+// send held in a channel of the bed; a change of
 // times ramps across its call; silence stays silent; a reset silences the
 // tail, and clears a sample that is not finite; nothing allocates while
 // processing; bad calls write nothing.
@@ -379,6 +380,43 @@ static void TestBlocks(void)
     CHECK(energy > 0.0 && same, "an impulse mid-block gives the same tail");
     maudDestroyReverb(whole);
     maudDestroyReverb(split);
+}
+
+// The send in one of the bed's channels gives what it gives apart, to
+// the bit, across a change of times: the channel then holds the send and
+// the tail added to it.
+static void TestInPlace(void)
+{
+    maudReverb* apart = Create();
+    maudReverb* inPlace = Create();
+    static float in[4800];
+    static float a[4][4800];
+    static float b[4][4800];
+    uint32_t seed = 7;
+    for (int n = 0; n < 4800; ++n)
+    {
+        seed = seed * 1664525u + 1013904223u;
+        in[n] = (float)(int32_t)(seed >> 8) / 8388608.0f - 1.0f;
+    }
+    memcpy(a[2], in, sizeof(in));
+    memcpy(b[2], in, sizeof(in));
+    maudReverbParams params = {
+        {1.0f, 0.7f, 0.4f}, {0.0f, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
+    for (int at = 0; at < 4800; at += 1200)
+    {
+        if (at == 2400)
+        {
+            params.reverbTime[0] = 0.5f;
+        }
+        float* bedA[4] = {a[0] + at, a[1] + at, a[2] + at, a[3] + at};
+        float* bedB[4] = {b[0] + at, b[1] + at, b[2] + at, b[3] + at};
+        CHECK(maudReverb_Process(apart, &params, in + at, bedA, 1200) == maud_success &&
+                  maudReverb_Process(inPlace, &params, b[2] + at, bedB, 1200) == maud_success,
+              "process");
+    }
+    CHECK(memcmp(a, b, sizeof(a)) == 0, "the send in a channel of the bed");
+    maudDestroyReverb(apart);
+    maudDestroyReverb(inPlace);
 }
 
 // A change of times ramps across the call: its first frames stay close to
@@ -848,6 +886,7 @@ int main(void)
 {
     TestTail();
     TestBlocks();
+    TestInPlace();
     TestRamp();
     TestDecay();
     TestSend();

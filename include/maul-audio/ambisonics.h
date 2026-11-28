@@ -57,14 +57,15 @@ extern "C"
     /// @param order       The bed's order, 1 to MAUD_MAX_AMBISONIC_ORDER.
     /// @param from        The source at the previous call's end.
     /// @param to          The source at this call's end.
-    /// @param samples     frameCount samples.
+    /// @param samples     frameCount samples, apart from every channel of the bed.
     /// @param bed         The order's channel count of channels, frameCount each,
     ///                    added to.
     /// @param frameCount  The frames.
     /// @return `maud_success`; `maud_errorLimit` for an order past
     ///         MAUD_MAX_AMBISONIC_ORDER; `maud_errorInvalid` for an order
-    ///         of 0, a NULL pointer or a value that is not finite; nothing
-    ///         is written on failure.
+    ///         of 0, a NULL pointer, a value that is not finite or samples
+    ///         that share a byte with a channel; nothing is written on
+    ///         failure.
     /// @par Thread safety
     /// Safe from any thread; the bed is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudEncodeAmbisonic(uint32_t order,

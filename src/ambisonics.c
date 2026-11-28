@@ -10,6 +10,7 @@
 #include "maul-audio/ambisonics.h"
 
 #include "ambisonic_rotation.h"
+#include "overlap.h"
 #include "ramp.h"
 #include "spherical_harmonics.h"
 
@@ -64,6 +65,23 @@ MAUD_NODISCARD static bool SourceValid(const maudPanSource* source)
     return source != nullptr && Finite(source->direction) && isfinite(source->gain);
 }
 
+// Whether the source's frames share a byte with a channel of the bed.
+// Each channel is added to in turn from the source, so a source in one of
+// them would be read changed by the channels after it.
+MAUD_NODISCARD static bool OverlapsSource(const float* samples, float* const* bed,
+                                          uint32_t channels, uint32_t frames)
+{
+    size_t bytes = (size_t)frames * sizeof(float);
+    for (uint32_t c = 0; c < channels; ++c)
+    {
+        if (maudSpansOverlap(samples, bed[c], bytes))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // One channel's share of the source, its gain ramped across the block.
 static inline void AddRamped(float* out, const float* in, float a, float b, float step,
                              uint32_t frames, bool isSigned)
@@ -85,7 +103,7 @@ maudResult maudEncodeAmbisonic(uint32_t order, const maudPanSource* from, const 
     }
     uint32_t channels = maudGetAmbisonicChannelCount(order);
     if (channels == 0 || !SourceValid(from) || !SourceValid(to) || samples == nullptr ||
-        !BedValid(bed, channels))
+        !BedValid(bed, channels) || OverlapsSource(samples, bed, channels, frameCount))
     {
         return maud_errorInvalid;
     }

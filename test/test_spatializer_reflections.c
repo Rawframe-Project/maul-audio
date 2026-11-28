@@ -10,7 +10,8 @@
 // same turn at another, turns the bed to the bit as that turn alone
 // does; the mean arrival is
 // on time within 1 ms (the convolution's block taken back); the bed is
-// added to; nothing arrives
+// added to, and a send held in one of its channels gives what it gives
+// apart; nothing arrives
 // before the first path does; before any response the bed is silent; a
 // new response swaps in without a jump, at the convolver's next tail
 // boundary, so each render is preceded by enough silence for it to be
@@ -312,6 +313,45 @@ static void TestAnyLength(void)
     maudDestroyScene(scene);
 }
 
+static float s_apart[4][FRAMES];
+
+// The send in one of the bed's channels gives what it gives apart, to
+// the bit: the channel then holds the send and the reflections added to
+// it. Each run has a spatializer of its own, simulated alike.
+static void TestInPlace(void)
+{
+    maudScene* scene = Wall();
+    maudPose listener = {{0.0f, 0.3f, 0.2f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    uint32_t seed = 5;
+    for (int i = 0; i < FRAMES; ++i)
+    {
+        seed = seed * 1664525u + 1013904223u;
+        s_send[i] = (float)(int32_t)(seed >> 8) / 8388608.0f - 1.0f;
+    }
+    for (int run = 0; run < 2; ++run)
+    {
+        maudSpatializer* s = Create(scene);
+        CHECK(maudSpatializer_SimulateReverb(s, &listener) == maud_success, "an estimate");
+        memset(s_bed, 0, sizeof(s_bed));
+        memcpy(s_bed[1], s_send, sizeof(s_send));
+        for (int at = 0; at < FRAMES; at += 480)
+        {
+            float* bed[4] = {s_bed[0] + at, s_bed[1] + at, s_bed[2] + at, s_bed[3] + at};
+            const float* send = run == 0 ? s_send + at : s_bed[1] + at;
+            CHECK(maudSpatializer_RenderReflections(s, &listener.orientation, send, bed, 480) ==
+                      maud_success,
+                  "render");
+        }
+        if (run == 0)
+        {
+            memcpy(s_apart, s_bed, sizeof(s_apart));
+        }
+        maudDestroySpatializer(s);
+    }
+    CHECK(memcmp(s_apart, s_bed, sizeof(s_bed)) == 0, "the send in a channel of the bed");
+    maudDestroyScene(scene);
+}
+
 static void TestMisuse(void)
 {
     maudSpatializerDef def = maudDefaultSpatializerDef();
@@ -548,6 +588,7 @@ int main(void)
     TestFloor();
     TestTurn();
     TestAnyLength();
+    TestInPlace();
     TestHybrid();
     TestMisuse();
     TestBadSample();

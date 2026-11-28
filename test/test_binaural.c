@@ -10,7 +10,8 @@
 // nothing past a call's last frame; only the direction counts, from
 // subnormal positions to FLT_MAX, and with the near field a position
 // counts as no nearer than 0.1 m and no farther than 10^9 m; the gain
-// ramps; one call or many give the same samples; a reset forgets, a
+// ramps; one call or many give the same samples, and the input held in
+// an ear's channel the same as apart; a reset forgets, a
 // sample that is not finite too;
 // a head radius at either end of its bounds is taken; with the near
 // field, a source exactly at an ear renders as one just outside it. On the shipped
@@ -862,6 +863,33 @@ static void TestGainToTheTop(const maudHrtf* hrtf)
     CHECK(between, "a gain ramp to FLT_MAX stays between its ends");
 }
 
+// The input in either ear's channel gives what it gives apart, to the
+// bit, across a fade.
+static void TestInPlace(const maudHrtf* hrtf)
+{
+    Noise(s_in, 256, 11);
+    for (uint32_t ear = 0; ear < 2; ++ear)
+    {
+        maudBinaural* apart = Create(hrtf, 256);
+        maudBinaural* inPlace = Create(hrtf, 256);
+        float* shared = ear == 0 ? s_left2 : s_right2;
+        bool same = true;
+        for (uint32_t at = 0; at < 256; at += 128)
+        {
+            maudBinauralParams params = at == 0 ? At(0.0f, 0.0f, -1.0f) : At(-1.0f, 0.0f, 0.0f);
+            memcpy(shared, s_in + at, 128 * sizeof(float));
+            CHECK(Process(apart, params, s_in + at, s_left, s_right, 128) == maud_success &&
+                      Process(inPlace, params, shared, s_left2, s_right2, 128) == maud_success,
+                  "process");
+            same = same && memcmp(s_left, s_left2, 128 * sizeof(float)) == 0 &&
+                   memcmp(s_right, s_right2, 128 * sizeof(float)) == 0;
+        }
+        CHECK(same, ear == 0 ? "the input in the left ear" : "the input in the right ear");
+        maudDestroyBinaural(apart);
+        maudDestroyBinaural(inPlace);
+    }
+}
+
 // A fade written into heap buffers exactly a call long: every call
 // turns the direction, so each ends mid-fade, and nothing is written
 // past the call's last frame.
@@ -1214,6 +1242,7 @@ int main(void)
         TestGain(hrtf);
         TestWideGain(hrtf);
         TestGainToTheTop(hrtf);
+        TestInPlace(hrtf);
         TestMisuse(hrtf);
         TestFailureSilence(hrtf);
         TestExactBuffers(hrtf);

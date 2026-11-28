@@ -7,7 +7,7 @@
 // equals encoding the rotated direction, at every order, still or at the
 // end of a ramp; encoding adds and ramps; rotation leaves channel 0
 // alone; a direction's length does not count, from subnormal to
-// FLT_MAX; bad calls write nothing.
+// FLT_MAX; bad calls write nothing, a source held in the bed among them.
 
 #include "test_harness.h"
 #include "test_lengths.h"
@@ -277,6 +277,39 @@ static void TestMisuse(void)
     CHECK(maudGetAmbisonicGains(2, source.direction, nullptr) == maud_errorInvalid, "no gains");
 }
 
+// A source that shares a byte with a channel of the bed is refused, the
+// bed left as it was: in a channel, or partly over one. One that ends
+// where a channel starts is apart.
+static void TestOverlap(void)
+{
+    float channels[4][16];
+    for (int c = 0; c < 4; ++c)
+    {
+        for (int n = 0; n < 16; ++n)
+        {
+            channels[c][n] = 0.25f;
+        }
+    }
+    float* bed[4] = {channels[0], channels[1], channels[2], channels[3]};
+    maudPanSource from = {{0.0f, 0.0f, -1.0f}, 1.0f};
+    maudPanSource to = {{1.0f, 0.0f, -1.0f}, 0.5f};
+    CHECK(maudEncodeAmbisonic(1, &from, &to, channels[0], bed, 8) == maud_errorInvalid,
+          "a source in channel 0");
+    CHECK(maudEncodeAmbisonic(1, &from, &to, channels[3] + 7, bed, 8) == maud_errorInvalid,
+          "a source over a channel's last frame");
+    bool kept = true;
+    for (int c = 0; c < 4; ++c)
+    {
+        for (int n = 0; n < 16; ++n)
+        {
+            kept = kept && channels[c][n] == 0.25f;
+        }
+    }
+    CHECK(kept, "nothing written by a refused call");
+    CHECK(maudEncodeAmbisonic(1, &from, &to, channels[1] + 8, bed, 8) == maud_success,
+          "a source right after a channel");
+}
+
 // A direction at any length has the gains of the same direction at an
 // ordinary length, to the bit.
 static void TestAnyLength(void)
@@ -358,5 +391,6 @@ int main(void)
     TestWideRamp();
     TestRampToTheTop();
     TestMisuse();
+    TestOverlap();
     return s_failures == 0 ? 0 : 1;
 }

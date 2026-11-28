@@ -109,12 +109,13 @@ extern "C"
     /// @param panner      The panner.
     /// @param from        The source at the previous call's end.
     /// @param to          The source at this call's end.
-    /// @param samples     frameCount samples.
+    /// @param samples     frameCount samples, apart from every channel.
     /// @param channels    The layout's channel count of channels, frameCount each,
     ///                    added to.
     /// @param frameCount  The frames.
-    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer or
-    ///         a value that is not finite; nothing is written then.
+    /// @return `maud_success`, or `maud_errorInvalid` for a NULL pointer, a
+    ///         value that is not finite or samples that share a byte with a
+    ///         channel; nothing is written then.
     /// @par Thread safety
     /// Safe from any thread; the output is used by one thread at a time.
     MAUD_NODISCARD MAUD_API maudResult maudSpeakerPanner_Pan(
