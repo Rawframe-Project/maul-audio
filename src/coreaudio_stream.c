@@ -5,12 +5,13 @@
 // device, taking 32-bit float interleaved frames at the stream's rate on
 // its input scope and converting them to the device's format. The
 // unit's render callback, on the HAL's IO thread, moves each buffer
-// through the stream's fixed-period adapter. Channels go to the
-// device's channels in order. A duplex stream that asks for voice
-// processing runs both halves on one Voice-Processing I/O unit instead:
-// bus 0 plays the output half on its device, bus 1 captures the input
-// half from its device, and the unit takes what it plays out of what it
-// hears.
+// through the stream's fixed-period adapter. Each channel goes to the
+// device channel whose label in the device's preferred layout names its
+// speaker, else the channels go in order. A duplex stream that asks for
+// voice processing runs both halves on one Voice-Processing I/O unit
+// instead: bus 0 plays the output half on its device, bus 1 captures
+// the input half from its device, and the unit takes what it plays out
+// of what it hears.
 
 #include "coreaudio_stream.h"
 
@@ -18,6 +19,7 @@
 #include "context.h"
 #include "coreaudio_core.h"
 #include "coreaudio_hog.h"
+#include "coreaudio_labels.h"
 #include "device.h"
 #include "follow.h"
 #include "period.h"
@@ -26,6 +28,7 @@
 #include "voice.h"
 #include "xrun.h"
 
+#include <stddef.h>
 #include <string.h>
 
 // The most frames the unit may ask for in one render.
@@ -276,7 +279,110 @@ static AudioStreamBasicDescription FormatOf(const maudStreamCore* core)
     return FormatWith(core, core->period.channelCount);
 }
 
-// Sets the unit's device, client format, callback and slice size.
+// The most device channels whose labels a stream reads; a device with
+// more takes the stream's channels in order.
+#define MAX_LABELED_CHANNELS 128u
+
+// Room for a channel layout of the most labeled channels.
+typedef union LayoutRoom
+{
+    AudioChannelLayout layout;
+    unsigned char bytes[offsetof(AudioChannelLayout, mChannelDescriptions) +
+                        MAX_LABELED_CHANNELS * sizeof(AudioChannelDescription)];
+} LayoutRoom;
+
+// The labels of the device's preferred channel layout in one direction,
+// a named tag expanded by the system, into labelsOut of
+// MAX_LABELED_CHANNELS entries. The count, or 0 when the device has
+// none or more channels than the room.
+static uint32_t ReadLabels(AudioObjectID object, bool input, uint32_t* labelsOut)
+{
+    AudioObjectPropertyAddress address = maudCoreAudioAddress(
+        kAudioDevicePropertyPreferredChannelLayout,
+        input ? kAudioObjectPropertyScopeInput : kAudioObjectPropertyScopeOutput);
+    LayoutRoom read;
+    UInt32 size = 0;
+    if (AudioObjectGetPropertyDataSize(object, &address, 0, nullptr, &size) != noErr ||
+        size > sizeof(read) || size < offsetof(AudioChannelLayout, mChannelDescriptions) ||
+        AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, &read) != noErr ||
+        size < offsetof(AudioChannelLayout, mChannelDescriptions))
+    {
+        return 0;
+    }
+    const AudioChannelLayout* layout = &read.layout;
+    LayoutRoom expanded;
+    AudioChannelLayoutTag tag = layout->mChannelLayoutTag;
+    if (tag != kAudioChannelLayoutTag_UseChannelDescriptions &&
+        tag != kAudioChannelLayoutTag_UseChannelBitmap)
+    {
+        size = sizeof(expanded);
+        if (AudioFormatGetProperty(kAudioFormatProperty_ChannelLayoutForTag, sizeof(tag), &tag,
+                                   &size, &expanded) != noErr ||
+            size < offsetof(AudioChannelLayout, mChannelDescriptions))
+        {
+            return 0;
+        }
+        layout = &expanded.layout;
+    }
+    uint32_t count = layout->mNumberChannelDescriptions;
+    uint32_t described[MAX_LABELED_CHANNELS] = {0};
+    if (layout->mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelDescriptions)
+    {
+        if (count > MAX_LABELED_CHANNELS ||
+            size < offsetof(AudioChannelLayout, mChannelDescriptions) +
+                       count * sizeof(AudioChannelDescription))
+        {
+            return 0;
+        }
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            described[i] = layout->mChannelDescriptions[i].mChannelLabel;
+        }
+    }
+    return maudCoreAudioLabelsOf(layout->mChannelLayoutTag, layout->mChannelBitmap, described,
+                                 count, labelsOut, MAX_LABELED_CHANNELS);
+}
+
+// Sends each of the stream's channels to the device channel whose label
+// names its speaker, through the unit's channel map. A device whose
+// labels do not name every one of the stream's speakers, or that names
+// them in the stream's order, takes the channels in order, as the unit
+// does by default. False when the unit refuses the map.
+MAUD_NODISCARD static bool MapChannels(maudCoreAudioStream* entry, AudioObjectID object)
+{
+    const maudStreamCore* core = entry->core;
+    bool input = core->def.direction == maud_directionInput;
+    uint32_t labels[MAX_LABELED_CHANNELS];
+    uint32_t labelCount = ReadLabels(object, input, labels);
+    uint32_t deviceOf[MAUD_LABEL_MAX_STREAM_CHANNELS];
+    // The device's side of the unit: its output for playback, its input
+    // on bus 1 for capture.
+    AudioStreamBasicDescription device = {0};
+    UInt32 size = sizeof(device);
+    if (labelCount == 0 ||
+        !maudCoreAudioChannelsByLabel(core->period.layout, labels, labelCount, deviceOf) ||
+        maudCoreAudioChannelsInOrder(deviceOf, core->period.channelCount) ||
+        AudioUnitGetProperty(entry->unit, kAudioUnitProperty_StreamFormat,
+                             input ? kAudioUnitScope_Input : kAudioUnitScope_Output, input ? 1 : 0,
+                             &device, &size) != noErr ||
+        device.mChannelsPerFrame > MAX_LABELED_CHANNELS)
+    {
+        return true;
+    }
+    int32_t map[MAX_LABELED_CHANNELS];
+    if (!maudCoreAudioChannelMapOf(deviceOf, core->period.channelCount, device.mChannelsPerFrame,
+                                   !input, map))
+    {
+        return true;
+    }
+    UInt32 entries = input ? core->period.channelCount : device.mChannelsPerFrame;
+    return AudioUnitSetProperty(entry->unit, kAudioOutputUnitProperty_ChannelMap,
+                                input ? kAudioUnitScope_Output : kAudioUnitScope_Input,
+                                input ? 1 : 0, map, entries * (UInt32)sizeof(SInt32)) == noErr;
+}
+
+// Sets the unit's device, client format, channel map, callback and slice
+// size.
 MAUD_NODISCARD static bool Configure(maudCoreAudioStream* entry, AudioObjectID object)
 {
     const maudStreamCore* core = entry->core;
@@ -297,6 +403,7 @@ MAUD_NODISCARD static bool Configure(maudCoreAudioStream* entry, AudioObjectID o
                                     kAudioUnitScope_Global, 0, &object, sizeof(object)) == noErr &&
                AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output,
                                     1, &format, sizeof(format)) == noErr &&
+               MapChannels(entry, object) &&
                AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback,
                                     kAudioUnitScope_Global, 0, &callback,
                                     sizeof(callback)) == noErr &&
@@ -308,6 +415,7 @@ MAUD_NODISCARD static bool Configure(maudCoreAudioStream* entry, AudioObjectID o
                                 kAudioUnitScope_Global, 0, &object, sizeof(object)) == noErr &&
            AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0,
                                 &format, sizeof(format)) == noErr &&
+           MapChannels(entry, object) &&
            AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input,
                                 0, &callback, sizeof(callback)) == noErr &&
            AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice,

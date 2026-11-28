@@ -103,7 +103,7 @@ A stream never resamples silently. Its def's rate policy decides:
 - `maud_rateRequired`: the def's rate, which the device must run at without conversion, or creation is refused. On PipeWire every device runs at the graph's rate.
 - `maud_ratePlatformConverted`: the def's rate, converted by the platform's own converter where it has one.
 
-The callback always gets exactly the stream's period, whatever sizes the platform moves; `periodFrames` 0 asks for the backend's default. Channels are in the order WAV files use (the Windows speaker mask order) on every platform; `maudGetLayoutSpeaker` and `maudGetLayoutSpeakerPosition` say which speaker each channel feeds and where it stands.
+The callback always gets exactly the stream's period, whatever sizes the platform moves; `periodFrames` 0 asks for the backend's default. Channels are in the order WAV files use (the Windows speaker mask order) on every platform, and each reaches the device channel the platform names for its speaker (on Core Audio, the device's preferred channel layout; a device whose labels do not name every speaker of the stream, such as one that numbers its channels, takes them in order); `maudGetLayoutSpeaker` and `maudGetLayoutSpeakerPosition` say which speaker each channel feeds and where it stands.
 
 ## Following the default
 

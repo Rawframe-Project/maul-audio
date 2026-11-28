@@ -233,7 +233,8 @@ endif()
 # CoreAudio, on macOS, through the system's frameworks.
 if(MAUL_AUDIO_COREAUDIO)
     target_sources(maul-audio PRIVATE src/apple_objects.c src/backend_coreaudio.c
-        src/coreaudio_form.c src/coreaudio_hog.c src/coreaudio_listen.c src/coreaudio_stream.c)
+        src/coreaudio_form.c src/coreaudio_hog.c src/coreaudio_labels.c src/coreaudio_listen.c
+        src/coreaudio_stream.c)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_COREAUDIO=1)
     target_link_libraries(maul-audio PRIVATE "-framework CoreAudio" "-framework AudioToolbox"
         "-framework CoreFoundation")
@@ -707,6 +708,14 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         maul_add_test(coreaudio_listen WHITEBOX)
         target_link_libraries(test_coreaudio_listen PRIVATE "-framework CoreAudio"
             "-framework CoreFoundation")
+    endif()
+    # Core Audio's channel labels are plain integers, tested on every
+    # platform.
+    if(NOT MAUL_AUDIO_BUILD_SHARED)
+        maul_add_test(coreaudio_labels WHITEBOX)
+        if(NOT MAUL_AUDIO_COREAUDIO)
+            target_sources(test_coreaudio_labels PRIVATE src/coreaudio_labels.c)
+        endif()
     endif()
     # Speaker masks are plain integers, tested on every platform.
     if(NOT MAUL_AUDIO_BUILD_SHARED)
