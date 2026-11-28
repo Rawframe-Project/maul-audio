@@ -44,8 +44,9 @@ typedef struct maudWasapiObjects
 
 // Activates an object render stream on device for an object stream,
 // signalling event each pass, and its bed. maud_errorUnsupported where
-// the endpoint has no spatial client, takes another rate or no bed of
-// the stream's layout; maud_errorPlatform or maud_errorCapacity
+// the endpoint has no spatial client, refuses the stream while it takes
+// no objects (spatial sound off), takes another rate or no bed of the
+// stream's layout; maud_errorPlatform or maud_errorCapacity
 // otherwise; nothing is left to close on failure.
 maudResult maudWasapiOpenObjects(maudContext* context, IMMDevice* device, maudStreamCore* core,
                                  HANDLE event, maudWasapiObjects* objects);

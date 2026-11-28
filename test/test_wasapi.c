@@ -821,8 +821,9 @@ static void PlaceObject(const maudStreamBlock* block, void* user)
 
 // An object stream runs on the endpoint's spatial render stream: the bed
 // plays, and the objects offered are at most what the endpoint says it
-// takes (none under Wine, or on Windows while no spatial format is on).
-// A bed of a layout the spatial stream has no objects for is refused.
+// takes (none under Wine). Windows, while no spatial format is on,
+// refuses the stream, which is then refused as unsupported. A bed of a
+// layout the spatial stream has no objects for is refused.
 static void TestObjects(maudContext* context)
 {
     maudDeviceId output = {0, 0};
@@ -840,6 +841,14 @@ static void TestObjects(maudContext* context)
     maudResult result = maudCreateStream(context, &def, &stream);
     printf("object stream: %s, the endpoint takes %u objects\n", maudGetResultName(result),
            info.spatialObjectCount);
+    // Windows refuses the stream while spatial sound is off, which leaves
+    // the endpoint no objects: refused as unsupported, making nothing.
+    if (info.spatialObjectCount == 0 && result != maud_success)
+    {
+        CHECK(result == maud_errorUnsupported && stream.index1 == 0,
+              "refused as unsupported where the endpoint takes no objects");
+        return;
+    }
     CHECK(result == maud_success && maudStream_Start(context, stream) == maud_success,
           "an object stream runs");
     POLL_UNTIL(3000, "the object stream's blocks", (void)0, atomic_load(&placed.count) >= 20);
