@@ -5,6 +5,47 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.7.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.6.0...v0.7.0) (2026-11-28)
+
+0.7.0 renames the counters and widens the enumerations to the Maul family's rules, refuses buffers that overlap where the result was wrong audio, and changes the echo canceller's output. A stream's channels on Core Audio now follow the device's speaker labels. Rebuild against it: the API and the ABI change.
+
+### Changed
+
+- **Breaking:** Every enumeration typedef is now `int32_t` (`maudVoiceProcessing` is `uint32_t`), which changes the layout of every struct that holds one. Counter fields are renamed: `underruns`, `overruns` and `slippedFrames` become `underrunCount`, `overrunCount` and `slippedFrameCount`; `droppedCount` becomes `notificationDropped`; the voice states' `frames` becomes `frameCount`. `maudContext_GetDevices`, `maudDevice_GetName` and `maudDevice_GetKey` no longer clear the room past what they report on success.
+- **Breaking:** `maudInterleave` and `maudDeinterleave` refuse an interleaved array that shares a byte with any channel's array. `maudSpeakerPanner_Pan` and `maudEncodeAmbisonic` refuse samples that share a byte with any of their channels, and `maudSpeakerDecoder_Decode` refuses speaker frames that share a byte with any of the bed's channels. Each returns `maud_errorInvalid`, where it returned `maud_success` with wrong audio: the interleaving calls, the panner and the encoder write nothing, and the speaker decoder silences its speakers, as on any failure. Interleave, pan or decode into a separate buffer.
+- **Breaking:** `maudSpeakerPanner_Pan`, `maudEncodeAmbisonic`, `maudBinaural_Process` and `maudDirectEffect_Process` keep every frame of a gain ramp between its start and end gains. A frame that rounding carried just past the end now plays the end gain. A ramp between finite gains whose difference overflows a float now gives finite samples, where it gave infinity or NaN. Other output is unchanged.
+- **Breaking:** `maudReverb_Process` refuses a send delay longer than the def's `maxDelay` with `maud_errorInvalid`. It used to take delays up to about two frames past it.
+- **Breaking:** `maudCreateSceneInstance` and `maudSceneInstance_Move` refuse a placement that puts the mesh's padded world box past the float range with `maud_errorInvalid`, as they already refused a transform out of range. They now take an orientation of any finite, nonzero length: one whose components were all below about 1e-23, or had one above about 1.8e19, was refused, and every orientation taken before is placed exactly as before. An instance's box is padded a little wider, so a ray its box wrongly culled now reaches the mesh; a hit that was found before is unchanged.
+- **Breaking:** the echo canceller's output changes (who hears it: every call through `maudEchoCanceller`):
+  - It learns an echo louder than the far-end signal within seconds, and keeps cancelling at very loud input, where it used to stop for good.
+  - It passes a muted capture through unchanged and keeps its echo path through the mute, so a call that unmutes, or whose echo path turns quieter and moves, is cancelled from the start.
+  - It reports `adapted` only after its estimate has taken the capture 3 dB down for 0.1 s running: a muted or headset capture leaves it false.
+  - Every output moves in its last bits, since each filter step is rounded in double.
+- **Breaking:** at a rate that is not a multiple of 100 Hz, the gain control moves at most `maxChangeDbPerSecond` (it was up to 1.24% faster), and the voice detector's hangover lasts the time asked for (it ended up to 1.2% early).
+
+### Fixed
+
+- **Core Audio:**
+  - A stream's channels now reach the device channel that the device's preferred layout names for each speaker. A 7.1 stream on a device that lists sides before backs played its backs on the side speakers and its sides on the backs. Who hears it: on devices that number their labels from Left (BlackHole 16ch and likely other loopback devices), mono now lands on channel 3 (Center), and 7.1's sides on channels 10 and 11.
+  - Device names are read as UTF-16, cut at a whole character and repaired.
+- **WASAPI:** a stream whose callback runs late now counts the underrun it causes. `underrunCount` stayed 0 on Windows.
+- **Devices on every backend:**
+  - Names are reported as whole UTF-8 on ALSA, AAudio and iOS.
+  - A device whose key is past the text limit, or that a backend's buffer would cut, is left out rather than listed under a cut key.
+  - PipeWire and PulseAudio server names are sized by the text limit.
+  - On ALSA and the web, a context whose device limit is smaller than the machine's devices keeps the devices that fit, as the other backends do, where its creation failed with `maud_errorCapacity`.
+- **Destroying from an allocator hook:** a stream and a probe set are made stale before their memory goes back to the allocator, so a call on them from inside the host's `free` hook gets `maud_errorStale` rather than an answer about a dying object. Re-baking a probe set builds the new bake apart, so a hook never reads a bake being filled or freed.
+- **Scene queries** at the edges of the float range:
+  - Far or long rays, denormal and non-finite directions, and turned or scaled meshes near the float range now hit what they should, and both ray queries agree.
+  - Triangles with no area are left out of the hierarchies.
+  - Hit normals are unit length.
+- **Spatializer:**
+  - A source at any offset, a hit normal of any length and a listener orientation of any length are normalised.
+  - Building a probe set no longer takes time quadratic in its probes when they spread along y or z; the links and bakes are unchanged.
+- **Voice:** the noise suppressor's documented lag is now its real 20 ms. A host that lined its output up by the stated 10 ms was 10 ms off.
+- **NULL objects:** the calls that answer a value rather than a status (`maudContext_GetMisuse`, `maudContext_GetBackend`, the scene and spatializer `GetMisuse`, `maudFindAnyHit` and `maudFindClosestHit`) take a NULL object as documented instead of reading through it.
+- **Building:** `MAUD_NODISCARD` stays the attribute under GCC 14's C23.
+
 ## [0.6.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.5.0...v0.6.0) (2026-10-30)
 
 0.6.0 makes four more calls leave zeros or silence behind when they fail, never data from an earlier call, as the Maul family's rule for outputs asks. A call refused as busy because the object's own callback made it is the exception: it writes none of its outputs, since the call it interrupted may still be filling them. No backend changes what it does, so the device checklist on real hardware, which runs before a release that changes a backend, is not run for it. The golden renders and the office bake are unchanged.
