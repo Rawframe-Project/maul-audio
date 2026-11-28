@@ -130,8 +130,10 @@ static HRESULT Fill(maudWasapiStream* entry)
     {
         return result;
     }
-    // Empty once playing: the engine played what the stream did not give.
-    if (!entry->exclusive && padding == 0 && entry->written > 0)
+    // Empty once playing: the engine played what the stream did not give,
+    // the thread woken late.
+    bool starved = !entry->exclusive && padding == 0 && entry->written > 0;
+    if (starved)
     {
         maudCountXrun(entry->core);
     }
@@ -150,6 +152,15 @@ static HRESULT Fill(maudWasapiStream* entry)
         Render(entry, entry->scratch, nullptr, frames, OutputLatency(entry));
         maudFloatToSamples(data, entry->scratch, (size_t)frames * entry->core->period.channelCount,
                            entry->sampleKind);
+    }
+    // Empty before the frames are released: the engine played out what
+    // the stream had given while the callback ran. Released, the frames
+    // would hide it from the next pass's check. One starvation counts
+    // once.
+    if (!entry->exclusive && !starved && entry->written > 0 &&
+        SUCCEEDED(IAudioClient_GetCurrentPadding(entry->client, &padding)) && padding == 0)
+    {
+        maudCountXrun(entry->core);
     }
     entry->written += frames;
     return IAudioRenderClient_ReleaseBuffer(entry->render, frames, 0);

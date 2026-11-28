@@ -546,8 +546,9 @@ static void TestLoopback(maudContext* context)
 // Wine's ntdll exports wine_get_version; Windows' does not.
 static bool UnderWine(void);
 
-// A callback that stalls leaves the engine's buffer empty: an underrun,
-// counted when the stream next finds it so. Wine holds its buffer
+// A callback that stalls leaves the engine's buffer empty while the
+// stream holds the frames it fills: an underrun, counted before they are
+// released. Wine holds its buffer
 // instead of letting it drain, so there the count is not checked.
 static void TestUnderrun(maudContext* context)
 {
@@ -565,6 +566,7 @@ static void TestUnderrun(maudContext* context)
     }
     else
     {
+        printf("underruns after a 300 ms stall: %llu\n", (unsigned long long)status.underrunCount);
         CHECK(status.underrunCount >= 1, "the stall counted as an underrun");
     }
     CHECK(maudDestroyStream(context, stream) == maud_success, "destroy");
