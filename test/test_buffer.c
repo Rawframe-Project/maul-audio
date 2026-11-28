@@ -3,7 +3,7 @@
 //
 // Interleaving and deinterleaving: exact copies in the documented order,
 // with nothing written past an array, and refusals of invalid
-// arguments.
+// arguments, interleaved frames over a channel's samples among them.
 
 #include "test_harness.h"
 
@@ -96,6 +96,41 @@ static void TestInvalidArgumentsAreRefused(void)
     CHECK(maudDeinterleave(frames, 2, 4, missingOut) == maud_errorInvalid, "null channel out");
 }
 
+// Interleaved frames that share a byte with a channel's samples are
+// refused both ways, the output left as it was: a planar buffer laid out
+// channel after channel and interleaved into itself, and frames that
+// reach only a channel's last sample. Frames that end where a channel
+// starts are apart.
+static void TestOverlapIsRefused(void)
+{
+    float buffer[16];
+    for (int i = 0; i < 16; ++i)
+    {
+        buffer[i] = (float)i;
+    }
+    const float* inPlace[2] = {buffer, buffer + 4};
+    CHECK(maudInterleave(inPlace, 2, 4, buffer) == maud_errorInvalid, "interleaved in place");
+    float* outPlace[2] = {buffer, buffer + 4};
+    CHECK(maudDeinterleave(buffer, 2, 4, outPlace) == maud_errorInvalid, "deinterleaved in place");
+    const float* lastSample[2] = {buffer + 8, buffer + 12};
+    CHECK(maudInterleave(lastSample, 2, 4, buffer + 1) == maud_errorInvalid,
+          "frames over a channel's last sample");
+    float* lastOut[2] = {buffer + 8, buffer + 12};
+    CHECK(maudDeinterleave(buffer + 1, 2, 4, lastOut) == maud_errorInvalid,
+          "a channel's last sample over the frames");
+    bool kept = true;
+    for (int i = 0; i < 16; ++i)
+    {
+        kept = kept && buffer[i] == (float)i;
+    }
+    CHECK(kept, "nothing written by a refused call");
+    const float* after[2] = {buffer + 8, buffer + 12};
+    CHECK(maudInterleave(after, 2, 4, buffer) == maud_success, "frames right before a channel");
+    float* afterOut[2] = {buffer + 8, buffer + 12};
+    CHECK(maudDeinterleave(buffer, 2, 4, afterOut) == maud_success,
+          "a channel right after the frames");
+}
+
 static void TestTotalsPastMemoryAreRefused(void)
 {
     // Only a 32-bit size_t can overflow with 32-bit counts; elsewhere the
@@ -116,6 +151,7 @@ int main(void)
     TestRoundTripsEveryChannelCount();
     TestZeroFramesNeedNoArrays();
     TestInvalidArgumentsAreRefused();
+    TestOverlapIsRefused();
     TestTotalsPastMemoryAreRefused();
     return s_failures == 0 ? 0 : 1;
 }

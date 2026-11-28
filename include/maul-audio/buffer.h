@@ -17,7 +17,8 @@ extern "C"
 
     /// Interleaves one array per channel into frames: sample `i` of channel
     /// `c` goes to `interleavedOut[i * channelCount + c]`. Samples are
-    /// copied exactly. The arrays must not overlap.
+    /// copied exactly. The interleaved array must not overlap a channel's:
+    /// such a call is refused.
     ///
     /// @param planar          One array of `frameCount` samples per channel.
     ///                        May be NULL when `frameCount` is 0.
@@ -27,8 +28,9 @@ extern "C"
     ///                        May be NULL when `frameCount` is 0. Left as
     ///                        it was on failure.
     /// @return `maud_success`, or `maud_errorInvalid` for a channel count of
-    ///         0, a NULL array where samples are due, or a total that does
-    ///         not fit in memory.
+    ///         0, a NULL array where samples are due, a total that does
+    ///         not fit in memory, or an interleaved array that shares a
+    ///         byte with a channel's.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait.
     MAUD_NODISCARD MAUD_API maudResult maudInterleave(const float* const* planar,
@@ -37,7 +39,8 @@ extern "C"
 
     /// Splits frames into one array per channel: `interleaved[i *
     /// channelCount + c]` goes to sample `i` of channel `c`. Samples are
-    /// copied exactly. The arrays must not overlap.
+    /// copied exactly. The interleaved array must not overlap a channel's:
+    /// such a call is refused.
     ///
     /// @param interleaved   `channelCount * frameCount` samples. May be NULL
     ///                      when `frameCount` is 0.
@@ -47,8 +50,9 @@ extern "C"
     ///                      channel. May be NULL when `frameCount` is 0.
     ///                      Left as they were on failure.
     /// @return `maud_success`, or `maud_errorInvalid` for a channel count of
-    ///         0, a NULL array where samples are due, or a total that does
-    ///         not fit in memory.
+    ///         0, a NULL array where samples are due, a total that does
+    ///         not fit in memory, or an interleaved array that shares a
+    ///         byte with a channel's.
     /// @par Thread safety
     /// Real-time safe: no allocation, lock or wait.
     MAUD_NODISCARD MAUD_API maudResult maudDeinterleave(const float* interleaved,
