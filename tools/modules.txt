@@ -30,7 +30,7 @@ binaural: allocator binaural_dsp exact_scale hrtf_core hrtf_lookup near_field ra
 binaural_decoder: allocator binaural_dsp hrtf_core magls
 binaural_dsp: flush
 base:
-buffer:
+buffer: overlap
 bvh: watertight
 clock: context_core
 context: allocator backend context_core invariant thread

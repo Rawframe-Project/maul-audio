@@ -7,6 +7,8 @@
 
 #include "maul-audio/buffer.h"
 
+#include "overlap.h"
+
 #include <stdckdint.h>
 
 // Checks the arguments shared by both directions: a channel count, and
@@ -43,6 +45,24 @@ MAUD_NODISCARD static bool ChannelsPresent(const float* const* channels, uint32_
     return true;
 }
 
+// Whether the interleaved frames share a byte with a channel's samples.
+// Both directions write as they read, frame by frame, so frames over a
+// channel would be read changed. The totals fit, checked first.
+MAUD_NODISCARD static bool Overlaps(const float* const* planar, uint32_t channelCount,
+                                    uint32_t frameCount, const float* interleaved)
+{
+    size_t channelBytes = (size_t)frameCount * sizeof(float);
+    size_t framesBytes = channelBytes * channelCount;
+    for (uint32_t c = 0; c < channelCount; ++c)
+    {
+        if (maudRangesOverlap(interleaved, framesBytes, planar[c], channelBytes))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 maudResult maudInterleave(const float* const* planar, uint32_t channelCount, uint32_t frameCount,
                           float* interleavedOut)
 {
@@ -54,7 +74,8 @@ maudResult maudInterleave(const float* const* planar, uint32_t channelCount, uin
     {
         return maud_success;
     }
-    if (!ChannelsPresent(planar, channelCount))
+    if (!ChannelsPresent(planar, channelCount) ||
+        Overlaps(planar, channelCount, frameCount, interleavedOut))
     {
         return maud_errorInvalid;
     }
@@ -91,7 +112,8 @@ maudResult maudDeinterleave(const float* interleaved, uint32_t channelCount, uin
     {
         return maud_success;
     }
-    if (!ChannelsPresent((const float* const*)planarOut, channelCount))
+    if (!ChannelsPresent((const float* const*)planarOut, channelCount) ||
+        Overlaps((const float* const*)planarOut, channelCount, frameCount, interleaved))
     {
         return maud_errorInvalid;
     }
