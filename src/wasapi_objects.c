@@ -202,6 +202,16 @@ maudResult maudWasapiOpenObjects(maudContext* context, IMMDevice* device, maudSt
         return maud_errorCapacity;
     }
     maudResult result = Activate(objects, core, event, &format, types, channels);
+    // An endpoint that takes no dynamic objects is one whose user chose
+    // no spatial sound format; Windows then refuses the stream, a setting
+    // rather than a failure. (Wine takes a bed alone there.)
+    UINT32 dynamic = 0;
+    if (result == maud_errorPlatform &&
+        SUCCEEDED(ISpatialAudioClient_GetMaxDynamicObjectCount(objects->client, &dynamic)) &&
+        dynamic == 0)
+    {
+        result = maud_errorUnsupported;
+    }
     if (result != maud_success)
     {
         maudWasapiCloseObjects(context, objects);
