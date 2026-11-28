@@ -770,8 +770,7 @@ static void TestChannelLabels(maudContext* context)
     if (output.index1 == 0 || input.index1 == 0)
     {
         CHECK(!s_required, "BlackHole 16ch, as MAUD_REQUIRE_COREAUDIO says");
-        printf("no BlackHole 16ch: the channel labels are not checked
-");
+        printf("no BlackHole 16ch: the channel labels are not checked\n");
         return;
     }
     Channels played = {0};
@@ -800,9 +799,7 @@ static void TestChannelLabels(maudContext* context)
     for (uint32_t d = 0; d < HEARD_CHANNELS; ++d)
     {
         routed = routed && HeardAs(&heard, d, route[d]);
-        printf("BlackHole 16ch channel %u: %u thousandths
-               ", d + 1,
-               atomic_load(&heard.heard[d]));
+        printf("BlackHole 16ch channel %u: %u thousandths\n", d + 1, atomic_load(&heard.heard[d]));
     }
     CHECK(atomic_load(&heard.count) >= 40, "captured blocks arrive");
     CHECK(routed, "each 7.1 channel on the device channel its label names");
