@@ -65,12 +65,14 @@ MAUD_NODISCARD static bool SourceValid(const maudPanSource* source)
 }
 
 // One channel's share of the source, its gain ramped across the block.
-static inline void AddRamped(float* out, const float* in, float a, float step, uint32_t frames,
-                             bool isSigned)
+static inline void AddRamped(float* out, const float* in, float a, float b, float step,
+                             uint32_t frames, bool isSigned)
 {
+    float low = a < b ? a : b;
+    float high = a < b ? b : a;
     for (uint32_t n = 0; n < frames; ++n)
     {
-        out[n] += (a + step * maudFramePlace(n, isSigned)) * in[n];
+        out[n] += maudRampGain(a, step, low, high, n, isSigned) * in[n];
     }
 }
 
@@ -111,11 +113,11 @@ maudResult maudEncodeAmbisonic(uint32_t order, const maudPanSource* from, const 
         float step = frameCount > 0 ? (b - a) / (float)frameCount : 0.0f;
         if (maudRampSigned(frameCount))
         {
-            AddRamped(bed[c], samples, a, step, frameCount, true);
+            AddRamped(bed[c], samples, a, b, step, frameCount, true);
         }
         else
         {
-            AddRamped(bed[c], samples, a, step, frameCount, false);
+            AddRamped(bed[c], samples, a, b, step, frameCount, false);
         }
     }
     return maud_success;

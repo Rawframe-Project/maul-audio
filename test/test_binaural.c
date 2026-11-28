@@ -30,6 +30,7 @@
 
 #include "maul-audio/binaural.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -820,6 +821,47 @@ static void TestWideGain(const maudHrtf* hrtf)
     maudDestroyBinaural(steady);
 }
 
+// The gain moving from FLT_MAX / 2 to FLT_MAX over 25, 31, 98 and 127
+// frames, lengths whose last frame the step's rounding carried past
+// FLT_MAX in float: every frame is finite and at most FLT_MAX times what
+// a unit gain gives.
+static void TestGainToTheTop(const maudHrtf* hrtf)
+{
+    static const uint32_t lengths[] = {25, 31, 98, 127};
+    for (int n = 0; n < 256; ++n)
+    {
+        s_in[n] = 1e-30f;
+    }
+    bool between = true;
+    for (size_t k = 0; k < sizeof(lengths) / sizeof(lengths[0]); ++k)
+    {
+        uint32_t frames = lengths[k];
+        maudBinaural* ramped = Create(hrtf, 256);
+        maudBinaural* steady = Create(hrtf, 256);
+        maudBinauralParams half = At(0.0f, 0.0f, -1.0f);
+        half.gain = FLT_MAX / 2.0f;
+        maudBinauralParams top = half;
+        top.gain = FLT_MAX;
+        maudBinauralParams unit = half;
+        unit.gain = 1.0f;
+        CHECK(Process(ramped, half, s_in, s_left, s_right, frames) == maud_success &&
+                  Process(steady, unit, s_in, s_left2, s_right2, frames) == maud_success &&
+                  Process(ramped, top, s_in, s_left, s_right, frames) == maud_success &&
+                  Process(steady, unit, s_in, s_left2, s_right2, frames) == maud_success,
+              "process");
+        for (uint32_t n = 0; n < frames; ++n)
+        {
+            double most = (double)FLT_MAX * (1.0 + 1e-6);
+            between = between && isfinite(s_left[n]) && isfinite(s_right[n]) &&
+                      fabs((double)s_left[n]) <= most * fabs((double)s_left2[n]) &&
+                      fabs((double)s_right[n]) <= most * fabs((double)s_right2[n]);
+        }
+        maudDestroyBinaural(ramped);
+        maudDestroyBinaural(steady);
+    }
+    CHECK(between, "a gain ramp to FLT_MAX stays between its ends");
+}
+
 // A fade written into heap buffers exactly a call long: every call
 // turns the direction, so each ends mid-fade, and nothing is written
 // past the call's last frame.
@@ -1171,6 +1213,7 @@ int main(void)
         TestBlocks(hrtf);
         TestGain(hrtf);
         TestWideGain(hrtf);
+        TestGainToTheTop(hrtf);
         TestMisuse(hrtf);
         TestFailureSilence(hrtf);
         TestExactBuffers(hrtf);

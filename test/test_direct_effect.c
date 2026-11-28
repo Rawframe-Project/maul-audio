@@ -19,6 +19,7 @@
 
 #include "maul-audio/direct.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -517,9 +518,42 @@ static void TestBadSample(void)
     }
 }
 
+// The host's gain moving from FLT_MAX / 2 to FLT_MAX, over every length
+// to 256: every frame's gain lies between the two, none infinite. In
+// float the step's rounding carried the last frame of 25 of those
+// lengths past FLT_MAX.
+static void TestGainToTheTop(void)
+{
+    static float in[256];
+    static float out[256];
+    for (int n = 0; n < 256; ++n)
+    {
+        in[n] = 1.0f;
+    }
+    maudDirectParams half = maudDefaultDirectParams();
+    half.gain = FLT_MAX / 2.0f;
+    maudDirectParams top = half;
+    top.gain = FLT_MAX;
+    bool between = true;
+    for (uint32_t frames = 1; frames <= 256; ++frames)
+    {
+        maudDirectEffect* effect = Create();
+        CHECK(maudDirectEffect_Process(effect, &half, in, out, frames) == maud_success &&
+                  maudDirectEffect_Process(effect, &top, in, out, frames) == maud_success,
+              "process");
+        for (uint32_t n = 0; n < frames; ++n)
+        {
+            between = between && out[n] >= FLT_MAX / 2.0f && out[n] <= FLT_MAX;
+        }
+        maudDestroyDirectEffect(effect);
+    }
+    CHECK(between, "a gain ramp to FLT_MAX stays between its ends");
+}
+
 int main(void)
 {
     TestPassThrough();
+    TestGainToTheTop();
     TestBands();
     TestNoClick();
     TestHistory();

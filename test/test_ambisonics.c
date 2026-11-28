@@ -14,6 +14,7 @@
 
 #include "maul-audio/ambisonics.h"
 
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -319,6 +320,34 @@ static void TestWideRamp(void)
     CHECK(onRamp, "a ramp between gains near the float range");
 }
 
+// A gain moving from FLT_MAX / 2 to FLT_MAX, over every length to 256:
+// every frame's gain in W, whose coefficient is 1, lies between the two,
+// none infinite. In float the step's rounding carried the last frame of
+// 25 of those lengths past FLT_MAX.
+static void TestRampToTheTop(void)
+{
+    static float channels[4][256];
+    static float in[256];
+    float* bed[4] = {channels[0], channels[1], channels[2], channels[3]};
+    for (int n = 0; n < 256; ++n)
+    {
+        in[n] = 1.0f;
+    }
+    maudPanSource from = {{0.0f, 0.0f, -1.0f}, FLT_MAX / 2.0f};
+    maudPanSource to = {{0.0f, 0.0f, -1.0f}, FLT_MAX};
+    bool between = true;
+    for (uint32_t frames = 1; frames <= 256; ++frames)
+    {
+        memset(channels, 0, sizeof(channels));
+        CHECK(maudEncodeAmbisonic(1, &from, &to, in, bed, frames) == maud_success, "encode");
+        for (uint32_t n = 0; n < frames; ++n)
+        {
+            between = between && channels[0][n] >= FLT_MAX / 2.0f && channels[0][n] <= FLT_MAX;
+        }
+    }
+    CHECK(between, "a ramp to FLT_MAX stays between its ends");
+}
+
 int main(void)
 {
     TestGains();
@@ -327,6 +356,7 @@ int main(void)
     TestRotationRamp();
     TestEncode();
     TestWideRamp();
+    TestRampToTheTop();
     TestMisuse();
     return s_failures == 0 ? 0 : 1;
 }

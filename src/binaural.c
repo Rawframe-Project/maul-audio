@@ -435,6 +435,8 @@ static maudResult Run(maudBinaural* effect, const maudBinauralParams* params, co
     Render(effect, x, out, frames);
     float from = effect->gain;
     float step = frames > 0 ? (params->gain - from) / (float)frames : 0.0f;
+    float low = from < params->gain ? from : params->gain;
+    float high = from < params->gain ? params->gain : from;
     for (uint32_t ear = 0; ear < 2; ++ear)
     {
         if (!isfinite(params->gain - from))
@@ -448,7 +450,7 @@ static maudResult Run(maudBinaural* effect, const maudBinauralParams* params, co
         for (uint32_t n = 0; n < frames; ++n)
         {
             // frames is at most MAUD_MAX_BINAURAL_FRAMES.
-            out[ear][n] *= from + step * maudFramePlace(n, true);
+            out[ear][n] *= maudRampGain(from, step, low, high, n, true);
         }
     }
     effect->gain = params->gain;
