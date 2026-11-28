@@ -5,6 +5,19 @@ Added, Changed, Fixed, Removed and Security. The project uses
 [Semantic Versioning](https://semver.org/). Before 1.0.0, any release
 may change the API, the ABI and every file format.
 
+## [0.8.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.7.0...v0.8.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **wasapi:** on Windows, maudCreateStream refuses an object stream on an output whose spatial sound is off (spatialObjectCount 0) with maud_errorUnsupported, where it returned maud_errorPlatform.
+* **coreaudio:** on Core Audio, maudDeviceInfo.nativeLayout is the largest layout whose every speaker the device's preferred channel layout names, where it was the layout of the channel count: a device of 16 channels labeled from Left (BlackHole 16ch) reports 7.1 where it reported none, and one of 8 channels with no back speakers reports 5.1 where it reported 7.1. A change of the preferred layout is reported as maud_notifyDeviceFormatChanged.
+
+### Fixed
+
+* **coreaudio:** take a device's native layout from its channel labels ([#401](https://github.com/Rawframe-Project/maul-audio/issues/401)) ([369de15](https://github.com/Rawframe-Project/maul-audio/commit/369de15fdcd0806fccf3393dbe345ac5354c3855)), closes [#393](https://github.com/Rawframe-Project/maul-audio/issues/393)
+* **wasapi:** refuse objects with spatial sound off as unsupported ([#404](https://github.com/Rawframe-Project/maul-audio/issues/404)) ([b99efbe](https://github.com/Rawframe-Project/maul-audio/commit/b99efbe180a4b2ae8c09efb9704cdb82fafeac10)), closes [#395](https://github.com/Rawframe-Project/maul-audio/issues/395)
+
 ## [0.7.0](https://github.com/Rawframe-Project/maul-audio/compare/v0.6.0...v0.7.0) (2026-11-28)
 
 0.7.0 renames the counters and widens the enumerations to the Maul family's rules, refuses buffers that overlap where the result was wrong audio, and changes the echo canceller's output. A stream's channels on Core Audio now follow the device's speaker labels. Rebuild against it: the API and the ABI change.
