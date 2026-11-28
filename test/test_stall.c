@@ -11,7 +11,8 @@
 // Over a clean window the stream also keeps running, keeps the last
 // whole step and counts no underrun. A window is clean when the
 // platform kept up on its own: the fixture's graph counted no xrun, the
-// stream none before the stall, and this thread's sleeps woke on time.
+// stream none before the stall and a block in the two periods before it
+// began, and this thread's sleeps woke on time.
 // On a loaded machine the platform delivers late or not at all, which
 // says nothing about the library, so those timing checks are excused,
 // and every run says which it was, and whether any block started during
@@ -148,12 +149,17 @@ typedef struct Shared
     atomic_uint finishedInStall;
     atomic_llong firstInStall;
     atomic_llong longestInStall;
+    // When the latest block started, by the host clock (0 before any).
+    atomic_llong lastStart;
     // When the stalled step returned, by the host clock.
     int64_t stallEnd;
     // Read inside the stall, by the host.
     unsigned blocksBefore;
     unsigned blocksAfter;
     unsigned latchedInStall;
+    // How long the stream had run no block when the stall began, in
+    // nanoseconds; INT64_MAX when it had run none at all.
+    int64_t quietBefore;
     maudContext* context;
     maudStreamId stream;
     uint64_t underrunsBefore;
@@ -167,6 +173,7 @@ static void Render(const maudStreamBlock* block, void* user)
 {
     Shared* shared = user;
     int64_t start = maudGetHostNanoseconds();
+    atomic_store(&shared->lastStart, start);
     bool inStall = atomic_load(&shared->stalling);
     if (inStall)
     {
@@ -230,6 +237,8 @@ static void AnyHit(const maudRay* rays, uint32_t count, uint8_t* occluded, void*
         shared->underrunsBefore = status.underrunCount;
     }
     shared->blocksBefore = atomic_load(&shared->blocks);
+    long long lastStart = atomic_load(&shared->lastStart);
+    shared->quietBefore = lastStart != 0 ? maudGetHostNanoseconds() - lastStart : INT64_MAX;
     atomic_store(&shared->stalling, true);
     // hygiene: the stall itself, a host thread stuck in its physics
     int64_t late = PauseLate(STALL_MS);
@@ -349,11 +358,14 @@ int main(int argc, char** argv)
         }
     }
     graphRead = GraphXruns(&graphAfter) && graphRead;
+    double periodMs = 1000.0 * format.periodFrames / format.sampleRate;
+    // A stream that ran no block in the two periods before the stall began
+    // had already been stopped by its platform, not by the host.
+    bool quiet = (double)shared->quietBefore > 2.0 * periodMs * 1e6;
     // On the fixture the graph's count must be read and unchanged; on a
     // platform without one, the stream's count and the sleeps judge.
     bool clean = (!HaveDaemon() || (graphRead && graphAfter == graphBefore)) &&
-                 shared->underrunsBefore == 0 && shared->latestWakeup <= LATE_WAKEUP;
-    double periodMs = 1000.0 * format.periodFrames / format.sampleRate;
+                 shared->underrunsBefore == 0 && !quiet && shared->latestWakeup <= LATE_WAKEUP;
     unsigned during = shared->blocksAfter - shared->blocksBefore;
     long long longest = atomic_load(&shared->longestInStall);
     printf("stall: %u blocks of %.1f ms, the longest %.3f ms; latched step %u; underruns %llu "
@@ -379,7 +391,13 @@ int main(int argc, char** argv)
     const char* unobserved = atomic_load(&shared->startedInStall) == 0
                                  ? "; behavior unobserved: no block started during the stall"
                                  : "";
-    char verdict[320];
+    char quietText[64] = "";
+    if (quiet)
+    {
+        snprintf(quietText, sizeof(quietText), ", no block in the %.1f ms before the stall",
+                 shared->quietBefore == INT64_MAX ? 0.0 : (double)shared->quietBefore / 1e6);
+    }
+    char verdict[384];
     if (clean)
     {
         snprintf(verdict, sizeof(verdict), "judged%s", unobserved);
@@ -387,11 +405,11 @@ int main(int argc, char** argv)
     else
     {
         snprintf(verdict, sizeof(verdict),
-                 "excused: graph xruns %llu to %llu%s, %llu underruns before the stall, a "
+                 "excused: graph xruns %llu to %llu%s, %llu underruns before the stall%s, a "
                  "sleep %.1f ms late%s",
                  graphBefore, graphAfter, HaveDaemon() && !graphRead ? " (not read)" : "",
-                 (unsigned long long)shared->underrunsBefore, (double)shared->latestWakeup / 1e6,
-                 unobserved);
+                 (unsigned long long)shared->underrunsBefore, quietText,
+                 (double)shared->latestWakeup / 1e6, unobserved);
     }
     Report(verdict);
     if (clean)
