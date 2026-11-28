@@ -52,7 +52,7 @@ A count larger than the room given says how many devices there are. Names and ke
 
 - `maudContext_GetDefaultDevice` gives the default device of a direction for a role: `maud_roleGeneral` for games and media, `maud_roleCommunications` for calls.
 - `maudDevice_GetKey` gives a key that stays the same when the device is unplugged and plugged in again, and across restarts where the platform allows. Store the key to remember a user's choice; an id does not survive the device leaving.
-- `maudDeviceInfo` reports the native layout and rate (zero where the platform cannot tell without opening the device, as on ALSA), the rates the device takes without conversion, its form (speakers, headphones, a headset, a digital connector), and what the platform's own spatializer does there.
+- `maudDeviceInfo` reports the native layout and rate (zero where the platform cannot tell without opening the device, as on ALSA; on Core Audio the layout is the largest whose every speaker the device's own channel labels name, such as 5.1 for eight channels that have no back speakers, and the channel count's where the labels name none), the rates the device takes without conversion, its form (speakers, headphones, a headset, a digital connector), and what the platform's own spatializer does there.
 
 ## Playing a stream
 

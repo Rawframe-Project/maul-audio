@@ -233,8 +233,8 @@ endif()
 # CoreAudio, on macOS, through the system's frameworks.
 if(MAUL_AUDIO_COREAUDIO)
     target_sources(maul-audio PRIVATE src/apple_objects.c src/backend_coreaudio.c
-        src/coreaudio_form.c src/coreaudio_hog.c src/coreaudio_labels.c src/coreaudio_listen.c
-        src/coreaudio_stream.c)
+        src/coreaudio_form.c src/coreaudio_hog.c src/coreaudio_labels.c src/coreaudio_layout.c
+        src/coreaudio_listen.c src/coreaudio_stream.c)
     target_compile_definitions(maul-audio PRIVATE MAUD_HAVE_COREAUDIO=1)
     target_link_libraries(maul-audio PRIVATE "-framework CoreAudio" "-framework AudioToolbox"
         "-framework CoreFoundation")
@@ -702,7 +702,7 @@ if(MAUL_AUDIO_BUILD_TESTS AND MAUL_AUDIO_DEVICE)
         # Forms and data source listeners, against a fake HAL.
         maul_add_test(coreaudio_form WHITEBOX)
         target_link_libraries(test_coreaudio_form PRIVATE "-framework CoreAudio"
-            "-framework CoreFoundation")
+            "-framework AudioToolbox" "-framework CoreFoundation")
         # The system listeners and a restart of the audio server, against
         # a fake HAL.
         maul_add_test(coreaudio_listen WHITEBOX)
